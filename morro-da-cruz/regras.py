@@ -1,0 +1,264 @@
+"""Regras de negócio puras (sem banco) do sistema Morro da Cruz.
+
+Tudo aqui é determinístico e testável isoladamente; `servicos.py` aplica
+estas regras sobre o banco.
+"""
+import math
+from collections import OrderedDict
+from datetime import date
+
+# ------------------------------------------------------------------ constantes
+FRENTES = [f"Zona{n:02d}" for n in range(1, 12)] + ["ADUTORA", "CH"]
+CONTINGENCIAS = ["Confecção de Bloquetes", "Execução de Calçadas/Asfalto"]
+PERFIL_PENDENTE = "A CONFIRMAR"
+PCT_MATERIAL_ENTREGA = 0.80   # Seção 7 do SL0327 — faturamento por etapas
+PCT_MATERIAL_APLICACAO = 0.20
+CONDICOES_CLIMA = OrderedDict([
+    ("SOL", "Sol"),
+    ("CHUVA_FRACA_TENDA", "Chuva Fraca c/ Tenda 3x3m"),
+    ("PARALISADO_CHUVA", "Paralisado por Chuva"),
+    ("VALA_ALAGADA_BOMBA", "Vala Alagada / Bomba"),
+])
+
+
+class RegraViolada(Exception):
+    """Operação bloqueada por regra de negócio (mensagem vai para o usuário)."""
+
+
+class PerfilPendente(RegraViolada):
+    pass
+
+
+# ------------------------------------------------------------------ N02 — unidades
+_ALIAS_UN = {"UND": "UN", "UNID": "UN", "PC": "UN", "PÇ": "UN", "PCS": "UN", "CJ": "CJ",
+             "MT": "M", "ML": "M", "METRO": "M", "M³": "M3", "M²": "M2"}
+
+
+def normalizar_unidade(u):
+    u = (u or "").strip().upper().replace(".", "")
+    return _ALIAS_UN.get(u, u)
+
+
+def somar_por_unidade(itens):
+    """Soma quantidades separadas por unidade. Nunca devolve um total único.
+
+    itens: iterável de (unidade, quantidade). Retorna OrderedDict unidade -> total.
+    """
+    tot = OrderedDict()
+    for unidade, qtd in itens:
+        u = normalizar_unidade(unidade)
+        if not u:
+            raise RegraViolada("Item sem unidade não pode ser contabilizado (auditoria N02).")
+        tot[u] = round(tot.get(u, 0.0) + float(qtd or 0), 6)
+    return tot
+
+
+def fmt_num(v, casas=2):
+    s = f"{v:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    if casas and "," in s:
+        s = s.rstrip("0").rstrip(",")
+    return s
+
+
+def formatar_por_unidade(totais):
+    """{'UN': 17, 'M': 0.71} -> '17 UN · 0,71 m'."""
+    return " · ".join(f"{fmt_num(q)} {'m' if u == 'M' else u}" for u, q in totais.items())
+
+
+# ------------------------------------------------------------------ E06 — perfil de vala
+def perfil_pendente(trecho):
+    """Motivo do bloqueio, ou None se o perfil de vala está definido."""
+    if str(trecho.get("perfil_status") or "").upper() == PERFIL_PENDENTE:
+        return "Perfil de vala A CONFIRMAR"
+    for campo in ("profundidade_m", "largura_m", "lastro_m"):
+        v = trecho.get(campo)
+        invalido = not isinstance(v, (int, float)) or v < 0 or (v == 0 and campo != "lastro_m")
+        if invalido:
+            return f"Perfil de vala incompleto ({campo} = {v!r})"
+    return None
+
+
+def exigir_perfil(trecho):
+    motivo = perfil_pendente(trecho)
+    if motivo:
+        raise PerfilPendente(f"{trecho['id']}: {motivo} — cálculo bloqueado até a definição (auditoria E06).")
+
+
+# ------------------------------------------------------------------ quantidades previstas
+def qtd_soldas(metros, barra_m=6.0):
+    return int(math.ceil(metros / barra_m - 1e-9)) if metros > 0 else 0
+
+
+def quantidades_previstas_trecho(trecho, quantidades_totais, metros, mapa):
+    """Quantidades previstas para L metros de um trecho.
+
+    As quantidades vêm da própria 06.1 (colunas AL:BK do trecho), rateadas por
+    L / extensão. Volumes negativos indicam dado inconsistente e bloqueiam
+    (nunca IFERROR -> 0).
+    """
+    L = float(metros)
+    if L <= 0:
+        return []
+    exigir_perfil(trecho)
+    ext = float(trecho["extensao_m"])
+    frac = min(L / ext, 1.0) if ext > 0 else 0.0
+    out = []
+    for s in mapa["gaveta1"]:
+        if s["coluna"] == "M":
+            q = L
+        else:
+            total = quantidades_totais.get(s["coluna"])
+            if total is None:
+                continue
+            q = float(total) * frac
+        if q < -1e-9:
+            raise PerfilPendente(f"{trecho['id']}: {s['servico']} negativo ({q:.3f}) — revisar perfil de vala.")
+        if abs(q) < 1e-9:
+            continue
+        out.append({"servico": s["servico"], "unidade": s["unidade"], "previsto": round(q, 3)})
+    if str(trecho.get("material") or "").upper() == "PEAD" and trecho.get("metodologia") != "MND":
+        sol = mapa["solda"]
+        out.append({"servico": sol["servico"], "unidade": "UN", "previsto": qtd_soldas(L, sol["comprimento_barra_m"])})
+    return out
+
+
+def quantidades_previstas_elemento(pecas):
+    """Peças do nó/caixa agrupadas por descrição+diâmetro+unidade (sem misturar unidades)."""
+    agrup = OrderedDict()
+    for p in pecas:
+        u = normalizar_unidade(p["unidade"])
+        nome = p["descricao"] + (f" DE{p['diametro']}" if p.get("diametro") not in (None, "", "N/A") else "")
+        agrup[(nome, u)] = agrup.get((nome, u), 0.0) + float(p["quantidade"])
+    return [{"servico": d, "unidade": u, "previsto": round(q, 3)} for (d, u), q in agrup.items()]
+
+
+def ratear(qtd, itens_quantidades):
+    """Rateia qtd entre itens proporcionalmente às quantidades contratuais."""
+    tot = sum(q for _, q in itens_quantidades)
+    if tot <= 0:
+        n = len(itens_quantidades)
+        return [(i, qtd / n) for i, _ in itens_quantidades]
+    return [(i, qtd * q / tot) for i, q in itens_quantidades]
+
+
+# ------------------------------------------------------------------ fotos
+FOTOS_TRECHO = ("SINALIZACAO", "EXECUCAO", "CONCLUIDO")
+FOTOS_ELEMENTO = ("EXECUCAO", "CONCLUIDO")
+
+
+def fotos_pendentes(alvo_tipo, categorias_existentes, sinalizacao_herdada):
+    """Categorias de foto que ainda faltam.
+
+    Trecho: 3 fotos (sinalização, executando, concluído).
+    Nó/caixa: 2 fotos; herda a sinalização se algum trecho ligado (mesma
+    área/rua) já tem foto de sinalização — senão a área é nova e exige as 3.
+    """
+    exigidas = list(FOTOS_TRECHO if alvo_tipo == "TRECHO" else FOTOS_ELEMENTO)
+    if alvo_tipo != "TRECHO" and not sinalizacao_herdada:
+        exigidas.insert(0, "SINALIZACAO")
+    tem = set(categorias_existentes)
+    return [c for c in exigidas if c not in tem]
+
+
+def carimbo(contrato, alvo_id, data_hora, lat=None, lon=None):
+    gps = f"{lat:.6f}, {lon:.6f}" if lat is not None and lon is not None else "GPS indisponível"
+    return f"{contrato} | {alvo_id} | {data_hora} | {gps}"
+
+
+# ------------------------------------------------------------------ OK Fiscalização / mapa iluminado
+def validar_ok_fiscal(execucao, fotos_faltando):
+    if not execucao or not execucao.get("concluido"):
+        raise RegraViolada("OK Fiscalização exige o trecho/nó 100 % executado e reaterrado.")
+    if fotos_faltando:
+        raise RegraViolada("OK Fiscalização exige as fotos obrigatórias. Faltando: " + ", ".join(fotos_faltando))
+    if execucao.get("ok_fiscal_em"):
+        raise RegraViolada("Trecho/nó já marcado com OK Fiscalização.")
+
+
+def status_mapa(execucao, fotos_faltando, medicao_atual_id):
+    """Classe de cor do Modo Mapa Iluminado."""
+    if not execucao:
+        return "NAO_EXECUTADO"          # cinza pontilhado (nenhum apontamento)
+    if execucao.get("ok_fiscal_em"):
+        if execucao.get("medicao_id") and medicao_atual_id and execucao["medicao_id"] != medicao_atual_id:
+            return "MEDIDO_ANTERIOR"    # amarelo sólido
+        return "OK_FISCAL"              # verde esmeralda
+    if execucao["concluido"] and not fotos_faltando:
+        return "CONCLUIDO_MES"          # vermelho/ciano — aguardando validação
+    return "EM_EXECUCAO"                # laranja tracejado
+
+
+# ------------------------------------------------------------------ esteira de cadastro (GDOC)
+ETAPAS = OrderedDict([
+    ("1_PRONTO", "1. Pronto p/ Cadastro"),
+    ("2_ENVIADO", "2. Dados Enviados p/ Empresa de Cadastro"),
+    ("3_RECEBIDO", "3. Cadastros Recebidos da Terceirizada"),
+    ("4_GDOC_ANALISE", "4. Catalogado no GDOC Caesb — Em Análise"),
+    ("5A_NEGADO", "5A. Cadastro Negado no GDOC"),
+    ("6_APROVADO", "6. Aprovado no GDOC"),
+])
+
+# etapa_atual -> {etapa_destino: campos obrigatórios}
+TRANSICOES = {
+    "1_PRONTO": {"2_ENVIADO": ("empresa", "data_envio")},
+    "2_ENVIADO": {"3_RECEBIDO": ("arquivos",)},
+    "3_RECEBIDO": {"4_GDOC_ANALISE": ("protocolo_gdoc",)},
+    "4_GDOC_ANALISE": {"6_APROVADO": ("memorando_eset",), "5A_NEGADO": ("motivo_negativa",)},
+    "5A_NEGADO": {"2_ENVIADO": ()},   # [Reenviar p/ Empresa Ajustar] -> Em Produção (Rev. N)
+    "6_APROVADO": {},
+}
+
+
+def validar_transicao(etapa_atual, destino, dados):
+    permitidas = TRANSICOES.get(etapa_atual, {})
+    if destino not in permitidas:
+        raise RegraViolada(f"Transição inválida: {ETAPAS.get(etapa_atual)} → {ETAPAS.get(destino, destino)}.")
+    faltando = [c for c in permitidas[destino] if not str(dados.get(c) or "").strip()]
+    if faltando:
+        raise RegraViolada("Campos obrigatórios: " + ", ".join(faltando))
+
+
+def rotulo_etapa(etapa, revisao):
+    if etapa == "2_ENVIADO" and revisao > 0:
+        return f"2. Em Produção (Rev. {revisao})"
+    return ETAPAS[etapa]
+
+
+# ------------------------------------------------------------------ medição / BDI / reajuste
+def valor_bm(quantidade, preco_unitario, classificacao, bdi_material, bdi_servico, coef_k):
+    """Valor P0 de uma quantidade: preço × (1 + BDI da classe) × (1 + K).
+
+    Mesma composição do rodapé do BM: TOTAL 01 + 02 + BDI − K.
+    """
+    bdi = bdi_material if str(classificacao).upper().startswith("MATERIAL") else bdi_servico
+    return round(float(quantidade) * float(preco_unitario or 0) * (1 + bdi) * (1 + coef_k), 2)
+
+
+def indice_reajuste(periodo_ini, periodo_fim, indices):
+    """Índice aplicável ao período da medição.
+
+    indices: lista de dicts {vigencia_ini, vigencia_fim, indice} (ISO).
+    Período inteiro antes do 1º aniversário → 0. Período que cruza um
+    aniversário ou passa da última vigência cadastrada → bloqueia (rateio e
+    índice do próximo aniversário pendentes; não repetir 3,29 % automaticamente).
+    """
+    di = periodo_ini if isinstance(periodo_ini, date) else date.fromisoformat(periodo_ini)
+    df = periodo_fim if isinstance(periodo_fim, date) else date.fromisoformat(periodo_fim)
+    ordenados = sorted(indices, key=lambda i: i["vigencia_ini"])
+    if not ordenados or df < date.fromisoformat(ordenados[0]["vigencia_ini"]):
+        return 0.0
+    for i in ordenados:
+        if date.fromisoformat(i["vigencia_ini"]) <= di and df <= date.fromisoformat(i["vigencia_fim"]):
+            return float(i["indice"])
+    raise RegraViolada(
+        f"Medição {di.isoformat()} a {df.isoformat()} sem índice de reajuste definido "
+        "(cruza aniversário ou após a última vigência) — cadastrar o novo índice e o rateio na aba REAJUSTE.")
+
+
+def aplicar_teto(valor_pedido, ja_medido, teto):
+    """Limita ao teto do subgrupo (BM Vertical). Retorna (valor_aceito, excedente)."""
+    if teto is None:
+        return round(valor_pedido, 2), 0.0
+    disponivel = max(0.0, teto - ja_medido)
+    aceito = min(valor_pedido, disponivel)
+    return round(aceito, 2), round(valor_pedido - aceito, 2)

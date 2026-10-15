@@ -1,0 +1,8 @@
+# Dados do contrato ficam só na máquina local (não versionar)
+planilhas/*
+!planilhas/LEIA-ME.md
+mapa/*
+!mapa/LEIA-ME.md
+dados/
+__pycache__/
+*.pyc

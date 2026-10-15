@@ -1,0 +1,32 @@
+{
+  "_leia": "Como cada coluna de serviço da aba REDE (06.1 REV01) vira item do BM Vertical. status CONFIRMADO = vínculo comprovado na própria 06.1 (coluna CÓDIGO BM ou aba APOIO_REDES); A CONFIRMAR = coluna sem item comprovado: a quantidade é apurada e lançada, mas fica 'SEM ITEM BM VINCULADO' até a engenharia confirmar. Quando 'itens' tem mais de um, a quantidade é rateada pela proporção das quantidades contratuais desses itens no BM.",
+  "gaveta1": [
+    {"servico": "ASSENTAMENTO", "coluna": "M", "unidade": "M", "itens": ["2.2_{codigo_bm}"], "status": "CONFIRMADO", "fonte": "06.1 REDE col. AC (CÓDIGO BM)", "somente_vca": false},
+    {"servico": "ESCAV. EXT. ROCHA", "coluna": "AT", "unidade": "M3", "itens": ["2.2_5.4.8"], "status": "CONFIRMADO", "fonte": "06.1 APOIO_REDES AA6"},
+    {"servico": "ESCAV. MAN. 1ª CAT. <1,50", "coluna": "AU", "unidade": "M3", "itens": ["2.2_5.4.9"], "status": "CONFIRMADO", "fonte": "06.1 APOIO_REDES AA7"},
+    {"servico": "ESCAV. MAN. 1ª CAT. >1,50<3,00", "coluna": "AV", "unidade": "M3", "itens": ["2.2_5.4.10"], "status": "CONFIRMADO", "fonte": "06.1 APOIO_REDES AA8"},
+    {"servico": "ESCAV. MEC. 1ª CAT. <1,50", "coluna": "AW", "unidade": "M3", "itens": ["2.2_5.4.11", "2.2_5.4.13"], "status": "CONFIRMADO", "fonte": "06.1 APOIO_REDES AA9 (5.4.11 + 5.4.13)"},
+    {"servico": "ESCAV. MEC. 1ª CAT. >1,50<3,00", "coluna": "AX", "unidade": "M3", "itens": ["2.2_5.4.15", "2.2_5.4.14"], "status": "CONFIRMADO", "fonte": "06.1 APOIO_REDES AA10 (5.4.15 + 5.4.14)"},
+    {"servico": "ESCAV. MEC. 2ª CAT. <1,50", "coluna": "AY", "unidade": "M3", "itens": ["2.2_5.4.12"], "status": "CONFIRMADO", "fonte": "06.1 APOIO_REDES AA11"},
+    {"servico": "ESCAV. MEC. 2ª CAT. >1,50<3,00", "coluna": "AZ", "unidade": "M3", "itens": ["2.2_5.4.16"], "status": "CONFIRMADO", "fonte": "06.1 APOIO_REDES AA12"},
+    {"servico": "ESGOT. VALA", "coluna": "BA", "unidade": "H", "itens": ["2.2_5.6.1"], "status": "CONFIRMADO", "fonte": "06.1 APOIO_REDES AA41 (total 8.897,54 h = BM)"},
+    {"servico": "LOCAÇÃO C/ NOTA", "coluna": "AL", "unidade": "M", "itens": ["2.2_5.2.7"], "status": "CONFIRMADO", "fonte": "BM 2.2_5.2.7 LOCAÇÃO E NIVELAMENTO ... NOTA DE SERVIÇOS"},
+    {"servico": "LASTRO", "coluna": "AQ", "unidade": "M3", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "ATERRO AREIA", "coluna": "AR", "unidade": "M3", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "REATERRO", "coluna": "AS", "unidade": "M3", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "CARGA", "coluna": "BB", "unidade": "M3", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "CARGA DE ROCHA", "coluna": "BC", "unidade": "M3", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "ESC. PONTALETE >=1,25 M <1,5 M", "coluna": "BD", "unidade": "M2", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "ESC. DESCONTÍNUO >=1,5 M <3,0 M", "coluna": "BE", "unidade": "M2", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "TRANSPORTE A GRANEL", "coluna": "BG", "unidade": "M3XKM", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "FURO SOND.", "coluna": "AN", "unidade": "UN", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "TAPUME DESC. MÓVEL", "coluna": "AO", "unidade": "M2", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "PLACA SINALIZAÇÃO", "coluna": "BH", "unidade": "M2", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "SINALIZAÇÃO NOTURNA", "coluna": "BI", "unidade": "M", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "PASSADIÇO - CHAPA DE AÇO (VEÍCULOS)", "coluna": "BJ", "unidade": "M2", "itens": [], "status": "A CONFIRMAR"},
+    {"servico": "PASSADIÇO - TÁBUAS (PEDESTRE)", "coluna": "BK", "unidade": "M2", "itens": [], "status": "A CONFIRMAR"}
+  ],
+  "solda": {"servico": "SOLDA", "unidade": "UN", "comprimento_barra_m": 6.0, "itens": [], "status": "A CONFIRMAR", "nota": "nº de soldas = ⌈L / 6 m⌉ (regra informada); item de BM a confirmar"},
+  "cadastro": {"servico": "CADASTRO", "item": "2.2_5.2.1", "status": "CONFIRMADO", "nota": "medido só na aprovação GDOC (gaveta 3), pela extensão do trecho"},
+  "recomposicao": {"servico": "RECOMPOSIÇÃO CALÇADA/ASFALTO", "itens_por_tipo": {"CALÇADA": "2.2_5.9.3", "ASFALTO": "2.2_5.9.5"}, "status": "A CONFIRMAR", "nota": "gaveta 4; quantidade informada pela equipe de pavimento"}
+}

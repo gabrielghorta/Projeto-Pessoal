@@ -1,0 +1,32 @@
+{
+  "contrato": "CT 10239/2026 Caesb × Ankara",
+  "obra": "Implantação de Redes de Distribuição no Morro da Cruz — São Sebastião/DF (LC 014/2026)",
+  "arquivos": {
+    "redes": "06.1 - LEV_DMC_MORRO_DA_CRUZ_REDES_REV01_13-10-26.xlsx",
+    "conexoes": "06.2 - LEV_DMC_MORRO_DA_CRUZ_CONEXÕES_REV08_13-10-26.xlsm",
+    "evidencias": "EVIDENCIAS_REV08_06.2_e_REV01_06.1_MORRO_DA_CRUZ.xlsx",
+    "bm": "BM_MORRO_DA_CRUZ_REV04_IDENTIFICACAO_09-10-26.xlsx",
+    "reajuste": "03.3.2 - BM_MORRO_DA_CRUZ_REV03_REAJUSTE_13-10-26.xlsx",
+    "mapa": "PLANTAS_TRECHOS_E_NOS_MORRO_DA_CRUZ_REV02_EQUIPES.html"
+  },
+  "auditoria": {
+    "trechos": 1436,
+    "extensao_m": 110686.03,
+    "elementos": 1191,
+    "nos": 1059,
+    "caixas": 132,
+    "conjuntos": 1242,
+    "pecas": 6539,
+    "bm_vertical": 432,
+    "bm_juntada": 347,
+    "p0": 49878748.66,
+    "sem_posicao": ["MV-11", "VTF-12", "VTF-16"]
+  },
+  "materiais_consumo": [
+    {"id": "CONS-AREIA", "descricao": "Areia", "unidade": "M3"},
+    {"id": "CONS-BRITA", "descricao": "Brita", "unidade": "M3"},
+    {"id": "CONS-TERRA", "descricao": "Terra", "unidade": "M3"},
+    {"id": "CONS-CIMENTO", "descricao": "Cimento", "unidade": "SC"},
+    {"id": "CONS-MADEIRA", "descricao": "Madeira", "unidade": "M3"}
+  ]
+}
