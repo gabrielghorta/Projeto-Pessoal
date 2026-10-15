@@ -9,7 +9,6 @@ import mimetypes
 import os
 import threading
 import traceback
-from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -31,17 +30,21 @@ def _cfg():
 # ------------------------------------------------------------------ rotas
 def r_resumo(q, c):
     one = lambda sql: c.execute(sql).fetchone()[0]
+    ultima = c.execute("SELECT id, concluida_em, status FROM importacoes WHERE modo='APLICACAO' ORDER BY id DESC LIMIT 1").fetchone()
     return {
         "contrato": S.contrato(c),
         "obra": _cfg()["obra"],
-        "p0": float(S.parametro(c, "p0", 0)),
-        "trechos": one("SELECT COUNT(*) FROM trechos"),
-        "extensao_m": one("SELECT ROUND(SUM(extensao_m),2) FROM trechos"),
-        "elementos": one("SELECT COUNT(*) FROM elementos"),
-        "conjuntos": one("SELECT COUNT(*) FROM conjuntos"),
-        "pecas_sem_quantidade": one("SELECT COUNT(*) FROM pecas WHERE quantidade IS NULL"),
+        "valor_contrato": float(S.parametro(c, "valor_contrato", 0)),
+        "p0_bm": float(S.parametro(c, "p0_bm", 0)),
+        "trechos": one("SELECT COUNT(*) FROM trechos WHERE vigente=1"),
+        "extensao_m": one("SELECT ROUND(SUM(extensao_m),2) FROM trechos WHERE vigente=1"),
+        "elementos": one("SELECT COUNT(*) FROM elementos WHERE vigente=1"),
+        "atividades": one("SELECT COUNT(*) FROM atividades WHERE vigente=1"),
+        "itens_pendentes": one("SELECT COUNT(*) FROM itens_projeto WHERE vigente=1 AND (quantidade IS NULL OR unidade IS NULL)"),
         "executado_m": one("SELECT ROUND(COALESCE(SUM(metros_reaterrados),0),2) FROM execucao WHERE alvo_tipo='TRECHO'"),
         "ok_fiscal": one("SELECT COUNT(*) FROM execucao WHERE ok_fiscal_em IS NOT NULL"),
+        "medicao_oficial_liberada": S.medicao_oficial_liberada(c),
+        "ultima_importacao": dict(ultima) if ultima else None,
         "mapa_disponivel": os.path.exists(_mapa_path()),
         "equipes": [dict(r) for r in c.execute("SELECT * FROM equipes")],
         "clima": R.CONDICOES_CLIMA,
@@ -171,7 +174,7 @@ def r_medicoes(q, c):
 
 
 def p_medicao(b, c):
-    return {"id": S.criar_medicao(c, int(b["numero"]), b["periodo_ini"], b["periodo_fim"])}
+    return {"id": S.criar_medicao(c, int(b["numero"]), b["periodo_ini"], b["periodo_fim"], b.get("tipo", "TESTE"))}
 
 
 def r_medicao(q, c):
@@ -291,8 +294,13 @@ def main():
     ap.add_argument("--db", default=S.DB_PADRAO)
     a = ap.parse_args()
     if not os.path.exists(a.db):
-        raise SystemExit(f"Banco {a.db} não existe — rode antes: python seed.py")
-    CONN = S.conectar(a.db)
+        raise SystemExit(f"Banco {a.db} não existe — rode antes: python importar.py --aplicar")
+    try:
+        CONN = S.conectar(a.db)
+    except S.EsquemaAntigo as e:
+        raise SystemExit(str(e))
+    if a.host not in ("127.0.0.1", "localhost"):
+        raise SystemExit("Este servidor não tem autenticação: só pode escutar em 127.0.0.1 (uso local).")
     print(f"Sistema Morro da Cruz em http://{a.host}:{a.porta}  (Ctrl+C para sair)")
     ThreadingHTTPServer((a.host, a.porta), Handler).serve_forever()
 

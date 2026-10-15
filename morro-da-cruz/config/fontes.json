@@ -19,14 +19,41 @@
     "pecas": 6539,
     "bm_vertical": 432,
     "bm_juntada": 347,
-    "p0": 49878748.66,
-    "sem_posicao": ["MV-11", "VTF-12", "VTF-16"]
+    "sem_posicao": [
+      "MV-11",
+      "VTF-12",
+      "VTF-16"
+    ]
   },
   "materiais_consumo": [
-    {"id": "CONS-AREIA", "descricao": "Areia", "unidade": "M3"},
-    {"id": "CONS-BRITA", "descricao": "Brita", "unidade": "M3"},
-    {"id": "CONS-TERRA", "descricao": "Terra", "unidade": "M3"},
-    {"id": "CONS-CIMENTO", "descricao": "Cimento", "unidade": "SC"},
-    {"id": "CONS-MADEIRA", "descricao": "Madeira", "unidade": "M3"}
-  ]
+    {
+      "id": "CONS-AREIA",
+      "descricao": "Areia",
+      "unidade": "M3"
+    },
+    {
+      "id": "CONS-BRITA",
+      "descricao": "Brita",
+      "unidade": "M3"
+    },
+    {
+      "id": "CONS-TERRA",
+      "descricao": "Terra",
+      "unidade": "M3"
+    },
+    {
+      "id": "CONS-CIMENTO",
+      "descricao": "Cimento",
+      "unidade": "SC"
+    },
+    {
+      "id": "CONS-MADEIRA",
+      "descricao": "Madeira",
+      "unidade": "M3"
+    }
+  ],
+  "valor_contrato": {
+    "valor": "49878748.56",
+    "fonte": "Contrato CT 10239/2026 assinado, cláusula 3.1, p. 4"
+  }
 }

@@ -6,13 +6,12 @@ estas regras sobre o banco.
 import math
 from collections import OrderedDict
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 # ------------------------------------------------------------------ constantes
 FRENTES = [f"Zona{n:02d}" for n in range(1, 12)] + ["ADUTORA", "CH"]
 CONTINGENCIAS = ["Confecção de Bloquetes", "Execução de Calçadas/Asfalto"]
 PERFIL_PENDENTE = "A CONFIRMAR"
-PCT_MATERIAL_ENTREGA = 0.80   # Seção 7 do SL0327 — faturamento por etapas
-PCT_MATERIAL_APLICACAO = 0.20
 CONDICOES_CLIMA = OrderedDict([
     ("SOL", "Sol"),
     ("CHUVA_FRACA_TENDA", "Chuva Fraca c/ Tenda 3x3m"),
@@ -30,13 +29,10 @@ class PerfilPendente(RegraViolada):
 
 
 # ------------------------------------------------------------------ N02 — unidades
-_ALIAS_UN = {"UND": "UN", "UNID": "UN", "PC": "UN", "PÇ": "UN", "PCS": "UN", "CJ": "CJ",
-             "MT": "M", "ML": "M", "METRO": "M", "M³": "M3", "M²": "M2"}
-
-
 def normalizar_unidade(u):
-    u = (u or "").strip().upper().replace(".", "")
-    return _ALIAS_UN.get(u, u)
+    """Só padroniza a grafia (maiúsculas, sem ponto). Não cria equivalências: UN e PÇ continuam
+    distintos até haver decisão documentada."""
+    return (u or "").strip().upper().replace(".", "")
 
 
 def somar_por_unidade(itens):
@@ -99,11 +95,15 @@ def quantidades_previstas_trecho(trecho, quantidades_totais, metros, mapa):
     L = float(metros)
     if L <= 0:
         return []
-    exigir_perfil(trecho)
+    mnd = trecho.get("metodologia") == "MND"
+    if not mnd:
+        exigir_perfil(trecho)           # perfil de vala só se aplica a vala a céu aberto (VCA)
     ext = float(trecho["extensao_m"])
     frac = min(L / ext, 1.0) if ext > 0 else 0.0
     out = []
     for s in mapa["gaveta1"]:
+        if mnd and s["coluna"] != "M":
+            continue                    # MND: sem serviços de vala; só o comprimento executado
         if s["coluna"] == "M":
             q = L
         else:
@@ -225,13 +225,52 @@ def rotulo_etapa(etapa, revisao):
 
 
 # ------------------------------------------------------------------ medição / BDI / reajuste
-def valor_bm(quantidade, preco_unitario, classificacao, bdi_material, bdi_servico, coef_k):
-    """Valor P0 de uma quantidade: preço × (1 + BDI da classe) × (1 + K).
+def _dec(x):
+    """Decimal com 15 algarismos significativos — a precisão com que o Excel exibe e arredonda doubles."""
+    return Decimal(format(float(x or 0), ".15g"))
 
-    Mesma composição do rodapé do BM: TOTAL 01 + 02 + BDI − K.
+
+def excel_round(valor, casas=2):
+    """ROUND do Excel (meio para longe do zero) sobre o valor com 15 algarismos significativos.
+
+    Ex.: 6.026,69 × 47,50 = 286.267,775 → Excel 286.267,78 (o float do Python daria ...,77).
     """
-    bdi = bdi_material if str(classificacao).upper().startswith("MATERIAL") else bdi_servico
-    return round(float(quantidade) * float(preco_unitario or 0) * (1 + bdi) * (1 + coef_k), 2)
+    return _dec(valor).quantize(Decimal(1).scaleb(-casas), rounding=ROUND_HALF_UP)
+
+
+def produto_excel(q, p):
+    return (_dec(q) * _dec(p)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def totalizar_bm(itens, bdi_material, bdi_servico, coef_k, modo="medicao"):
+    """Totaliza como o BM Vertical (fórmulas conferidas nas células, REV03/REV04).
+
+    modo="medicao" (colunas de medição V/W…):  W = ROUND(quantidade × preço; 2) por item;
+                                                V548/V549 = SUMIFS(W) por classe.
+    modo="contrato" (coluna T, P0):            T548/T549 = ROUND(SUMPRODUCT(quant.; preço) por classe; 2).
+    Depois, igual nos dois modos (sem arredondar):
+      BDI: ΣMAT × BDI_mat + ΣSERV × BDI_serv;  K: (Σ + BDI) × K, com K = −1 + (1 − 14,04 %);
+      total = (Σ + BDI) × (1 + K).
+    itens: iterável de (classificacao, quantidade, preco_unitario) — uma entrada por item do BM.
+    Contrato 5.2: custos unitários sem BDI × coeficientes “K x BDI” × quantitativos.
+    """
+    mat = srv = Decimal(0)
+    for classe, q, p in itens:
+        base = produto_excel(q, p) if modo == "medicao" else _dec(q) * _dec(p)
+        if str(classe).upper().startswith("MATERIAL"):
+            mat += base
+        else:
+            srv += base
+    if modo == "contrato":
+        mat, srv = mat.quantize(Decimal("0.01"), ROUND_HALF_UP), srv.quantize(Decimal("0.01"), ROUND_HALF_UP)
+    bdi_m = float(mat) * bdi_material
+    bdi_s = float(srv) * bdi_servico
+    sub01 = float(mat) + float(srv)
+    total01_02 = sub01 + bdi_m + bdi_s
+    total = total01_02 + total01_02 * coef_k
+    return {"modo": modo, "material": float(mat), "servico": float(srv), "bdi_material": bdi_m, "bdi_servico": bdi_s,
+            "subtotal_01": sub01, "total_01_02": total01_02, "k": total01_02 * coef_k, "total": round(total, 2),
+            "total_exato": total}
 
 
 def indice_reajuste(periodo_ini, periodo_fim, indices):

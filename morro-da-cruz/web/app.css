@@ -29,6 +29,8 @@ nav.abas button[aria-selected="true"] { color: var(--laranja); border-bottom-col
 main { padding: 16px 20px 40px; max-width: 1600px; margin: 0 auto; }
 section.aba { display: none; }
 section.aba.ativa { display: block; }
+/* a aba do mapa nunca fica com tamanho zero: o motor da REV02 calcula o viewBox pelo tamanho do iframe */
+#aba-mapa:not(.ativa) { display: block; position: absolute; left: -10000px; top: 0; width: calc(100% - 40px); visibility: hidden; }
 .grade { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); align-items: start; }
 .grade-2 { display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); align-items: start; }
 .painel { background: var(--painel); border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px; box-shadow: var(--sombra); min-width: 0; }

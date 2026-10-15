@@ -1,7 +1,15 @@
-"""Casos de uso sobre o banco: almoxarifado, campo, fiscalização, cadastro e medição."""
+"""Casos de uso sobre o banco (esquema v2): almoxarifado, campo, fiscalização, cadastro e medição.
+
+Travas desta versão (etapas 0 e 1 — regras financeiras ainda não aprovadas):
+  * nenhum regime de faturamento de material é aplicado (sem 80/20, sem 100 % na aplicação);
+  * trecho MND não recebe item de assentamento VCA nem substituição automática: fica pendente;
+  * lançamento sem item/regra com fonte fica PENDENTE e fora do valor (nunca R$ 0 contratual);
+  * medições são do tipo TESTE; OFICIAL só com o parâmetro medicao_oficial_liberada = SIM.
+"""
 import base64
 import json
 import os
+import re
 import sqlite3
 from datetime import date, datetime
 
@@ -11,17 +19,54 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
+VERSAO_ESQUEMA = 2
 TOL = 1e-6
+ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
 
-# ------------------------------------------------------------------ conexão
-def conectar(caminho=DB_PADRAO):
+class EsquemaAntigo(RuntimeError):
+    """Banco no esquema v1: precisa de migração (importar.py) antes de ser usado."""
+
+
+# ------------------------------------------------------------------ conexão e esquema
+def comandos_sql(texto):
+    """Divide um script SQL em comandos (sem comentários) para executar dentro de uma transação."""
+    sem_coment = "\n".join(l.split("--", 1)[0] for l in texto.splitlines())
+    return [c.strip() for c in sem_coment.split(";") if c.strip()]
+
+
+def versao_banco(conn):
+    tabelas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "schema_versao" in tabelas:
+        return conn.execute("SELECT MAX(versao) FROM schema_versao").fetchone()[0] or 0
+    if "conjuntos" in tabelas or "trechos" in tabelas:
+        return 1
+    return 0
+
+
+def aplicar_esquema(conn):
+    with open(os.path.join(BASE, "schema.sql"), encoding="utf-8") as f:
+        for cmd in comandos_sql(f.read()):
+            conn.execute(cmd)
+    conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
+                 (VERSAO_ESQUEMA, _agora(), "identidade estável, proveniência, importação idempotente"))
+
+
+def conectar(caminho=DB_PADRAO, permitir_antigo=False):
     os.makedirs(os.path.dirname(caminho) or ".", exist_ok=True)
     conn = sqlite3.connect(caminho, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    v = versao_banco(conn)
+    if v == 1:
+        if not permitir_antigo:
+            conn.close()
+            raise EsquemaAntigo(f"{caminho} está no esquema v1. Rode `python importar.py` (simulação) e depois "
+                                "`python importar.py --aplicar` para migrar preservando os movimentos.")
+        return conn
     conn.execute("PRAGMA foreign_keys = ON")
-    with open(os.path.join(BASE, "schema.sql"), encoding="utf-8") as f:
-        conn.executescript(f.read())
+    if v == 0:
+        with transacao(conn):
+            aplicar_esquema(conn)
     return conn
 
 
@@ -53,56 +98,142 @@ def parametro(conn, chave, padrao=None):
 
 
 def contrato(conn):
-    return parametro(conn, "contrato", "Caesb × Ankara nº 10239/2026")
+    return parametro(conn, "contrato", "CT 10239/2026 Caesb × Ankara")
 
 
 def _agora():
     return datetime.now().isoformat(timespec="seconds")
 
 
-# ------------------------------------------------------------------ alvos (trecho / nó / caixa)
-def alvo(conn, alvo_tipo, alvo_id):
-    """TRECHO = PONTO da 06.1; CONJUNTO = nomenclatura da 06.2 (nó/caixa × equipe)."""
-    if alvo_tipo == "TRECHO":
-        a = _one(conn, "SELECT * FROM trechos WHERE id=?", alvo_id)
-    elif alvo_tipo == "CONJUNTO":
-        a = _one(conn, """SELECT c.*, e.numero, e.tipo AS tipo_elemento, e.pb, e.lat, e.lon, e.nomenclaturas, e.status_posicao
-                          FROM conjuntos c JOIN elementos e ON e.id=c.elemento_id WHERE c.id=?""", alvo_id)
+def mapa_servicos():
+    with open(os.path.join(BASE, "config", "servicos_rede.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+
+# ------------------------------------------------------------------ alvos: trecho e atividade (elemento × frente)
+def _tipo_alvo(t):
+    t = ALIAS_ALVO.get(t, t)
+    if t not in ("TRECHO", "ATIVIDADE"):
+        raise RegraViolada(f"Tipo de alvo inválido: {t}")
+    return t
+
+
+def alvo(conn, alvo_tipo, ref):
+    """Aceita o ID estável (TR-/AT-) ou o nome visível vigente (PONTO / nomenclatura).
+
+    Retorna o registro com `id` estável e `nome` visível.
+    """
+    t = _tipo_alvo(alvo_tipo)
+    if t == "TRECHO":
+        a = (_one(conn, "SELECT * FROM trechos WHERE id=?", ref)
+             or _one(conn, "SELECT * FROM trechos WHERE ponto=? AND vigente=1", ref))
+        if a:
+            a["nome"] = a["ponto"]
     else:
-        raise RegraViolada(f"Tipo de alvo inválido: {alvo_tipo}")
+        sql = """SELECT a.*, e.numero, e.tipo AS tipo_elemento, e.pb, e.lat, e.lon, e.handle, e.status_posicao,
+                        e.zona
+                 FROM atividades a JOIN elementos e ON e.id=a.elemento_id WHERE """
+        a = _one(conn, sql + "a.id=?", ref) or _one(conn, sql + "a.nomenclatura=? AND a.vigente=1", ref)
+        if a:
+            a["nome"] = a["nomenclatura"]
     if not a:
-        raise RegraViolada(f"{alvo_tipo} '{alvo_id}' não encontrado.")
+        raise RegraViolada(f"{t} '{ref}' não encontrado.")
+    a["alvo_tipo"] = t
     return a
 
 
+def nome_alvo(conn, alvo_tipo, alvo_id):
+    try:
+        return alvo(conn, alvo_tipo, alvo_id)["nome"]
+    except RegraViolada:
+        return alvo_id
+
+
+def buscar(conn, q, limite=30):
+    """Busca por trecho (TR001 / nome), nó/caixa (NÓ1.8, NO1.8, DF-33) ou nomenclatura."""
+    q = (q or "").strip()
+    if not q:
+        return []
+    up = q.upper()
+    termo = "%" + (up.replace("NO", "NÓ", 1) if up.startswith("NO") else up) + "%"
+    out = [{"tipo": "TRECHO", "id": r["id"], "rotulo": r["ponto"], "extra": f"DE{int(r['de_mm'])} · {r['extensao_m']:.2f} m"}
+           for r in conn.execute("SELECT id, ponto, de_mm, extensao_m FROM trechos WHERE vigente=1 AND UPPER(ponto) LIKE ? "
+                                 "ORDER BY ponto LIMIT ?", (termo, limite))]
+    out += [{"tipo": "ATIVIDADE", "id": r["id"], "rotulo": r["nomenclatura"], "extra": r["frente_id"]}
+            for r in conn.execute("SELECT id, nomenclatura, frente_id FROM atividades WHERE vigente=1 AND "
+                                  "UPPER(nomenclatura) LIKE ? ORDER BY nomenclatura LIMIT ?", (termo, limite))]
+    return out[:limite]
+
+
 def execucao(conn, alvo_tipo, alvo_id):
-    return _one(conn, "SELECT * FROM execucao WHERE alvo_tipo=? AND alvo_id=?", alvo_tipo, alvo_id)
+    return _one(conn, "SELECT * FROM execucao WHERE alvo_tipo=? AND alvo_id=?", _tipo_alvo(alvo_tipo), alvo_id)
 
 
-def totais_conjunto(conn, conjunto_id):
-    """Contador por unidade de um conjunto (ex.: Zona01_PB01_CH_DF-33 → 17 UN · 0,71 m).
+def itens_atividade(conn, atividade_id):
+    return _rows(conn.execute("SELECT * FROM itens_projeto WHERE atividade_id=? AND vigente=1 ORDER BY id", (atividade_id,)))
 
-    Linhas sem quantidade (06.2 ainda não importada) não entram como zero: são contadas à parte.
+
+def totais_atividade(conn, atividade_ref):
+    """Contador por unidade (ex.: Zona01_PB01_CH_DF-33 → 17 UN · 0,71 m).
+
+    Itens sem quantidade ou sem unidade com fonte não entram como zero: são contados à parte.
     """
-    itens = conn.execute("SELECT unidade, quantidade FROM pecas WHERE conjunto_id=?", (conjunto_id,)).fetchall()
-    com_q = [(i["unidade"], i["quantidade"]) for i in itens if i["quantidade"] is not None]
-    pend = len(itens) - len(com_q)
-    tot = R.somar_por_unidade(com_q)
+    itens = itens_atividade(conn, alvo(conn, "ATIVIDADE", atividade_ref)["id"])
+    ok = [(i["unidade"], i["quantidade"]) for i in itens if i["quantidade"] is not None and i["unidade"]]
+    pend = len(itens) - len(ok)
+    tot = R.somar_por_unidade(ok)
     texto = R.formatar_por_unidade(tot) if tot else ""
     if pend:
-        texto = (texto + " · " if texto else "") + f"{pend} linha(s) sem quantidade (importar 06.2)"
-    return {"totais": tot, "texto": texto, "linhas": len(itens), "sem_quantidade": pend}
+        texto = (texto + " · " if texto else "") + f"{pend} item(ns) com quantidade/unidade pendente"
+    return {"totais": tot, "texto": texto, "linhas": len(itens), "pendentes": pend}
 
 
-def previsto(conn, alvo_tipo, alvo_id, metros):
-    a = alvo(conn, alvo_tipo, alvo_id)
-    if alvo_tipo == "TRECHO":
+def previsto(conn, alvo_tipo, ref, metros):
+    a = alvo(conn, alvo_tipo, ref)
+    if a["alvo_tipo"] == "TRECHO":
         return R.quantidades_previstas_trecho(a, json.loads(a["quantidades"]), metros, mapa_servicos())
-    pecas = pecas_conjunto(conn, alvo_id)
-    pend = [p for p in pecas if p["quantidade"] is None]
+    itens = itens_atividade(conn, a["id"])
+    pend = [i for i in itens if i["quantidade"] is None or not i["unidade"]]
     if pend:
-        raise RegraViolada(f"{alvo_id}: {len(pend)} peça(s) sem quantidade — importar a 06.2 REV08 antes de apontar.")
-    return R.quantidades_previstas_elemento(pecas)
+        raise RegraViolada(f"{a['nome']}: {len(pend)} item(ns) sem quantidade/unidade com fonte — apontamento bloqueado "
+                           "até a definição (ex.: " + "; ".join(f"{i['descricao']} ({i['unidade_fonte']})" for i in pend[:3]) + ").")
+    return R.quantidades_previstas_elemento(itens)
+
+
+def trechos_da_atividade(conn, atividade_id):
+    """Trechos ligados: pontas da 06.1 nas nomenclaturas do elemento + coluna TRECHO (BC) da 06.2."""
+    a = alvo(conn, "ATIVIDADE", atividade_id)
+    noms = [r[0] for r in conn.execute("SELECT nomenclatura FROM atividades WHERE elemento_id=?", (a["elemento_id"],))]
+    pontos = set()
+    if noms:
+        ph = ",".join("?" * len(noms))
+        pontos |= {r[0] for r in conn.execute(
+            f"SELECT ponto FROM trechos WHERE vigente=1 AND (no_ini IN ({ph}) OR no_fim IN ({ph}))", noms + noms)}
+    for r in conn.execute("SELECT DISTINCT trechos FROM itens_projeto WHERE atividade_id=? AND vigente=1 AND trechos IS NOT NULL",
+                          (a["id"],)):
+        pontos |= {t.strip() for t in r[0].split("/") if t.strip()}
+    if not pontos:
+        return []
+    ph = ",".join("?" * len(pontos))
+    return [dict(r) for r in conn.execute(f"SELECT id, ponto FROM trechos WHERE vigente=1 AND ponto IN ({ph}) ORDER BY ponto",
+                                          sorted(pontos))]
+
+
+def _sinalizacao_herdada(conn, alvo_tipo, alvo_id):
+    if alvo_tipo == "TRECHO":
+        return False
+    ids = [t["id"] for t in trechos_da_atividade(conn, alvo_id)]
+    if not ids:
+        return False
+    ph = ",".join("?" * len(ids))
+    return conn.execute(f"SELECT 1 FROM fotos WHERE alvo_tipo='TRECHO' AND categoria='SINALIZACAO' AND alvo_id IN ({ph}) LIMIT 1",
+                        ids).fetchone() is not None
+
+
+def fotos_faltando(conn, alvo_tipo, ref):
+    a = alvo(conn, alvo_tipo, ref)
+    cats = [r[0] for r in conn.execute("SELECT categoria FROM fotos WHERE alvo_tipo=? AND alvo_id=?", (a["alvo_tipo"], a["id"]))]
+    return R.fotos_pendentes(a["alvo_tipo"], cats, _sinalizacao_herdada(conn, a["alvo_tipo"], a["id"]))
 
 
 # ------------------------------------------------------------------ almoxarifado
@@ -150,15 +281,10 @@ def compatibilizacao_caesb(conn):
         projeto = m["qtd_projeto"] or 0
         out.append({
             "material_id": m["id"], "descricao": m["descricao"], "unidade": m["unidade"],
-            "projeto": projeto,
-            "estoque_caesb": m["estoque_caesb"],
-            "emprestado": s["EMPRESTIMO_OUTRA_OBRA"],
-            "retirado": s["ROMANEIO_CAESB"],
-            "aplicado": s["APLICADO"],
-            "perdido": s["PERDA"],
-            # o que ainda falta retirar na Caesb para cumprir o projeto
+            "projeto": projeto, "estoque_caesb": m["estoque_caesb"],
+            "emprestado": s["EMPRESTIMO_OUTRA_OBRA"], "retirado": s["ROMANEIO_CAESB"],
+            "aplicado": s["APLICADO"], "perdido": s["PERDA"],
             "saldo_virtual": round(projeto - (s["ROMANEIO_CAESB"] - s["EMPRESTIMO_OUTRA_OBRA"]), 3),
-            # tubo fisicamente no canteiro/custódia
             "saldo_fisico": round(s["ROMANEIO_CAESB"] - s["EMPRESTIMO_OUTRA_OBRA"] - s["APLICADO"] - s["PERDA"], 3),
         })
     return out
@@ -181,12 +307,12 @@ def entrada_material(conn, data, material_id, quantidade, tipo, documento=None):
 
 
 def registrar_nf(conn, numero, fornecedor, data_entrega, itens, faturamento_etapas=False, chave_nfe=None, arquivo=None):
+    """NF entra em quarentena. `faturamento_etapas` só registra a intenção: nenhum regime é aplicado."""
     with transacao(conn):
-        cur = conn.execute(
+        nf_id = conn.execute(
             """INSERT INTO notas_fiscais(numero,chave_nfe,fornecedor,data_entrega,arquivo,faturamento_etapas,status)
                VALUES (?,?,?,?,?,?, 'QUARENTENA')""",
-            (numero, chave_nfe, fornecedor, data_entrega, arquivo, 1 if faturamento_etapas else 0))
-        nf_id = cur.lastrowid
+            (numero, chave_nfe, fornecedor, data_entrega, arquivo, 1 if faturamento_etapas else 0)).lastrowid
         for it in itens:
             m = _one(conn, "SELECT * FROM materiais WHERE id=?", it["material_id"])
             if not m or m["propriedade"] != "ANKARA":
@@ -201,8 +327,11 @@ def registrar_nf(conn, numero, fornecedor, data_entrega, itens, faturamento_etap
 
 
 def aceitar_nf(conn, nf_id, laudo_arquivo):
-    """Laudo de inspeção aprovado: material sai da quarentena; se faturamento por
-    etapas, lança 80 % do valor na medição do mês da entrega (gaveta 2)."""
+    """Laudo aprovado: material sai da quarentena e passa a compor estoque.
+
+    Aceite do almoxarifado cria estoque, não elegibilidade financeira: nenhum lançamento de
+    medição é gerado até a aprovação da matriz de regimes (docs/MATRIZ_REGIMES_FATURAMENTO.md).
+    """
     nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
     if not nf:
         raise RegraViolada("Nota fiscal não encontrada.")
@@ -210,17 +339,9 @@ def aceitar_nf(conn, nf_id, laudo_arquivo):
         raise RegraViolada("Nota fiscal já aceita.")
     if not laudo_arquivo:
         raise RegraViolada("Anexe o laudo de inspeção.")
-    med = medicao_para(conn, nf["data_entrega"]) if nf["faturamento_etapas"] else None
     with transacao(conn):
         conn.execute("UPDATE notas_fiscais SET status='ACEITO', laudo_arquivo=? WHERE id=?", (laudo_arquivo, nf_id))
         conn.execute("UPDATE movimentos SET status='ACEITO' WHERE nf_id=? AND tipo='ENTRADA_NF'", (nf_id,))
-        if med:
-            for it in _rows(conn.execute(
-                    "SELECT i.*, m.bm_item_id, m.unidade FROM nf_itens i JOIN materiais m ON m.id=i.material_id WHERE nf_id=?",
-                    (nf_id,))):
-                bm = _one(conn, "SELECT * FROM bm_itens WHERE id=?", it["bm_item_id"]) if it["bm_item_id"] else None
-                _lancar(conn, med["id"], 2, "MATERIAL 80%", bm, it["unidade"], it["quantidade"], nf_id=nf_id,
-                        material_id=it["material_id"], obs=f"NF {nf['numero']} — 80 % na entrega", pct=R.PCT_MATERIAL_ENTREGA)
 
 
 # ------------------------------------------------------------------ check-in / check-out
@@ -228,19 +349,20 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
             materiais=(), contingencia=None):
     if equipe_id not in [r[0] for r in conn.execute("SELECT id FROM equipes")]:
         raise RegraViolada(f"Equipe '{equipe_id}' não cadastrada.")
+    tipo = ref = None
     if contingencia:
         if contingencia not in R.CONTINGENCIAS:
             raise RegraViolada("Contingência inválida.")
     elif not (alvo_tipo and alvo_id):
         raise RegraViolada("Informe o Trecho/Nó que a equipe vai atacar hoje (ou uma contingência).")
     else:
-        alvo(conn, alvo_tipo, alvo_id)
+        a = alvo(conn, alvo_tipo, alvo_id)
+        tipo, ref = a["alvo_tipo"], a["id"]
     if _one(conn, "SELECT id FROM checkins WHERE data=? AND equipe_id=? AND encerrado=0", data, equipe_id):
         raise RegraViolada("Equipe já tem check-in aberto hoje — faça o check-out antes.")
     with transacao(conn):
-        cid = conn.execute(
-            "INSERT INTO checkins(data,equipe_id,alvo_tipo,alvo_id,contingencia) VALUES (?,?,?,?,?)",
-            (data, equipe_id, None if contingencia else alvo_tipo, None if contingencia else alvo_id, contingencia)).lastrowid
+        cid = conn.execute("INSERT INTO checkins(data,equipe_id,alvo_tipo,alvo_id,contingencia) VALUES (?,?,?,?,?)",
+                           (data, equipe_id, tipo, ref, contingencia)).lastrowid
         for f in funcionarios:
             conn.execute("INSERT INTO checkin_presencas VALUES (?, 'FUNCIONARIO', ?)", (cid, f))
         for m in maquinas:
@@ -253,12 +375,12 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
             if not mat:
                 raise RegraViolada(f"Material '{it['material_id']}' não cadastrado.")
             if mat["propriedade"] == "CONSUMO":
-                raise RegraViolada(f"{mat['descricao']}: material de consumo baixa por volume geométrico, não por requisição.")
+                raise RegraViolada(f"{mat['descricao']}: material de consumo não sai por requisição de equipe.")
             if saldo_almox(conn, mat["id"])[0] + TOL < q:
                 raise RegraViolada(f"Saldo insuficiente de {mat['descricao']} no almoxarifado.")
             conn.execute(
                 """INSERT INTO movimentos(data,material_id,tipo,quantidade,equipe_id,alvo_tipo,alvo_id,checkin_id)
-                   VALUES (?,?,'CUSTODIA',?,?,?,?,?)""", (data, mat["id"], q, equipe_id, alvo_tipo, alvo_id, cid))
+                   VALUES (?,?,'CUSTODIA',?,?,?,?,?)""", (data, mat["id"], q, equipe_id, tipo, ref, cid))
     return cid
 
 
@@ -296,6 +418,7 @@ def checkins_abertos(conn, data=None):
     sql = "SELECT * FROM checkins WHERE encerrado=0" + (" AND data=?" if data else "") + " ORDER BY equipe_id"
     out = _rows(conn.execute(sql, (data,) if data else ()))
     for c in out:
+        c["alvo_nome"] = nome_alvo(conn, c["alvo_tipo"], c["alvo_id"]) if c["alvo_id"] else None
         c["materiais"] = _rows(conn.execute(
             "SELECT material_id, SUM(quantidade) AS quantidade FROM movimentos WHERE checkin_id=? AND tipo='CUSTODIA' "
             "GROUP BY material_id", (c["id"],)))
@@ -319,17 +442,18 @@ def registrar_clima(conn, data, equipe_id, turno, condicao):
     conn.execute("INSERT OR REPLACE INTO clima VALUES (?,?,?,?)", (data, equipe_id, turno, condicao))
 
 
-def apontar(conn, data, equipe_id, alvo_tipo, alvo_id, metros_executados=0, metros_reaterrados=0,
+def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_reaterrados=0,
             concluido_100=False, estaca_ini=None, estaca_fim=None, quantidades=None):
     """Lança avanço de campo. `quantidades=None` equivale a [✅ OK, Confirmar Previsto]."""
     turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
     if turnos != {"MANHA", "TARDE"}:
         raise RegraViolada("Clima do dia obrigatório nos dois turnos (manhã e tarde) antes do apontamento.")
-    a = alvo(conn, alvo_tipo, alvo_id)
-    ex = execucao(conn, alvo_tipo, alvo_id) or {"metros_executados": 0, "metros_reaterrados": 0, "concluido": 0}
+    a = alvo(conn, alvo_tipo, ref)
+    tipo, aid = a["alvo_tipo"], a["id"]
+    ex = execucao(conn, tipo, aid) or {"metros_executados": 0, "metros_reaterrados": 0, "concluido": 0}
     if ex.get("ok_fiscal_em"):
         raise RegraViolada("Alvo já validado pela fiscalização — não aceita novos apontamentos.")
-    if alvo_tipo == "TRECHO":
+    if tipo == "TRECHO":
         ext = a["extensao_m"]
         if concluido_100:
             metros_executados = ext - ex["metros_executados"]
@@ -341,144 +465,143 @@ def apontar(conn, data, equipe_id, alvo_tipo, alvo_id, metros_executados=0, metr
         if novo_reat > novo_exec + 1e-3:
             raise RegraViolada("Não é possível reaterrar mais do que foi executado.")
         concluido = 1 if novo_reat >= ext - 1e-3 else 0
-        prev = previsto(conn, alvo_tipo, alvo_id, metros_executados) if metros_executados > 0 else []
+        prev = previsto(conn, tipo, aid, metros_executados) if metros_executados > 0 else []
     else:
         novo_exec = novo_reat = 0
         concluido = 1 if concluido_100 else 0
-        prev = previsto(conn, alvo_tipo, alvo_id, 0) if concluido else []
+        prev = previsto(conn, tipo, aid, 0) if concluido else []
     with transacao(conn):
-        aid = conn.execute(
+        apid = conn.execute(
             """INSERT INTO apontamentos(data,equipe_id,alvo_tipo,alvo_id,metros_executados,metros_reaterrados,estaca_ini,estaca_fim)
                VALUES (?,?,?,?,?,?,?,?)""",
-            (data, equipe_id, alvo_tipo, alvo_id, metros_executados, metros_reaterrados, estaca_ini, estaca_fim)).lastrowid
+            (data, equipe_id, tipo, aid, metros_executados, metros_reaterrados, estaca_ini, estaca_fim)).lastrowid
         confirmadas = {(q["servico"], q["unidade"]): q["confirmado"] for q in (quantidades or [])}
         for q in prev:
             conf = confirmadas.pop((q["servico"], q["unidade"]), q["previsto"])
             conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,?,?)",
-                         (aid, q["servico"], q["unidade"], q["previsto"], float(conf)))
-        for (serv, un), conf in confirmadas.items():   # quantidade real sem previsto
-            conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,NULL,?)", (aid, serv, un, float(conf)))
+                         (apid, q["servico"], q["unidade"], q["previsto"], float(conf)))
+        for (serv, un), conf in confirmadas.items():
+            conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,NULL,?)", (apid, serv, un, float(conf)))
         conn.execute(
             """INSERT INTO execucao(alvo_tipo,alvo_id,metros_executados,metros_reaterrados,concluido)
                VALUES (?,?,?,?,?)
                ON CONFLICT(alvo_tipo,alvo_id) DO UPDATE SET metros_executados=excluded.metros_executados,
                  metros_reaterrados=excluded.metros_reaterrados, concluido=MAX(concluido, excluded.concluido)""",
-            (alvo_tipo, alvo_id, novo_exec, novo_reat, concluido))
-    return aid
+            (tipo, aid, novo_exec, novo_reat, concluido))
+    return apid
 
 
-def fotos_faltando(conn, alvo_tipo, alvo_id):
-    alvo(conn, alvo_tipo, alvo_id)
-    cats = [r[0] for r in conn.execute("SELECT categoria FROM fotos WHERE alvo_tipo=? AND alvo_id=?", (alvo_tipo, alvo_id))]
-    return R.fotos_pendentes(alvo_tipo, cats, _sinalizacao_herdada(conn, alvo_tipo, alvo_id))
-
-
-def registrar_foto(conn, alvo_tipo, alvo_id, categoria, conteudo_b64, extensao="jpg", data_hora=None, lat=None, lon=None,
+def registrar_foto(conn, alvo_tipo, ref, categoria, conteudo_b64, extensao="jpg", data_hora=None, lat=None, lon=None,
                    dir_fotos=DIR_FOTOS):
-    a = alvo(conn, alvo_tipo, alvo_id)
+    a = alvo(conn, alvo_tipo, ref)
     if categoria not in R.FOTOS_TRECHO:
         raise RegraViolada("Categoria de foto inválida.")
     data_hora = data_hora or _agora()
-    carimbo = R.carimbo(contrato(conn), alvo_id, data_hora, lat, lon)
+    carimbo = R.carimbo(contrato(conn), a["nome"], data_hora, lat, lon)
     os.makedirs(dir_fotos, exist_ok=True)
-    nome = f"{alvo_id}_{categoria}_{data_hora.replace(':', '').replace('-', '')}.{extensao}".replace("/", "_")
+    nome = re.sub(r"[^\w.-]", "_", f"{a['id']}_{categoria}_{data_hora.replace(':', '').replace('-', '')}.{extensao}")
     with open(os.path.join(dir_fotos, nome), "wb") as f:
         f.write(base64.b64decode(conteudo_b64))
     conn.execute(
         "INSERT INTO fotos(alvo_tipo,alvo_id,area,categoria,arquivo,data_hora,lat,lon,carimbo) VALUES (?,?,?,?,?,?,?,?,?)",
-        (alvo_tipo, alvo_id, a.get("area"), categoria, nome, data_hora, lat, lon, carimbo))
+        (a["alvo_tipo"], a["id"], a.get("area"), categoria, nome, data_hora, lat, lon, carimbo))
     return {"arquivo": nome, "carimbo": carimbo}
 
 
-# ------------------------------------------------------------------ OK Fiscalização
+# ------------------------------------------------------------------ lançamentos (sem regime financeiro aplicado)
+def _bm_item(conn, chave):
+    return _one(conn, "SELECT * FROM bm_itens WHERE planilha='VERTICAL' AND item=? AND vigente=1", chave)
+
+
+def _itens_servico(conn, servico, trecho):
+    """[(bm_item, fração)] de um serviço da 06.1, segundo config/servicos_rede.json; [] = sem vínculo com fonte."""
+    cfg = next((s for s in mapa_servicos()["gaveta1"] if s["servico"] == servico), None)
+    if not cfg or cfg["status"] != "CONFIRMADO" or not cfg["itens"]:
+        return []
+    itens = [_bm_item(conn, k.format(codigo_bm=trecho.get("codigo_bm"))) for k in cfg["itens"]]
+    itens = [i for i in itens if i]
+    if not itens:
+        return []
+    return R.ratear(1.0, [(i, i["quantidade"] or 0) for i in itens])
+
+
 def _lancar(conn, medicao_id, gaveta, servico, bm, unidade, quantidade, alvo_tipo=None, alvo_id=None,
-            nf_id=None, material_id=None, obs=None, pct=1.0):
-    valor = _valor(conn, bm, quantidade, pct) if bm else 0.0
-    if bm is None:
-        obs = ((obs + " · ") if obs else "") + "SEM ITEM BM VINCULADO"
+            nf_id=None, material_id=None, motivo=None, obs=None):
+    status = "PROPOSTO" if bm is not None and not motivo else "PENDENTE"
+    if status == "PENDENTE" and not motivo:
+        motivo = "sem item de BM com fonte"
     conn.execute(
-        """INSERT INTO medicao_lancamentos(medicao_id,gaveta,servico,bm_item_id,alvo_tipo,alvo_id,nf_id,material_id,unidade,quantidade,valor,observacao)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        """INSERT INTO medicao_lancamentos(medicao_id,gaveta,servico,bm_item_id,alvo_tipo,alvo_id,nf_id,material_id,
+             unidade,quantidade,status,motivo,observacao) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (medicao_id, gaveta, servico, bm["id"] if bm else None, alvo_tipo, alvo_id, nf_id, material_id, unidade,
-         round(quantidade, 4), valor, obs))
+         round(quantidade, 4), status, motivo, obs))
 
 
-def _material_20(conn, medicao_id, alvo_tipo, alvo_id):
-    """Material Ankara aplicado no alvo: 20 % se os 80 % já foram pagos na entrega, senão 100 %."""
-    aplic = _rows(conn.execute(
-        """SELECT mv.material_id, SUM(mv.quantidade) q, m.unidade, m.bm_item_id
-           FROM movimentos mv JOIN materiais m ON m.id=mv.material_id
-           WHERE mv.tipo='APLICADO' AND mv.alvo_tipo=? AND mv.alvo_id=? AND m.propriedade='ANKARA'
-           GROUP BY mv.material_id""", (alvo_tipo, alvo_id)))
-    for a in aplic:
-        bm = _one(conn, "SELECT * FROM bm_itens WHERE id=?", a["bm_item_id"]) if a["bm_item_id"] else None
-        coberto = conn.execute(
-            """SELECT COALESCE(SUM(i.quantidade),0) FROM nf_itens i JOIN notas_fiscais n ON n.id=i.nf_id
-               WHERE i.material_id=? AND n.faturamento_etapas=1 AND n.status='ACEITO'""", (a["material_id"],)).fetchone()[0]
-        ja_20 = conn.execute(
-            "SELECT COALESCE(SUM(quantidade),0) FROM medicao_lancamentos WHERE servico='MATERIAL 20%' AND material_id=?",
-            (a["material_id"],)).fetchone()[0]
-        q20 = max(0.0, min(a["q"], coberto - ja_20))
-        q100 = a["q"] - q20
-        if q20 > 0:
-            _lancar(conn, medicao_id, 1, "MATERIAL 20%", bm, a["unidade"], q20, alvo_tipo, alvo_id,
-                    material_id=a["material_id"], obs="20 % finais na aplicação", pct=R.PCT_MATERIAL_APLICACAO)
-        if q100 > 0:
-            _lancar(conn, medicao_id, 1, "MATERIAL 100%", bm, a["unidade"], q100, alvo_tipo, alvo_id,
-                    material_id=a["material_id"], obs="sem faturamento por etapas")
+def _vertical_por_codigo(conn, codigo_bm):
+    """Item da Vertical para um código da Juntada (col. R da 06.2). Só devolve se for inequívoco."""
+    if not codigo_bm:
+        return None, "sem código BM"
+    c = _rows(conn.execute("SELECT * FROM bm_itens WHERE planilha='VERTICAL' AND vigente=1 AND item_bm=?", (codigo_bm,)))
+    if len(c) == 1:
+        return c[0], None
+    return None, (f"código {codigo_bm} sem item na Vertical" if not c else
+                  f"código {codigo_bm} ambíguo na Vertical ({', '.join(i['item'] for i in c)})")
 
 
-def ok_fiscalizacao(conn, alvo_tipo, alvo_id, usuario, data=None):
-    """[✓] OK Fiscalização — Pronto p/ Medir. Dispara: (1) lançamentos na medição
-    do mês; (2) envio do trecho para a Esteira de Cadastro (1. Pronto p/ Cadastro)."""
+def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
+    """[✓] OK Fiscalização (interno Ankara). Gera PROPOSTA de lançamentos na medição de teste e
+    envia o trecho à Esteira de Cadastro. Não aprova nada pela Caesb e não aplica regime de material."""
     data = data or date.today().isoformat()
-    a = alvo(conn, alvo_tipo, alvo_id)
-    ex = execucao(conn, alvo_tipo, alvo_id)
-    R.validar_ok_fiscal(ex, fotos_faltando(conn, alvo_tipo, alvo_id))
+    a = alvo(conn, alvo_tipo, ref)
+    tipo, aid = a["alvo_tipo"], a["id"]
+    ex = execucao(conn, tipo, aid)
+    R.validar_ok_fiscal(ex, fotos_faltando(conn, tipo, aid))
     med = medicao_para(conn, data)
     with transacao(conn):
         conn.execute("UPDATE execucao SET ok_fiscal_em=?, ok_fiscal_por=?, medicao_id=? WHERE alvo_tipo=? AND alvo_id=?",
-                     (data, usuario, med["id"], alvo_tipo, alvo_id))
-        # evento 1 — serviços confirmados em campo (recomposição tem checkbox próprio)
+                     (data, usuario, med["id"], tipo, aid))
         servs = _rows(conn.execute(
             """SELECT q.servico, q.unidade, SUM(q.confirmado) qtd FROM apontamento_quantidades q
                JOIN apontamentos ap ON ap.id=q.apontamento_id
-               WHERE ap.alvo_tipo=? AND ap.alvo_id=? GROUP BY q.servico, q.unidade""", (alvo_tipo, alvo_id)))
-        pecas_bm = {}
-        if alvo_tipo == "CONJUNTO":
-            for p in pecas_conjunto(conn, alvo_id):
-                nome = R.quantidades_previstas_elemento([p])[0]["servico"]
-                pecas_bm.setdefault(nome, p["codigo_bm"])
-        for s in servs:
-            if alvo_tipo == "TRECHO":
+               WHERE ap.alvo_tipo=? AND ap.alvo_id=? GROUP BY q.servico, q.unidade""", (tipo, aid)))
+        if tipo == "TRECHO":
+            mnd = a.get("metodologia") == "MND"
+            for s in servs:
+                if mnd and s["servico"] == "ASSENTAMENTO":
+                    _lancar(conn, med["id"], 1, s["servico"], None, s["unidade"], s["qtd"], tipo, aid,
+                            motivo=f"MND: item a definir pela engenharia (a 06.1 traz {a.get('codigo_bm')}, "
+                                   "de assentamento em vala; não substituído automaticamente)")
+                    continue
                 itens = _itens_servico(conn, s["servico"], a)
                 if not itens:
-                    _lancar(conn, med["id"], 1, s["servico"], None, s["unidade"], s["qtd"], alvo_tipo, alvo_id)
+                    _lancar(conn, med["id"], 1, s["servico"], None, s["unidade"], s["qtd"], tipo, aid)
                 for bm, frac in itens:
-                    _lancar(conn, med["id"], 1, s["servico"], bm, s["unidade"], s["qtd"] * frac, alvo_tipo, alvo_id)
-            else:
-                bm = _servico_conjunto_bm(conn, pecas_bm.get(s["servico"]))
-                if bm and str(bm["classificacao"]).upper().startswith("MATERIAL"):
-                    continue   # peça é material: paga pelo fluxo do almoxarifado (80 % + 20 %), nunca em dobro
-                _lancar(conn, med["id"], 1, s["servico"], bm, s["unidade"], s["qtd"], alvo_tipo, alvo_id)
-        _material_20(conn, med["id"], alvo_tipo, alvo_id)
-        # evento 2 — esteira de cadastro (somente trechos de rede)
-        if alvo_tipo == "TRECHO":
-            conn.execute("INSERT INTO cadastro(trecho_id,etapa,atualizado_em) VALUES (?, '1_PRONTO', ?)", (alvo_id, _agora()))
+                    obs = "rateio pela proporção contratual (estimativa)" if len(itens) > 1 else None
+                    _lancar(conn, med["id"], 1, s["servico"], bm, s["unidade"], s["qtd"] * frac, tipo, aid, obs=obs)
+            conn.execute("INSERT INTO cadastro(trecho_id,etapa,atualizado_em) VALUES (?, '1_PRONTO', ?)", (aid, _agora()))
             conn.execute("INSERT INTO cadastro_historico(trecho_id,de_etapa,para_etapa,em) VALUES (?,NULL,'1_PRONTO',?)",
-                         (alvo_id, _agora()))
+                         (aid, _agora()))
+        else:
+            codigos = {}
+            for i in itens_atividade(conn, aid):
+                codigos.setdefault(R.quantidades_previstas_elemento([i])[0]["servico"], i["codigo_bm"])
+            for s in servs:
+                bm, motivo = _vertical_por_codigo(conn, codigos.get(s["servico"]))
+                if bm and str(bm["classificacao"]).upper().startswith("MATERIAL"):
+                    bm, motivo = None, "material: regime de faturamento pendente (matriz de regimes não aprovada)"
+                _lancar(conn, med["id"], 1, s["servico"], bm, s["unidade"], s["qtd"], tipo, aid, motivo=motivo)
     return med["id"]
 
 
-def recomposicao_ok(conn, alvo_tipo, alvo_id, tipo, quantidade, data=None):
+def recomposicao_ok(conn, alvo_tipo, ref, tipo, quantidade, data=None):
     """Checkbox separado: calçada/asfalto entra só quando a equipe de pavimento executar (gaveta 4)."""
     data = data or date.today().isoformat()
-    alvo(conn, alvo_tipo, alvo_id)
-    ex = execucao(conn, alvo_tipo, alvo_id)
+    a = alvo(conn, alvo_tipo, ref)
+    ex = execucao(conn, a["alvo_tipo"], a["id"])
     if not ex or not ex.get("ok_fiscal_em"):
-        raise RegraViolada("Recomposição só pode ser medida após o OK Fiscalização do trecho/nó.")
+        raise RegraViolada("Recomposição só pode ser lançada após o OK Fiscalização do trecho/nó.")
     if ex["recomposicao_ok"]:
-        raise RegraViolada("Recomposição já medida.")
+        raise RegraViolada("Recomposição já lançada.")
     cfg = mapa_servicos()["recomposicao"]
     if tipo not in cfg["itens_por_tipo"]:
         raise RegraViolada("Tipo de recomposição inválido (CALÇADA ou ASFALTO).")
@@ -488,21 +611,22 @@ def recomposicao_ok(conn, alvo_tipo, alvo_id, tipo, quantidade, data=None):
     med = medicao_para(conn, data)
     with transacao(conn):
         conn.execute("UPDATE execucao SET recomposicao_ok=1, recomposicao_medicao_id=? WHERE alvo_tipo=? AND alvo_id=?",
-                     (med["id"], alvo_tipo, alvo_id))
-        _lancar(conn, med["id"], 4, f"RECOMPOSIÇÃO {tipo}", bm, bm["unidade"] if bm else "M2", quantidade,
-                alvo_tipo, alvo_id)
+                     (med["id"], a["alvo_tipo"], a["id"]))
+        _lancar(conn, med["id"], 4, f"RECOMPOSIÇÃO {tipo}", bm, bm["unidade"] if bm else "A DEFINIR", quantidade,
+                a["alvo_tipo"], a["id"], motivo=None if bm else "item de recomposição A CONFIRMAR")
 
 
 # ------------------------------------------------------------------ esteira de cadastro
-def avancar_cadastro(conn, trecho_id, destino, dados=None, data=None):
+def avancar_cadastro(conn, trecho_ref, destino, dados=None, data=None):
     dados = dados or {}
-    c = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", trecho_id)
+    t = alvo(conn, "TRECHO", trecho_ref)
+    c = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", t["id"])
     if not c:
         raise RegraViolada("Trecho não está na esteira (exige OK Fiscalização).")
     R.validar_transicao(c["etapa"], destino, dados)
     campos = {"etapa": destino, "atualizado_em": _agora()}
     if destino == "2_ENVIADO":
-        if c["etapa"] == "5A_NEGADO":   # [Reenviar p/ Empresa Ajustar]
+        if c["etapa"] == "5A_NEGADO":
             campos.update(revisao=c["revisao"] + 1, protocolo_gdoc=None, arquivos=None)
         else:
             campos.update(empresa=dados["empresa"], data_envio=dados["data_envio"])
@@ -517,44 +641,56 @@ def avancar_cadastro(conn, trecho_id, destino, dados=None, data=None):
         campos["memorando_eset"] = dados["memorando_eset"]
     with transacao(conn):
         if destino == "6_APROVADO":
-            t = alvo(conn, "TRECHO", trecho_id)
             med = medicao_para(conn, data or date.today().isoformat())
-            _lancar(conn, med["id"], 3, "CADASTRO", _bm_item(conn, mapa_servicos()["cadastro"]["item"]), "M", t["extensao_m"],
-                    "TRECHO", trecho_id, obs=f"GDOC {c['protocolo_gdoc']} · ESET {dados['memorando_eset']}")
+            _lancar(conn, med["id"], 3, "CADASTRO", _bm_item(conn, mapa_servicos()["cadastro"]["item"]), "M",
+                    t["extensao_m"], "TRECHO", t["id"], obs=f"GDOC {c['protocolo_gdoc']} · ESET {dados['memorando_eset']}")
             campos["medicao_id"] = med["id"]
         sets = ", ".join(f"{k}=?" for k in campos)
-        conn.execute(f"UPDATE cadastro SET {sets} WHERE trecho_id=?", (*campos.values(), trecho_id))
+        conn.execute(f"UPDATE cadastro SET {sets} WHERE trecho_id=?", (*campos.values(), t["id"]))
         conn.execute("INSERT INTO cadastro_historico(trecho_id,de_etapa,para_etapa,dados,em) VALUES (?,?,?,?,?)",
-                     (trecho_id, c["etapa"], destino, json.dumps(dados, ensure_ascii=False), _agora()))
+                     (t["id"], c["etapa"], destino, json.dumps(dados, ensure_ascii=False), _agora()))
 
 
 def esteira(conn):
     out = _rows(conn.execute(
-        "SELECT c.*, t.extensao_m, t.frente_id FROM cadastro c JOIN trechos t ON t.id=c.trecho_id ORDER BY c.etapa, c.trecho_id"))
+        """SELECT c.*, t.ponto, t.extensao_m, t.frente_id FROM cadastro c JOIN trechos t ON t.id=c.trecho_id
+           ORDER BY c.etapa, t.ponto"""))
     for c in out:
         c["rotulo"] = R.rotulo_etapa(c["etapa"], c["revisao"])
         c["proximas"] = list(R.TRANSICOES.get(c["etapa"], {}).keys())
     return out
 
 
-# ------------------------------------------------------------------ medição
-def criar_medicao(conn, numero, periodo_ini, periodo_fim):
+# ------------------------------------------------------------------ medição (TESTE)
+def medicao_oficial_liberada(conn):
+    return str(parametro(conn, "medicao_oficial_liberada", "NAO")).upper() == "SIM"
+
+
+def criar_medicao(conn, numero, periodo_ini, periodo_fim, tipo="TESTE"):
+    if tipo not in ("TESTE", "OFICIAL"):
+        raise RegraViolada("Tipo de medição inválido.")
+    if tipo == "OFICIAL" and not medicao_oficial_liberada(conn):
+        raise RegraViolada("Medição OFICIAL bloqueada: regras financeiras, controle de acesso e exportação no modelo "
+                           "oficial ainda não foram validados. Use medição de TESTE.")
     if periodo_fim < periodo_ini:
         raise RegraViolada("Período inválido.")
-    sob = _one(conn, "SELECT numero FROM medicoes WHERE NOT (periodo_fim < ? OR periodo_ini > ?)", periodo_ini, periodo_fim)
+    sob = _one(conn, "SELECT numero FROM medicoes WHERE tipo=? AND NOT (periodo_fim < ? OR periodo_ini > ?)",
+               tipo, periodo_ini, periodo_fim)
     if sob:
-        raise RegraViolada(f"Período sobrepõe a {sob['numero']}ª medição.")
-    return conn.execute("INSERT INTO medicoes(numero,periodo_ini,periodo_fim) VALUES (?,?,?)",
-                        (numero, periodo_ini, periodo_fim)).lastrowid
+        raise RegraViolada(f"Período sobrepõe a {sob['numero']}ª medição ({tipo}).")
+    return conn.execute("INSERT INTO medicoes(numero,tipo,periodo_ini,periodo_fim) VALUES (?,?,?,?)",
+                        (numero, tipo, periodo_ini, periodo_fim)).lastrowid
 
 
 def medicao_para(conn, data):
-    m = _one(conn, "SELECT * FROM medicoes WHERE ? BETWEEN periodo_ini AND periodo_fim", data)
-    if not m:
-        raise RegraViolada(f"Nenhuma medição cadastrada cobrindo {data}. Abra a medição do mês na aba 5.")
-    if m["status"] != "ABERTA":
-        raise RegraViolada(f"A {m['numero']}ª medição ({data}) já está fechada.")
-    return m
+    tipos = ("OFICIAL", "TESTE") if medicao_oficial_liberada(conn) else ("TESTE",)
+    for t in tipos:
+        m = _one(conn, "SELECT * FROM medicoes WHERE tipo=? AND ? BETWEEN periodo_ini AND periodo_fim", t, data)
+        if m:
+            if m["status"] != "ABERTA":
+                raise RegraViolada(f"A {m['numero']}ª medição ({t}) cobrindo {data} já está fechada.")
+            return m
+    raise RegraViolada(f"Nenhuma medição de teste cobrindo {data}. Abra a medição na aba 5.")
 
 
 def fechar_medicao(conn, medicao_id):
@@ -566,11 +702,26 @@ def indices_reajuste(conn):
 
 
 GAVETAS = {
-    1: "Serviços de Trechos Reaterrados + 20 % Mat.",
-    2: "Notas Fiscais — 80 % na Entrega",
+    1: "Serviços de Trechos e Nós (OK interno)",
+    2: "Materiais — regime pendente (matriz de regimes)",
     3: "Cadastros Aprovados GDOC",
     4: "Calçadas / Asfalto",
 }
+
+
+def _fatores(conn):
+    return (float(parametro(conn, "bdi_material", 0)), float(parametro(conn, "bdi_servico", 0)),
+            float(parametro(conn, "coef_k", 0)))
+
+
+def _totalizar(conn, linhas):
+    """linhas: [(bm_item_dict, quantidade)] → totalização na ordem do BM (ver regras.totalizar_bm)."""
+    por_item = {}
+    for bm, q in linhas:
+        if bm["id"] not in por_item:
+            por_item[bm["id"]] = [bm["classificacao"], 0.0, bm["preco_unitario"] or 0]
+        por_item[bm["id"]][1] += q
+    return R.totalizar_bm([tuple(v) for v in por_item.values()], *_fatores(conn))
 
 
 def resumo_medicao(conn, medicao_id):
@@ -578,158 +729,118 @@ def resumo_medicao(conn, medicao_id):
     if not med:
         raise RegraViolada("Medição não encontrada.")
     lanc = _rows(conn.execute(
-        """SELECT l.*, b.item, b.subgrupo, b.descricao AS bm_descricao, b.classificacao
+        """SELECT l.*, b.item, b.subgrupo, b.descricao AS bm_descricao, b.classificacao, b.preco_unitario
            FROM medicao_lancamentos l LEFT JOIN bm_itens b ON b.id=l.bm_item_id
            WHERE l.medicao_id=? ORDER BY l.gaveta, l.id""", (medicao_id,)))
-    gavetas = {g: {"nome": n, "valor": 0.0, "lancamentos": []} for g, n in GAVETAS.items()}
     for l in lanc:
-        gavetas[l["gaveta"]]["lancamentos"].append(l)
-        gavetas[l["gaveta"]]["valor"] = round(gavetas[l["gaveta"]]["valor"] + l["valor"], 2)
-    # teto por subgrupo do BM Vertical = valor contratual (P0) dos itens do subgrupo
+        l["alvo_nome"] = nome_alvo(conn, l["alvo_tipo"], l["alvo_id"]) if l["alvo_id"] else None
+    cache = {}
+
+    def bm(bid):
+        if bid not in cache:
+            cache[bid] = _one(conn, "SELECT * FROM bm_itens WHERE id=?", bid)
+        return cache[bid]
+
+    propostos = [l for l in lanc if l["status"] == "PROPOSTO"]
+    gavetas = {}
+    for g, n in GAVETAS.items():
+        lg = [l for l in lanc if l["gaveta"] == g]
+        tot = _totalizar(conn, [(bm(l["bm_item_id"]), l["quantidade"]) for l in lg if l["status"] == "PROPOSTO"])
+        gavetas[g] = {"nome": n, "valor": tot["total"], "lancamentos": lg,
+                      "pendentes": sum(1 for l in lg if l["status"] == "PENDENTE")}
+    total = _totalizar(conn, [(bm(l["bm_item_id"]), l["quantidade"]) for l in propostos])
+    # teto por subgrupo do BM Vertical: valor P0 do subgrupo (mesma ordem de cálculo)
     tetos = []
-    for sg in _rows(conn.execute(
-            """SELECT b.subgrupo, MAX(b.subgrupo_nome) nome,
-                      SUM(CASE WHEN m.numero < ? THEN l.valor ELSE 0 END) anterior,
-                      SUM(CASE WHEN m.numero = ? THEN l.valor ELSE 0 END) atual
-               FROM medicao_lancamentos l JOIN bm_itens b ON b.id=l.bm_item_id JOIN medicoes m ON m.id=l.medicao_id
-               WHERE b.planilha='VERTICAL' AND m.numero <= ? GROUP BY b.subgrupo""", (med["numero"],) * 3)):
-        teto = sum(_valor(conn, b, b["quantidade"] or 0) for b in
-                   _rows(conn.execute("SELECT * FROM bm_itens WHERE planilha='VERTICAL' AND subgrupo=?", (sg["subgrupo"],))))
-        aceito, exced = R.aplicar_teto(sg["atual"], sg["anterior"], teto)
-        tetos.append({**sg, "teto": round(teto, 2), "aceito": aceito, "excedente": exced})
+    for sg in sorted({bm(l["bm_item_id"])["subgrupo"] for l in propostos if bm(l["bm_item_id"])["planilha"] == "VERTICAL"}):
+        itens_sg = _rows(conn.execute("SELECT * FROM bm_itens WHERE planilha='VERTICAL' AND vigente=1 AND subgrupo=?", (sg,)))
+        teto = _totalizar(conn, [(b, b["quantidade"] or 0) for b in itens_sg])["total"]
+        ant = conn.execute(
+            """SELECT l.bm_item_id, l.quantidade FROM medicao_lancamentos l JOIN bm_itens b ON b.id=l.bm_item_id
+               JOIN medicoes m ON m.id=l.medicao_id
+               WHERE l.status='PROPOSTO' AND b.subgrupo=? AND m.tipo=? AND m.numero < ?""",
+            (sg, med["tipo"], med["numero"])).fetchall()
+        anterior = _totalizar(conn, [(bm(r[0]), r[1]) for r in ant])["total"]
+        atual = _totalizar(conn, [(bm(l["bm_item_id"]), l["quantidade"]) for l in propostos
+                                  if bm(l["bm_item_id"])["subgrupo"] == sg])["total"]
+        aceito, exced = R.aplicar_teto(atual, anterior, teto)
+        tetos.append({"subgrupo": sg, "nome": itens_sg[0]["subgrupo_nome"] if itens_sg else "", "teto": teto,
+                      "anterior": anterior, "atual": atual, "aceito": aceito, "excedente": exced})
     excedente = round(sum(t["excedente"] for t in tetos), 2)
-    bruto = round(sum(g["valor"] for g in gavetas.values()), 2)
-    pi = round(bruto - excedente, 2)
+    pi = round(total["total"] - excedente, 2)
     try:
         indice, aviso = R.indice_reajuste(med["periodo_ini"], med["periodo_fim"], indices_reajuste(conn)), None
     except RegraViolada as e:
         indice, aviso = None, str(e)
     return {
-        "medicao": med, "gavetas": gavetas, "tetos": tetos,
-        "valor_pi": bruto, "excedente_teto": excedente, "valor_pi_limitado": pi,
+        "medicao": med, "teste": med["tipo"] == "TESTE", "gavetas": gavetas, "tetos": tetos, "totalizacao": total,
+        "valor_pi": total["total"], "excedente_teto": excedente, "valor_pi_limitado": pi,
         "indice_reajuste": indice, "aviso_reajuste": aviso,
         "valor_reajuste": round(pi * indice, 2) if indice is not None else None,
         "valor_total": round(pi * (1 + indice), 2) if indice is not None else None,
-        "sem_vinculo_bm": sum(1 for l in lanc if l["bm_item_id"] is None),
+        "pendentes": sum(1 for l in lanc if l["status"] == "PENDENTE"),
     }
 
 
-# ------------------------------------------------------------------ mapa
-def detalhe(conn, alvo_tipo, alvo_id):
-    a = alvo(conn, alvo_tipo, alvo_id)
-    d = {"tipo": alvo_tipo, **a, "execucao": execucao(conn, alvo_tipo, alvo_id),
-         "fotos": _rows(conn.execute("SELECT * FROM fotos WHERE alvo_tipo=? AND alvo_id=? ORDER BY id", (alvo_tipo, alvo_id))),
-         "fotos_faltando": fotos_faltando(conn, alvo_tipo, alvo_id)}
-    if alvo_tipo == "TRECHO":
+# ------------------------------------------------------------------ detalhe e mapa
+def avisos_e_decisoes(conn, atividade_id):
+    """Avisos de origem (AA/AB/AW) da atividade, agrupados sem repetição, com decisões posteriores ligadas."""
+    a = alvo(conn, "ATIVIDADE", atividade_id)
+    av = _rows(conn.execute(
+        """SELECT tipo, prioridade, texto, COUNT(*) linhas FROM avisos_origem x JOIN itens_projeto i ON i.id=x.item_id
+           WHERE i.atividade_id=? AND x.vigente=1 GROUP BY tipo, prioridade, texto ORDER BY tipo, texto""", (a["id"],)))
+    decs = _rows(conn.execute("SELECT * FROM decisoes ORDER BY id"))
+    for x in av:
+        x["decisoes"] = [d["id"] for d in decs if d["padrao_aviso"] and re.search(d["padrao_aviso"], x["texto"], re.I)]
+    ligadas = {i for x in av for i in x["decisoes"]}
+    proprias = {a["numero"], a["nomenclatura"]}
+    return {"avisos": av, "decisoes": [d for d in decs if d["id"] in ligadas or d["objeto_ref"] in proprias]}
+
+
+def detalhe(conn, alvo_tipo, ref):
+    a = alvo(conn, alvo_tipo, ref)
+    tipo, aid = a["alvo_tipo"], a["id"]
+    d = {"tipo": tipo, **a, "execucao": execucao(conn, tipo, aid),
+         "fotos": _rows(conn.execute("SELECT * FROM fotos WHERE alvo_tipo=? AND alvo_id=? ORDER BY id", (tipo, aid))),
+         "fotos_faltando": fotos_faltando(conn, tipo, aid),
+         "proveniencia": _rows(conn.execute(
+             """SELECT p.aba, p.linha, f.nome, f.revisao, substr(f.sha256,1,16) sha FROM proveniencia p
+                JOIN fontes_arquivo f ON f.id=p.fonte_id WHERE p.entidade=? AND p.entidade_id=?""",
+             ("trecho" if tipo == "TRECHO" else "atividade", aid)))}
+    if tipo == "TRECHO":
         d["quantidades"] = json.loads(a["quantidades"])
-        d["cadastro"] = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", alvo_id)
+        d["cadastro"] = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", aid)
         d["perfil_bloqueado"] = R.perfil_pendente(a)
-        d["conjuntos"] = [r[0] for r in conn.execute(
-            "SELECT DISTINCT conjunto_id FROM pecas WHERE trechos LIKE ? ORDER BY conjunto_id", (f"%{alvo_id}%",))]
+        d["mnd"] = a.get("metodologia") == "MND"
     else:
-        d.update(totais_conjunto(conn, alvo_id))
-        d["pecas"] = pecas_conjunto(conn, alvo_id)
-        d["trechos_ligados"] = trechos_do_conjunto(conn, alvo_id)
-        d["avisos"] = [{"problema": p["aviso_problema"], "sugestao": p["aviso_sugestao"]} for p in d["pecas"]
-                       if p["aviso_problema"] or p["aviso_sugestao"]]
+        d.update(totais_atividade(conn, aid))
+        d["itens"] = itens_atividade(conn, aid)
+        d["trechos_ligados"] = trechos_da_atividade(conn, aid)
+        d["outras_atividades"] = _rows(conn.execute(
+            "SELECT id, nomenclatura, frente_id FROM atividades WHERE elemento_id=? AND id<>? AND vigente=1",
+            (a["elemento_id"], aid)))
+        d.update(avisos_e_decisoes(conn, aid))
     return d
 
 
 def estado_mapa(conn, medicao_atual_id=None, data=None):
-    """Status do Mapa Iluminado por trecho e por nomenclatura de conjunto, pins e bandeja sem posição."""
+    """Status do Mapa Iluminado por nome visível (PONTO / nomenclatura), pins e bandeja sem posição."""
     ex = {(r["alvo_tipo"], r["alvo_id"]): dict(r) for r in conn.execute("SELECT * FROM execucao")}
     fotos = {}
     for r in conn.execute("SELECT alvo_tipo, alvo_id, categoria FROM fotos"):
         fotos.setdefault((r[0], r[1]), []).append(r[2])
     status = {}
     for (tipo, aid), e in ex.items():
-        her = _sinalizacao_herdada(conn, tipo, aid) if tipo == "CONJUNTO" else False
+        her = _sinalizacao_herdada(conn, tipo, aid) if tipo == "ATIVIDADE" else False
         falt = R.fotos_pendentes(tipo, fotos.get((tipo, aid), []), her)
-        status[aid] = R.status_mapa(e, falt, medicao_atual_id)
-    pins = []
-    for c in checkins_abertos(conn, data or date.today().isoformat()):
-        if c["alvo_id"]:
-            pins.append({"equipe": c["equipe_id"], "alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_id"], "checkin": c["id"]})
+        status[nome_alvo(conn, tipo, aid)] = R.status_mapa(e, falt, medicao_atual_id)
+    pins = [{"equipe": c["equipe_id"], "alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_nome"], "checkin": c["id"],
+             "data": c["data"], "origem": "programação do check-in"}
+            for c in checkins_abertos(conn, data or date.today().isoformat()) if c["alvo_id"]]
     return {
         "status": status,
         "pins": pins,
         "sem_posicao": _rows(conn.execute(
-            "SELECT id, numero, nomenclaturas, status_posicao FROM elementos WHERE lat IS NULL ORDER BY numero")),
+            """SELECT e.id, e.numero, e.status_posicao, GROUP_CONCAT(a.nomenclatura, ' | ') nomenclaturas
+               FROM elementos e JOIN atividades a ON a.elemento_id=e.id
+               WHERE e.vigente=1 AND e.lat IS NULL GROUP BY e.id ORDER BY e.numero""")),
     }
-
-
-def mapa_servicos():
-    with open(os.path.join(BASE, "config", "servicos_rede.json"), encoding="utf-8") as f:
-        return json.load(f)
-
-
-def buscar(conn, q, limite=30):
-    """Busca por trecho (TR001 / nome completo), nó/caixa (NÓ1.8, NO1.8, DF-33) ou nomenclatura."""
-    q = (q or "").strip()
-    if not q:
-        return []
-    termo = "%" + q.upper().replace("NO", "NÓ") + "%" if q.upper().startswith("NO") else "%" + q.upper() + "%"
-    out = [{"tipo": "TRECHO", "id": r["id"], "rotulo": r["id"], "extra": f"DE{int(r['de_mm'])} · {r['extensao_m']:.2f} m"}
-           for r in conn.execute("SELECT id, de_mm, extensao_m FROM trechos WHERE UPPER(id) LIKE ? ORDER BY id LIMIT ?",
-                                 (termo, limite))]
-    out += [{"tipo": "CONJUNTO", "id": r["id"], "rotulo": r["id"], "extra": r["frente_id"]}
-            for r in conn.execute("SELECT id, frente_id FROM conjuntos WHERE UPPER(id) LIKE ? ORDER BY id LIMIT ?",
-                                  (termo, limite))]
-    return out[:limite]
-
-
-def pecas_conjunto(conn, conjunto_id):
-    return _rows(conn.execute("SELECT * FROM pecas WHERE conjunto_id=? ORDER BY linha_origem", (conjunto_id,)))
-
-
-def trechos_do_conjunto(conn, conjunto_id):
-    """Trechos ligados: pontas da 06.1 na nomenclatura do elemento + coluna TRECHO da 06.2."""
-    c = alvo(conn, "CONJUNTO", conjunto_id)
-    noms = [n.strip() for n in (c["nomenclaturas"] or "").split("|") if n.strip()]
-    ids = set()
-    if noms:
-        ph = ",".join("?" * len(noms))
-        ids |= {r[0] for r in conn.execute(f"SELECT id FROM trechos WHERE no_ini IN ({ph}) OR no_fim IN ({ph})", noms + noms)}
-    for r in conn.execute("SELECT DISTINCT trechos FROM pecas WHERE conjunto_id=? AND trechos IS NOT NULL", (conjunto_id,)):
-        ids |= {t.strip() for t in r[0].split("/") if t.strip()}
-    return sorted(ids)
-
-
-def _sinalizacao_herdada(conn, alvo_tipo, alvo_id):
-    if alvo_tipo == "TRECHO":
-        return False
-    trs = trechos_do_conjunto(conn, alvo_id)
-    if not trs:
-        return False
-    ph = ",".join("?" * len(trs))
-    return conn.execute(f"SELECT 1 FROM fotos WHERE alvo_tipo='TRECHO' AND categoria='SINALIZACAO' AND alvo_id IN ({ph}) LIMIT 1",
-                        trs).fetchone() is not None
-
-
-def _bm_item(conn, chave):
-    return _one(conn, "SELECT * FROM bm_itens WHERE planilha='VERTICAL' AND item=?", chave)
-
-
-def _itens_servico(conn, servico, trecho):
-    """[(bm_item, fração)] de um serviço da 06.1, segundo config/servicos_rede.json."""
-    cfg = next((s for s in mapa_servicos()["gaveta1"] if s["servico"] == servico), None)
-    if not cfg or cfg["status"] != "CONFIRMADO" or not cfg["itens"]:
-        return []
-    itens = [_bm_item(conn, k.format(codigo_bm=trecho.get("codigo_bm"))) for k in cfg["itens"]]
-    itens = [i for i in itens if i]
-    if not itens:
-        return []
-    return [(i, f) for i, f in R.ratear(1.0, [(i, i["quantidade"] or 0) for i in itens])]
-
-
-def _valor(conn, bm, quantidade, pct=1.0):
-    return round(R.valor_bm(quantidade, bm["preco_unitario"], bm["classificacao"], float(parametro(conn, "bdi_material", 0)),
-                            float(parametro(conn, "bdi_servico", 0)), float(parametro(conn, "coef_k", 0))) * pct, 2)
-
-
-def _servico_conjunto_bm(conn, codigo_bm):
-    """Item do BM Vertical de uma peça da 06.2: só se o código for inequívoco."""
-    if not codigo_bm:
-        return None
-    cands = _rows(conn.execute("SELECT * FROM bm_itens WHERE planilha='VERTICAL' AND item_bm=?", (codigo_bm,)))
-    return cands[0] if len(cands) == 1 else None

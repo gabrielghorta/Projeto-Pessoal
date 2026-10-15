@@ -6,7 +6,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const nf = (v, c = 2) => v == null ? '—' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: c });
 const brl = v => v == null ? 'PENDENTE' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-const curto = id => String(id).replace(/^Zona\d\d_PB\d\d_|^ADUTORA_PB\d\d_/, '');
+const curto = id => String(id ?? '').replace(/^Zona\d\d_PB\d\d_|^ADUTORA_PB\d\d_/, '');
 
 const STATUS = {
   NAO_EXECUTADO: ['Não executado', ''], EM_EXECUCAO: ['Em execução', 'laranja'], CONCLUIDO_MES: ['Concluído — aguardando OK', 'vermelho'],
@@ -50,7 +50,7 @@ function ligarBusca(input, aoEscolher) {
       ul.innerHTML = res.map((r, i) => `<li data-i="${i}"><span>${esc(r.rotulo)}</span><small>${r.tipo === 'TRECHO' ? 'trecho' : 'nó/caixa'} · ${esc(r.extra || '')}</small></li>`).join('') || '<li><small>nada encontrado</small></li>';
       ul.hidden = false;
       ul.onclick = ev => { const li = ev.target.closest('li[data-i]'); if (!li) return; const r = res[+li.dataset.i];
-        input.value = r.id; input.dataset.tipo = r.tipo; input.dataset.id = r.id; ul.hidden = true; aoEscolher && aoEscolher(r); };
+        input.value = r.rotulo; input.dataset.tipo = r.tipo; input.dataset.id = r.id; ul.hidden = true; aoEscolher && aoEscolher(r); };
     }, 180);
   });
   input.addEventListener('blur', () => setTimeout(() => ul.hidden = true, 200));
@@ -62,9 +62,9 @@ async function carregarMapa() {
   $('#obraContrato').textContent = r.contrato;
   $('#kpis').innerHTML = [
     ['Rede de projeto', nf(r.extensao_m) + ' m'], ['Rede reaterrada', nf(r.executado_m) + ' m'],
-    ['Trechos', nf(r.trechos)], ['Nós e caixas', nf(r.elementos)], ['Validados (OK Fiscal)', nf(r.ok_fiscal)], ['P0 do contrato', brl(r.p0)],
+    ['Trechos', nf(r.trechos)], ['Nós e caixas', nf(r.elementos)], ['Validados (OK interno)', nf(r.ok_fiscal)], ['Contrato (cl. 3.1)', brl(r.valor_contrato)],
   ].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join('') +
-    (r.pecas_sem_quantidade ? `<div class="kpi" style="border-top-color:var(--vermelho)"><span>Peças sem quantidade (falta 06.2)</span><b>${nf(r.pecas_sem_quantidade)}</b></div>` : '');
+    (r.itens_pendentes ? `<div class="kpi" style="border-top-color:var(--vermelho)"><span>Itens 06.2 sem quantidade/unidade com fonte</span><b>${nf(r.itens_pendentes)}</b></div>` : '');
   const fr = $('#mapaFrame');
   if (fr.src.endsWith('about:blank')) fr.src = '/mapa/';
   const est = await api('/api/mapa/estado' + (MEDICAO_ATUAL ? '?medicao=' + MEDICAO_ATUAL : ''));
@@ -87,18 +87,22 @@ async function mostrarFiscal(tipo, id) {
   const ex = d.execucao, st = d.fotos_faltando;
   const linhas = tipo === 'TRECHO' ? [
     ['Frente / equipe', `${esc(d.frente_id)} · ${esc(d.equipe)}`], ['Extensão', nf(d.extensao_m) + ' m'], ['DE', `${d.de_mm} mm · ${esc(d.material)} · ${esc(d.metodologia)}`],
-    ['Pontas', `${esc(curto(d.no_ini))} → ${esc(curto(d.no_fim))}`], ['Item BM', '2.2_' + esc(d.codigo_bm)],
+    ['Pontas', `${esc(curto(d.no_ini))} → ${esc(curto(d.no_fim))}`], ['Item BM', d.mnd ? `<span class="chip vermelho">MND — item a definir</span> <small>06.1 traz ${esc(d.codigo_bm)}</small>` : '2.2_' + esc(d.codigo_bm)],
     ['Executado / reaterrado', ex ? `${nf(ex.metros_executados)} m / ${nf(ex.metros_reaterrados)} m` : '—'],
   ] : [
     ['Elemento', `${esc(d.numero)} · ${esc(d.tipo_elemento)} · ${esc(d.pb)}`], ['Frente', esc(d.frente_id)],
-    ['Peças', esc(d.texto)], ['Trechos ligados', d.trechos_ligados.map(curto).map(esc).join(', ') || '—'],
+    ['Itens (06.2)', esc(d.texto)], ['Outras frentes do elemento', (d.outras_atividades || []).map(o => esc(o.nomenclatura)).join(', ') || '—'], ['Trechos ligados', d.trechos_ligados.map(t => esc(curto(t.ponto))).join(', ') || '—'],
     ['Posição', d.lat ? `${d.lat}, ${d.lon}` : '<span class="chip vermelho">sem posição</span>'],
   ];
-  const avisos = (d.avisos || []).map(a => (a.problema ? `<div class="aviso problema"><b>Problema (AA):</b> ${esc(a.problema)}</div>` : '') + (a.sugestao ? `<div class="aviso sugestao"><b>Sugestão (AB):</b> ${esc(a.sugestao)}</div>` : '')).join('');
+  const decs = Object.fromEntries((d.decisoes || []).map(x => [x.id, x]));
+  const avisos = (d.avisos || []).map(a => `<div class="aviso ${a.tipo === 'PROBLEMA' ? 'problema' : 'sugestao'}"><b>${a.tipo === 'PROBLEMA' ? 'Problema (AA)' : 'Sugestão (AB)'}</b>
+      ${a.prioridade ? `<span class="chip">${esc(a.prioridade)}</span>` : ''} ${esc(a.texto)}
+      ${a.decisoes.map(i => `<br><span class="chip verde">${esc(i)} · ${esc(decs[i] ? decs[i].status : '')}</span> <small>${esc(decs[i] ? decs[i].decisao : '')}</small>`).join('')}</div>`).join('')
+    + (d.avisos && d.avisos.length ? '<p class="vazio" style="margin:4px 0">Avisos = texto de origem da 06.2 (AA/AB/AW). Decisões posteriores aparecem em verde e não são reabertas pela reimportação.</p>' : '');
   const bloqueio = d.perfil_bloqueado ? `<div class="aviso problema"><b>E06:</b> ${esc(d.perfil_bloqueado)} — cálculo bloqueado.</div>` : '';
   const pode = ex && ex.concluido && !st.length && !ex.ok_fiscal_em;
   $('#fiscDetalhe').className = '';
-  $('#fiscDetalhe').innerHTML = `<h2 style="word-break:break-all">${esc(curto(id))}</h2>
+  $('#fiscDetalhe').innerHTML = `<h2 style="word-break:break-all">${esc(curto(d.nome))}</h2>
     <table>${linhas.map(([k, v]) => `<tr><th style="position:static;width:40%">${k}</th><td>${v}</td></tr>`).join('')}</table>
     ${bloqueio}${avisos}
     <p>Fotos: ${st.length ? st.map(c => `<span class="chip vermelho">falta ${c}</span>`).join(' ') : '<span class="chip verde">completas</span>'}
@@ -112,8 +116,8 @@ async function mostrarFiscal(tipo, id) {
   const ok = $('#okFiscal');
   if (ok && !ok.disabled) ok.addEventListener('change', async () => {
     if (!ok.checked) return;
-    if (!confirm('Confirmar OK Fiscalização? Isto libera a medição do mês e envia o trecho para a Esteira de Cadastro.')) { ok.checked = false; return; }
-    await acao(() => api('/api/ok-fiscal', { alvo_tipo: tipo, alvo_id: id, data: hoje() }), 'OK Fiscalização registrado — lançado na medição.').catch(() => ok.checked = false);
+    if (!confirm('Confirmar o OK interno? Gera PROPOSTA de lançamentos na medição de TESTE e envia o trecho para a Esteira de Cadastro. Não é aprovação da Caesb.')) { ok.checked = false; return; }
+    await acao(() => api('/api/ok-fiscal', { alvo_tipo: tipo, alvo_id: id, data: hoje() }), 'OK interno registrado — proposta lançada na medição de TESTE.').catch(() => ok.checked = false);
     mostrarFiscal(tipo, id); recarregarCamadaMapa(); carregarMapa();
   });
   const rb = $('#recBtn');
@@ -121,7 +125,7 @@ async function mostrarFiscal(tipo, id) {
     await acao(() => api('/api/recomposicao', { alvo_tipo: tipo, alvo_id: id, tipo: $('#recTipo').value, quantidade: $('#recQtd').value, data: hoje() }), 'Recomposição lançada (gaveta 4).');
     mostrarFiscal(tipo, id);
   });
-  try { $('#mapaFrame').contentWindow.postMessage({ tipo: 'mc-focar', alvo_tipo: tipo, alvo_id: id }, location.origin); } catch (_) { /* mapa ausente */ }
+  try { $('#mapaFrame').contentWindow.postMessage({ tipo: 'mc-focar', alvo_tipo: tipo, alvo_id: d.nome }, location.origin); } catch (_) { /* mapa ausente */ }
 }
 function recarregarCamadaMapa() {
   try { $('#mapaFrame').contentWindow.postMessage({ tipo: 'mc-recarregar' }, location.origin); } catch (_) { /* mapa ausente */ }
@@ -198,14 +202,14 @@ fCk.addEventListener('submit', async ev => {
     alvo_tipo: alvo.dataset.tipo || null, alvo_id: alvo.dataset.id || null,
     funcionarios: $$('#ckPresentes input[data-t=f]:checked').map(i => +i.value), maquinas: $$('#ckPresentes input[data-t=m]:checked').map(i => +i.value),
     materiais: $$('#ckMateriais .linha').map(l => ({ material_id: $('[data-mat]', l).value, quantidade: +$('[data-qtd]', l).value || 0 })).filter(m => m.material_id && m.quantidade > 0) };
-  await acao(() => api('/api/checkin', corpo), `Check-in registrado — 📍 ${o.equipe_id} aqui hoje.`);
+  await acao(() => api('/api/checkin', corpo), `Check-in registrado — pin de programação da ${o.equipe_id} no mapa.`);
   $('#ckMateriais').innerHTML = ''; alvo.value = ''; carregarAlmox();
 });
 async function carregarCheckouts() {
   const cks = await api('/api/checkins');
   $('#checkoutLista').className = cks.length ? '' : 'vazio';
   $('#checkoutLista').innerHTML = cks.length ? cks.map(c => `<form class="form" data-co="${c.id}" style="border-bottom:1px solid var(--borda);padding-bottom:10px;margin-bottom:10px">
-    <div><b>${esc(c.equipe_id)}</b> · ${esc(c.data)} · ${c.alvo_id ? '📍 ' + esc(curto(c.alvo_id)) : esc(c.contingencia || '')}</div>
+    <div><b>${esc(c.equipe_id)}</b> · ${esc(c.data)} · ${c.alvo_id ? '📍 ' + esc(curto(c.alvo_nome)) : esc(c.contingencia || '')}</div>
     ${c.materiais.length ? `<table><thead><tr><th>Material</th><th class="n">Custódia</th><th>Aplicado</th><th>Sobra</th><th>Perda</th><th>Motivo</th></tr></thead><tbody>
       ${c.materiais.map(m => `<tr data-m="${esc(m.material_id)}"><td>${esc(m.material_id)}</td><td class="n">${nf(m.quantidade, 3)}</td>
       <td><input type="number" step="any" min="0" name="aplicado" value="${m.quantidade}"></td><td><input type="number" step="any" min="0" name="sobra" value="0"></td>
@@ -236,8 +240,8 @@ async function selecionarCampo(tipo, id) {
   $('#apMetros').style.display = $('#apEstacas').style.display = tipo === 'TRECHO' ? '' : 'none';
   const ex = d.execucao;
   $('#apAlvo').innerHTML = tipo === 'TRECHO'
-    ? `<div class="aviso info">${esc(curto(id))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · já executado ${nf(ex ? ex.metros_executados : 0)} m, reaterrado ${nf(ex ? ex.metros_reaterrados : 0)} m${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''}</div>`
-    : `<div class="aviso info">${esc(curto(id))}: ${esc(d.texto)}</div>`;
+    ? `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · já executado ${nf(ex ? ex.metros_executados : 0)} m, reaterrado ${nf(ex ? ex.metros_reaterrados : 0)} m${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''}</div>`
+    : `<div class="aviso info">${esc(curto(d.nome))}: ${esc(d.texto)}</div>`;
   $('#apQuant').innerHTML = '';
   renderFotos();
 }
@@ -302,7 +306,7 @@ $('#fFoto').addEventListener('submit', async ev => {
   if (!CAMPO) return toast('Selecione o trecho/nó no apontamento.', 'erro');
   const f = ev.target, arq = f.arquivo.files[0], cat = f.categoria.value;
   const pos = await gps(), quando = new Date(), dh = new Date(quando - quando.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
-  const b64 = await carimbar(arq, [RESUMO ? RESUMO.contrato : 'CT 10239/2026', `${curto(CAMPO.id)} · ${cat}`,
+  const b64 = await carimbar(arq, [RESUMO ? RESUMO.contrato : 'CT 10239/2026', `${curto(CAMPO.d.nome)} · ${cat}`,
     `${quando.toLocaleString('pt-BR')} · ${pos ? pos.lat.toFixed(6) + ', ' + pos.lon.toFixed(6) : 'GPS indisponível'}`]);
   await acao(() => api('/api/foto', { alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id, categoria: cat, conteudo_b64: b64, extensao: 'jpg', data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon }), 'Foto carimbada enviada.');
   f.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id);
@@ -321,7 +325,7 @@ async function carregarEsteira() {
   const lst = await api('/api/esteira');
   $('#kanban').innerHTML = Object.entries(RESUMO.etapas).map(([k, nome]) => {
     const cs = lst.filter(c => c.etapa === k);
-    return `<div class="coluna"><h4><span>${esc(nome)}</span><span class="chip">${cs.length}</span></h4>${cs.map(c => `<div class="cartao"><b>${esc(curto(c.trecho_id))}</b>
+    return `<div class="coluna"><h4><span>${esc(nome)}</span><span class="chip">${cs.length}</span></h4>${cs.map(c => `<div class="cartao"><b>${esc(curto(c.ponto))}</b>
       ${esc(c.frente_id)} · ${nf(c.extensao_m)} m ${c.revisao ? `<span class="chip laranja">Rev. ${c.revisao}</span>` : ''}
       ${c.empresa ? `<div>Empresa: ${esc(c.empresa)}</div>` : ''}${c.protocolo_gdoc ? `<div>GDOC: ${esc(c.protocolo_gdoc)}</div>` : ''}
       ${c.motivo_negativa ? `<div class="aviso problema">${esc(c.motivo_negativa)}</div>` : ''}${c.memorando_eset ? `<div>ESET: ${esc(c.memorando_eset)}</div>` : ''}
@@ -359,17 +363,18 @@ async function carregarMedicao() {
   $('#medExport').href = '/api/medicao/exportar?id=' + id;
   $('#medFechar').disabled = r.medicao.status !== 'ABERTA';
   $('#medResumo').className = '';
-  $('#medResumo').innerHTML = `<div class="kpis">${Object.entries(r.gavetas).map(([g, d]) => `<div class="kpi"><span>Gaveta ${g} — ${esc(d.nome)}</span><b>${brl(d.valor)}</b></div>`).join('')}</div>
+  $('#medResumo').innerHTML = (r.teste ? `<div class="aviso problema"><b>MEDIÇÃO DE TESTE — NÃO OFICIAL.</b> Regras financeiras, controle de acesso e exportação no modelo oficial (01ª MC) ainda não validados.</div>` : '') + `<div class="kpis">${Object.entries(r.gavetas).map(([g, d]) => `<div class="kpi"><span>Gaveta ${g} — ${esc(d.nome)}</span><b>${brl(d.valor)}</b></div>`).join('')}</div>
     <table style="max-width:560px;margin-bottom:12px">
-      <tr><td>Subtotal P0 (c/ BDI − K)</td><td class="n">${brl(r.valor_pi)}</td></tr>
+      <tr><td>Σ material / Σ serviço (ROUND por item, s/ BDI)</td><td class="n">${brl(r.totalizacao.material)} / ${brl(r.totalizacao.servico)}</td></tr>
+      <tr><td>Subtotal P0 = (Σ + BDI por classe) × (1 + K)</td><td class="n">${brl(r.valor_pi)}</td></tr>
       <tr><td>(−) Excedente sobre teto de subgrupo</td><td class="n">${brl(-r.excedente_teto)}</td></tr>
       <tr><td>Reajuste ${r.indice_reajuste != null ? nf(r.indice_reajuste * 100) + ' %' : ''}</td><td class="n">${brl(r.valor_reajuste)}</td></tr>
       <tr class="destaque"><td><b>Total da medição</b></td><td class="n"><b>${brl(r.valor_total)}</b></td></tr></table>
     ${r.aviso_reajuste ? `<div class="aviso problema">${esc(r.aviso_reajuste)}</div>` : ''}
-    ${r.sem_vinculo_bm ? `<div class="aviso info"><b>${r.sem_vinculo_bm}</b> lançamento(s) sem item de BM confirmado — entram com valor zero até a engenharia confirmar o vínculo (config/servicos_rede.json).</div>` : ''}
-    <div class="tabela"><table><thead><tr><th>Gav.</th><th>Trecho / conjunto / NF</th><th>Serviço</th><th>Item BM</th><th class="n">Quant.</th><th>Unid.</th><th class="n">Valor P0</th></tr></thead><tbody>
-    ${Object.entries(r.gavetas).flatMap(([g, d]) => d.lancamentos.map(l => `<tr><td>${g}</td><td>${esc(curto(l.alvo_id || ('NF ' + (l.nf_id || ''))))}</td><td>${esc(l.servico)}</td>
-      <td>${l.item ? esc(l.item) : '<span class="chip vermelho">sem item</span>'}</td><td class="n">${nf(l.quantidade, 3)}</td><td>${esc(l.unidade)}</td><td class="n">${brl(l.valor)}</td></tr>`)).join('') || '<tr><td colspan="7" class="vazio">Nada lançado nesta medição.</td></tr>'}
+    ${r.pendentes ? `<div class="aviso info"><b>${r.pendentes}</b> lançamento(s) PENDENTE(S) — fora do valor até haver item/regra com fonte (não é R$ 0 contratual).</div>` : ''}
+    <div class="tabela"><table><thead><tr><th>Gav.</th><th>Trecho / atividade / NF</th><th>Serviço</th><th>Item BM</th><th class="n">Quant.</th><th>Unid.</th><th>Status</th></tr></thead><tbody>
+    ${Object.entries(r.gavetas).flatMap(([g, d]) => d.lancamentos.map(l => `<tr><td>${g}</td><td>${esc(curto(l.alvo_nome || ('NF ' + (l.nf_id || ''))))}</td><td>${esc(l.servico)}</td>
+      <td>${l.item ? esc(l.item) : '<span class="chip vermelho">sem item</span>'}</td><td class="n">${nf(l.quantidade, 3)}</td><td>${esc(l.unidade)}</td><td>${l.status === 'PENDENTE' ? `<span class="chip vermelho" title="${esc(l.motivo || '')}">pendente</span> <small>${esc(l.motivo || '')}</small>` : '<span class="chip verde">proposto</span>'}</td></tr>`)).join('') || '<tr><td colspan="7" class="vazio">Nada lançado nesta medição.</td></tr>'}
     </tbody></table></div>`;
   $('#medTetos').className = r.tetos.length ? '' : 'vazio';
   $('#medTetos').innerHTML = r.tetos.length ? `<table><thead><tr><th>Subgrupo</th><th class="n">Teto</th><th class="n">Anterior</th><th class="n">Atual</th><th class="n">Excedente</th></tr></thead><tbody>

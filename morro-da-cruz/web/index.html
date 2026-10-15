@@ -54,7 +54,7 @@
             <div><i style="border-top-style:dotted;border-color:#9AA3AE"></i>Não executado</div>
             <div><i style="border-top-style:dashed;border-color:#F08C00"></i>Em execução / vala aberta / faltando foto</div>
             <div><i style="border-color:#D62828"></i>Concluído no mês (reaterrado + fotos) — aguardando validação</div>
-            <div><i style="border-color:#0F9D58"></i>[✓] OK Fiscalização</div>
+            <div><i style="border-color:#0F9D58"></i>[✓] OK interno (Ankara) — não é aprovação Caesb</div>
             <div><i style="border-color:#E8B10A"></i>Medido em medições anteriores</div>
           </div>
         </div>
@@ -115,7 +115,7 @@
           <label>Material (BM)<select name="material_id" class="selMaterialAnkara" required></select></label>
           <div class="linha"><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
             <label>Valor unit. NF<input type="number" step="any" min="0" name="valor_unitario"></label></div>
-          <label class="check"><input type="checkbox" name="faturamento_etapas"> Faturamento por etapas (Seção 7 SL0327 — 80 % na entrega)</label>
+          <label class="check"><input type="checkbox" name="faturamento_etapas"> Pedir faturamento por etapas (só registra a intenção — regime não aplicado até aprovar a matriz)</label>
           <div class="acoes"><button class="btn prim">Registrar (entra em quarentena)</button></div>
         </form>
         <div id="nfLista" style="margin-top:12px"></div>
@@ -215,8 +215,10 @@
       </div>
       <div style="display:grid;gap:16px">
         <div class="painel">
-          <h3>Nova medição</h3>
+          <h3>Nova medição de TESTE</h3>
+          <p class="vazio" style="margin:0 0 8px">Medição oficial bloqueada até validar regras financeiras, controle de acesso e exportação no modelo oficial.</p>
           <form id="fMed">
+            <input type="hidden" name="tipo" value="TESTE">
             <div class="linha"><label>Nº<input type="number" min="1" name="numero" required></label>
               <label>Início<input type="date" name="periodo_ini" required></label>
               <label>Fim<input type="date" name="periodo_fim" required></label></div>

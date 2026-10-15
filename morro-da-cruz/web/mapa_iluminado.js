@@ -65,7 +65,7 @@
       const g = document.createElementNS(NS, 'g'); g.setAttribute('class', 'mc-pin');
       g.setAttribute('transform', `translate(${x} ${y})`);
       g.innerHTML = `<path d="M0 0 C -6 -10 -9 -14 -9 -19 A 9 9 0 1 1 9 -19 C 9 -14 6 -10 0 0 Z" fill="#E85D22" stroke="#fff" stroke-width="1.5"/>
-        <circle cy="-19" r="3.5" fill="#fff"/><text y="-32" text-anchor="middle">📍 Equipe ${p.equipe} Aqui Hoje</text>`;
+        <circle cy="-19" r="3.5" fill="#fff"/><text y="-32" text-anchor="middle">📍 Equipe ${p.equipe} · programado ${p.data || ''}</text>`;
       svg.appendChild(g);
     });
   }

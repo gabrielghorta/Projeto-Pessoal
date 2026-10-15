@@ -15,8 +15,10 @@ class TestUnidades(unittest.TestCase):
         self.assertEqual(dict(tot), {"UN": 17, "M": 0.71})
         self.assertEqual(R.formatar_por_unidade(tot), "17 UN · 0,71 m")
 
-    def test_alias_de_unidade(self):
-        self.assertEqual(dict(R.somar_por_unidade([("und", 2), ("PÇ", 1), ("ml", 1.5)])), {"UN": 3, "M": 1.5})
+    def test_sem_equivalencia_entre_unidades(self):
+        # só padroniza a grafia; UN e PÇ continuam distintos até decisão documentada
+        self.assertEqual(dict(R.somar_por_unidade([("un", 2), ("pç", 1), ("UN", 1), ("m", 1.5)])),
+                         {"UN": 3, "PÇ": 1, "M": 1.5})
 
     def test_sem_unidade_bloqueia(self):
         with self.assertRaises(R.RegraViolada):
@@ -48,6 +50,11 @@ class TestPerfil(unittest.TestCase):
         q = {x["servico"]: x["previsto"] for x in R.quantidades_previstas_trecho(self.trecho, {"AR": 2.0}, 5, self.mapa)}
         self.assertEqual(q, {"ASSENTAMENTO": 5, "AREIA": 1.0, "SOLDA": 1})
 
+    def test_mnd_sem_perfil_de_vala(self):
+        mnd = {**self.trecho, "metodologia": "MND", "profundidade_m": 0.0, "largura_m": 0.0}
+        q = R.quantidades_previstas_trecho(mnd, {"AR": 0.0}, 5, self.mapa)
+        self.assertEqual(q, [{"servico": "ASSENTAMENTO", "unidade": "M", "previsto": 5.0}])
+
     def test_soldas_teto(self):
         self.assertEqual([R.qtd_soldas(x) for x in (0, 6, 6.01, 12, 76.55)], [0, 1, 2, 2, 13])
 
@@ -57,10 +64,10 @@ class TestFotos(unittest.TestCase):
         self.assertEqual(R.fotos_pendentes("TRECHO", [], False), ["SINALIZACAO", "EXECUCAO", "CONCLUIDO"])
 
     def test_no_herda_sinalizacao(self):
-        self.assertEqual(R.fotos_pendentes("CONJUNTO", [], True), ["EXECUCAO", "CONCLUIDO"])
+        self.assertEqual(R.fotos_pendentes("ATIVIDADE", [], True), ["EXECUCAO", "CONCLUIDO"])
 
     def test_no_em_area_nova_exige_tres(self):
-        self.assertEqual(R.fotos_pendentes("CONJUNTO", ["EXECUCAO"], False), ["SINALIZACAO", "CONCLUIDO"])
+        self.assertEqual(R.fotos_pendentes("ATIVIDADE", ["EXECUCAO"], False), ["SINALIZACAO", "CONCLUIDO"])
 
 
 class TestEsteira(unittest.TestCase):
@@ -88,10 +95,26 @@ class TestEsteira(unittest.TestCase):
 class TestMedicao(unittest.TestCase):
     IND = [{"vigencia_ini": "2026-01-31", "vigencia_fim": "2027-01-30", "indice": 0.0329}]
 
-    def test_valor_bm_bdi_k(self):
-        # 76,55 m × 0,78 × (1 + 21,48 %) × (1 − 14,04 %)
-        self.assertAlmostEqual(R.valor_bm(76.55, 0.78, "SERVIÇO", 0.1528, 0.2148, -0.1404), 62.35, places=2)
-        self.assertAlmostEqual(R.valor_bm(10, 100, "MATERIAL", 0.1528, 0.2148, -0.1404), 990.95, places=2)
+    def test_totalizar_bm_ordem_das_celulas(self):
+        # medição: ROUND(q×p; 2) por item; BDI por classe; K no total (−1 + (1 − 14,04 %))
+        t = R.totalizar_bm([("SERVIÇO", 76.55, 0.78)], 0.1528, 0.2148, -1 + (1 - 0.1404))
+        self.assertEqual(t["servico"], 59.71)
+        self.assertAlmostEqual(t["total_exato"], 59.71 * 1.2148 * 0.8596, places=9)
+        self.assertEqual(t["total"], 62.35)
+
+    def test_round_do_excel_no_meio(self):
+        # 6.026,69 × 47,50 = 286.267,775: Excel arredonda para 286.267,78 (o float do Python daria ,77)
+        self.assertEqual(str(R.produto_excel(6026.69, 47.5)), "286267.78")
+        self.assertEqual(R.totalizar_bm([("SERVIÇO", 6026.69, 47.5)], 0, 0, 0)["servico"], 286267.78)
+
+    def test_modo_contrato_arredonda_so_a_classe(self):
+        itens = [("MATERIAL", 1, 0.005), ("MATERIAL", 1, 0.005)]
+        self.assertEqual(R.totalizar_bm(itens, 0, 0, 0, modo="medicao")["material"], 0.02)   # 0,01 + 0,01
+        self.assertEqual(R.totalizar_bm(itens, 0, 0, 0, modo="contrato")["material"], 0.01)  # ROUND(0,01)
+
+    def test_classes_separadas_no_bdi(self):
+        t = R.totalizar_bm([("MATERIAL", 10, 100), ("SERVIÇO", 10, 100)], 0.1528, 0.2148, -0.1404)
+        self.assertAlmostEqual(t["total_exato"], (1000 * 1.1528 + 1000 * 1.2148) * 0.8596, places=6)
 
     def test_reajuste_out_nov_dez_2026(self):
         for ini, fim in (("2026-10-01", "2026-10-31"), ("2026-11-01", "2026-11-30"), ("2026-12-01", "2026-12-31")):

@@ -1,0 +1,53 @@
+{
+  "_leia": "Decisões posteriores aos avisos históricos (AA/AB da 06.2 e relatórios). A importação só INSERE decisões novas; nunca altera ou apaga uma decisão já registrada no banco. Para mudar uma decisão, registre outra com novo ID e evidência.",
+  "decisoes": [
+    {
+      "id": "DEC-0001",
+      "assunto": "DF-05 nas pranchas 16 e 19",
+      "objeto_tipo": "ELEMENTO",
+      "objeto_ref": "DF-05",
+      "status": "ENCERRADA",
+      "decisao": "Representação sobreposta nas duas pranchas; é um único dispositivo físico. Não reabrir por suposta duplicidade.",
+      "responsavel": "Usuário (Ankara)",
+      "evidencia": "CONTEXTO_COMPARTILHADO_MORRO_DA_CRUZ_REV01_15-10-2026.md, §7 (atualizações de 15/10)",
+      "data": "2026-10-15",
+      "padrao_aviso": "DF-?05|duplic|sobrepos"
+    },
+    {
+      "id": "DEC-0002",
+      "assunto": "Comparação histórica 521 × 488 tês (saldo 33)",
+      "objeto_tipo": "GERAL",
+      "objeto_ref": null,
+      "status": "ENCERRADA",
+      "decisao": "Comparação histórica da REV00; não comprova peças faltantes nem fundamenta compra adicional.",
+      "responsavel": "Usuário (Ankara)",
+      "evidencia": "CONTEXTO_COMPARTILHADO_MORRO_DA_CRUZ_REV01_15-10-2026.md, §7",
+      "data": "2026-10-15",
+      "padrao_aviso": "521|488|saldo 33|33 tês"
+    },
+    {
+      "id": "DEC-0003",
+      "assunto": "Dois tês sem chamada (PB05/PB12)",
+      "objeto_tipo": "GERAL",
+      "objeto_ref": null,
+      "status": "FORA_DO_ESCOPO_ATE_RESPOSTA",
+      "decisao": "Permanecem fora do levantamento até a resposta da pergunta F10.",
+      "responsavel": "Usuário (Ankara)",
+      "evidencia": "CONTEXTO_COMPARTILHADO_MORRO_DA_CRUZ_REV01_15-10-2026.md, §5 e §9",
+      "data": "2026-10-15",
+      "padrao_aviso": "sem chamada|F10"
+    },
+    {
+      "id": "DEC-0004",
+      "assunto": "MV-11, VTF-12 e VTF-16 sem locação confirmada",
+      "objeto_tipo": "GERAL",
+      "objeto_ref": null,
+      "status": "EM_ANALISE",
+      "decisao": "Manter sem coordenada, zona ou trecho inventados até a locação confirmada; listar na bandeja sem posição.",
+      "responsavel": "Usuário (Ankara)",
+      "evidencia": "CONTEXTO_COMPARTILHADO_MORRO_DA_CRUZ_REV01_15-10-2026.md, §5",
+      "data": "2026-10-15",
+      "padrao_aviso": "MV-11|VTF-12|VTF-16"
+    }
+  ]
+}
