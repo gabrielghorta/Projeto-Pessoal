@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morro da Cruz — Gestão de Obra</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="topo">
+  <div class="marca">
+    <div class="ankara" aria-label="Ankara Engenharia">
+      <svg width="34" height="30" viewBox="0 0 34 30" aria-hidden="true">
+        <path d="M17 1 L33 29 H24.5 L17 15.5 L9.5 29 H1 Z" fill="#E85D22"/>
+        <path d="M13.2 29 L17 22 L20.8 29 Z" fill="#F5A623"/>
+      </svg>
+      <div><b>ANKARA</b><small>ENGENHARIA</small></div>
+    </div>
+    <div class="obra"><strong id="obraNome">Implantação de Redes de Distribuição — Morro da Cruz, São Sebastião/DF</strong><span id="obraContrato">Contrato Caesb × Ankara nº 10239/2026 · LC 014/2026</span></div>
+    <div class="caesb" aria-label="Caesb">Caesb</div>
+  </div>
+  <nav class="abas" role="tablist">
+    <button role="tab" data-aba="mapa" aria-selected="true">🗺️ 1. Mapa Iluminado &amp; Fiscalização</button>
+    <button role="tab" data-aba="almox">📦 2. Almoxarifado &amp; Equipes</button>
+    <button role="tab" data-aba="campo">📲 3. Lançamento de Campo &amp; Fotos</button>
+    <button role="tab" data-aba="esteira">📐 4. Esteira de Cadastro (GDOC)</button>
+    <button role="tab" data-aba="medicao">💰 5. Medição (BM &amp; Memória de Cálculo)</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ======================================================= 1. MAPA -->
+  <section class="aba ativa" id="aba-mapa">
+    <div class="kpis" id="kpis"></div>
+    <div class="grade-2">
+      <div class="mapa-quadro"><iframe id="mapaFrame" title="Plantas REV02 — Mapa Iluminado" src="about:blank"></iframe></div>
+      <div style="display:grid;gap:16px">
+        <div class="painel">
+          <h3>Fiscalização</h3>
+          <div class="busca"><input id="fiscBusca" placeholder="Trecho (TR001), nó (NÓ1.8) ou caixa (DF-33)…" autocomplete="off"><ul hidden></ul></div>
+          <div id="fiscDetalhe" class="vazio">Selecione um trecho ou nó no mapa ou pela busca.</div>
+        </div>
+        <div class="painel">
+          <h3>Equipes em campo hoje</h3>
+          <div id="pins" class="vazio">Nenhum check-in aberto hoje.</div>
+        </div>
+        <div class="painel">
+          <h3>Bandeja — sem posição no projeto</h3>
+          <div id="semPosicao"></div>
+        </div>
+        <div class="painel">
+          <h3>Legenda — Mapa Iluminado</h3>
+          <div class="legenda">
+            <div><i style="border-top-style:dotted;border-color:#9AA3AE"></i>Não executado</div>
+            <div><i style="border-top-style:dashed;border-color:#F08C00"></i>Em execução / vala aberta / faltando foto</div>
+            <div><i style="border-color:#D62828"></i>Concluído no mês (reaterrado + fotos) — aguardando validação</div>
+            <div><i style="border-color:#0F9D58"></i>[✓] OK Fiscalização</div>
+            <div><i style="border-color:#E8B10A"></i>Medido em medições anteriores</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= 2. ALMOXARIFADO -->
+  <section class="aba" id="aba-almox">
+    <div class="grade">
+      <div class="painel">
+        <h3>☀️ Check-in da manhã</h3>
+        <form id="fCheckin">
+          <div class="linha">
+            <label>Data<input type="date" name="data" required></label>
+            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
+          </div>
+          <label>Presentes (gera o histograma)<div class="checks" id="ckPresentes"><span class="vazio">Escolha a equipe.</span></div></label>
+          <label>Trecho / nó que vai atacar hoje
+            <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div>
+          </label>
+          <label>…ou contingência (falta de tubo/conexão)<select name="contingencia"><option value="">—</option></select></label>
+          <label>Materiais retirados do almoxarifado</label>
+          <div id="ckMateriais" class="form"></div>
+          <div class="acoes"><button type="button" class="btn" id="ckAddMat">+ material</button><button class="btn prim">Registrar check-in e acender pin</button></div>
+        </form>
+      </div>
+      <div class="painel">
+        <h3>🌙 Check-out do fim do dia</h3>
+        <div id="checkoutLista" class="vazio">Nenhum check-in aberto.</div>
+      </div>
+      <div class="painel">
+        <h3>Entradas no almoxarifado</h3>
+        <form id="fMov">
+          <div class="linha">
+            <label>Data<input type="date" name="data" required></label>
+            <label>Tipo<select name="tipo">
+              <option value="ROMANEIO_CAESB">Romaneio Caesb (retirada de tubo)</option>
+              <option value="EMPRESTIMO_OUTRA_OBRA">Tubo Caesb emprestado p/ outra obra</option>
+              <option value="ENTRADA_CONSUMO">Caminhão / nota — consumo diário</option>
+              <option value="BAIXA_TEORICA">Baixa teórica (volume geométrico)</option>
+            </select></label>
+          </div>
+          <label>Material<select name="material_id" class="selMaterial" required></select></label>
+          <div class="linha"><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
+            <label>Documento<input name="documento" placeholder="nº romaneio / nota"></label></div>
+          <div class="acoes"><button class="btn prim">Lançar</button></div>
+        </form>
+      </div>
+      <div class="painel">
+        <h3>Nota fiscal — material Ankara</h3>
+        <form id="fNF">
+          <div class="linha">
+            <label>Nº NF-e<input name="numero" required></label>
+            <label>Entrega<input type="date" name="data_entrega" required></label>
+          </div>
+          <div class="linha"><label>Fornecedor<input name="fornecedor"></label><label>Chave NF-e<input name="chave_nfe"></label></div>
+          <label>Material (BM)<select name="material_id" class="selMaterialAnkara" required></select></label>
+          <div class="linha"><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
+            <label>Valor unit. NF<input type="number" step="any" min="0" name="valor_unitario"></label></div>
+          <label class="check"><input type="checkbox" name="faturamento_etapas"> Faturamento por etapas (Seção 7 SL0327 — 80 % na entrega)</label>
+          <div class="acoes"><button class="btn prim">Registrar (entra em quarentena)</button></div>
+        </form>
+        <div id="nfLista" style="margin-top:12px"></div>
+      </div>
+      <div class="painel" style="grid-column:1/-1">
+        <h3>Tabela de compatibilização de tubos Caesb</h3>
+        <div class="tabela" id="compat"></div>
+      </div>
+      <div class="painel" style="grid-column:1/-1">
+        <h3>Estoque</h3>
+        <div class="acoes" style="margin-bottom:8px">
+          <select id="estFiltro"><option value="">Todos</option><option>CAESB</option><option>ANKARA</option><option>CONSUMO</option></select>
+          <label class="check"><input type="checkbox" id="estSaldo" checked> só com movimento</label>
+        </div>
+        <div class="tabela" id="estoque"></div>
+      </div>
+      <div class="painel">
+        <h3>Equipe — funcionários e máquinas</h3>
+        <form id="fRecurso">
+          <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
+          <div class="linha"><label>Funcionário<input name="nome"></label><label>Função<input name="funcao"></label></div>
+          <label>Máquina<input name="descricao" placeholder="Retroescavadeira, compactador…"></label>
+          <div class="acoes"><button class="btn">Adicionar</button></div>
+        </form>
+      </div>
+      <div class="painel">
+        <h3>Histograma diário</h3>
+        <div class="linha"><label>De<input type="date" id="hIni"></label><label>Até<input type="date" id="hFim"></label></div>
+        <div id="histograma" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= 3. CAMPO -->
+  <section class="aba" id="aba-campo">
+    <div class="grade-2">
+      <div class="painel">
+        <h3>Apontamento</h3>
+        <form id="fApont">
+          <div class="linha">
+            <label>Data<input type="date" name="data" required></label>
+            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
+          </div>
+          <div class="linha">
+            <label>Clima — manhã<select name="MANHA" class="selClima" required></select></label>
+            <label>Clima — tarde<select name="TARDE" class="selClima" required></select></label>
+          </div>
+          <label>Trecho / nó / caixa
+            <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div>
+          </label>
+          <div id="apAlvo"></div>
+          <div class="linha" id="apMetros">
+            <label>Metros executados (vala aberta + tubo)<input type="number" step="any" min="0" name="metros_executados"></label>
+            <label>Metros reaterrados<input type="number" step="any" min="0" name="metros_reaterrados"></label>
+          </div>
+          <label class="check"><input type="checkbox" name="concluido_100"> 100 % concluído (executado e reaterrado)</label>
+          <div class="linha" id="apEstacas">
+            <label>Estaca inicial (NS)<input name="estaca_ini"></label>
+            <label>Estaca final (NS)<input name="estaca_fim"></label>
+          </div>
+          <div class="acoes"><button type="button" class="btn azul" id="apPrevisto">Calcular previsto</button></div>
+          <div id="apQuant"></div>
+        </form>
+      </div>
+      <div class="painel">
+        <h3>Fotos obrigatórias</h3>
+        <div id="fotoPend" class="vazio">Selecione o trecho/nó.</div>
+        <form id="fFoto" style="margin-top:10px">
+          <label>Categoria<select name="categoria">
+            <option value="SINALIZACAO">1. Placa de sinalização / segurança da via</option>
+            <option value="EXECUCAO">2. Executando o serviço / vala aberta</option>
+            <option value="CONCLUIDO">3. Serviço concluído / reaterrado</option>
+          </select></label>
+          <label>Foto<input type="file" name="arquivo" accept="image/*" capture="environment" required></label>
+          <p class="vazio" style="margin:0">O carimbo (contrato, ID, data/hora e GPS) é gravado na própria imagem.</p>
+          <div class="acoes"><button class="btn prim">Enviar foto carimbada</button></div>
+        </form>
+        <div class="fotos" id="fotoLista" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= 4. ESTEIRA -->
+  <section class="aba" id="aba-esteira">
+    <div class="kanban" id="kanban"></div>
+  </section>
+
+  <!-- ======================================================= 5. MEDIÇÃO -->
+  <section class="aba" id="aba-medicao">
+    <div class="grade-2">
+      <div class="painel">
+        <div class="acoes" style="justify-content:space-between;margin-bottom:12px">
+          <div class="acoes"><label>Medição<select id="medSel"></select></label></div>
+          <div class="acoes"><a class="btn azul" id="medExport" href="#">⬇ Exportar .xlsx</a><button class="btn" id="medFechar">Fechar medição</button></div>
+        </div>
+        <div id="medResumo" class="vazio">Crie a medição do mês ao lado.</div>
+      </div>
+      <div style="display:grid;gap:16px">
+        <div class="painel">
+          <h3>Nova medição</h3>
+          <form id="fMed">
+            <div class="linha"><label>Nº<input type="number" min="1" name="numero" required></label>
+              <label>Início<input type="date" name="periodo_ini" required></label>
+              <label>Fim<input type="date" name="periodo_fim" required></label></div>
+            <div class="acoes"><button class="btn prim">Abrir medição</button></div>
+          </form>
+        </div>
+        <div class="painel"><h3>Teto por subgrupo (BM Vertical)</h3><div id="medTetos" class="vazio">—</div></div>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<script src="/app.js"></script>
+</body>
+</html>
