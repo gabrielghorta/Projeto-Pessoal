@@ -71,6 +71,9 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - disponível = saldo físico − reservas;
   - a reserva é da equipe e do dia;
   - o que fica com a equipe é declarado no check-out e volta no dia seguinte;
+  - uma sessão (check-in) aberta por equipe, fechamentos em ordem, sem check-in retroativo;
+  - fechamento encerrado só se corrige por retificação (mesma quantidade, mesma data, histórico preservado);
+  - nenhum estorno deixa reserva sem cobertura (recusa ou ajuste explícito registrado);
   - empréstimo só com documento, responsável e autorização;
   - correção só por estorno (com motivo, sem apagar);
   - baixa teórica não reduz o saldo físico.
@@ -95,6 +98,6 @@ O servidor abre `mapa/PLANTAS_..._REV02_EQUIPES.html` **sem alterá-lo** e injet
 - **Reajuste:** frações elegíveis e o pedido da contratada.
 - **Próximas etapas:**
   - soldas, intervalos por estaca e foto original com hash (etapa 4);
-  - NF com pedido e aceite parcial (complemento da etapa 3);
+  - NF com pedido/compra e aceite parcial (complemento da etapa 3 — o fluxo integral de almoxarifado ainda não está concluído);
   - exportação no modelo oficial (`01ª MC`);
   - usuários, perfis e acesso de campo.

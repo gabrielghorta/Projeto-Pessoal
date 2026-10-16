@@ -108,8 +108,13 @@ def r_movimentos(q, c):
 
 
 def p_estorno(b, c):
-    S.estornar(c, int(b["movimento_id"]), b.get("motivo"), b.get("responsavel"))
+    S.estornar(c, int(b["movimento_id"]), b.get("motivo"), b.get("responsavel"), bool(b.get("ajustar_reservas")))
     return {"ok": True}
+
+
+def p_retificar(b, c):
+    return {"id": S.retificar_fechamento(c, int(b["movimento_id"]), b.get("destino") or {}, b.get("motivo"),
+                                         b.get("responsavel"), bool(b.get("ajustar_reservas")))}
 
 
 def r_reservas(q, c):
@@ -227,7 +232,7 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
-        "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/reserva": p_reserva,
+        "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar, "/api/reserva": p_reserva,
         "/api/reserva/cancelar": p_reserva_cancelar}
 
 

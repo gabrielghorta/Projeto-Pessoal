@@ -171,8 +171,126 @@ class TestEstorno(BaseEstoque):
             S.estornar(self.c, mid, "x", "y")
 
 
-class TestMigracaoV4(Base):
-    def test_v2_com_baixa_teorica_migra_para_v4_sem_perda(self):
+# ====================================================================== auditoria de 16/10 (commit fae5818)
+class TestSequenciaDosFechamentos(BaseEstoque):
+    """Achado 1: o fechamento de um dia não pode consumir material retirado em dia posterior."""
+
+    def test_reproducao_segundo_checkin_com_o_anterior_aberto_e_recusado(self):
+        self.entrada(50)
+        k1 = S.checkin(self.c, D1, "Zona01", "TRECHO", TR001, materiais=[{"material_id": TUBO, "quantidade": 20}])
+        with self.assertRaisesRegex(S.RegraViolada, "check-in aberto em 2026-10-15"):
+            S.checkin(self.c, D2, "Zona01", "TRECHO", TR001, materiais=[{"material_id": TUBO, "quantidade": 5}])
+        with self.assertRaisesRegex(S.RegraViolada, "fechar a custódia"):
+            S.checkout(self.c, k1, [{"material_id": TUBO, "aplicado": 25}])          # 25 > 20 retirados até 15/10
+        S.checkout(self.c, k1, [{"material_id": TUBO, "aplicado": 20}])
+        S.checkin(self.c, D2, "Zona01", "TRECHO", TR001, materiais=[{"material_id": TUBO, "quantidade": 5}])
+        self.assertEqual(self.q("SELECT data, quantidade FROM movimentos WHERE tipo='APLICADO'"), [(D1, 20.0)])
+
+    def test_checkin_retroativo_e_recusado(self):
+        self.entrada(50)
+        k = S.checkin(self.c, D2, "Zona01", "TRECHO", TR001, materiais=[{"material_id": TUBO, "quantidade": 10}])
+        S.checkout(self.c, k, [{"material_id": TUBO, "aplicado": 4, "fica_com_equipe": 6}])
+        with self.assertRaisesRegex(S.RegraViolada, "retroativo"):
+            S.checkin(self.c, D1, "Zona01", "TRECHO", TR001)                         # 15/10 depois de 16/10
+        S.checkin(self.c, D1, "Zona02", "TRECHO", "Zona02_PB04_Rede_TR036")          # outra equipe: independente
+
+    def test_legado_com_duas_sessoes_abertas_fecha_em_ordem_e_sem_material_futuro(self):
+        self.entrada(50)
+        k1 = S.checkin(self.c, D1, "Zona01", "TRECHO", TR001, materiais=[{"material_id": TUBO, "quantidade": 20}])
+        # banco legado (antes desta correção): segunda sessão aberta com mais 5 m em 16/10
+        k2 = self.c.execute("INSERT INTO checkins(data,equipe_id,alvo_tipo,alvo_id) VALUES (?, 'Zona01', 'TRECHO', ?)",
+                            (D2, self.tid(TR001))).lastrowid
+        self.c.execute("INSERT INTO movimentos(data,material_id,tipo,quantidade,equipe_id,checkin_id) VALUES (?,?,'CUSTODIA',5,'Zona01',?)",
+                       (D2, TUBO, k2))
+        m1 = S.checkins_abertos(self.c, D1)[0]["materiais"][0]
+        self.assertEqual((m1["quantidade"], m1["trazido"]), (20, 0))                    # não mostra os 5 m de 16/10
+        with self.assertRaisesRegex(S.RegraViolada, "Feche antes o check-in de 2026-10-15"):
+            S.checkout(self.c, k2, [{"material_id": TUBO, "aplicado": 25}])
+        with self.assertRaisesRegex(S.RegraViolada, "fechar a custódia da equipe \\(20\\)"):
+            S.checkout(self.c, k1, [{"material_id": TUBO, "aplicado": 25}])
+        S.checkout(self.c, k1, [{"material_id": TUBO, "aplicado": 20}])
+        S.checkout(self.c, k2, [{"material_id": TUBO, "aplicado": 5}])
+        self.assertEqual(self.q("SELECT data, quantidade FROM movimentos WHERE tipo='APLICADO' ORDER BY id"),
+                         [(D1, 20.0), (D2, 5.0)])
+
+
+class TestEstornoComReservas(BaseEstoque):
+    """Achado 2: estorno não pode deixar reserva ativa sem cobertura."""
+
+    def test_reproducao_estorno_da_entrada_com_reserva_e_recusado_sem_efeito(self):
+        self.entrada(100)
+        r = S.reservar(self.c, D2, "Zona01", TUBO, 80)
+        mid = self.q("SELECT id FROM movimentos")[0][0]
+        with self.assertRaisesRegex(S.RegraViolada, "reservas ativas sem cobertura"):
+            S.estornar(self.c, mid, "entrada lançada em duplicidade", "almoxarife")
+        self.assertEqual(self.q("SELECT COUNT(*) FROM estornos")[0][0], 0)                 # transação desfeita
+        self.assertEqual(self.q("SELECT status, quantidade FROM reservas WHERE id=?", r), [("ATIVA", 80.0)])
+        self.assertEqual((self.saldo(), S.disponivel(self.c, TUBO)), (100, 20))
+
+    def test_estorno_com_ajuste_explicito_reduz_as_reservas_mais_recentes(self):
+        self.entrada(100)
+        self.entrada(30)
+        r1 = S.reservar(self.c, D2, "Zona01", TUBO, 60)
+        r2 = S.reservar(self.c, D2, "Zona02", TUBO, 50)
+        mid = self.q("SELECT id FROM movimentos ORDER BY id")[0][0]                       # estorna a entrada de 100
+        S.estornar(self.c, mid, "entrada lançada em duplicidade", "almoxarife", ajustar_reservas=True)
+        self.assertEqual((self.saldo(), S.disponivel(self.c, TUBO)), (30, 0))              # nunca negativo
+        self.assertEqual(self.q("SELECT id, status, quantidade FROM reservas ORDER BY id"),
+                         [(r1, "ATIVA", 30.0), (r2, "CANCELADA", 50.0)])
+        self.assertEqual(self.q("SELECT reserva_id, de, para, movimento_id FROM reserva_ajustes ORDER BY id"),
+                         [(r2, 50.0, 0.0, mid), (r1, 60.0, 30.0, mid)])
+
+
+class TestRetificacaoDoFechamento(BaseEstoque):
+    """Achado 3: corrigir aplicação depois do check-out sem simular nova visita e sem apagar o histórico."""
+
+    def _fechado(self):
+        self.entrada(50)
+        k = S.checkin(self.c, D1, "Zona01", "TRECHO", TR001, materiais=[{"material_id": TUBO, "quantidade": 20}])
+        S.checkout(self.c, k, [{"material_id": TUBO, "aplicado": 20}])
+        return k, self.q("SELECT id FROM movimentos WHERE tipo='APLICADO'")[0][0]
+
+    def test_estorno_simples_do_fechamento_aponta_para_a_retificacao(self):
+        _, ap = self._fechado()
+        with self.assertRaisesRegex(S.RegraViolada, "retificação do fechamento"):
+            S.estornar(self.c, ap, "aplicou 15", "almoxarife")
+
+    def test_retificacao_redistribui_no_mesmo_dia_e_preserva_o_historico(self):
+        k, ap = self._fechado()
+        with self.assertRaisesRegex(S.RegraViolada, "mesma quantidade"):
+            S.retificar_fechamento(self.c, ap, {"aplicado": 15}, "contagem", "encarregado")
+        rid = S.retificar_fechamento(self.c, ap, {"aplicado": 15, "sobra": 2, "fica_com_equipe": 3},
+                                     "aplicou 15; 2 devolvidos; 3 ficaram", "encarregado")
+        self.assertEqual(self.q("SELECT encerrado FROM checkins WHERE id=?", k), [(1,)])           # não reabre
+        self.assertTrue(self.q("SELECT motivo FROM estornos WHERE movimento_id=?", ap)[0][0].startswith(f"retificação #{rid}:"))
+        self.assertEqual(self.q("SELECT tipo, quantidade, data, checkin_id, retificacao_id FROM movimentos "
+                                "WHERE retificacao_id IS NOT NULL ORDER BY tipo"),
+                         [("APLICADO", 15.0, D1, k, rid), ("SOBRA", 2.0, D1, k, rid)])
+        self.assertEqual(self.q("SELECT COUNT(*) FROM movimentos WHERE id=?", ap), [(1,)])           # original preservado
+        self.assertEqual((self.saldo(), S.custodia_equipe(self.c, "Zona01", TUBO)), (32, 3))
+        self.assertEqual(self.q("SELECT quantidade FROM custodia_declarada WHERE checkin_id=?", k), [(3.0,)])
+        k2 = S.checkin(self.c, D2, "Zona01", "TRECHO", TR001)                                      # os 3 voltam como trazidos
+        self.assertEqual(S.checkins_abertos(self.c, D2)[0]["materiais"][0]["trazido"], 3)
+        S.checkout(self.c, k2, [{"material_id": TUBO, "aplicado": 3}])
+        with self.assertRaisesRegex(S.RegraViolada, "já estornado"):
+            S.retificar_fechamento(self.c, ap, {"aplicado": 20}, "de novo", "encarregado")
+
+    def test_retificacao_nao_deixa_reserva_descoberta(self):
+        self.entrada(50)
+        k = S.checkin(self.c, D1, "Zona01", "TRECHO", TR001, materiais=[{"material_id": TUBO, "quantidade": 20}])
+        S.checkout(self.c, k, [{"material_id": TUBO, "aplicado": 10, "sobra": 10}])
+        S.reservar(self.c, D2, "Zona02", TUBO, 40)                                                 # disponível 0
+        so = self.q("SELECT id FROM movimentos WHERE tipo='SOBRA'")[0][0]
+        with self.assertRaisesRegex(S.RegraViolada, "sem cobertura"):
+            S.retificar_fechamento(self.c, so, {"aplicado": 10}, "não houve sobra", "encarregado")
+        self.assertEqual(self.q("SELECT COUNT(*) FROM retificacoes")[0][0], 0)
+        S.retificar_fechamento(self.c, so, {"aplicado": 10}, "não houve sobra", "encarregado", ajustar_reservas=True)
+        self.assertEqual(S.disponivel(self.c, TUBO), 0)
+        self.assertEqual(self.q("SELECT quantidade FROM reservas"), [(30.0,)])
+
+
+class TestMigracaoEstoque(Base):
+    def test_v2_com_baixa_teorica_migra_para_o_esquema_atual_sem_perda(self):
         c = sqlite3.connect(self.db)
         with open(os.path.join(AQUI, "fixtures", "schema_v2.sql"), encoding="utf-8") as f:
             c.executescript(f.read())
@@ -184,7 +302,7 @@ class TestMigracaoV4(Base):
         c.close()
         rel = self.aplicar()
         self.assertEqual(rel["esquema_depois"], S.VERSAO_ESQUEMA)
-        self.assertEqual(self.q("SELECT MAX(versao) FROM schema_versao")[0][0], 4)
+        self.assertEqual(self.q("SELECT MAX(versao) FROM schema_versao")[0][0], S.VERSAO_ESQUEMA)
         self.assertEqual(self.q("SELECT tipo, quantidade, responsavel FROM movimentos ORDER BY id"),
                          [("ROMANEIO_CAESB", 50.0, None), ("BAIXA_TEORICA", 12.0, None)])   # nada apagado
         self.assertEqual(S.saldo_almox(self.conectar(), TUBO)[0], 50)                       # baixa teórica fora do físico

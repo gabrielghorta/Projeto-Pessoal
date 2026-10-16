@@ -928,6 +928,12 @@ def preparar_v4(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v5(conn):
+    """Esquema v4 → v5: vínculo do movimento com a retificação e tabelas de retificação e ajuste de reserva."""
+    _add_coluna(conn, "movimentos", "retificacao_id", "INTEGER REFERENCES retificacoes(id)")
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

@@ -21,7 +21,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 4
+VERSAO_ESQUEMA = 5
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -51,7 +51,7 @@ def aplicar_esquema(conn):
         for cmd in comandos_sql(f.read()):
             conn.execute(cmd)
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "estoque: reservas, saldo com a equipe, empréstimo autorizado, estorno"))
+                 (VERSAO_ESQUEMA, _agora(), "estoque: custódia por sessão, reserva coberta, retificação de fechamento"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -282,19 +282,31 @@ def disponivel(conn, material_id):
     return saldo_almox(conn, material_id)[0] - reservado(conn, material_id)
 
 
-def custodia_equipe(conn, equipe_id, material_id):
-    """Material com a equipe (todas as retiradas menos aplicado, sobra devolvida e perda), sem estornos."""
+def _ate_sessao(ck):
+    """Filtro dos movimentos das sessões (check-ins) da equipe até `ck` inclusive, em ordem (data, id).
+    Um fechamento nunca enxerga retiradas de sessões posteriores."""
+    if ck is None:
+        return "", ()
+    return (" AND checkin_id IN (SELECT id FROM checkins WHERE equipe_id=? AND (data < ? OR (data = ? AND id <= ?)))",
+            (ck["equipe_id"], ck["data"], ck["data"], ck["id"]))
+
+
+def custodia_equipe(conn, equipe_id, material_id, ate_checkin=None):
+    """Material com a equipe (retiradas − aplicado − sobra devolvida − perda), sem estornos.
+    Com `ate_checkin`, só até aquela sessão (custódia cronológica)."""
+    ck = _one(conn, "SELECT * FROM checkins WHERE id=?", ate_checkin) if ate_checkin else None
+    filtro, args = _ate_sessao(ck)
     return conn.execute(
         f"""SELECT COALESCE(SUM(CASE WHEN tipo='CUSTODIA' THEN quantidade
                                     WHEN tipo IN ('APLICADO','SOBRA','PERDA') THEN -quantidade END),0)
-            FROM movimentos WHERE equipe_id=? AND material_id=? AND checkin_id IS NOT NULL AND {VALIDO}""",
-        (equipe_id, material_id)).fetchone()[0]
+            FROM movimentos WHERE equipe_id=? AND material_id=? AND checkin_id IS NOT NULL AND {VALIDO}{filtro}""",
+        (equipe_id, material_id, *args)).fetchone()[0]
 
 
-def _materiais_com_equipe(conn, equipe_id):
+def _materiais_com_equipe(conn, equipe_id, ate_checkin=None):
     return [r[0] for r in conn.execute(
         f"SELECT DISTINCT material_id FROM movimentos WHERE equipe_id=? AND checkin_id IS NOT NULL AND {VALIDO} "
-        "ORDER BY material_id", (equipe_id,)) if abs(custodia_equipe(conn, equipe_id, r[0])) > 1e-9]
+        "ORDER BY material_id", (equipe_id,)) if abs(custodia_equipe(conn, equipe_id, r[0], ate_checkin)) > 1e-9]
 
 
 def _soma(conn, material_id, tipo):
@@ -350,8 +362,9 @@ def consumo_previsto_x_confirmado(conn):
 
 
 def movimentos(conn, limite=100, material_id=None):
-    sql = """SELECT m.*, e.motivo AS estorno_motivo, e.responsavel AS estorno_responsavel, e.em AS estornado_em
-             FROM movimentos m LEFT JOIN estornos e ON e.movimento_id=m.id"""
+    sql = """SELECT m.*, e.motivo AS estorno_motivo, e.responsavel AS estorno_responsavel, e.em AS estornado_em,
+                    c.encerrado AS checkin_encerrado
+             FROM movimentos m LEFT JOIN estornos e ON e.movimento_id=m.id LEFT JOIN checkins c ON c.id=m.checkin_id"""
     args = []
     if material_id:
         sql, args = sql + " WHERE m.material_id=?", [material_id]
@@ -424,9 +437,51 @@ def reservas_ativas(conn, data=None):
     return _rows(conn.execute(sql, (data,) if data else ()))
 
 
-def estornar(conn, movimento_id, motivo, responsavel):
+def _ajustar_reservas_descobertas(conn, material_id, motivo, responsavel, movimento_id):
+    """Reduz (ou cancela) as reservas ativas mais recentes até o disponível voltar a zero. Cada ajuste fica
+    registrado em reserva_ajustes, com o estorno que o causou."""
+    falta = -disponivel(conn, material_id)
+    for r in _rows(conn.execute("SELECT * FROM reservas WHERE material_id=? AND status='ATIVA' ORDER BY criada_em DESC, id DESC",
+                                (material_id,))):
+        if falta <= TOL:
+            break
+        nova = round(r["quantidade"] - min(falta, r["quantidade"]), 6)
+        falta -= r["quantidade"] - nova
+        if nova <= TOL:
+            conn.execute("UPDATE reservas SET status='CANCELADA', encerrada_em=?, motivo=? WHERE id=?",
+                         (_agora(), f"sem cobertura após estorno do movimento {movimento_id}: {motivo}", r["id"]))
+        else:
+            conn.execute("UPDATE reservas SET quantidade=? WHERE id=?", (nova, r["id"]))
+        conn.execute("INSERT INTO reserva_ajustes(reserva_id,de,para,motivo,responsavel,movimento_id,em) VALUES (?,?,?,?,?,?,?)",
+                     (r["id"], r["quantidade"], max(nova, 0), motivo, responsavel, movimento_id, _agora()))
+
+
+def _estornar_sem_transacao(conn, mv, motivo, responsavel, ajustar_reservas=False):
+    conn.execute("INSERT INTO estornos VALUES (?,?,?,?)", (mv["id"], motivo.strip(), responsavel.strip(), _agora()))
+    if saldo_almox(conn, mv["material_id"])[0] < -TOL:
+        raise RegraViolada("Estorno recusado: o saldo do almoxarifado ficaria negativo (o material já saiu). "
+                           "Estorne antes os movimentos posteriores.")
+    if mv["equipe_id"] and mv["checkin_id"] and custodia_equipe(conn, mv["equipe_id"], mv["material_id"]) < -TOL:
+        raise RegraViolada("Estorno recusado: a custódia da equipe ficaria negativa. Retifique antes o fechamento "
+                           "que consumiu esse material.")
+    if disponivel(conn, mv["material_id"]) < -TOL:
+        if not ajustar_reservas:
+            res = reservas_ativas(conn)
+            lista = ", ".join(f"#{r['id']} {r['equipe_id']} {r['data']} {r['quantidade']:g}" for r in res
+                              if r["material_id"] == mv["material_id"])
+            raise RegraViolada(f"Estorno recusado: deixaria reservas ativas sem cobertura (disponível "
+                               f"{disponivel(conn, mv['material_id']):g}). Reservas: {lista}. Cancele/reduza essas reservas "
+                               "ou confirme o ajuste automático das mais recentes (ajustar_reservas).")
+        _ajustar_reservas_descobertas(conn, mv["material_id"], motivo, responsavel, mv["id"])
+
+
+def estornar(conn, movimento_id, motivo, responsavel, ajustar_reservas=False):
     """Correção de movimento sem apagar: o original fica, marcado como estornado, e sai dos saldos.
-    Recusa se o estorno deixaria saldo do almoxarifado ou custódia da equipe negativos."""
+
+    Recusa se deixar saldo do almoxarifado ou custódia da equipe negativos, ou reservas ativas sem cobertura
+    (a não ser com ajustar_reservas=True: as reservas mais recentes são reduzidas/canceladas e o ajuste fica
+    registrado). Aplicado/sobra/perda de um fechamento já encerrado só se corrige pela retificação do fechamento.
+    """
     mv = _one(conn, "SELECT * FROM movimentos WHERE id=?", movimento_id)
     if not mv:
         raise RegraViolada("Movimento não encontrado.")
@@ -436,14 +491,62 @@ def estornar(conn, movimento_id, motivo, responsavel):
         raise RegraViolada("Estorno exige motivo e responsável.")
     if mv["tipo"] == "ENTRADA_NF":
         raise RegraViolada("Entrada por NF não é estornada aqui: trate pela nota fiscal (devolução/recusa).")
+    if mv["tipo"] in ("APLICADO", "SOBRA", "PERDA") and mv["checkin_id"]:
+        raise RegraViolada("Aplicado/sobra/perda de um check-out encerrado: use a retificação do fechamento, que "
+                           "estorna e redistribui a mesma quantidade no mesmo dia, com motivo.")
     with transacao(conn):
-        conn.execute("INSERT INTO estornos VALUES (?,?,?,?)", (movimento_id, motivo.strip(), responsavel.strip(), _agora()))
+        _estornar_sem_transacao(conn, mv, motivo, responsavel, ajustar_reservas)
+
+
+def retificar_fechamento(conn, movimento_id, destino, motivo, responsavel, ajustar_reservas=False):
+    """Retifica um aplicado/sobra/perda de um check-out já encerrado, sem nova visita de campo.
+
+    O movimento original é estornado (fica no histórico) e a MESMA quantidade é redistribuída em
+    aplicado / sobra / perda / fica_com_equipe, com a data e a sessão originais, ligada à retificação
+    (motivo, responsável, movimento original). O check-in continua encerrado; nada é reaberto.
+    """
+    mv = _one(conn, "SELECT * FROM movimentos WHERE id=?", movimento_id)
+    if not mv or mv["tipo"] not in ("APLICADO", "SOBRA", "PERDA") or not mv["checkin_id"]:
+        raise RegraViolada("Só se retifica aplicado, sobra ou perda lançados num check-out.")
+    ck = _one(conn, "SELECT * FROM checkins WHERE id=?", mv["checkin_id"])
+    if not ck["encerrado"]:
+        raise RegraViolada("O check-in ainda está aberto: corrija no próprio check-out.")
+    if _one(conn, "SELECT 1 AS x FROM estornos WHERE movimento_id=?", movimento_id):
+        raise RegraViolada("Movimento já estornado.")
+    if not (motivo or "").strip() or not (responsavel or "").strip():
+        raise RegraViolada("Retificação exige motivo e responsável.")
+    ap, so, pe, fica = (float(destino.get(k) or 0) for k in ("aplicado", "sobra", "perda", "fica_com_equipe"))
+    if min(ap, so, pe, fica) < 0:
+        raise RegraViolada("Quantidades não podem ser negativas.")
+    if abs(ap + so + pe + fica - mv["quantidade"]) > 1e-3:
+        raise RegraViolada(f"A retificação redistribui a mesma quantidade ({mv['quantidade']:g}); informado {ap + so + pe + fica:g}.")
+    if pe > 0 and not (destino.get("motivo_perda") or "").strip():
+        raise RegraViolada("Informe o motivo da perda.")
+    with transacao(conn):
+        rid = conn.execute("INSERT INTO retificacoes(checkin_id,movimento_id,destino,motivo,responsavel,em) VALUES (?,?,?,?,?,?)",
+                           (ck["id"], movimento_id, json.dumps(destino, ensure_ascii=False), motivo.strip(),
+                            responsavel.strip(), _agora())).lastrowid
+        conn.execute("INSERT INTO estornos VALUES (?,?,?,?)", (movimento_id, f"retificação #{rid}: {motivo.strip()}",
+                                                             responsavel.strip(), _agora()))
+        for tipo, q in (("APLICADO", ap), ("SOBRA", so), ("PERDA", pe)):
+            if q > 0:
+                conn.execute(
+                    """INSERT INTO movimentos(data,material_id,tipo,quantidade,equipe_id,alvo_tipo,alvo_id,motivo,checkin_id,
+                         responsavel,retificacao_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (mv["data"], mv["material_id"], tipo, q, mv["equipe_id"], mv["alvo_tipo"], mv["alvo_id"],
+                     destino.get("motivo_perda") if tipo == "PERDA" else None, ck["id"], responsavel.strip(), rid))
+        if fica > 0:
+            conn.execute("""INSERT INTO custodia_declarada VALUES (?,?,?,?) ON CONFLICT(checkin_id, material_id)
+                            DO UPDATE SET quantidade = quantidade + excluded.quantidade, em = excluded.em""",
+                         (ck["id"], mv["material_id"], fica, _agora()))
         if saldo_almox(conn, mv["material_id"])[0] < -TOL:
-            raise RegraViolada("Estorno recusado: o saldo do almoxarifado ficaria negativo (o material já saiu). "
-                               "Estorne antes os movimentos posteriores.")
-        if mv["equipe_id"] and mv["checkin_id"] and custodia_equipe(conn, mv["equipe_id"], mv["material_id"]) < -TOL:
-            raise RegraViolada("Estorno recusado: a custódia da equipe ficaria negativa. Estorne antes o "
-                               "aplicado/sobra/perda correspondente.")
+            raise RegraViolada("Retificação recusada: o saldo do almoxarifado ficaria negativo (a sobra já saiu de novo).")
+        if disponivel(conn, mv["material_id"]) < -TOL:
+            if not ajustar_reservas:
+                raise RegraViolada("Retificação recusada: deixaria reservas ativas sem cobertura. Trate as reservas ou "
+                                   "confirme o ajuste (ajustar_reservas).")
+            _ajustar_reservas_descobertas(conn, mv["material_id"], motivo, responsavel, movimento_id)
+    return rid
 
 
 def registrar_nf(conn, numero, fornecedor, data_entrega, itens, faturamento_etapas=False, chave_nfe=None, arquivo=None):
@@ -500,8 +603,14 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
     else:
         a = alvo(conn, alvo_tipo, alvo_id, operacao=True)
         tipo, ref = a["alvo_tipo"], a["id"]
-    if _one(conn, "SELECT id FROM checkins WHERE data=? AND equipe_id=? AND encerrado=0", data, equipe_id):
-        raise RegraViolada("Equipe já tem check-in aberto hoje — faça o check-out antes.")
+    aberto = _one(conn, "SELECT id, data FROM checkins WHERE equipe_id=? AND encerrado=0 ORDER BY data, id LIMIT 1", equipe_id)
+    if aberto:
+        raise RegraViolada(f"A {equipe_id} tem check-in aberto em {aberto['data']} — faça o check-out dele antes de um novo "
+                           "check-in (a custódia é fechada dia a dia, em ordem).")
+    ultimo = _one(conn, "SELECT MAX(data) AS d FROM checkins WHERE equipe_id=?", equipe_id)["d"]
+    if ultimo and data < ultimo:
+        raise RegraViolada(f"Check-in retroativo recusado: a {equipe_id} já tem sessão em {ultimo}. Um dia anterior não pode "
+                           "consumir nem alterar a custódia de dias posteriores.")
     with transacao(conn):
         cid = conn.execute("INSERT INTO checkins(data,equipe_id,alvo_tipo,alvo_id,contingencia) VALUES (?,?,?,?,?)",
                            (data, equipe_id, tipo, ref, contingencia)).lastrowid
@@ -540,9 +649,14 @@ def checkout(conn, checkin_id, itens):
     O que fica com a equipe é declarado e volta como custódia no próximo check-in."""
     ck = _one(conn, "SELECT * FROM checkins WHERE id=?", checkin_id)
     if not ck or ck["encerrado"]:
-        raise RegraViolada("Check-in inexistente ou já encerrado.")
+        raise RegraViolada("Check-in inexistente ou já encerrado. Para corrigir um fechamento, use a retificação.")
+    anterior = _one(conn, "SELECT id, data FROM checkins WHERE equipe_id=? AND encerrado=0 AND id<>? AND "
+                          "(data < ? OR (data = ? AND id < ?)) ORDER BY data, id LIMIT 1",
+                    ck["equipe_id"], checkin_id, ck["data"], ck["data"], checkin_id)
+    if anterior:
+        raise RegraViolada(f"Feche antes o check-in de {anterior['data']} da {ck['equipe_id']} (fechamentos em ordem).")
     declarados = {it["material_id"]: it for it in itens}
-    faltam = [m for m in _materiais_com_equipe(conn, ck["equipe_id"]) if m not in declarados]
+    faltam = [m for m in _materiais_com_equipe(conn, ck["equipe_id"], checkin_id) if m not in declarados]
     if faltam:
         raise RegraViolada("Declare no check-out todo material com a equipe (aplicado, sobra, perda ou fica com a "
                            "equipe): " + ", ".join(faltam))
@@ -553,7 +667,7 @@ def checkout(conn, checkin_id, itens):
                 raise RegraViolada("Quantidades do check-out não podem ser negativas.")
             if pe > 0 and not (it.get("motivo") or "").strip():
                 raise RegraViolada("Informe o motivo da quebra/perda.")
-            cust = custodia_equipe(conn, ck["equipe_id"], mid)
+            cust = custodia_equipe(conn, ck["equipe_id"], mid, checkin_id)     # só até esta sessão
             if abs((ap + so + pe + fica) - cust) > 1e-3:
                 raise RegraViolada(f"{mid}: aplicado + sobra + perda + fica com a equipe ({ap + so + pe + fica:g}) deve "
                                    f"fechar a custódia da equipe ({cust:g}).")
@@ -578,10 +692,10 @@ def checkins_abertos(conn, data=None):
         hoje = {r[0]: r[1] for r in conn.execute(
             f"SELECT material_id, SUM(quantidade) FROM movimentos WHERE checkin_id=? AND tipo='CUSTODIA' AND {VALIDO} "
             "GROUP BY material_id", (c["id"],))}
-        c["materiais"] = [{"material_id": m, "quantidade": custodia_equipe(conn, c["equipe_id"], m),
+        c["materiais"] = [{"material_id": m, "quantidade": custodia_equipe(conn, c["equipe_id"], m, c["id"]),
                            "retirado_hoje": hoje.get(m, 0.0),
-                           "trazido": round(custodia_equipe(conn, c["equipe_id"], m) - hoje.get(m, 0.0), 6)}
-                          for m in _materiais_com_equipe(conn, c["equipe_id"])]
+                           "trazido": round(custodia_equipe(conn, c["equipe_id"], m, c["id"]) - hoje.get(m, 0.0), 6)}
+                          for m in _materiais_com_equipe(conn, c["equipe_id"], c["id"])]
     return out
 
 

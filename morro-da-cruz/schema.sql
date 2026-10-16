@@ -1,5 +1,5 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v4. Banco SQLite local.
+-- Esquema v5. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
@@ -8,6 +8,7 @@
 --     identidade dos itens pela assinatura técnica completa (não pela ordem das linhas).
 --   * v4 (etapa 3, estoque): reservas, saldo que fica com a equipe, empréstimo autorizado, estorno sem apagar,
 --     baixa teórica fora do saldo físico.
+--   * v5: custódia por sessão (fechamentos em ordem), reserva nunca descoberta, retificação de fechamento.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS schema_versao (
@@ -323,7 +324,32 @@ CREATE TABLE IF NOT EXISTS movimentos (
   checkin_id INTEGER REFERENCES checkins(id),
   nf_id INTEGER REFERENCES notas_fiscais(id),
   responsavel TEXT,                    -- quem registrou/autorizou (obrigatório no empréstimo)
-  autorizacao TEXT                     -- documento/pessoa que autorizou (empréstimo para outra obra)
+  autorizacao TEXT,                    -- documento/pessoa que autorizou (empréstimo para outra obra)
+  retificacao_id INTEGER REFERENCES retificacoes(id)   -- lançamento criado por retificação de fechamento
+);
+
+-- Retificação de um check-out encerrado: estorna o aplicado/sobra/perda original e redistribui a mesma
+-- quantidade na mesma sessão. O check-in não é reaberto.
+CREATE TABLE IF NOT EXISTS retificacoes (
+  id INTEGER PRIMARY KEY,
+  checkin_id INTEGER NOT NULL REFERENCES checkins(id),
+  movimento_id INTEGER NOT NULL REFERENCES movimentos(id),
+  destino TEXT NOT NULL,               -- JSON {aplicado, sobra, perda, fica_com_equipe, motivo_perda}
+  motivo TEXT NOT NULL,
+  responsavel TEXT NOT NULL,
+  em TEXT NOT NULL
+);
+
+-- Ajuste de reserva que ficaria sem cobertura (por estorno/retificação confirmados com ajuste)
+CREATE TABLE IF NOT EXISTS reserva_ajustes (
+  id INTEGER PRIMARY KEY,
+  reserva_id INTEGER NOT NULL REFERENCES reservas(id),
+  de REAL NOT NULL,
+  para REAL NOT NULL,
+  motivo TEXT NOT NULL,
+  responsavel TEXT NOT NULL,
+  movimento_id INTEGER REFERENCES movimentos(id),
+  em TEXT NOT NULL
 );
 -- BAIXA_TEORICA (MVP antigo) fica só como registro: não altera o saldo físico. Movimento nunca é apagado:
 -- correção = estorno (tabela estornos), que tira o movimento dos saldos e guarda motivo e responsável.

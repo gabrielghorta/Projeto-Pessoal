@@ -151,7 +151,9 @@ async function carregarAlmox() {
   $('#consumo').innerHTML = `<table><thead><tr><th>Tubo</th><th class="n">Previsto (metros apontados)</th><th class="n">Aplicado confirmado</th><th class="n">Diferença</th></tr></thead><tbody>${cons.map(c => `<tr><td>${esc(c.material_id)}</td><td class="n">${nf(c.previsto_apontado)}</td><td class="n">${nf(c.aplicado_confirmado)}</td><td class="n">${c.diferenca ? `<span class="chip amarelo">${nf(c.diferenca)}</span>` : '—'}</td></tr>`).join('')}</tbody></table><p class="vazio" style="margin:4px 0">O previsto é só referência: nunca baixa estoque.</p>`;
   const movs = await api('/api/movimentos?limite=40');
   $('#movimentos').innerHTML = movs.length ? `<table><thead><tr><th>#</th><th>Data</th><th>Tipo</th><th>Material</th><th class="n">Qtd.</th><th>Equipe</th><th>Documento / responsável</th><th></th></tr></thead><tbody>${movs.map(m => `<tr${m.estornado_em ? ' style="opacity:.55;text-decoration:line-through"' : ''}><td>${m.id}</td><td>${esc(m.data)}</td><td>${esc(m.tipo)}${m.tipo === 'BAIXA_TEORICA' ? ' <small>(legado, fora do saldo)</small>' : ''}</td><td>${esc(m.material_id)}</td><td class="n">${nf(m.quantidade, 3)}</td><td>${esc(m.equipe_id || '')}</td><td>${esc([m.documento, m.responsavel, m.autorizacao].filter(Boolean).join(' · '))}</td>
-    <td>${m.estornado_em ? `<small style="text-decoration:none">estornado: ${esc(m.estorno_motivo)}</small>` : (m.tipo === 'ENTRADA_NF' ? '' : `<button class="btn" data-estornar="${m.id}">Estornar</button>`)}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio" style="padding:10px">Nenhum movimento.</div>';
+    <td>${m.estornado_em ? `<small style="text-decoration:none">estornado: ${esc(m.estorno_motivo)}</small>` : m.tipo === 'ENTRADA_NF' ? ''
+      : ['APLICADO', 'SOBRA', 'PERDA'].includes(m.tipo) && m.checkin_encerrado ? `<button class="btn" data-retificar="${m.id}" data-q="${m.quantidade}">Retificar fechamento</button>`
+      : `<button class="btn" data-estornar="${m.id}">Estornar</button>`}${m.retificacao_id ? ` <small>retificação #${m.retificacao_id}</small>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio" style="padding:10px">Nenhum movimento.</div>';
   const comp = await api('/api/compat-caesb');
   $('#compat').innerHTML = `<table><thead><tr><th>Tubo</th><th class="n">Projeto 06.1 (m)</th><th class="n">Estoque Caesb</th><th class="n">Emprestado p/ outras obras</th><th class="n">Retirado pela Ankara</th><th class="n">Aplicado em obra</th><th class="n">Perdido</th><th class="n">Saldo virtual a retirar</th><th class="n">Saldo físico</th></tr></thead><tbody>
     ${comp.map(c => `<tr><td>${esc(c.descricao)}</td><td class="n">${nf(c.projeto)}</td><td class="n">${nf(c.estoque_caesb)}</td><td class="n">${nf(c.emprestado)}</td><td class="n">${nf(c.retirado)}</td><td class="n">${nf(c.aplicado)}</td><td class="n">${nf(c.perdido)}</td><td class="n"><b>${nf(c.saldo_virtual)}</b></td><td class="n">${nf(c.saldo_fisico)}</td></tr>`).join('')}</tbody></table>`;
@@ -197,7 +199,23 @@ document.addEventListener('click', async ev => {
   if (e) {
     const motivo = prompt('Motivo do estorno (o movimento não é apagado):'); if (!motivo) return;
     const responsavel = prompt('Responsável pelo estorno:'); if (!responsavel) return;
-    await acao(() => api('/api/estorno', { movimento_id: e.dataset.estornar, motivo, responsavel }), 'Movimento estornado.'); carregarAlmox();
+    const corpo = { movimento_id: e.dataset.estornar, motivo, responsavel };
+    try { await api('/api/estorno', corpo); toast('Movimento estornado.', 'ok'); }
+    catch (err) {
+      if (!/sem cobertura/.test(err.message) || !confirm(err.message + '\n\nReduzir/cancelar as reservas mais recentes (registrado com este estorno)?')) { toast(err.message, 'erro'); return; }
+      await acao(() => api('/api/estorno', { ...corpo, ajustar_reservas: true }), 'Movimento estornado; reservas ajustadas e registradas.');
+    }
+    carregarAlmox();
+  }
+  const rt = ev.target.closest('[data-retificar]');
+  if (rt) {
+    const q = +rt.dataset.q, n = s => +(prompt(`${s} (total ${q}):`, '0') || 0);
+    const destino = { aplicado: n('Aplicado'), sobra: n('Sobra devolvida'), perda: n('Perda'), fica_com_equipe: n('Fica com a equipe') };
+    if (destino.perda) destino.motivo_perda = prompt('Motivo da perda:') || '';
+    const motivo = prompt('Motivo da retificação:'); if (!motivo) return;
+    const responsavel = prompt('Responsável:'); if (!responsavel) return;
+    await acao(() => api('/api/retificar', { movimento_id: rt.dataset.retificar, destino, motivo, responsavel }), 'Fechamento retificado (o lançamento original fica no histórico).');
+    carregarAlmox();
   }
 });
 $('#fNF').addEventListener('submit', async ev => {
