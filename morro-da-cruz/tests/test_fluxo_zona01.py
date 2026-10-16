@@ -34,7 +34,7 @@ class PilotoZona01(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
         cls.db = os.path.join(cls.tmp, "piloto.db")
-        cls.rel = importar.executar(cls.db, "APLICACAO")
+        cls.rel = importar.executar(cls.db, "APLICACAO", dir_relatorios=os.path.join(cls.tmp, "relatorios"))
         cls.c = S.conectar(cls.db)
         cls.fotos = os.path.join(cls.tmp, "fotos")
         cls.med = S.criar_medicao(cls.c, 1, "2026-10-01", "2026-10-31")
@@ -156,7 +156,7 @@ class PilotoZona01(unittest.TestCase):
         o.backup(d)
         d.close()
         o.close()
-        rel = importar.executar(copia, "SIMULACAO")
+        rel = importar.executar(copia, "SIMULACAO", dir_relatorios=os.path.join(self.tmp, "relatorios"))
         self.assertEqual(rel["status"], "SEM_ALTERACOES")
 
 

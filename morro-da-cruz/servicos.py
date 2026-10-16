@@ -1,10 +1,12 @@
-"""Casos de uso sobre o banco (esquema v2): almoxarifado, campo, fiscalização, cadastro e medição.
+"""Casos de uso sobre o banco (esquema v3): almoxarifado, campo, fiscalização, cadastro e medição.
 
 Travas desta versão (etapas 0 e 1 — regras financeiras ainda não aprovadas):
   * nenhum regime de faturamento de material é aplicado (sem 80/20, sem 100 % na aplicação);
   * trecho MND não recebe item de assentamento VCA nem substituição automática: fica pendente;
   * lançamento sem item/regra com fonte fica PENDENTE e fora do valor (nunca R$ 0 contratual);
-  * medições são do tipo TESTE; OFICIAL só com o parâmetro medicao_oficial_liberada = SIM.
+  * medições são do tipo TESTE; OFICIAL só com o parâmetro medicao_oficial_liberada = SIM;
+  * objeto retirado da revisão vigente (vigente = 0) pode ser consultado, mas não recebe operação nova;
+  * medição fechada fica congelada: revisão posterior do BM não altera o valor dela.
 """
 import base64
 import json
@@ -19,13 +21,13 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 2
+VERSAO_ESQUEMA = 3
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
 
 class EsquemaAntigo(RuntimeError):
-    """Banco no esquema v1: precisa de migração (importar.py) antes de ser usado."""
+    """Banco em esquema anterior: precisa de migração (importar.py) antes de ser usado."""
 
 
 # ------------------------------------------------------------------ conexão e esquema
@@ -49,7 +51,8 @@ def aplicar_esquema(conn):
         for cmd in comandos_sql(f.read()):
             conn.execute(cmd)
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "identidade estável, proveniência, importação idempotente"))
+                 (VERSAO_ESQUEMA, _agora(), "conferências impeditivas, identidade física, decisões com escopo, "
+                                            "medição congelada"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -57,10 +60,10 @@ def conectar(caminho=DB_PADRAO, permitir_antigo=False):
     conn = sqlite3.connect(caminho, isolation_level=None, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     v = versao_banco(conn)
-    if v == 1:
+    if 0 < v < VERSAO_ESQUEMA:
         if not permitir_antigo:
             conn.close()
-            raise EsquemaAntigo(f"{caminho} está no esquema v1. Rode `python importar.py` (simulação) e depois "
+            raise EsquemaAntigo(f"{caminho} está no esquema v{v}. Rode `python importar.py` (simulação) e depois "
                                 "`python importar.py --aplicar` para migrar preservando os movimentos.")
         return conn
     conn.execute("PRAGMA foreign_keys = ON")
@@ -118,10 +121,12 @@ def _tipo_alvo(t):
     return t
 
 
-def alvo(conn, alvo_tipo, ref):
+def alvo(conn, alvo_tipo, ref, operacao=False):
     """Aceita o ID estável (TR-/AT-) ou o nome visível vigente (PONTO / nomenclatura).
 
-    Retorna o registro com `id` estável e `nome` visível.
+    Retorna o registro com `id` estável e `nome` visível. Consulta pelo ID alcança também o
+    histórico (vigente = 0). Com operacao=True o alvo precisa estar vigente: objeto retirado
+    da revisão do projeto não recebe check-in, apontamento, foto, OK, recomposição nem cadastro.
     """
     t = _tipo_alvo(alvo_tipo)
     if t == "TRECHO":
@@ -133,13 +138,25 @@ def alvo(conn, alvo_tipo, ref):
         sql = """SELECT a.*, e.numero, e.tipo AS tipo_elemento, e.pb, e.lat, e.lon, e.handle, e.status_posicao,
                         e.zona
                  FROM atividades a JOIN elementos e ON e.id=a.elemento_id WHERE """
+        sql = sql.replace("e.zona", "e.zona, e.vigente AS elemento_vigente")
         a = _one(conn, sql + "a.id=?", ref) or _one(conn, sql + "a.nomenclatura=? AND a.vigente=1", ref)
         if a:
             a["nome"] = a["nomenclatura"]
     if not a:
         raise RegraViolada(f"{t} '{ref}' não encontrado.")
     a["alvo_tipo"] = t
+    a["retirado"] = not a["vigente"] or (t == "ATIVIDADE" and not a.get("elemento_vigente", 1))
+    if operacao and a["retirado"]:
+        raise RegraViolada(f"{a['nome']} ({a['id']}) foi retirado da revisão vigente do projeto: consulta permitida, "
+                           "novos lançamentos bloqueados. Trate o histórico pela conciliação da importação.")
     return a
+
+
+def _retirado(conn, alvo_tipo, alvo_id):
+    try:
+        return alvo(conn, alvo_tipo, alvo_id)["retirado"]
+    except RegraViolada:
+        return True
 
 
 def nome_alvo(conn, alvo_tipo, alvo_id):
@@ -356,7 +373,7 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
     elif not (alvo_tipo and alvo_id):
         raise RegraViolada("Informe o Trecho/Nó que a equipe vai atacar hoje (ou uma contingência).")
     else:
-        a = alvo(conn, alvo_tipo, alvo_id)
+        a = alvo(conn, alvo_tipo, alvo_id, operacao=True)
         tipo, ref = a["alvo_tipo"], a["id"]
     if _one(conn, "SELECT id FROM checkins WHERE data=? AND equipe_id=? AND encerrado=0", data, equipe_id):
         raise RegraViolada("Equipe já tem check-in aberto hoje — faça o check-out antes.")
@@ -419,6 +436,7 @@ def checkins_abertos(conn, data=None):
     out = _rows(conn.execute(sql, (data,) if data else ()))
     for c in out:
         c["alvo_nome"] = nome_alvo(conn, c["alvo_tipo"], c["alvo_id"]) if c["alvo_id"] else None
+        c["alvo_retirado"] = bool(c["alvo_id"]) and _retirado(conn, c["alvo_tipo"], c["alvo_id"])
         c["materiais"] = _rows(conn.execute(
             "SELECT material_id, SUM(quantidade) AS quantidade FROM movimentos WHERE checkin_id=? AND tipo='CUSTODIA' "
             "GROUP BY material_id", (c["id"],)))
@@ -448,7 +466,7 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
     if turnos != {"MANHA", "TARDE"}:
         raise RegraViolada("Clima do dia obrigatório nos dois turnos (manhã e tarde) antes do apontamento.")
-    a = alvo(conn, alvo_tipo, ref)
+    a = alvo(conn, alvo_tipo, ref, operacao=True)
     tipo, aid = a["alvo_tipo"], a["id"]
     ex = execucao(conn, tipo, aid) or {"metros_executados": 0, "metros_reaterrados": 0, "concluido": 0}
     if ex.get("ok_fiscal_em"):
@@ -493,7 +511,7 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
 
 def registrar_foto(conn, alvo_tipo, ref, categoria, conteudo_b64, extensao="jpg", data_hora=None, lat=None, lon=None,
                    dir_fotos=DIR_FOTOS):
-    a = alvo(conn, alvo_tipo, ref)
+    a = alvo(conn, alvo_tipo, ref, operacao=True)
     if categoria not in R.FOTOS_TRECHO:
         raise RegraViolada("Categoria de foto inválida.")
     data_hora = data_hora or _agora()
@@ -552,7 +570,7 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
     """[✓] OK Fiscalização (interno Ankara). Gera PROPOSTA de lançamentos na medição de teste e
     envia o trecho à Esteira de Cadastro. Não aprova nada pela Caesb e não aplica regime de material."""
     data = data or date.today().isoformat()
-    a = alvo(conn, alvo_tipo, ref)
+    a = alvo(conn, alvo_tipo, ref, operacao=True)
     tipo, aid = a["alvo_tipo"], a["id"]
     ex = execucao(conn, tipo, aid)
     R.validar_ok_fiscal(ex, fotos_faltando(conn, tipo, aid))
@@ -596,7 +614,7 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
 def recomposicao_ok(conn, alvo_tipo, ref, tipo, quantidade, data=None):
     """Checkbox separado: calçada/asfalto entra só quando a equipe de pavimento executar (gaveta 4)."""
     data = data or date.today().isoformat()
-    a = alvo(conn, alvo_tipo, ref)
+    a = alvo(conn, alvo_tipo, ref, operacao=True)
     ex = execucao(conn, a["alvo_tipo"], a["id"])
     if not ex or not ex.get("ok_fiscal_em"):
         raise RegraViolada("Recomposição só pode ser lançada após o OK Fiscalização do trecho/nó.")
@@ -619,7 +637,7 @@ def recomposicao_ok(conn, alvo_tipo, ref, tipo, quantidade, data=None):
 # ------------------------------------------------------------------ esteira de cadastro
 def avancar_cadastro(conn, trecho_ref, destino, dados=None, data=None):
     dados = dados or {}
-    t = alvo(conn, "TRECHO", trecho_ref)
+    t = alvo(conn, "TRECHO", trecho_ref, operacao=True)
     c = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", t["id"])
     if not c:
         raise RegraViolada("Trecho não está na esteira (exige OK Fiscalização).")
@@ -694,7 +712,33 @@ def medicao_para(conn, data):
 
 
 def fechar_medicao(conn, medicao_id):
-    conn.execute("UPDATE medicoes SET status='FECHADA' WHERE id=?", (medicao_id,))
+    """Fecha e CONGELA a medição. O preço, a classificação e o item de cada lançamento, os fatores
+    (BDI, K) e o resumo ficam gravados. Uma revisão posterior do BM não recalcula o valor dela."""
+    med = _one(conn, "SELECT * FROM medicoes WHERE id=?", medicao_id)
+    if not med:
+        raise RegraViolada("Medição não encontrada.")
+    if med["status"] != "ABERTA":
+        raise RegraViolada(f"A {med['numero']}ª medição ({med['tipo']}) já está fechada.")
+    with transacao(conn):
+        congelar_medicao(conn, medicao_id, "fechamento")
+        conn.execute("UPDATE medicoes SET status='FECHADA' WHERE id=?", (medicao_id,))
+
+
+def congelar_medicao(conn, medicao_id, origem):
+    """Grava os valores de cálculo vigentes neste momento. Uso: fechamento, ou migração de medição já fechada."""
+    r = _resumo_calculado(conn, medicao_id)
+    for g in r["gavetas"].values():
+        for l in g["lancamentos"]:
+            if l["bm_item_id"] is not None:
+                conn.execute("UPDATE medicao_lancamentos SET preco_congelado=?, classificacao_congelada=?, item_congelado=? "
+                             "WHERE id=?", (l["preco_unitario"], l["classificacao"], l["item"], l["id"]))
+    bdi_m, bdi_s, k = _fatores(conn)
+    r["congelamento"] = {"em": _agora(), "origem": origem,
+                         "fatores": {"bdi_material": bdi_m, "bdi_servico": bdi_s, "coef_k": k},
+                         "bm_fonte": _one(conn, "SELECT nome, sha256 FROM fontes_arquivo WHERE chave='bm' ORDER BY id DESC LIMIT 1")}
+    r["medicao"].pop("resumo_congelado", None)
+    conn.execute("UPDATE medicoes SET congelada_em=?, resumo_congelado=? WHERE id=?",
+                 (r["congelamento"]["em"], json.dumps(r, ensure_ascii=False, default=str), medicao_id))
 
 
 def indices_reajuste(conn):
@@ -715,53 +759,60 @@ def _fatores(conn):
 
 
 def _totalizar(conn, linhas):
-    """linhas: [(bm_item_dict, quantidade)] → totalização na ordem do BM (ver regras.totalizar_bm)."""
+    """linhas: [(item, classificação, preço sem BDI, quantidade)] → totalização na ordem do BM (regras.totalizar_bm).
+
+    Quantidades do mesmo item (e mesmo preço) são somadas antes do ROUND por item, como na coluna W do BM."""
     por_item = {}
-    for bm, q in linhas:
-        if bm["id"] not in por_item:
-            por_item[bm["id"]] = [bm["classificacao"], 0.0, bm["preco_unitario"] or 0]
-        por_item[bm["id"]][1] += q
+    for it, cl, pr, q in linhas:
+        por_item.setdefault((it, cl, pr or 0), [cl, 0.0, pr or 0])[1] += q
     return R.totalizar_bm([tuple(v) for v in por_item.values()], *_fatores(conn))
 
 
-def resumo_medicao(conn, medicao_id):
+HIPOTESES_FIXAS = [
+    "Teto por subgrupo: o total limitado desconta o excedente sobre o P0 do subgrupo — controle interno proposto "
+    "(matriz, item 15), ainda não validado.",
+    "Reajuste: simulado sobre o total limitado, sem as frações elegíveis de material e serviço (REV03 × REV04, matriz "
+    "item 18) e sem confirmação do pedido da contratada (contrato 6.2).",
+]
+
+
+def _resumo_calculado(conn, medicao_id, usar_congelado=True):
     med = _one(conn, "SELECT * FROM medicoes WHERE id=?", medicao_id)
     if not med:
         raise RegraViolada("Medição não encontrada.")
+    med.pop("resumo_congelado", None)
     lanc = _rows(conn.execute(
-        """SELECT l.*, b.item, b.subgrupo, b.descricao AS bm_descricao, b.classificacao, b.preco_unitario
+        """SELECT l.*, b.item, b.subgrupo, b.planilha, b.descricao AS bm_descricao, b.classificacao, b.preco_unitario
            FROM medicao_lancamentos l LEFT JOIN bm_itens b ON b.id=l.bm_item_id
            WHERE l.medicao_id=? ORDER BY l.gaveta, l.id""", (medicao_id,)))
     for l in lanc:
         l["alvo_nome"] = nome_alvo(conn, l["alvo_tipo"], l["alvo_id"]) if l["alvo_id"] else None
-    cache = {}
-
-    def bm(bid):
-        if bid not in cache:
-            cache[bid] = _one(conn, "SELECT * FROM bm_itens WHERE id=?", bid)
-        return cache[bid]
-
+        if usar_congelado and l["preco_congelado"] is not None:
+            l["preco_unitario"], l["classificacao"], l["item"] = (l["preco_congelado"], l["classificacao_congelada"],
+                                                                  l["item_congelado"])
+    linha = lambda l: (l["bm_item_id"], l["classificacao"], l["preco_unitario"], l["quantidade"])
     propostos = [l for l in lanc if l["status"] == "PROPOSTO"]
     gavetas = {}
     for g, n in GAVETAS.items():
         lg = [l for l in lanc if l["gaveta"] == g]
-        tot = _totalizar(conn, [(bm(l["bm_item_id"]), l["quantidade"]) for l in lg if l["status"] == "PROPOSTO"])
+        tot = _totalizar(conn, [linha(l) for l in lg if l["status"] == "PROPOSTO"])
         gavetas[g] = {"nome": n, "valor": tot["total"], "lancamentos": lg,
                       "pendentes": sum(1 for l in lg if l["status"] == "PENDENTE")}
-    total = _totalizar(conn, [(bm(l["bm_item_id"]), l["quantidade"]) for l in propostos])
-    # teto por subgrupo do BM Vertical: valor P0 do subgrupo (mesma ordem de cálculo)
+    total = _totalizar(conn, [linha(l) for l in propostos])
+    # teto por subgrupo do BM Vertical: valor P0 do subgrupo (mesma ordem de cálculo) — controle proposto
     tetos = []
-    for sg in sorted({bm(l["bm_item_id"])["subgrupo"] for l in propostos if bm(l["bm_item_id"])["planilha"] == "VERTICAL"}):
+    for sg in sorted({l["subgrupo"] for l in propostos if l["planilha"] == "VERTICAL"}):
         itens_sg = _rows(conn.execute("SELECT * FROM bm_itens WHERE planilha='VERTICAL' AND vigente=1 AND subgrupo=?", (sg,)))
-        teto = _totalizar(conn, [(b, b["quantidade"] or 0) for b in itens_sg])["total"]
+        teto = _totalizar(conn, [(b["id"], b["classificacao"], b["preco_unitario"], b["quantidade"] or 0)
+                                 for b in itens_sg])["total"]
         ant = conn.execute(
-            """SELECT l.bm_item_id, l.quantidade FROM medicao_lancamentos l JOIN bm_itens b ON b.id=l.bm_item_id
-               JOIN medicoes m ON m.id=l.medicao_id
+            """SELECT l.bm_item_id, COALESCE(l.classificacao_congelada, b.classificacao),
+                      COALESCE(l.preco_congelado, b.preco_unitario), l.quantidade
+               FROM medicao_lancamentos l JOIN bm_itens b ON b.id=l.bm_item_id JOIN medicoes m ON m.id=l.medicao_id
                WHERE l.status='PROPOSTO' AND b.subgrupo=? AND m.tipo=? AND m.numero < ?""",
             (sg, med["tipo"], med["numero"])).fetchall()
-        anterior = _totalizar(conn, [(bm(r[0]), r[1]) for r in ant])["total"]
-        atual = _totalizar(conn, [(bm(l["bm_item_id"]), l["quantidade"]) for l in propostos
-                                  if bm(l["bm_item_id"])["subgrupo"] == sg])["total"]
+        anterior = _totalizar(conn, [tuple(r) for r in ant])["total"]
+        atual = _totalizar(conn, [linha(l) for l in propostos if l["subgrupo"] == sg])["total"]
         aceito, exced = R.aplicar_teto(atual, anterior, teto)
         tetos.append({"subgrupo": sg, "nome": itens_sg[0]["subgrupo_nome"] if itens_sg else "", "teto": teto,
                       "anterior": anterior, "atual": atual, "aceito": aceito, "excedente": exced})
@@ -771,8 +822,15 @@ def resumo_medicao(conn, medicao_id):
         indice, aviso = R.indice_reajuste(med["periodo_ini"], med["periodo_fim"], indices_reajuste(conn)), None
     except RegraViolada as e:
         indice, aviso = None, str(e)
+    hipoteses = list(HIPOTESES_FIXAS)
+    if any("estimativa" in (l["observacao"] or "") for l in lanc):
+        hipoteses.append("Escavação em dois itens (5.4.11/5.4.13 e 5.4.15/5.4.14): rateio pela proporção contratual — "
+                         "estimativa sem critério aprovado (matriz, item 11).")
+    if any(l["servico"] == mapa_servicos()["solda"]["servico"] for l in lanc):
+        hipoteses.append("Soldas: ⌈L/6⌉ por barra de 6 m — estimativa sem validação.")
     return {
-        "medicao": med, "teste": med["tipo"] == "TESTE", "gavetas": gavetas, "tetos": tetos, "totalizacao": total,
+        "medicao": med, "teste": med["tipo"] == "TESTE", "simulacao": True, "hipoteses": hipoteses,
+        "gavetas": gavetas, "tetos": tetos, "totalizacao": total,
         "valor_pi": total["total"], "excedente_teto": excedente, "valor_pi_limitado": pi,
         "indice_reajuste": indice, "aviso_reajuste": aviso,
         "valor_reajuste": round(pi * indice, 2) if indice is not None else None,
@@ -781,19 +839,57 @@ def resumo_medicao(conn, medicao_id):
     }
 
 
+def resumo_medicao(conn, medicao_id):
+    """Medição aberta: calculada com o cadastro atual. Medição fechada: valores congelados no fechamento.
+    Se o cadastro atual daria outro valor, isso aparece como alerta, sem alterar a medição."""
+    med = _one(conn, "SELECT * FROM medicoes WHERE id=?", medicao_id)
+    if not med:
+        raise RegraViolada("Medição não encontrada.")
+    if med["status"] == "FECHADA" and med["resumo_congelado"]:
+        r = json.loads(med["resumo_congelado"])
+        r["gavetas"] = {int(g): v for g, v in r["gavetas"].items()}
+        med.pop("resumo_congelado")
+        r["medicao"] = med
+        r["congelada"] = True
+        recalc = _resumo_calculado(conn, medicao_id, usar_congelado=False)
+        if abs((recalc["valor_pi"] or 0) - (r["valor_pi"] or 0)) > 0.004:
+            r["alerta_recalculo"] = (f"Com o cadastro atual do BM o subtotal P0 seria {recalc['valor_pi']:.2f}. "
+                                     f"Mantido o valor congelado no fechamento ({r['valor_pi']:.2f}).")
+        return r
+    r = _resumo_calculado(conn, medicao_id)
+    r["congelada"] = False
+    return r
+
+
 # ------------------------------------------------------------------ detalhe e mapa
 def avisos_e_decisoes(conn, atividade_id):
-    """Avisos de origem (AA/AB/AW) da atividade, agrupados sem repetição, com decisões posteriores ligadas."""
+    """Avisos de origem (AA/AB/AW) da atividade, agrupados sem repetição.
+
+    Uma decisão só fica ligada ao aviso por vínculo explícito (decisao_vinculos: nº do elemento +
+    hash do texto). O padrão de texto da decisão (padrao_aviso) apenas SUGERE avisos parecidos para
+    revisão: a sugestão não aplica a decisão nem encerra o aviso.
+    """
     a = alvo(conn, "ATIVIDADE", atividade_id)
     av = _rows(conn.execute(
-        """SELECT tipo, prioridade, texto, COUNT(*) linhas FROM avisos_origem x JOIN itens_projeto i ON i.id=x.item_id
-           WHERE i.atividade_id=? AND x.vigente=1 GROUP BY tipo, prioridade, texto ORDER BY tipo, texto""", (a["id"],)))
+        """SELECT tipo, prioridade, texto, texto_hash, COUNT(*) linhas FROM avisos_origem x
+           JOIN itens_projeto i ON i.id=x.item_id
+           WHERE i.atividade_id=? AND x.vigente=1 GROUP BY tipo, prioridade, texto, texto_hash ORDER BY tipo, texto""",
+        (a["id"],)))
     decs = _rows(conn.execute("SELECT * FROM decisoes ORDER BY id"))
+    vinc = {(r[0], r[1]) for r in conn.execute(
+        "SELECT decisao_id, texto_hash FROM decisao_vinculos WHERE elemento_numero=?", (a["numero"],))}
+    escopo = {r[0] for r in conn.execute(
+        "SELECT decisao_id FROM decisao_objetos WHERE objeto_tipo='ELEMENTO' AND objeto_ref=?", (a["numero"],))}
     for x in av:
-        x["decisoes"] = [d["id"] for d in decs if d["padrao_aviso"] and re.search(d["padrao_aviso"], x["texto"], re.I)]
-    ligadas = {i for x in av for i in x["decisoes"]}
-    proprias = {a["numero"], a["nomenclatura"]}
-    return {"avisos": av, "decisoes": [d for d in decs if d["id"] in ligadas or d["objeto_ref"] in proprias]}
+        x["decisoes"] = [d["id"] for d in decs if (d["id"], x["texto_hash"]) in vinc]
+        x["sugestoes"] = [d["id"] for d in decs if d["id"] not in x["decisoes"] and d["padrao_aviso"]
+                          and re.search(d["padrao_aviso"], x["texto"], re.I)]
+    ligadas = {i for x in av for i in x["decisoes"]} | escopo
+    sugeridas = {i for x in av for i in x["sugestoes"]} - ligadas
+    return {"avisos": av,
+            "decisoes": [dict(d, vinculo="ESCOPO_EXPLICITO") for d in decs if d["id"] in ligadas],
+            "decisoes_sugeridas": [dict(d, vinculo="SUGESTAO_POR_TEXTO — revisar; não aplicada") for d in decs
+                                   if d["id"] in sugeridas]}
 
 
 def detalhe(conn, alvo_tipo, ref):
@@ -809,7 +905,7 @@ def detalhe(conn, alvo_tipo, ref):
     if tipo == "TRECHO":
         d["quantidades"] = json.loads(a["quantidades"])
         d["cadastro"] = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", aid)
-        d["perfil_bloqueado"] = R.perfil_pendente(a)
+        d["perfil_bloqueado"] = R.bloqueio_perfil(a)       # mesma regra do cálculo (MND não tem vala)
         d["mnd"] = a.get("metodologia") == "MND"
     else:
         d.update(totais_atividade(conn, aid))
@@ -823,24 +919,44 @@ def detalhe(conn, alvo_tipo, ref):
 
 
 def estado_mapa(conn, medicao_atual_id=None, data=None):
-    """Status do Mapa Iluminado por nome visível (PONTO / nomenclatura), pins e bandeja sem posição."""
+    """Mapa Iluminado: estado CORRENTE por nome visível (só objetos vigentes), pins e bandeja sem posição.
+
+    O histórico de objetos retirados não é apagado. Ele aparece em `retirados_com_historico` para
+    tratamento explícito (check-in aberto, execução sem OK) e não entra nas cores do mapa.
+    """
+    vig = {("TRECHO", r[0]): r[1] for r in conn.execute("SELECT id, ponto FROM trechos WHERE vigente=1")}
+    vig.update({("ATIVIDADE", r[0]): r[1] for r in conn.execute(
+        "SELECT a.id, a.nomenclatura FROM atividades a JOIN elementos e ON e.id=a.elemento_id "
+        "WHERE a.vigente=1 AND e.vigente=1")})
     ex = {(r["alvo_tipo"], r["alvo_id"]): dict(r) for r in conn.execute("SELECT * FROM execucao")}
     fotos = {}
     for r in conn.execute("SELECT alvo_tipo, alvo_id, categoria FROM fotos"):
         fotos.setdefault((r[0], r[1]), []).append(r[2])
-    status = {}
+    status, retirados = {}, []
     for (tipo, aid), e in ex.items():
+        if (tipo, aid) not in vig:
+            retirados.append({"alvo_tipo": tipo, "alvo_id": aid, "nome": nome_alvo(conn, tipo, aid),
+                              "situacao": "execução registrada em objeto retirado da revisão vigente"})
+            continue
         her = _sinalizacao_herdada(conn, tipo, aid) if tipo == "ATIVIDADE" else False
         falt = R.fotos_pendentes(tipo, fotos.get((tipo, aid), []), her)
-        status[nome_alvo(conn, tipo, aid)] = R.status_mapa(e, falt, medicao_atual_id)
-    pins = [{"equipe": c["equipe_id"], "alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_nome"], "checkin": c["id"],
-             "data": c["data"], "origem": "programação do check-in"}
-            for c in checkins_abertos(conn, data or date.today().isoformat()) if c["alvo_id"]]
+        status[vig[(tipo, aid)]] = R.status_mapa(e, falt, medicao_atual_id)
+    pins = []
+    for c in checkins_abertos(conn, data or date.today().isoformat()):
+        if not c["alvo_id"]:
+            continue
+        if c["alvo_retirado"]:
+            retirados.append({"alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_id"], "nome": c["alvo_nome"],
+                              "situacao": f"check-in {c['id']} aberto ({c['equipe_id']}) em objeto retirado — encerrar no check-out"})
+            continue
+        pins.append({"equipe": c["equipe_id"], "alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_nome"], "checkin": c["id"],
+                     "data": c["data"], "origem": "programação do check-in"})
     return {
         "status": status,
         "pins": pins,
+        "retirados_com_historico": retirados,
         "sem_posicao": _rows(conn.execute(
             """SELECT e.id, e.numero, e.status_posicao, GROUP_CONCAT(a.nomenclatura, ' | ') nomenclaturas
-               FROM elementos e JOIN atividades a ON a.elemento_id=e.id
-               WHERE e.vigente=1 AND e.lat IS NULL GROUP BY e.id ORDER BY e.numero""")),
+               FROM elementos e JOIN atividades a ON a.elemento_id=e.id AND a.vigente=1
+               WHERE e.vigente=1 AND (e.lat IS NULL OR e.lon IS NULL) GROUP BY e.id ORDER BY e.numero""")),
     }

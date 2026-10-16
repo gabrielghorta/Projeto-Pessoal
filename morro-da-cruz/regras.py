@@ -74,6 +74,13 @@ def perfil_pendente(trecho):
     return None
 
 
+def bloqueio_perfil(trecho):
+    """Única regra de perfil para cálculo E detalhe: vala só existe em VCA; MND não exige perfil."""
+    if trecho.get("metodologia") == "MND":
+        return None
+    return perfil_pendente(trecho)
+
+
 def exigir_perfil(trecho):
     motivo = perfil_pendente(trecho)
     if motivo:
@@ -96,8 +103,9 @@ def quantidades_previstas_trecho(trecho, quantidades_totais, metros, mapa):
     if L <= 0:
         return []
     mnd = trecho.get("metodologia") == "MND"
-    if not mnd:
-        exigir_perfil(trecho)           # perfil de vala só se aplica a vala a céu aberto (VCA)
+    motivo = bloqueio_perfil(trecho)    # perfil de vala só se aplica a vala a céu aberto (VCA)
+    if motivo:
+        raise PerfilPendente(f"{trecho['id']}: {motivo} — cálculo bloqueado até a definição (auditoria E06).")
     ext = float(trecho["extensao_m"])
     frac = min(L / ext, 1.0) if ext > 0 else 0.0
     out = []

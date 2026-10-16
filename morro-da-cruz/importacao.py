@@ -1,19 +1,26 @@
-"""Importação idempotente das planilhas oficiais para o esquema v2.
+"""Importação idempotente das planilhas oficiais para o esquema v3.
 
-Princípios (etapa 1):
+Princípios:
   * nada é apagado: registro que sai de uma revisão fica com vigente = 0;
-  * identidade estável própria (TR-/EL-/AT-/IP-), casada por chave natural, nunca pelo nº da linha;
+  * identidade estável própria (TR-/EL-/AT-/IP-), casada pela identidade FÍSICA, nunca pelo nº da linha
+    nem só pelo nome visível:
+      - trecho: handle CAD + pontas UTM (o handle sozinho se repete em 123 trechos da 06.1 REV01);
+      - elemento: handle CAD; sem handle, nº de projeto (identidade provisória, promovida quando o handle aparecer);
+      - item: atividade + assinatura técnica completa (descrição, DE, PN, resina, tipo, solda, material);
+  * divergência entre nome e geometria, retirada de objeto com histórico, divisão e união nunca transferem
+    histórico por presunção: viram pendência IMPEDITIVA até haver conciliação explícita (config/conciliacoes.json);
   * toda linha importada guarda proveniência (arquivo + SHA-256 + aba + linha + células);
   * reimportar os mesmos arquivos não altera nada (status SEM_ALTERACOES);
+  * fonte ausente não apaga dado: campos que dependem dela são preservados e a ausência vira pendência;
   * quantidade/unidade sem fonte ficam NULL (pendentes) — sem regra de descrição, sem equivalência UN↔PÇ;
-  * avisos AA/AB/AW entram como texto de origem; decisões posteriores ficam em `decisoes` e não são tocadas;
-  * ambiguidades vão para `pendencias_importacao`, nunca são resolvidas em silêncio.
+  * avisos AA/AB/AW entram como texto de origem; decisões ficam em `decisoes`, ligadas só por escopo explícito.
 """
 import hashlib
 import json
 import os
 import re
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 from datetime import date, datetime
 
 import openpyxl
@@ -42,16 +49,42 @@ CAB_CONEXOES = {
     "trechos": "TRECHO (06.1)",
 }
 
+# Identidade técnica de um item de projeto (o resto — quantidade, código BM, BA/BB/BC, AG/AH — é atributo mutável)
+CAMPOS_ASSINATURA = ("descricao", "diametro", "pressao", "resina", "tipo_conexao", "solda", "material")
+# Tabelas com movimentos de campo/medição ligados a um alvo (TRECHO / ATIVIDADE)
+TABELAS_ALVO = ["checkins", "apontamentos", "fotos", "execucao", "movimentos", "medicao_lancamentos"]
+TOL_POSICAO_M = 0.01
+
 
 def carregar_config():
-    with open(os.path.join(BASE, "config", "fontes.json"), encoding="utf-8") as f:
-        return json.load(f)
+    cfg_dir = os.path.join(BASE, "config")
+    with open(os.path.join(cfg_dir, "fontes.json"), encoding="utf-8") as f:
+        cfg = json.load(f)
+    for chave, arq, padrao in (("controles", "controles.json", {"conjuntos": []}),
+                               ("conciliacoes", "conciliacoes.json", {"conciliacoes": []})):
+        p = os.path.join(cfg_dir, arq)
+        dados = padrao
+        if os.path.exists(p):
+            with open(p, encoding="utf-8") as f:
+                dados = json.load(f)
+        cfg[chave] = dados["conjuntos"] if chave == "controles" else dados["conciliacoes"]
+    return cfg
 
 
 def caminho(cfg, chave, pasta=DIR_PLANILHAS):
     nome = cfg["arquivos"].get(chave)
     p = os.path.join(pasta, nome) if nome else None
     return p if p and os.path.exists(p) else None
+
+
+@contextmanager
+def planilha(p):
+    """Abre a planilha só para leitura e SEMPRE fecha (no Windows, arquivo aberto impede mover/apagar)."""
+    wb = openpyxl.load_workbook(p, read_only=True, data_only=True)
+    try:
+        yield wb
+    finally:
+        wb.close()
 
 
 def revisao_do_nome(nome):
@@ -92,6 +125,18 @@ def tipo_elemento(numero):
     return "NÓ" if numero.upper().startswith(("NÓ", "NO")) else numero.split("-")[0].upper()
 
 
+def assinatura_item(d):
+    return "|".join("" if d.get(k) is None else str(d[k]) for k in CAMPOS_ASSINATURA)
+
+
+def _mesma_posicao(a, b):
+    return (None not in (a[0], a[1], b[0], b[1])
+            and abs(a[0] - b[0]) <= TOL_POSICAO_M and abs(a[1] - b[1]) <= TOL_POSICAO_M)
+
+
+_LER = object()
+
+
 class Importador:
     def __init__(self, conn, cfg, importacao_id, pasta=DIR_PLANILHAS):
         self.c = conn
@@ -102,6 +147,11 @@ class Importador:
         self.fontes = {}
         self.colunas_06_2 = {}
         self.conferencias = {}
+        self.bloqueios = []                     # pendências impeditivas: impedem o COMMIT
+        self.decisoes_novas = 0
+        self._ultimo_id = {}
+        self._av_vistos = set()
+        self.concil = self._validar_conciliacoes(cfg.get("conciliacoes", []))
 
     # -------------------------------------------------------------- utilitários
     def fonte(self, chave, p):
@@ -118,27 +168,38 @@ class Importador:
         return fid
 
     def prov(self, entidade, eid, fid, aba, linha, celulas):
-        self.c.execute("INSERT OR REPLACE INTO proveniencia VALUES (?,?,?,?,?,?)",
+        # só reescreve se mudou (INSERT OR REPLACE apagaria e reinseriria a linha a cada reimportação)
+        self.c.execute("""INSERT INTO proveniencia VALUES (?,?,?,?,?,?)
+                          ON CONFLICT(entidade, entidade_id, fonte_id) DO UPDATE SET aba=excluded.aba,
+                            linha=excluded.linha, celulas=excluded.celulas
+                          WHERE aba IS NOT excluded.aba OR linha IS NOT excluded.linha OR celulas IS NOT excluded.celulas""",
                        (entidade, eid, fid, aba, linha, json.dumps(celulas, ensure_ascii=False, default=str)))
 
-    def pendencia(self, tipo, ref, detalhe):
-        self.c.execute("INSERT INTO pendencias_importacao(importacao_id,tipo,referencia,detalhe) VALUES (?,?,?,?)",
-                       (self.imp, tipo, ref, detalhe))
+    def pendencia(self, tipo, ref, detalhe, bloqueante=False):
+        self.c.execute("INSERT INTO pendencias_importacao(importacao_id,tipo,referencia,detalhe,bloqueante) VALUES (?,?,?,?,?)",
+                       (self.imp, tipo, ref, detalhe, 1 if bloqueante else 0))
+        if bloqueante:
+            self.bloqueios.append({"tipo": tipo, "referencia": ref, "detalhe": detalhe})
 
     def nome_hist(self, entidade, eid, nome, fid):
         self.c.execute("INSERT OR IGNORE INTO nomes_historico VALUES (?,?,?,?,?)", (entidade, eid, nome, fid, S._agora()))
 
-    def upsert(self, tabela, entidade, chave_where, campos):
-        """Insere ou atualiza registrando cada campo alterado. chave_where: dict de colunas-chave."""
+    def _alteracao(self, entidade, eid, campo, antes, depois):
+        self.c.execute("INSERT INTO alteracoes(importacao_id,entidade,entidade_id,campo,antes,depois) VALUES (?,?,?,?,?,?)",
+                       (self.imp, entidade, eid, campo, antes, depois))
+
+    def upsert(self, tabela, entidade, chave_where, campos, atual=_LER):
+        """Insere ou atualiza registrando cada campo alterado. `atual` permite comparar com o estado lido
+        antes de renomeações temporárias (troca de nomes entre registros)."""
         where = " AND ".join(f"{k}=?" for k in chave_where)
-        atual = self.c.execute(f"SELECT * FROM {tabela} WHERE {where}", tuple(chave_where.values())).fetchone()
+        if atual is _LER:
+            atual = self.c.execute(f"SELECT * FROM {tabela} WHERE {where}", tuple(chave_where.values())).fetchone()
         ident = str(next(iter(chave_where.values()))) if len(chave_where) == 1 else json.dumps(chave_where, ensure_ascii=False)
         if atual is None:
             dados = {**chave_where, **campos}
             self.c.execute(f"INSERT INTO {tabela}({','.join(dados)}) VALUES ({','.join('?' * len(dados))})",
                            tuple(dados.values()))
-            self.c.execute("INSERT INTO alteracoes(importacao_id,entidade,entidade_id,campo,antes,depois) VALUES (?,?,?,?,?,?)",
-                           (self.imp, entidade, ident, "(novo)", None, None))
+            self._alteracao(entidade, ident, "(novo)", None, None)
             self.stats[entidade]["novos"] += 1
             return "novo"
         dif = {k: v for k, v in campos.items() if atual[k] != v}
@@ -148,32 +209,81 @@ class Importador:
         self.c.execute(f"UPDATE {tabela} SET {', '.join(f'{k}=?' for k in dif)} WHERE {where}",
                        (*dif.values(), *chave_where.values()))
         for k, v in dif.items():
-            self.c.execute("INSERT INTO alteracoes(importacao_id,entidade,entidade_id,campo,antes,depois) VALUES (?,?,?,?,?,?)",
-                           (self.imp, entidade, ident, k, None if atual[k] is None else str(atual[k]),
-                            None if v is None else str(v)))
+            self._alteracao(entidade, ident, k, None if atual[k] is None else str(atual[k]), None if v is None else str(v))
         self.stats[entidade]["alterados"] += 1
         return "alterado"
+
+    def retirar(self, tabela, entidade, eid):
+        self.c.execute(f"UPDATE {tabela} SET vigente=0 WHERE id=?", (eid,))
+        self._alteracao(entidade, str(eid), "vigente", "1", "0")
+        self.stats[entidade]["retirados"] += 1
 
     def retirar_nao_vistos(self, tabela, entidade, vistos, filtro="1=1", args=()):
         for (eid,) in self.c.execute(f"SELECT id FROM {tabela} WHERE vigente=1 AND {filtro}", args).fetchall():
             if eid not in vistos:
-                self.c.execute(f"UPDATE {tabela} SET vigente=0 WHERE id=?", (eid,))
-                self.c.execute("INSERT INTO alteracoes(importacao_id,entidade,entidade_id,campo,antes,depois) VALUES (?,?,?,?,?,?)",
-                               (self.imp, entidade, str(eid), "vigente", "1", "0"))
-                self.stats[entidade]["retirados"] += 1
+                self.retirar(tabela, entidade, eid)
 
     def novo_id(self, prefixo, tabela, largura):
-        r = self.c.execute(f"SELECT MAX(CAST(SUBSTR(id, {len(prefixo) + 1}) AS INTEGER)) FROM {tabela} WHERE id LIKE ?",
-                           (prefixo + "%",)).fetchone()[0]
-        return f"{prefixo}{(r or 0) + 1:0{largura}d}"
+        """IDs novos em sequência (em memória, para reservar vários antes de gravar)."""
+        if prefixo not in self._ultimo_id:
+            r = self.c.execute(f"SELECT MAX(CAST(SUBSTR(id, {len(prefixo) + 1}) AS INTEGER)) FROM {tabela} WHERE id LIKE ?",
+                               (prefixo + "%",)).fetchone()[0]
+            self._ultimo_id[prefixo] = r or 0
+        self._ultimo_id[prefixo] += 1
+        return f"{prefixo}{self._ultimo_id[prefixo]:0{largura}d}"
 
     def parametro(self, chave, valor, fonte, sobrescrever=True):
-        sql = "INSERT OR REPLACE" if sobrescrever else "INSERT OR IGNORE"
         atual = S.parametro(self.c, chave)
-        self.c.execute(f"{sql} INTO parametros(chave,valor,fonte) VALUES (?,?,?)", (chave, str(valor), fonte))
+        conflito = ("DO UPDATE SET valor=excluded.valor, fonte=excluded.fonte "
+                    "WHERE valor IS NOT excluded.valor OR fonte IS NOT excluded.fonte") if sobrescrever else "DO NOTHING"
+        self.c.execute(f"INSERT INTO parametros(chave,valor,fonte) VALUES (?,?,?) ON CONFLICT(chave) {conflito}",
+                       (chave, str(valor), fonte))
         if sobrescrever and atual is not None and atual != str(valor):
-            self.c.execute("INSERT INTO alteracoes(importacao_id,entidade,entidade_id,campo,antes,depois) VALUES (?,?,?,?,?,?)",
-                           (self.imp, "parametro", chave, "valor", atual, str(valor)))
+            self._alteracao("parametro", chave, "valor", atual, str(valor))
+
+    def historico(self, alvo_tipo):
+        """IDs (TRECHO / ATIVIDADE) que têm movimento de campo, foto, execução, medição ou cadastro."""
+        tabelas = {r[0] for r in self.c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        out = set()
+        for t in TABELAS_ALVO:
+            if t in tabelas:
+                out |= {r[0] for r in self.c.execute(f"SELECT DISTINCT alvo_id FROM {t} WHERE alvo_tipo=?", (alvo_tipo,))}
+        if alvo_tipo == "TRECHO":
+            for t in ("cadastro", "ligacoes_prediais"):
+                if t in tabelas:
+                    out |= {r[0] for r in self.c.execute(f"SELECT DISTINCT trecho_id FROM {t}")}
+        return out
+
+    # -------------------------------------------------------------- conciliações explícitas (de-para)
+    def _validar_conciliacoes(self, lista):
+        """config/conciliacoes.json: decisões humanas de de-para. Cada uma exige responsável, data e motivo.
+
+        {"tipo": "TRECHO",   "ponto": "...", "handle": "...", "usar_id": "TR-00001", ...}  linha da fonte herda o ID
+        {"tipo": "TRECHO",   "retirar_id": "TR-00007", ...}   confirma retirar um trecho com histórico (o histórico fica nele)
+        {"tipo": "ELEMENTO", "chave_natural": "H:5FD4F", "usar_id": "EL-0001", ...}
+        {"tipo": "ELEMENTO" | "ATIVIDADE", "retirar_id": "...", ...}
+        """
+        out = {"TRECHO": {"usar": {}, "retirar": {}}, "ELEMENTO": {"usar": {}, "retirar": {}},
+               "ATIVIDADE": {"usar": {}, "retirar": {}}}
+        self._concil_invalidas = []
+        for e in lista:
+            falta = [k for k in ("tipo", "responsavel", "data", "motivo") if not e.get(k)]
+            if falta or e.get("tipo") not in out:
+                self._concil_invalidas.append((e, f"campos obrigatórios ausentes ou tipo inválido: {falta}"))
+                continue
+            if e.get("retirar_id"):
+                out[e["tipo"]]["retirar"][e["retirar_id"]] = e
+            elif e.get("usar_id") and e["tipo"] == "TRECHO" and e.get("ponto"):
+                out["TRECHO"]["usar"][(e["ponto"], e.get("handle"))] = e
+            elif e.get("usar_id") and e["tipo"] == "ELEMENTO" and e.get("chave_natural"):
+                out["ELEMENTO"]["usar"][e["chave_natural"]] = e
+            else:
+                self._concil_invalidas.append((e, "precisa de 'retirar_id' ou de 'usar_id' com a referência da fonte"))
+        return out
+
+    def _concil_aplicada(self, e, ref, texto):
+        self.pendencia("CONCILIACAO_APLICADA", ref, f"{texto} — {e['responsavel']}, {e['data']}: {e['motivo']}")
+        self._alteracao("conciliacao", ref, e["tipo"], None, json.dumps(e, ensure_ascii=False))
 
     # -------------------------------------------------------------- cargas
     def equipes(self):
@@ -184,54 +294,60 @@ class Importador:
 
     def bm(self, p):
         fid = self.fonte("bm", p)
-        wb = openpyxl.load_workbook(p, read_only=True, data_only=True)
         nomes_atr = ["descricao_resumida", "pressao", "resina", "tipo_conexao", "solda", "diametro", "material", "grupo",
                      "grupo_orcamento_ankara"]
-        for planilha, aba, ini_atr in (("JUNTADA", "BM MORRO DA CRUZ", 1), ("VERTICAL", "BM MORRO DA CRUZ - VERTICAL", 5)):
-            vistos = set()
-            for k, row in enumerate(wb[aba].iter_rows(min_row=6, values_only=True), 6):
-                if planilha == "JUNTADA":
-                    if not (row[0] and row[1]):
-                        continue
-                    item = str(row[0])
-                    campos = dict(item_bm=item, subgrupo=None, subgrupo_nome=None, codigo_caesb=txt(row[10]),
-                                  classificacao=txt(row[11]), descricao=row[12], unidade=txt(row[13]),
-                                  quantidade=num(row[14]), preco_unitario=num(row[15]), valor_total=num(row[16]))
-                else:
-                    if not row[3]:
-                        continue
-                    item = str(row[3])
-                    campos = dict(item_bm=str(row[4]), subgrupo=txt(row[1]), subgrupo_nome=txt(row[2]),
-                                  codigo_caesb=txt(row[14]), classificacao=txt(row[15]), descricao=row[16],
-                                  unidade=txt(row[17]), quantidade=num(row[18]), preco_unitario=num(row[19]),
-                                  valor_total=num(row[20]))
-                campos["atributos"] = json.dumps(dict(zip(nomes_atr, row[ini_atr:ini_atr + 9])), ensure_ascii=False, default=str)
-                campos["linha_origem"] = k
-                campos["vigente"] = 1
-                self.upsert("bm_itens", "bm_item", {"planilha": planilha, "item": item}, campos)
-                bid = self.c.execute("SELECT id FROM bm_itens WHERE planilha=? AND item=?", (planilha, item)).fetchone()[0]
-                vistos.add(bid)
-                self.prov("bm_item", str(bid), fid, aba, k, {"item": item, "quantidade": bruto(campos["quantidade"]),
-                                                             "preco": bruto(campos["preco_unitario"])})
-            self.retirar_nao_vistos("bm_itens", "bm_item", vistos, "planilha=?", (planilha,))
-        # rodapé da Vertical: BDI, K, totais por classe e P0
-        rod, no_rodape = {}, False
-        for row in wb["BM MORRO DA CRUZ - VERTICAL"].iter_rows(min_row=6, values_only=True):
-            no_rodape = no_rodape or any(str(x).strip() == "RESUMO PRINCIPAL" for x in row if x is not None)
-            if not no_rodape:
-                continue
-            cel = [x for x in row if x not in (None, "")]
-            rots = [i for i, x in enumerate(cel) if isinstance(x, str)]
-            if not rots:
-                continue
-            rot = str(cel[rots[-1]]).strip()
-            vals = [x for x in cel[rots[-1] + 1:] if isinstance(x, (int, float))]
-            if not vals:
-                continue
-            chave = {"MATERIAL": "bm_total_material", "SERVIÇO": "bm_total_servico", "BDI MATERIAL =>": "bdi_material",
-                     "BDI SERVIÇO =>": "bdi_servico", "COEF. - K =>": "coef_k", "TOTAL 01 + 02 + BDI -K": "p0_bm"}.get(rot)
-            if chave and chave not in rod:
-                rod[chave] = vals[0]
+        with planilha(p) as wb:
+            for planilha_bm, aba, ini_atr in (("JUNTADA", "BM MORRO DA CRUZ", 1), ("VERTICAL", "BM MORRO DA CRUZ - VERTICAL", 5)):
+                vistos = set()
+                for k, row in enumerate(wb[aba].iter_rows(min_row=6, values_only=True), 6):
+                    if planilha_bm == "JUNTADA":
+                        if not (row[0] and row[1]):
+                            continue
+                        item = str(row[0])
+                        campos = dict(item_bm=item, subgrupo=None, subgrupo_nome=None, codigo_caesb=txt(row[10]),
+                                      classificacao=txt(row[11]), descricao=row[12], unidade=txt(row[13]),
+                                      quantidade=num(row[14]), preco_unitario=num(row[15]), valor_total=num(row[16]))
+                    else:
+                        if not row[3]:
+                            continue
+                        item = str(row[3])
+                        campos = dict(item_bm=str(row[4]), subgrupo=txt(row[1]), subgrupo_nome=txt(row[2]),
+                                      codigo_caesb=txt(row[14]), classificacao=txt(row[15]), descricao=row[16],
+                                      unidade=txt(row[17]), quantidade=num(row[18]), preco_unitario=num(row[19]),
+                                      valor_total=num(row[20]))
+                    campos["atributos"] = json.dumps(dict(zip(nomes_atr, row[ini_atr:ini_atr + 9])), ensure_ascii=False,
+                                                     default=str)
+                    campos["linha_origem"] = k
+                    campos["vigente"] = 1
+                    self.upsert("bm_itens", "bm_item", {"planilha": planilha_bm, "item": item}, campos)
+                    bid = self.c.execute("SELECT id FROM bm_itens WHERE planilha=? AND item=?", (planilha_bm, item)).fetchone()[0]
+                    vistos.add(bid)
+                    self.prov("bm_item", str(bid), fid, aba, k, {"item": item, "quantidade": bruto(campos["quantidade"]),
+                                                                 "preco": bruto(campos["preco_unitario"])})
+                self.retirar_nao_vistos("bm_itens", "bm_item", vistos, "planilha=?", (planilha_bm,))
+            # rodapé da Vertical: BDI, K, totais por classe e P0
+            rod, no_rodape = {}, False
+            for row in wb["BM MORRO DA CRUZ - VERTICAL"].iter_rows(min_row=6, values_only=True):
+                no_rodape = no_rodape or any(str(x).strip() == "RESUMO PRINCIPAL" for x in row if x is not None)
+                if not no_rodape:
+                    continue
+                cel = [x for x in row if x not in (None, "")]
+                rots = [i for i, x in enumerate(cel) if isinstance(x, str)]
+                if not rots:
+                    continue
+                rot = str(cel[rots[-1]]).strip()
+                vals = [x for x in cel[rots[-1] + 1:] if isinstance(x, (int, float))]
+                if not vals:
+                    continue
+                chave = {"MATERIAL": "bm_total_material", "SERVIÇO": "bm_total_servico", "BDI MATERIAL =>": "bdi_material",
+                         "BDI SERVIÇO =>": "bdi_servico", "COEF. - K =>": "coef_k", "TOTAL 01 + 02 + BDI -K": "p0_bm"}.get(rot)
+                if chave and chave not in rod:
+                    rod[chave] = vals[0]
+        faltam = [k for k in ("bm_total_material", "bm_total_servico", "bdi_material", "bdi_servico", "coef_k", "p0_bm")
+                  if k not in rod]
+        if faltam:
+            self.pendencia("BM_RODAPE_INCOMPLETO", os.path.basename(p), f"células do rodapé não encontradas: {faltam}",
+                           bloqueante=True)
         fonte_rod = f"{os.path.basename(p)} · BM VERTICAL, rodapé"
         for k, v in rod.items():
             self.parametro(k, v, fonte_rod)
@@ -239,27 +355,30 @@ class Importador:
 
     def reajuste(self, p):
         self.fonte("reajuste", p)
-        ws = openpyxl.load_workbook(p, read_only=True, data_only=True)["REAJUSTE"]
         achados = {}
-        for row in ws.iter_rows(values_only=True):
-            rot = str(row[0] or "")
-            vals = [x for x in row[1:] if x is not None]
-            if not vals:
-                continue
-            if rot.startswith("Data-base do reajuste"):
-                achados["data_base"] = vals[0]
-            elif rot.startswith("Percentual do 1º reajuste"):
-                achados["indice"] = vals[0]
-            elif rot.startswith("1º aniversário"):
-                achados["aniversario"] = vals[0]
-            elif rot.startswith("Início da execução"):
-                achados["inicio_os"] = vals[0]
+        with planilha(p) as wb:
+            for row in wb["REAJUSTE"].iter_rows(values_only=True):
+                rot = str(row[0] or "")
+                vals = [x for x in row[1:] if x is not None]
+                if not vals:
+                    continue
+                if rot.startswith("Data-base do reajuste"):
+                    achados["data_base"] = vals[0]
+                elif rot.startswith("Percentual do 1º reajuste"):
+                    achados["indice"] = vals[0]
+                elif rot.startswith("1º aniversário"):
+                    achados["aniversario"] = vals[0]
+                elif rot.startswith("Início da execução"):
+                    achados["inicio_os"] = vals[0]
         for k in ("data_base", "indice", "aniversario"):
             if k not in achados:
                 raise RuntimeError(f"REAJUSTE: '{k}' não encontrado na aba.")
         aniv = achados["aniversario"].date() if isinstance(achados["aniversario"], datetime) else achados["aniversario"]
         fim = date.fromordinal(date(aniv.year + 1, aniv.month, aniv.day).toordinal() - 1)
-        self.c.execute("INSERT OR REPLACE INTO reajuste_indices VALUES (?,?,?,?)",
+        self.c.execute("""INSERT INTO reajuste_indices VALUES (?,?,?,?) ON CONFLICT(vigencia_ini) DO UPDATE SET
+                            vigencia_fim=excluded.vigencia_fim, indice=excluded.indice, descricao=excluded.descricao
+                          WHERE vigencia_fim IS NOT excluded.vigencia_fim OR indice IS NOT excluded.indice
+                            OR descricao IS NOT excluded.descricao""",
                        (aniv.isoformat(), fim.isoformat(), float(achados["indice"]),
                         "1º reajuste — Despacho 322/2026-CEFR; frações elegíveis e pedido da contratada pendentes"))
         for k, v in achados.items():
@@ -267,81 +386,183 @@ class Importador:
                            f"{os.path.basename(p)} · aba REAJUSTE")
         return achados
 
-    def trechos(self, p):
-        fid = self.fonte("redes", p)
-        ws = openpyxl.load_workbook(p, read_only=True, data_only=True)["REDE"]
-        existentes = [dict(r) for r in self.c.execute("SELECT id, ponto, handle, utm_ini, utm_fim FROM trechos")]
-        por_ponto = {r["ponto"]: r["id"] for r in existentes}
-        por_geom = defaultdict(list)
-        for r in existentes:
-            por_geom[(r["handle"], r["utm_ini"], r["utm_fim"])].append(r["id"])
-        vistos, pontos_vistos = set(), set()
-        v = lambda row, l: row[col(l) - 1] if col(l) - 1 < len(row) else None
-        for k, row in enumerate(ws.iter_rows(min_row=6, values_only=True), 6):
-            ponto = txt(v(row, "R"))
-            if not ponto:
-                continue
-            if ponto in pontos_vistos:
-                self.pendencia("TRECHO_DUPLICADO", ponto, f"PONTO repetido na linha {k} da aba REDE — linha ignorada")
-                continue
-            pontos_vistos.add(ponto)
-            e1, n1, e2, n2 = (num(v(row, c)) for c in ("BS", "BT", "BU", "BV"))
-            utm_ini = json.dumps([e1, n1]) if e1 else None
-            utm_fim = json.dumps([e2, n2]) if e2 else None
-            handle = txt(v(row, "BR"))
-            tid = por_ponto.get(ponto)
-            if tid is None:
-                cands = por_geom.get((handle, utm_ini, utm_fim), [])
-                if len(cands) == 1 and cands[0] not in vistos:
-                    tid = cands[0]       # mesmo trecho com outro nome nesta revisão
-                elif len(cands) > 1:
-                    self.pendencia("TRECHO_AMBIGUO", ponto, f"geometria igual a {cands}; criado novo ID")
-            if tid is None:
-                tid = self.novo_id("TR-", "trechos", 5)
-            pend = R.PERFIL_PENDENTE if any(str(v(row, c) or "").strip().upper() == R.PERFIL_PENDENTE
-                                             for c in ("AE", "AF", "AG", "AH")) else None
-            campos = dict(
-                ponto=ponto, vigente=1, item=v(row, "A"), frente_id=txt(v(row, "K")), equipe=txt(v(row, "BM")),
-                tipo=txt(v(row, "BN")), pb=txt(v(row, "BO")), prancha=txt(v(row, "U")), area=txt(v(row, "X")),
-                de_mm=num(v(row, "H")), material=txt(v(row, "I")), solda=txt(v(row, "G")), metodologia=txt(v(row, "N")),
-                classe=txt(v(row, "S")), extensao_m=num(v(row, "M")), codigo_bm=txt(v(row, "AC")),
-                recobrimento_m=num(v(row, "AE")), profundidade_m=num(v(row, "AF")), largura_m=num(v(row, "AG")),
-                lastro_m=num(v(row, "AH")), perfil_status=pend,
-                quantidades=json.dumps({c: num(v(row, c)) for c in COLUNAS_SERVICO if num(v(row, c)) is not None}),
-                no_ini=txt(v(row, "BP")), no_fim=txt(v(row, "BQ")), handle=handle, utm_ini=utm_ini, utm_fim=utm_fim,
-                lat=num(v(row, "BW")), lon=num(v(row, "BX")), observacao=txt(v(row, "AB")))
-            self.upsert("trechos", "trecho", {"id": tid}, campos)
-            self.nome_hist("trecho", tid, ponto, fid)
-            self.prov("trecho", tid, fid, "REDE", k, {c: bruto(v(row, c)) for c in
-                                                      ("R", "K", "H", "M", "N", "AC", "AE", "AF", "AG", "AH", "BR", "BP", "BQ")})
-            vistos.add(tid)
-        self.retirar_nao_vistos("trechos", "trecho", vistos)
+    # -------------------------------------------------------------- trechos (06.1)
+    def _ler_trechos(self, p):
+        linhas, pontos = [], set()
+        with planilha(p) as wb:
+            ws = wb["REDE"]
+            v = lambda row, l: row[col(l) - 1] if col(l) - 1 < len(row) else None
+            for k, row in enumerate(ws.iter_rows(min_row=6, values_only=True), 6):
+                ponto = txt(v(row, "R"))
+                if not ponto:
+                    continue
+                if ponto in pontos:
+                    self.pendencia("TRECHO_DUPLICADO", ponto, f"PONTO repetido na linha {k} da aba REDE", bloqueante=True)
+                    continue
+                pontos.add(ponto)
+                e1, n1, e2, n2 = (num(v(row, c)) for c in ("BS", "BT", "BU", "BV"))
+                utm_ini = json.dumps([e1, n1]) if e1 else None
+                utm_fim = json.dumps([e2, n2]) if e2 else None
+                handle = txt(v(row, "BR"))
+                pend = R.PERFIL_PENDENTE if any(str(v(row, c) or "").strip().upper() == R.PERFIL_PENDENTE
+                                                 for c in ("AE", "AF", "AG", "AH")) else None
+                campos = dict(
+                    ponto=ponto, vigente=1, item=v(row, "A"), frente_id=txt(v(row, "K")), equipe=txt(v(row, "BM")),
+                    tipo=txt(v(row, "BN")), pb=txt(v(row, "BO")), prancha=txt(v(row, "U")), area=txt(v(row, "X")),
+                    de_mm=num(v(row, "H")), material=txt(v(row, "I")), solda=txt(v(row, "G")),
+                    metodologia=txt(v(row, "N")), classe=txt(v(row, "S")), extensao_m=num(v(row, "M")),
+                    codigo_bm=txt(v(row, "AC")), recobrimento_m=num(v(row, "AE")), profundidade_m=num(v(row, "AF")),
+                    largura_m=num(v(row, "AG")), lastro_m=num(v(row, "AH")), perfil_status=pend,
+                    quantidades=json.dumps({c: num(v(row, c)) for c in COLUNAS_SERVICO if num(v(row, c)) is not None}),
+                    no_ini=txt(v(row, "BP")), no_fim=txt(v(row, "BQ")), handle=handle, utm_ini=utm_ini, utm_fim=utm_fim,
+                    lat=num(v(row, "BW")), lon=num(v(row, "BX")), observacao=txt(v(row, "AB")))
+                linhas.append({"k": k, "ponto": ponto, "handle": handle, "ini": utm_ini, "fim": utm_fim, "campos": campos,
+                               "celulas": {c: bruto(v(row, c)) for c in
+                                           ("R", "K", "H", "M", "N", "AC", "AE", "AF", "AG", "AH", "BR", "BP", "BQ")}})
+        return linhas
 
-    def conexoes(self, p, evidencias=None):
+    def trechos(self, p):
+        """Identidade = handle CAD + pontas UTM (únicas na 06.1). O nome (PONTO) nunca decide sozinho."""
+        fid = self.fonte("redes", p)
+        linhas = self._ler_trechos(p)
+        exist = {r["id"]: dict(r) for r in self.c.execute("SELECT * FROM trechos")}
+        por_fisica, por_pontas = defaultdict(list), defaultdict(list)
+        for t in exist.values():
+            por_fisica[(t["handle"], t["utm_ini"], t["utm_fim"])].append(t["id"])
+            if t["utm_ini"] and t["utm_fim"]:
+                por_pontas[(t["utm_ini"], t["utm_fim"])].append(t["id"])
+        conc = self.concil["TRECHO"]
+        atrib, usados = [None] * len(linhas), set()
+
+        def atribuir(n, tid):
+            atrib[n] = tid
+            usados.add(tid)
+
+        for n, l in enumerate(linhas):                                   # 1) de-para explícito
+            e = conc["usar"].get((l["ponto"], l["handle"]))
+            if not e:
+                continue
+            if e["usar_id"] not in exist or e["usar_id"] in usados:
+                self.pendencia("CONCILIACAO_INVALIDA", l["ponto"], f"usar_id {e['usar_id']} inexistente ou já usado",
+                               bloqueante=True)
+            else:
+                atribuir(n, e["usar_id"])
+                self._concil_aplicada(e, e["usar_id"], f"{l['ponto']} (handle {l['handle']}) → {e['usar_id']}")
+        for n, l in enumerate(linhas):                                   # 2) mesma identidade física
+            if atrib[n] is None:
+                cands = [i for i in por_fisica.get((l["handle"], l["ini"], l["fim"]), []) if i not in usados]
+                if len(cands) == 1:
+                    atribuir(n, cands[0])
+                elif len(cands) > 1:
+                    self.pendencia("TRECHO_AMBIGUO", l["ponto"], f"geometria igual a {cands}", bloqueante=True)
+        for n, l in enumerate(linhas):                                   # 3) mesmas pontas, handle redesenhado
+            if atrib[n] is None and l["ini"] and l["fim"]:
+                cands = [i for i in por_pontas.get((l["ini"], l["fim"]), []) if i not in usados]
+                if len(cands) == 1:
+                    atribuir(n, cands[0])
+                    self.pendencia("TRECHO_HANDLE_ALTERADO", cands[0],
+                                   f"{l['ponto']}: handle {exist[cands[0]]['handle']} → {l['handle']}, mesmas pontas UTM")
+        novos = [n for n in range(len(linhas)) if atrib[n] is None]
+        for n in novos:                                                  # 4) novo ID (sem herança presumida)
+            atrib[n] = self.novo_id("TR-", "trechos", 5)
+        for n, l in enumerate(linhas):
+            t = exist.get(atrib[n])
+            if t and t["ponto"] != l["ponto"]:
+                self.pendencia("TRECHO_RENOMEADO", atrib[n], f"{t['ponto']} → {l['ponto']} (mesma geometria física: "
+                                                             f"handle {l['handle']}, pontas {l['ini']} → {l['fim']})")
+        # retirada: o que não tem correspondência física
+        hist = self.historico("TRECHO")
+        for tid, t in exist.items():
+            if not t["vigente"] or tid in usados:
+                continue
+            suc = [linhas[n]["ponto"] for n in novos
+                   if linhas[n]["ponto"] == t["ponto"] or (linhas[n]["handle"] == t["handle"] and
+                                                           {linhas[n]["ini"], linhas[n]["fim"]} & {t["utm_ini"], t["utm_fim"]})]
+            if tid in conc["retirar"]:
+                self._concil_aplicada(conc["retirar"][tid], tid, f"retirada confirmada de {t['ponto']}")
+            elif tid in hist:
+                self.pendencia("TRECHO_COM_HISTORICO_SEM_CORRESPONDENCIA", tid,
+                               f"{t['ponto']} (handle {t['handle']}) tem histórico operacional e não tem correspondência "
+                               f"física na nova revisão (traçado alterado, divisão, união ou exclusão). Possíveis "
+                               f"sucessores: {suc or 'nenhum'}. Registre em config/conciliacoes.json qual linha herda o "
+                               f"ID (usar_id) ou confirme a retirada (retirar_id).", bloqueante=True)
+            elif suc:
+                self.pendencia("TRECHO_SUBSTITUIDO", tid, f"{t['ponto']} sem histórico, geometria diferente: novo ID para "
+                                                          f"{suc}; o ID antigo fica não vigente")
+            self.retirar("trechos", "trecho", tid)
+        # nomes temporários para permitir troca de nomes entre trechos (índice único do PONTO vigente)
+        for n, l in enumerate(linhas):
+            t = exist.get(atrib[n])
+            if t and t["ponto"] != l["ponto"]:
+                self.c.execute("UPDATE trechos SET ponto=? WHERE id=?", ("⁣" + atrib[n], atrib[n]))
+        for n, l in enumerate(linhas):
+            tid = atrib[n]
+            self.upsert("trechos", "trecho", {"id": tid}, l["campos"], atual=exist.get(tid))
+            self.nome_hist("trecho", tid, l["ponto"], fid)
+            self.prov("trecho", tid, fid, "REDE", l["k"], l["celulas"])
+
+    # -------------------------------------------------------------- conexões (06.2)
+    def _ler_conexoes(self, p):
+        with planilha(p) as wb:
+            ws = wb["CONEXÕES"]
+            cab_linha, idx = None, {}
+            for i, row in enumerate(ws.iter_rows(min_row=1, max_row=15, values_only=True), 1):
+                nomes = [str(c or "").strip().upper() for c in row]
+                if CAB_CONEXOES["nomenclatura"] in nomes:
+                    cab_linha = i
+                    for campo, rotulo in CAB_CONEXOES.items():
+                        if rotulo in nomes:
+                            idx[campo] = nomes.index(rotulo)
+                    break
+            faltando = [CAB_CONEXOES[c] for c in CAB_CONEXOES if c not in idx]
+            if cab_linha is None or faltando:
+                raise RuntimeError(f"06.2: cabeçalhos não encontrados: {faltando or 'linha de cabeçalho'}")
+            self.colunas_06_2 = {c: get_column_letter(j + 1) for c, j in idx.items()}
+            linhas = []
+            for k, row in enumerate(ws.iter_rows(min_row=cab_linha + 1, values_only=True), cab_linha + 1):
+                g = lambda campo: row[idx[campo]] if idx[campo] < len(row) else None
+                if txt(g("nomenclatura")):
+                    linhas.append((k, {c: g(c) for c in idx}))
+        return linhas
+
+    def _evidencias(self, p, p_conexoes, p_redes):
+        """EVIDÊNCIAS (aba ELEMENTOS_ZONA): conferência do agrupamento + zona, status e ID da auditoria.
+        Devolve None se a fonte não puder ser usada (ausente ou de outra revisão)."""
+        if not p:
+            self.pendencia("EVIDENCIAS_AUSENTES", self.cfg["arquivos"].get("evidencias"),
+                           "arquivo de EVIDÊNCIAS ausente: zona, status de posição e ID da auditoria foram PRESERVADOS "
+                           "(não atualizados) e o agrupamento não foi conferido")
+            return None
+        nome = os.path.basename(p).upper()
+        m2, m1 = re.search(r"REV(\d+)_06\.2", nome), re.search(r"REV(\d+)_06\.1", nome)
+        rev_con, rev_red = revisao_do_nome(os.path.basename(p_conexoes)), revisao_do_nome(os.path.basename(p_redes))
+        if m2 and m1:
+            difs = [f"{a} da evidência × {b} da fonte" for a, b in ((f"REV{m2.group(1)} (06.2)", rev_con),
+                                                                     (f"REV{m1.group(1)} (06.1)", rev_red))
+                    if a.split()[0] != b]
+            if difs:
+                self.pendencia("EVIDENCIAS_REVISAO_INCOMPATIVEL", os.path.basename(p),
+                               "; ".join(difs) + " — evidências não usadas; zona/status preservados", bloqueante=True)
+                return None
+        else:
+            self.pendencia("EVIDENCIAS_REVISAO_NAO_IDENTIFICADA", os.path.basename(p),
+                           "o nome não indica as revisões da 06.2/06.1; a correspondência fica a cargo do conjunto de "
+                           "controles aprovado para estes arquivos (hash)")
+        self.fonte("evidencias", p)
+        out = {}
+        with planilha(p) as wb:
+            for row in wb["ELEMENTOS_ZONA"].iter_rows(min_row=2, values_only=True):
+                if row[0]:
+                    g_ = frozenset(s.strip() for s in str(row[1]).split("|") if s.strip())
+                    out[g_] = {"id": txt(row[0]), "zona": txt(row[5]), "status": txt(row[8])}
+        return out
+
+    def conexoes(self, p, p_evidencias=None, p_redes=None):
         fid = self.fonte("conexoes", p)
-        ws = openpyxl.load_workbook(p, read_only=True, data_only=True)["CONEXÕES"]
-        cab_linha, idx = None, {}
-        for i, row in enumerate(ws.iter_rows(min_row=1, max_row=15, values_only=True), 1):
-            nomes = [str(c or "").strip().upper() for c in row]
-            if CAB_CONEXOES["nomenclatura"] in nomes:
-                cab_linha = i
-                for campo, rotulo in CAB_CONEXOES.items():
-                    if rotulo in nomes:
-                        idx[campo] = nomes.index(rotulo)
-                break
-        faltando = [CAB_CONEXOES[c] for c in CAB_CONEXOES if c not in idx]
-        if cab_linha is None or faltando:
-            raise RuntimeError(f"06.2: cabeçalhos não encontrados: {faltando or 'linha de cabeçalho'}")
-        self.colunas_06_2 = {c: get_column_letter(j + 1) for c, j in idx.items()}
+        linhas = self._ler_conexoes(p)
         juntada = {r[0]: r[1] for r in self.c.execute("SELECT item, unidade FROM bm_itens WHERE planilha='JUNTADA' AND vigente=1")}
 
-        linhas = []
-        for k, row in enumerate(ws.iter_rows(min_row=cab_linha + 1, values_only=True), cab_linha + 1):
-            g = lambda campo: row[idx[campo]] if idx[campo] < len(row) else None
-            if txt(g("nomenclatura")):
-                linhas.append((k, {c: g(c) for c in idx}))
-
-        # elemento físico: handle CAD; sem handle, o número do projeto
+        # elemento físico: handle CAD; sem handle, o número do projeto (identidade provisória)
         grupos = defaultdict(list)
         for k, r in linhas:
             nom = txt(r["nomenclatura"])
@@ -353,10 +574,10 @@ class Importador:
                 nom_chave[txt(r["nomenclatura"])].add(chave)
         for nom, ch in nom_chave.items():
             if len(ch) > 1:
-                self.pendencia("NOMENCLATURA_EM_MAIS_DE_UM_ELEMENTO", nom, f"chaves {sorted(ch)}")
+                self.pendencia("NOMENCLATURA_EM_MAIS_DE_UM_ELEMENTO", nom, f"chaves {sorted(ch)}", bloqueante=True)
 
-        ev = self._evidencias(evidencias) if evidencias else {}
-        if ev:
+        ev = self._evidencias(p_evidencias, p, p_redes)
+        if ev is not None:
             meus = {frozenset(txt(r["nomenclatura"]) for _, r in rs) for rs in grupos.values()}
             iguais = sum(1 for g_ in ev if g_ in meus)
             self.conferencias["agrupamento_vs_evidencias"] = {"evidencias": len(ev), "iguais": iguais}
@@ -364,98 +585,219 @@ class Importador:
                 if g_ not in meus:
                     self.pendencia("AGRUPAMENTO_DIVERGE_EVIDENCIAS", " | ".join(sorted(g_)), "grupo das EVIDÊNCIAS sem par na 06.2")
 
-        el_existentes = {r[0]: r[1] for r in self.c.execute("SELECT chave_natural, id FROM elementos")}
-        at_existentes = {(r[0], r[1]): r[2] for r in self.c.execute("SELECT elemento_id, tipo_frente, id FROM atividades")}
-        ip_existentes = {(r[0], r[1]): r[2] for r in self.c.execute("SELECT atividade_id, chave_ocorrencia, id FROM itens_projeto")}
-        el_vistos, at_vistos, ip_vistos, av_vistos = set(), set(), set(), set()
-
+        info = {}
         for chave, rs in grupos.items():
             noms = sorted({txt(r["nomenclatura"]) for _, r in rs})
-            numero = numero_projeto(noms[0])
             coords = {(num(r["utm_e"]), num(r["utm_n"]), num(r["lat"]), num(r["lon"])) for _, r in rs}
+            numero = numero_projeto(noms[0])
             if len(coords) > 1:
                 self.pendencia("COORDENADAS_DIVERGENTES", numero, f"{len(coords)} coordenadas distintas no mesmo elemento")
-            ue, un, la, lo = sorted(coords, key=lambda x: tuple(v is None for v in x))[0]
-            info_ev = ev.get(frozenset(noms), {})
-            eid = el_existentes.get(chave) or self.novo_id("EL-", "elementos", 4)
-            el_existentes[chave] = eid
-            self.upsert("elementos", "elemento", {"id": eid}, dict(
-                chave_natural=chave, numero=numero, tipo=tipo_elemento(numero), vigente=1,
-                handle=txt(rs[0][1]["handle"]), pb=noms[0].split("_")[1] if noms[0].count("_") >= 3 else None,
-                zona=info_ev.get("zona"), utm_e=ue, utm_n=un, lat=la, lon=lo,
-                status_posicao=info_ev.get("status"), id_auditoria=info_ev.get("id")))
-            self.prov("elemento", eid, fid, "CONEXÕES", rs[0][0], {"handle": txt(rs[0][1]["handle"]), "nomenclaturas": noms})
-            el_vistos.add(eid)
+            info[chave] = {"noms": noms, "numero": numero,
+                           "coord": sorted(coords, key=lambda x: tuple(v is None for v in x))[0]}
 
+        el_ids = self._resolver_elementos(grupos, info)
+        at_exist = {r["id"]: dict(r) for r in self.c.execute("SELECT * FROM atividades")}   # antes de nomes temporários
+        at_ids = self._resolver_atividades(grupos, info, el_ids)
+
+        # aplica: elementos → atividades → itens/avisos
+        sem_ev = 0
+        el_exist = {r["id"]: dict(r) for r in self.c.execute("SELECT * FROM elementos")}
+        for chave, rs in grupos.items():
+            eid, inf = el_ids[chave], info[chave]
+            ue, un, la, lo = inf["coord"]
+            campos = dict(chave_natural=chave, numero=inf["numero"], tipo=tipo_elemento(inf["numero"]), vigente=1,
+                          handle=txt(rs[0][1]["handle"]),
+                          pb=inf["noms"][0].split("_")[1] if inf["noms"][0].count("_") >= 3 else None,
+                          utm_e=ue, utm_n=un, lat=la, lon=lo)
+            dados_ev = ev.get(frozenset(inf["noms"])) if ev is not None else None
+            if dados_ev is not None:
+                campos.update(zona=dados_ev["zona"], status_posicao=dados_ev["status"], id_auditoria=dados_ev["id"])
+            else:
+                sem_ev += 1          # zona/status/ID da auditoria preservados (não viram NULL)
+                if ev is not None:
+                    self.pendencia("ELEMENTO_SEM_GRUPO_NAS_EVIDENCIAS", inf["numero"],
+                                   f"{' | '.join(inf['noms'])}: zona/status preservados")
+            self.upsert("elementos", "elemento", {"id": eid}, campos, atual=el_exist.get(eid))
+            self.prov("elemento", eid, fid, "CONEXÕES", rs[0][0], {"handle": txt(rs[0][1]["handle"]), "nomenclaturas": inf["noms"]})
+        self.conferencias["elementos_com_zona_preservada"] = sem_ev
+
+        for (chave, tipo_frente), (aid, linhas_at) in at_ids.items():
+            noms_at = sorted({txt(r["nomenclatura"]) for _, r in linhas_at})
+            if len(noms_at) > 1:
+                self.pendencia("ATIVIDADE_COM_VARIAS_NOMENCLATURAS", info[chave]["numero"], " | ".join(noms_at))
+            k0, r0 = linhas_at[0]
+            self.upsert("atividades", "atividade", {"id": aid}, dict(
+                elemento_id=el_ids[chave], tipo_frente=tipo_frente, nomenclatura=noms_at[0], frente_id=txt(r0["local"]),
+                equipe=txt(r0["equipe"]), vigente=1), atual=at_exist.get(aid))
+            self.nome_hist("atividade", aid, noms_at[0], fid)
+            self.prov("atividade", aid, fid, "CONEXÕES", k0, {"nomenclatura": noms_at[0], "local": txt(r0["local"])})
+            self._itens(aid, noms_at[0], linhas_at, juntada, fid)
+        self.retirar_nao_vistos("avisos_origem", "aviso", self._av_vistos)
+
+    def _resolver_elementos(self, grupos, info):
+        """chave natural → ID estável. Promove N:<número> para H:<handle> sem perder ID nem histórico."""
+        exist = {r["id"]: dict(r) for r in self.c.execute("SELECT * FROM elementos")}
+        por_chave = {e["chave_natural"]: i for i, e in exist.items()}
+        noms_ex = defaultdict(set)
+        for r in self.c.execute("SELECT elemento_id, nomenclatura FROM atividades WHERE vigente=1"):
+            noms_ex[r[0]].add(r[1])
+        hist_at = self.historico("ATIVIDADE")
+        hist = {r[0] for r in self.c.execute("SELECT elemento_id, id FROM atividades") if r[1] in hist_at}
+        conc = self.concil["ELEMENTO"]
+        atrib, usados = {}, set()
+        for chave in grupos:                                             # 1) de-para explícito
+            e = conc["usar"].get(chave)
+            if e:
+                if e["usar_id"] not in exist or e["usar_id"] in usados:
+                    self.pendencia("CONCILIACAO_INVALIDA", chave, f"usar_id {e['usar_id']} inexistente ou já usado",
+                                   bloqueante=True)
+                else:
+                    atrib[chave] = e["usar_id"]
+                    usados.add(e["usar_id"])
+                    self._concil_aplicada(e, e["usar_id"], f"{chave} → {e['usar_id']}")
+        for chave in grupos:                                             # 2) mesma chave natural
+            if chave not in atrib and por_chave.get(chave) and por_chave[chave] not in usados:
+                atrib[chave] = por_chave[chave]
+                usados.add(por_chave[chave])
+        for chave, inf in info.items():                                  # 3) identidade provisória / handle redesenhado
+            if chave in atrib:
+                continue
+            cands = [i for i, e in exist.items() if e["vigente"] and i not in usados and e["numero"] == inf["numero"]
+                     and e["chave_natural"] not in grupos]
+            if len(cands) != 1:
+                continue
+            e = exist[cands[0]]
+            mesmos_nomes = noms_ex[e["id"]] <= set(inf["noms"])
+            if chave.startswith("H:") and e["chave_natural"].startswith("N:") and mesmos_nomes:
+                atrib[chave] = e["id"]
+                usados.add(e["id"])
+                self.pendencia("IDENTIDADE_PROMOVIDA", e["id"],
+                               f"{inf['numero']}: {e['chave_natural']} → {chave} (mesmo nº e mesmas nomenclaturas; ID e "
+                               f"histórico mantidos; posição vinda da fonte: {inf['coord'][2:] if inf['coord'][2] else 'sem posição'})")
+            elif (chave.startswith("H:") and e["chave_natural"].startswith("H:") and mesmos_nomes
+                  and _mesma_posicao((e["utm_e"], e["utm_n"]), inf["coord"][:2])):
+                atrib[chave] = e["id"]
+                usados.add(e["id"])
+                self.pendencia("ELEMENTO_HANDLE_ALTERADO", e["id"],
+                               f"{inf['numero']}: {e['chave_natural']} → {chave} (mesmo nº, nomenclaturas e posição)")
+        for chave in grupos:                                             # 4) novos
+            if chave not in atrib:
+                atrib[chave] = self.novo_id("EL-", "elementos", 4)
+        for eid, e in exist.items():                                     # retirada
+            if not e["vigente"] or eid in usados:
+                continue
+            if eid in conc["retirar"]:
+                self._concil_aplicada(conc["retirar"][eid], eid, f"retirada confirmada de {e['numero']}")
+            elif eid in hist:
+                self.pendencia("ELEMENTO_COM_HISTORICO_SEM_CORRESPONDENCIA", eid,
+                               f"{e['numero']} ({e['chave_natural']}) tem histórico e não tem correspondência na nova "
+                               f"revisão. Registre o de-para (usar_id) ou confirme a retirada (retirar_id) em "
+                               f"config/conciliacoes.json.", bloqueante=True)
+            self.retirar("elementos", "elemento", eid)
+        return atrib
+
+    def _resolver_atividades(self, grupos, info, el_ids):
+        exist = {r["id"]: dict(r) for r in self.c.execute("SELECT * FROM atividades")}
+        por_chave = {(a["elemento_id"], a["tipo_frente"]): i for i, a in exist.items()}
+        out = {}
+        for chave, rs in grupos.items():
             por_frente = defaultdict(list)
             for k, r in rs:
                 nom = txt(r["nomenclatura"])
                 por_frente[nom.split("_")[2] if nom.count("_") >= 3 else "?"].append((k, r))
-            for tipo_frente, linhas_at in por_frente.items():
-                noms_at = sorted({txt(r["nomenclatura"]) for _, r in linhas_at})
-                if len(noms_at) > 1:
-                    self.pendencia("ATIVIDADE_COM_VARIAS_NOMENCLATURAS", numero, " | ".join(noms_at))
-                nom = noms_at[0]
-                aid = at_existentes.get((eid, tipo_frente)) or self.novo_id("AT-", "atividades", 4)
-                at_existentes[(eid, tipo_frente)] = aid
-                k0, r0 = linhas_at[0]
-                self.upsert("atividades", "atividade", {"id": aid}, dict(
-                    elemento_id=eid, tipo_frente=tipo_frente, nomenclatura=nom, frente_id=txt(r0["local"]),
-                    equipe=txt(r0["equipe"]), vigente=1))
-                self.nome_hist("atividade", aid, nom, fid)
-                self.prov("atividade", aid, fid, "CONEXÕES", k0, {"nomenclatura": nom, "local": txt(r0["local"])})
-                at_vistos.add(aid)
-
-                ocorr = Counter()
-                for k, r in linhas_at:
-                    descr = txt(r["descricao"]) or "(sem descrição)"
-                    diam, pressao = txt(r["diametro"]), txt(r["pressao"])
-                    ocorr[(descr, diam, pressao)] += 1
-                    chave_oc = f"{descr}|{diam}|{pressao}|{ocorr[(descr, diam, pressao)]}"
-                    iid = ip_existentes.get((aid, chave_oc)) or self.novo_id("IP-", "itens_projeto", 6)
-                    ip_existentes[(aid, chave_oc)] = iid
-                    codigo = txt(r["codigo_bm"])
-                    if codigo in juntada and juntada[codigo]:
-                        unidade, fonte_un = R.normalizar_unidade(juntada[codigo]), f"BM Juntada {codigo}"
-                    else:
-                        unidade, fonte_un = None, f"PENDENTE: código '{codigo}' sem item/unidade na Juntada"
-                    self.upsert("itens_projeto", "item_projeto", {"id": iid}, dict(
-                        atividade_id=aid, chave_ocorrencia=chave_oc, vigente=1, descricao=descr, pressao=pressao,
-                        resina=txt(r["resina"]), tipo_conexao=txt(r["tipo_conexao"]), solda=txt(r["solda"]), diametro=diam,
-                        material=txt(r["material"]), grupo=txt(r["grupo"]), quantidade=num(r["quantidade"]),
-                        unidade=unidade, unidade_fonte=fonte_un, codigo_bm=codigo,
-                        enquadramento_bm=txt(r["enquadramento"]), obs_enquadramento_bm=txt(r["obs_enquadramento"]),
-                        trechos=txt(r["trechos"]), tipo_entroncamento=txt(r["tipo_entroncamento"]),
-                        status_conexao=txt(r["status_conexao"])))
-                    self.prov("item_projeto", iid, fid, "CONEXÕES", k,
-                              {self.colunas_06_2[c]: bruto(v) for c, v in r.items()})
-                    ip_vistos.add(iid)
-                    for tipo, campo in (("PROBLEMA", "consideracao"), ("SUGESTAO", "sugestao")):
-                        for texto in [t.strip() for t in str(r[campo] or "").split(" | ") if t.strip()]:
-                            h = _hash_texto(texto)
-                            res = self.upsert("avisos_origem", "aviso", {"item_id": iid, "tipo": tipo, "texto_hash": h},
-                                              dict(prioridade=txt(r["prioridade"]), texto=texto, vigente=1))
-                            avid = self.c.execute("SELECT id FROM avisos_origem WHERE item_id=? AND tipo=? AND texto_hash=?",
-                                                  (iid, tipo, h)).fetchone()[0]
-                            av_vistos.add(avid)
-                            if res == "novo":
-                                self.prov("aviso", str(avid), fid, "CONEXÕES", k, {self.colunas_06_2[campo]: texto})
-
-        self.retirar_nao_vistos("itens_projeto", "item_projeto", ip_vistos)
-        self.retirar_nao_vistos("atividades", "atividade", at_vistos)
-        self.retirar_nao_vistos("elementos", "elemento", el_vistos)
-        self.retirar_nao_vistos("avisos_origem", "aviso", av_vistos)
-
-    def _evidencias(self, p):
-        """EVIDÊNCIAS REV08 (aba ELEMENTOS_ZONA): conferência do agrupamento + zona, status e ID da auditoria."""
-        self.fonte("evidencias", p)
-        out = {}
-        ws = openpyxl.load_workbook(p, read_only=True, data_only=True)["ELEMENTOS_ZONA"]
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[0]:
-                g_ = frozenset(s.strip() for s in str(row[1]).split("|") if s.strip())
-                out[g_] = {"id": txt(row[0]), "zona": txt(row[5]), "status": txt(row[8])}
+            for tf, linhas_at in por_frente.items():
+                aid = por_chave.get((el_ids[chave], tf)) or self.novo_id("AT-", "atividades", 4)
+                out[(chave, tf)] = (aid, linhas_at)
+        vistos = {aid for aid, _ in out.values()}
+        hist = self.historico("ATIVIDADE")
+        conc = self.concil["ATIVIDADE"]
+        for aid, a in exist.items():
+            if not a["vigente"] or aid in vistos:
+                continue
+            if aid in conc["retirar"]:
+                self._concil_aplicada(conc["retirar"][aid], aid, f"retirada confirmada de {a['nomenclatura']}")
+            elif aid in hist and a["elemento_id"] not in self.concil["ELEMENTO"]["retirar"]:
+                self.pendencia("ATIVIDADE_COM_HISTORICO_SEM_CORRESPONDENCIA", aid,
+                               f"{a['nomenclatura']} tem histórico e saiu da 06.2. Confirme a retirada (retirar_id) ou "
+                               f"concilie o elemento em config/conciliacoes.json.", bloqueante=True)
+            self.retirar("atividades", "atividade", aid)
+        # nomes temporários para permitir troca de nomenclatura entre atividades (índice único vigente)
+        novos_nomes = {aid: sorted({txt(r["nomenclatura"]) for _, r in la})[0] for aid, la in out.values()}
+        for aid, nome in novos_nomes.items():
+            if aid in exist and exist[aid]["nomenclatura"] != nome:
+                self.c.execute("UPDATE atividades SET nomenclatura=? WHERE id=?", ("⁣" + aid, aid))
         return out
+
+    def _itens(self, aid, nomenclatura, linhas_at, juntada, fid):
+        """Itens por assinatura técnica completa. Ordem das linhas não muda identidade.
+        Correspondência ambígua → itens novos + pendência (nada é transferido por presunção)."""
+        novos = []
+        for k, r in linhas_at:
+            codigo = txt(r["codigo_bm"])
+            if codigo in juntada and juntada[codigo]:
+                unidade, fonte_un = R.normalizar_unidade(juntada[codigo]), f"BM Juntada {codigo}"
+            else:
+                unidade, fonte_un = None, f"PENDENTE: código '{codigo}' sem item/unidade na Juntada"
+            campos = dict(descricao=txt(r["descricao"]) or "(sem descrição)", pressao=txt(r["pressao"]),
+                          resina=txt(r["resina"]), tipo_conexao=txt(r["tipo_conexao"]), solda=txt(r["solda"]),
+                          diametro=txt(r["diametro"]), material=txt(r["material"]), grupo=txt(r["grupo"]),
+                          quantidade=num(r["quantidade"]), unidade=unidade, unidade_fonte=fonte_un, codigo_bm=codigo,
+                          enquadramento_bm=txt(r["enquadramento"]), obs_enquadramento_bm=txt(r["obs_enquadramento"]),
+                          trechos=txt(r["trechos"]), tipo_entroncamento=txt(r["tipo_entroncamento"]),
+                          status_conexao=txt(r["status_conexao"]))
+            novos.append({"k": k, "r": r, "campos": campos, "sig": assinatura_item(campos)})
+        exist = [dict(x) for x in self.c.execute("SELECT * FROM itens_projeto WHERE atividade_id=? ORDER BY id", (aid,))]
+        seq = Counter()
+        for x in exist:
+            sig, _, n = x["chave_ocorrencia"].rpartition("#")
+            seq[sig] = max(seq[sig], int(n) if n.isdigit() else 0)
+        usados, atrib = set(), [None] * len(novos)
+        iguais = lambda x, nv: x["chave_ocorrencia"].rpartition("#")[0] == nv["sig"] and all(
+            x[c] == v for c, v in nv["campos"].items())
+        for vig in (1, 0):                                   # 1) correspondência exata (vigentes, depois reativação)
+            for n, nv in enumerate(novos):
+                if atrib[n] is None:
+                    x = next((x for x in exist if x["vigente"] == vig and x["id"] not in usados and iguais(x, nv)), None)
+                    if x:
+                        atrib[n] = x
+                        usados.add(x["id"])
+        resto_n = defaultdict(list)                          # 2) mesma assinatura, atributo mutável alterado
+        for n, nv in enumerate(novos):
+            if atrib[n] is None:
+                resto_n[nv["sig"]].append(n)
+        for sig, ns in resto_n.items():
+            ex = [x for x in exist if x["vigente"] and x["id"] not in usados and x["chave_ocorrencia"].rpartition("#")[0] == sig]
+            if len(ns) == 1 and len(ex) == 1:
+                atrib[ns[0]] = ex[0]
+                usados.add(ex[0]["id"])
+            elif ex:
+                self.pendencia("ITEM_SEM_CORRESPONDENCIA_INEQUIVOCA", nomenclatura,
+                               f"{sig}: {len(ex)} item(ns) anterior(es) × {len(ns)} na revisão, com atributos diferentes — "
+                               f"criados itens novos; os anteriores ficam não vigentes (sem transferência presumida)")
+        for n, nv in enumerate(novos):
+            x = atrib[n]
+            if x is None:
+                seq[nv["sig"]] += 1
+                iid, chave_oc, atual = self.novo_id("IP-", "itens_projeto", 6), f"{nv['sig']}#{seq[nv['sig']]}", None
+            else:
+                iid, chave_oc, atual = x["id"], x["chave_ocorrencia"], x
+            self.upsert("itens_projeto", "item_projeto", {"id": iid},
+                        dict(atividade_id=aid, chave_ocorrencia=chave_oc, vigente=1, **nv["campos"]), atual=atual)
+            self.prov("item_projeto", iid, fid, "CONEXÕES", nv["k"], {self.colunas_06_2[c]: bruto(v) for c, v in nv["r"].items()})
+            usados.add(iid)
+            for tipo, campo in (("PROBLEMA", "consideracao"), ("SUGESTAO", "sugestao")):
+                for texto in [t.strip() for t in str(nv["r"][campo] or "").split(" | ") if t.strip()]:
+                    h = _hash_texto(texto)
+                    res = self.upsert("avisos_origem", "aviso", {"item_id": iid, "tipo": tipo, "texto_hash": h},
+                                      dict(prioridade=txt(nv["r"]["prioridade"]), texto=texto, vigente=1))
+                    avid = self.c.execute("SELECT id FROM avisos_origem WHERE item_id=? AND tipo=? AND texto_hash=?",
+                                          (iid, tipo, h)).fetchone()[0]
+                    self._av_vistos.add(avid)
+                    if res == "novo":
+                        self.prov("aviso", str(avid), fid, "CONEXÕES", nv["k"], {self.colunas_06_2[campo]: texto})
+        for x in exist:
+            if x["vigente"] and x["id"] not in usados:
+                self.retirar("itens_projeto", "item_projeto", x["id"])
 
     def materiais(self):
         """Tubos PEAD da rede (fornecimento Caesb, SL0327 §6) por DE; itens MATERIAL do BM (aquisição Ankara);
@@ -474,18 +816,34 @@ class Importador:
                            (m["id"], m["descricao"], m["unidade"]))
 
     def decisoes(self):
+        """Só INSERE decisões, escopos e vínculos novos; nunca altera o que já foi registrado.
+        O padrão de texto (padrao_sugestao) só serve para sugerir avisos parecidos para revisão."""
         p = os.path.join(BASE, "config", "decisoes.json")
         if not os.path.exists(p):
             return 0
         with open(p, encoding="utf-8") as f:
             lista = json.load(f)["decisoes"]
         n = 0
-        for d in lista:   # INSERT OR IGNORE: a importação nunca altera uma decisão já registrada
+        agora = S._agora()
+        for d in lista:
             n += self.c.execute(
                 """INSERT OR IGNORE INTO decisoes(id,assunto,objeto_tipo,objeto_ref,status,decisao,responsavel,evidencia,data,
                      padrao_aviso,registrada_em) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (d["id"], d["assunto"], d.get("objeto_tipo"), d.get("objeto_ref"), d["status"], d["decisao"],
-                 d.get("responsavel"), d["evidencia"], d.get("data"), d.get("padrao_aviso"), S._agora())).rowcount
+                 d.get("responsavel"), d["evidencia"], d.get("data"), d.get("padrao_sugestao"), agora)).rowcount
+            for ref in d.get("escopo", {}).get("elementos", []):
+                self.c.execute("INSERT OR IGNORE INTO decisao_objetos VALUES (?, 'ELEMENTO', ?)", (d["id"], ref))
+            for v in d.get("vinculos_avisos", []):
+                self.c.execute("INSERT OR IGNORE INTO decisao_vinculos VALUES (?,?,?,?)",
+                               (d["id"], v["elemento"], v["texto_hash"], agora))
+        for dec, numero, h in self.c.execute("SELECT decisao_id, elemento_numero, texto_hash FROM decisao_vinculos").fetchall():
+            achou = self.c.execute(
+                """SELECT 1 FROM avisos_origem x JOIN itens_projeto i ON i.id=x.item_id JOIN atividades a ON a.id=i.atividade_id
+                   JOIN elementos e ON e.id=a.elemento_id WHERE e.numero=? AND x.texto_hash=? AND x.vigente=1 LIMIT 1""",
+                (numero, h)).fetchone()
+            if not achou:
+                self.pendencia("VINCULO_DE_DECISAO_SEM_AVISO_VIGENTE", dec,
+                               f"{numero} · aviso {h[:12]} não está na revisão atual (o vínculo é mantido)")
         return n
 
     # -------------------------------------------------------------- execução
@@ -495,6 +853,8 @@ class Importador:
         faltam = [cfg["arquivos"][k] for k, v in obrig.items() if not v]
         if faltam:
             raise RuntimeError("Faltam planilhas obrigatórias em planilhas/: " + ", ".join(faltam))
+        for e, motivo in self._concil_invalidas:
+            self.pendencia("CONCILIACAO_INVALIDA", json.dumps(e, ensure_ascii=False)[:200], motivo, bloqueante=True)
         self.parametro("contrato", cfg["contrato"], "config/fontes.json")
         vc = cfg["valor_contrato"]
         self.parametro("valor_contrato", vc["valor"], vc["fonte"])
@@ -503,28 +863,31 @@ class Importador:
         self.bm(obrig["bm"])
         self.reajuste(obrig["reajuste"])
         self.trechos(obrig["redes"])
-        self.conexoes(obrig["conexoes"], caminho(cfg, "evidencias", self.pasta))
+        self.conexoes(obrig["conexoes"], caminho(cfg, "evidencias", self.pasta), obrig["redes"])
         self.materiais()
         self.decisoes_novas = self.decisoes()
 
 
-# ------------------------------------------------------------------ migração do esquema v1 (MVP) para v2
+# ------------------------------------------------------------------ migração de esquema
 TABELAS_V1_RENOMEAR = ["trechos", "elementos", "conjuntos", "pecas", "medicoes", "medicao_lancamentos", "parametros"]
 
 
+def _add_coluna(conn, tabela, coluna, tipo):
+    if coluna not in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
+        conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
+
+
 def preparar_v1(conn):
-    """Renomeia as tabelas v1 de estrutura incompatível para v1_* (preservadas para auditoria) e cria o esquema v2.
+    """Renomeia as tabelas v1 de estrutura incompatível para v1_* (preservadas para auditoria) e cria o esquema atual.
 
     Deve rodar com foreign_keys=OFF e legacy_alter_table=ON (as referências das tabelas operacionais
-    continuam apontando para os nomes trechos/medicoes, que passam a ser as tabelas v2).
+    continuam apontando para os nomes trechos/medicoes, que passam a ser as tabelas novas).
     """
     for t in TABELAS_V1_RENOMEAR:
         conn.execute(f'ALTER TABLE "{t}" RENAME TO "v1_{t}"')
     for ix in ("ix_pecas_conj", "ix_conj_elem", "ix_lanc_med"):
         conn.execute(f"DROP INDEX IF EXISTS {ix}")
-    cols_bm = {r[1] for r in conn.execute("PRAGMA table_info(bm_itens)")}
-    if "vigente" not in cols_bm:
-        conn.execute("ALTER TABLE bm_itens ADD COLUMN vigente INTEGER NOT NULL DEFAULT 1")
+    _add_coluna(conn, "bm_itens", "vigente", "INTEGER NOT NULL DEFAULT 1")
     S.aplicar_esquema(conn)
     conn.execute("INSERT OR IGNORE INTO parametros(chave,valor,fonte) SELECT chave, valor, 'migrado do esquema v1' "
                  "FROM v1_parametros WHERE chave NOT IN ('p0')")
@@ -541,6 +904,29 @@ def preparar_v1(conn):
            FROM v1_medicao_lancamentos""")
 
 
+def preparar_v3(conn):
+    """Esquema v2 → v3, sem perda: colunas novas, assinatura técnica completa nos itens já importados
+    (mantendo o nº de cada um) e tabelas de escopo das decisões."""
+    _add_coluna(conn, "pendencias_importacao", "bloqueante", "INTEGER NOT NULL DEFAULT 0")
+    _add_coluna(conn, "medicoes", "congelada_em", "TEXT")
+    _add_coluna(conn, "medicoes", "resumo_congelado", "TEXT")
+    for c, t in (("preco_congelado", "REAL"), ("classificacao_congelada", "TEXT"), ("item_congelado", "TEXT")):
+        _add_coluna(conn, "medicao_lancamentos", c, t)
+    for r in conn.execute("SELECT * FROM itens_projeto").fetchall():
+        n = r["chave_ocorrencia"].rsplit("|", 1)[-1]
+        conn.execute("UPDATE itens_projeto SET chave_ocorrencia=? WHERE id=?", (f"{assinatura_item(dict(r))}#{n}", r["id"]))
+    S.aplicar_esquema(conn)
+
+
+def congelar_fechadas(conn):
+    """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
+    desta importação, para que a nova revisão do BM não as recalcule."""
+    ids = [r[0] for r in conn.execute("SELECT id FROM medicoes WHERE status='FECHADA' AND congelada_em IS NULL")]
+    for mid in ids:
+        S.congelar_medicao(conn, mid, "migração de esquema (cadastro do BM existente antes desta importação)")
+    return ids
+
+
 REFS_ALVO = ["movimentos", "checkins", "apontamentos", "fotos", "execucao", "medicao_lancamentos"]
 REFS_TRECHO = [("cadastro", "trecho_id"), ("cadastro_historico", "trecho_id"), ("ligacoes_prediais", "trecho_id")]
 
@@ -549,8 +935,8 @@ def remapear_v1(conn, imp):
     """Troca as referências antigas (PONTO / nomenclatura) pelas identidades estáveis. Nada é apagado;
     referência sem correspondência fica com o valor antigo e vira pendência."""
     agora = S._agora()
-    tr = {r[0]: r[1] for r in conn.execute("SELECT ponto, id FROM trechos")}
-    at = {r[0]: r[1] for r in conn.execute("SELECT nomenclatura, id FROM atividades")}
+    tr = {r[0]: r[1] for r in conn.execute("SELECT ponto, id FROM trechos WHERE vigente=1")}
+    at = {r[0]: r[1] for r in conn.execute("SELECT nomenclatura, id FROM atividades WHERE vigente=1")}
     resumo = Counter()
     for tabela in REFS_ALVO:
         for tipo, antigo in conn.execute(f"SELECT DISTINCT alvo_tipo, alvo_id FROM {tabela} WHERE alvo_id IS NOT NULL").fetchall():
@@ -584,25 +970,59 @@ def remapear_v1(conn, imp):
     return dict(resumo)
 
 
-# ------------------------------------------------------------------ auditoria pós-carga
-def auditar(conn, cfg, imp):
+# ------------------------------------------------------------------ auditoria pós-carga (antes do COMMIT)
+def obter_contagens(conn, conferencias):
     q = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
-    esperado = cfg["auditoria"]
-    obtido = {
+    unidades = {r[0] or "PENDENTE": r[1] for r in conn.execute(
+        "SELECT unidade, COUNT(*) FROM itens_projeto WHERE vigente=1 GROUP BY unidade")}
+    out = {
         "trechos": q("SELECT COUNT(*) FROM trechos WHERE vigente=1"),
         "extensao_m": round(q("SELECT SUM(extensao_m) FROM trechos WHERE vigente=1") or 0, 2),
         "elementos": q("SELECT COUNT(*) FROM elementos WHERE vigente=1"),
         "nos": q("SELECT COUNT(*) FROM elementos WHERE vigente=1 AND tipo='NÓ'"),
         "caixas": q("SELECT COUNT(*) FROM elementos WHERE vigente=1 AND tipo<>'NÓ'"),
-        "conjuntos": q("SELECT COUNT(*) FROM atividades WHERE vigente=1"),
-        "pecas": q("SELECT COUNT(*) FROM itens_projeto WHERE vigente=1"),
+        "atividades": q("SELECT COUNT(*) FROM atividades WHERE vigente=1"),
+        "itens_projeto": q("SELECT COUNT(*) FROM itens_projeto WHERE vigente=1"),
         "bm_vertical": q("SELECT COUNT(*) FROM bm_itens WHERE planilha='VERTICAL' AND vigente=1"),
         "bm_juntada": q("SELECT COUNT(*) FROM bm_itens WHERE planilha='JUNTADA' AND vigente=1"),
-        "sem_posicao": sorted(r[0] for r in conn.execute("SELECT numero FROM elementos WHERE vigente=1 AND lat IS NULL")),
+        "sem_posicao": sorted(r[0] for r in conn.execute(
+            "SELECT numero FROM elementos WHERE vigente=1 AND (lat IS NULL OR lon IS NULL)")),
+        "unidades_linhas": dict(sorted(unidades.items())),
+        "quantidade_m": round(q("SELECT COALESCE(SUM(quantidade),0) FROM itens_projeto WHERE vigente=1 AND unidade='M'"), 4),
     }
-    contagens = {k: {"esperado": v, "obtido": obtido[k], "ok": obtido[k] == v} for k, v in esperado.items() if k in obtido}
+    ag = conferencias.get("agrupamento_vs_evidencias")
+    if ag:
+        out["agrupamento_evidencias_iguais"] = ag["iguais"]
+    return out
 
-    # BM: a totalização do sistema reproduz o rodapé da Vertical (mesma ordem de arredondamento)?
+
+def controle_para(cfg, fontes):
+    """Conjunto de controles aprovado para EXATAMENTE estes arquivos (hash de cada fonte)."""
+    atual = {k: v["sha256"] for k, v in fontes.items()}
+    return next((c for c in cfg.get("controles", []) if c.get("fontes") == atual), None)
+
+
+def auditar(conn, cfg, imp, fontes, conferencias):
+    """Conferências da carga. `bloqueios` lista o que impede o COMMIT."""
+    q = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
+    bloqueios = []
+    obtido = obter_contagens(conn, conferencias)
+    controle = controle_para(cfg, fontes)
+    if controle is None:
+        contagens = {}
+        bloqueios.append({"tipo": "SEM_CONTROLES_APROVADOS", "referencia": "config/controles.json",
+                          "detalhe": "não há conjunto de controles aprovado para estes arquivos (hash). Confira os valores "
+                                     "obtidos contra as fontes e registre o conjunto em config/controles.json "
+                                     "(modelo no relatório)."})
+    else:
+        contagens = {k: {"esperado": v, "obtido": obtido.get(k), "ok": obtido.get(k) == v}
+                     for k, v in controle["esperado"].items()}
+        for k, c in contagens.items():
+            if not c["ok"]:
+                bloqueios.append({"tipo": "CONTROLE_DIVERGENTE", "referencia": k,
+                                  "detalhe": f"esperado {c['esperado']} × obtido {c['obtido']} ({controle['id']})"})
+
+    # BM: a totalização do sistema reproduz o rodapé da própria planilha (mesma ordem de arredondamento)?
     bdi_m, bdi_s, k = (float(S.parametro(conn, x, 0)) for x in ("bdi_material", "bdi_servico", "coef_k"))
     itens = [(r[0], r[1] or 0, r[2] or 0) for r in conn.execute(
         "SELECT classificacao, quantidade, preco_unitario FROM bm_itens WHERE planilha='VERTICAL' AND vigente=1")]
@@ -612,6 +1032,10 @@ def auditar(conn, cfg, imp):
              and abs(tot["total_exato"] - ref["p0_bm"]) < 1e-4)
     totalizacao = {"sistema": {"material": tot["material"], "servico": tot["servico"], "p0": tot["total_exato"]},
                    "celulas_bm": ref, "ok": bm_ok}
+    if not bm_ok:
+        bloqueios.append({"tipo": "TOTALIZACAO_BM_DIVERGE_DAS_CELULAS", "referencia": "BM VERTICAL",
+                          "detalhe": f"sistema {totalizacao['sistema']} × células {ref}: quantidades/preços não "
+                                     f"reproduzem o rodapé da própria planilha"})
 
     vc = float(S.parametro(conn, "valor_contrato"))
     p0 = ref["p0_bm"]
@@ -621,25 +1045,34 @@ def auditar(conn, cfg, imp):
 
     unidades = {r[0] or "PENDENTE": {"linhas": r[1], "quantidade": round(r[2] or 0, 4)} for r in conn.execute(
         "SELECT unidade, COUNT(*), SUM(quantidade) FROM itens_projeto WHERE vigente=1 GROUP BY unidade ORDER BY unidade")}
-    pend_q = q("SELECT COUNT(*) FROM itens_projeto WHERE vigente=1 AND quantidade IS NULL")
     enquad = {r[0] or "(vazio)": r[1] for r in conn.execute(
         "SELECT enquadramento_bm, COUNT(*) FROM itens_projeto WHERE vigente=1 GROUP BY 1 ORDER BY 2 DESC")}
     avisos = {f"{r[0]}/{r[1] or 'sem prioridade'}": r[2] for r in conn.execute(
         "SELECT tipo, prioridade, COUNT(*) FROM avisos_origem WHERE vigente=1 GROUP BY 1,2 ORDER BY 1,2")}
-    servs = json.load(open(os.path.join(BASE, "config", "servicos_rede.json"), encoding="utf-8"))["gaveta1"]
+    with open(os.path.join(BASE, "config", "servicos_rede.json"), encoding="utf-8") as f:
+        servs = json.load(f)["gaveta1"]
     pendencias = {r[0]: r[1] for r in conn.execute(
         "SELECT tipo, COUNT(*) FROM pendencias_importacao WHERE importacao_id=? GROUP BY 1", (imp,))}
     return {
+        "controle_aplicado": controle["id"] if controle else None,
         "contagens": contagens,
-        "contagens_ok": all(c["ok"] for c in contagens.values()),
+        "contagens_ok": controle is not None and all(c["ok"] for c in contagens.values()),
+        "obtido": obtido,
+        "modelo_controles": None if controle else {
+            "id": "PREENCHER", "fontes": {k: v["sha256"] for k, v in fontes.items()},
+            "arquivos": {k: v["nome"] for k, v in fontes.items()},
+            "esperado": obtido, "origem_dos_valores": "PREENCHER: documento/fonte que confirma cada valor",
+            "aprovado_por": "PREENCHER", "data": "PREENCHER",
+            "_atencao": "valores 'esperado' copiados do obtido nesta simulação: confira cada um na fonte antes de aprovar"},
         "totalizacao_bm": totalizacao,
         "total_contratual": total_contratual,
         "unidades_06_2": unidades,
-        "itens_sem_quantidade": pend_q,
+        "itens_sem_quantidade": q("SELECT COUNT(*) FROM itens_projeto WHERE vigente=1 AND quantidade IS NULL"),
         "enquadramento_bm_BA": enquad,
         "avisos_AA_AB_AW": avisos,
         "decisoes_registradas": q("SELECT COUNT(*) FROM decisoes"),
         "servicos_06_1_sem_item_confirmado": [s["servico"] for s in servs if s["status"] != "CONFIRMADO"],
         "trechos_mnd": [r[0] for r in conn.execute("SELECT ponto FROM trechos WHERE vigente=1 AND metodologia='MND' ORDER BY 1")],
         "pendencias_importacao": pendencias,
+        "bloqueios": bloqueios,
     }

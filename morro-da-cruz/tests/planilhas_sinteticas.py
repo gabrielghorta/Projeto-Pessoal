@@ -1,5 +1,6 @@
 """Gera planilhas SINTÉTICAS mínimas com a mesma estrutura das oficiais, para testar a importação
 sem depender dos arquivos do contrato (que não são versionados). Os valores aqui não são dados da obra."""
+import hashlib
 import json
 import os
 
@@ -11,7 +12,7 @@ ARQ = {
     "conexoes": "06.2 - SINTETICA_CONEXOES_REV08.xlsm",
     "bm": "BM_SINTETICO_REV04.xlsx",
     "reajuste": "BM_SINTETICO_REV03_REAJUSTE.xlsx",
-    "evidencias": "EVIDENCIAS_SINTETICAS_REV08.xlsx",
+    "evidencias": "EVIDENCIAS_SINTETICAS_REV08_06.2_e_REV01_06.1.xlsx",
 }
 
 TRECHOS = [
@@ -36,6 +37,14 @@ CONEXOES = [
     ("Zona01_PB01_CH_DF-33", "TUBO C/ FLANGE E PONTA PN10 L=0,36 M", "100", "PN10", 1, "APROVAR", "5FDEA", None, None, None,
      "APROVAR — SEM ITEM NO BM", "sem item", None),
     ("Zona11_PBND_CH_MV-11", "MEDIDOR DE VAZÃO", "150", "PN10", 1, "3.1.1", None, None, None, None, "CONTRATUAL CONFIRMADO", None, None),
+    # textos reais dos avisos (06.2 REV08) para testar o escopo das decisões
+    ("Zona11_PB15_Rede_DF-05", "TÊ 90º ELETROFUSÃO INJETADO", "63", "PN10", 1, "1.14.53", "6DF05",
+     "P1 — DF-05 contada em duas pranchas (16 e 19).", "Tirar a DF-05 do resumo e do quadro de uma das pranchas.", "P1",
+     "CONTRATUAL CONFIRMADO", None, None),
+    ("Zona01_PB02_Rede_DF-32", "TÊ 90º ELETROFUSÃO INJETADO", "63", "PN10", 1, "1.14.53", "6DF32",
+     "P2 — DF-32 no canto da curva 2 (6C232): o tê da descarga pode fazer a função da curva (possível duplicidade).",
+     "Possível duplicidade tê × curva: definir a montagem com a fiscalização (F9) antes de comprar.", "P2",
+     "CONTRATUAL CONFIRMADO", None, None),
 ]
 
 JUNTADA = [  # item, unidade, preço, classe
@@ -62,7 +71,7 @@ def _rede(p, trechos):
                    "BM": f"EQUIPE {local}", "BN": "Rede", "BO": ponto.split("_")[1], "BP": ni, "BQ": nf, "BR": h,
                    "BS": a[0], "BT": a[1], "BU": b[0], "BV": b[1], "BW": -15.9, "BX": -47.7}
         if met == "MND":
-            valores.update({"AS": 0, "AW": 0, "BA": 0})
+            valores.update({"AF": 0, "AS": 0, "AW": 0, "BA": 0})     # como na 06.1 real: MND sem vala, profundidade 0
         for c, v in valores.items():
             ws.cell(row=i, column=col(c), value=v)
     wb.save(p)
@@ -90,16 +99,17 @@ def _conexoes(p, linhas):
     wb.save(p)
 
 
-def _bm(p, quantidade_override=None):
+def _bm(p, quantidade_override=None, precos=None):
     wb = Workbook()
     j = wb.active
     j.title = "BM MORRO DA CRUZ"
     for i, (it, un, preco, cl) in enumerate(JUNTADA, 6):
+        preco = (precos or {}).get(it, preco)
         for k, v in enumerate([it, f"desc {it}", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "G", "G", "000", cl, f"DESCRIÇÃO {it}",
                                un, 1, preco, preco], 1):
             j.cell(row=i, column=k, value=v)
     v_ = wb.create_sheet("BM MORRO DA CRUZ - VERTICAL")
-    precos = {it: (un, pr, cl) for it, un, pr, cl in JUNTADA}
+    precos = {it: (un, (precos or {}).get(it, pr), cl) for it, un, pr, cl in JUNTADA}
     tot = {"MATERIAL": 0, "SERVIÇO": 0}
     linha = 6
     for chave, sg, it, q in VERTICAL:
@@ -159,22 +169,48 @@ def _evidencias(p, linhas):
     wb.save(p)
 
 
-def gerar(pasta, trechos=None, conexoes=None, bm_override=None):
+def sha(p):
+    with open(p, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def conjunto_controles(pasta, esperado, ident="CTRL-SINTETICO", arquivos=None):
+    """Conjunto de controles para os arquivos presentes em `pasta` (hash de cada um)."""
+    arquivos = arquivos or ARQ
+    fontes = {k: sha(os.path.join(pasta, n)) for k, n in arquivos.items() if os.path.exists(os.path.join(pasta, n))}
+    return {"id": ident, "fontes": fontes, "esperado": esperado, "origem_dos_valores": "listas do gerador sintético",
+            "aprovado_por": "teste", "data": "2026-10-16"}
+
+
+def esperado_de(trechos, conexoes, evidencias=True):
+    """Controles calculados das listas de entrada (independentes do importador)."""
+    elementos = {l[6] or l[0].split("_")[-1] for l in conexoes}
+    e = {"trechos": len(trechos), "elementos": len(elementos), "atividades": len({l[0] for l in conexoes}),
+         "itens_projeto": len(conexoes), "bm_vertical": len(VERTICAL), "bm_juntada": len(JUNTADA)}
+    if evidencias:
+        e["agrupamento_evidencias_iguais"] = len(elementos)
+    return e
+
+
+def gerar(pasta, trechos=None, conexoes=None, bm_override=None, precos=None, evidencias=True):
     os.makedirs(pasta, exist_ok=True)
     trechos = TRECHOS if trechos is None else trechos
     conexoes = CONEXOES if conexoes is None else conexoes
     _rede(os.path.join(pasta, ARQ["redes"]), trechos)
     _conexoes(os.path.join(pasta, ARQ["conexoes"]), conexoes)
-    p0 = _bm(os.path.join(pasta, ARQ["bm"]), bm_override)
+    p0 = _bm(os.path.join(pasta, ARQ["bm"]), bm_override, precos)
     _reajuste(os.path.join(pasta, ARQ["reajuste"]))
-    _evidencias(os.path.join(pasta, ARQ["evidencias"]), conexoes)
-    elementos = {l[6] or l[0].split("_")[-1] for l in conexoes}
+    pe = os.path.join(pasta, ARQ["evidencias"])
+    if evidencias:
+        _evidencias(pe, conexoes)
+    elif os.path.exists(pe):
+        os.remove(pe)
     return {
         "contrato": "CT SINTÉTICO", "obra": "teste",
         "valor_contrato": {"valor": "1.00", "fonte": "teste"},
         "arquivos": dict(ARQ, mapa="inexistente.html"),
-        "auditoria": {"trechos": len(trechos), "elementos": len(elementos), "conjuntos": len({l[0] for l in conexoes}),
-                      "pecas": len(conexoes), "bm_vertical": len(VERTICAL), "bm_juntada": len(JUNTADA)},
+        "controles": [conjunto_controles(pasta, esperado_de(trechos, conexoes, evidencias))],
+        "conciliacoes": [],
         "materiais_consumo": [{"id": "CONS-AREIA", "descricao": "Areia", "unidade": "M3"}],
         "_p0": p0,
     }

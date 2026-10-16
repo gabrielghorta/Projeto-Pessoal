@@ -70,7 +70,10 @@ async function carregarMapa() {
   const est = await api('/api/mapa/estado' + (MEDICAO_ATUAL ? '?medicao=' + MEDICAO_ATUAL : ''));
   $('#pins').innerHTML = est.pins.length ? est.pins.map(p => `<div class="acoes" style="margin-bottom:6px">📍 <b>${esc(p.equipe)}</b> <button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(curto(p.alvo_id))}</button></div>`).join('')
     : '<span class="vazio">Nenhum check-in aberto hoje.</span>';
-  $('#semPosicao').innerHTML = est.sem_posicao.map(e => `<div style="margin-bottom:6px"><b>${esc(e.numero)}</b> <span class="chip ${e.status_posicao.startsWith('PROV') ? 'amarelo' : 'vermelho'}">${esc(e.status_posicao)}</span><br><small>${esc(e.nomenclaturas)}</small></div>`).join('');
+  $('#semPosicao').innerHTML = est.sem_posicao.map(e => `<div style="margin-bottom:6px"><b>${esc(e.numero)}</b> <span class="chip ${String(e.status_posicao || '').startsWith('PROV') ? 'amarelo' : 'vermelho'}">${esc(e.status_posicao || 'sem posição')}</span><br><small>${esc(e.nomenclaturas)}</small></div>`).join('');
+  const ret = est.retirados_com_historico || [];
+  $('#painelRetirados').hidden = !ret.length;
+  $('#retirados').innerHTML = ret.map(r => `<div style="margin-bottom:6px"><button class="btn" data-fisc="${esc(r.alvo_tipo)}|${esc(r.alvo_id)}">${esc(curto(r.nome))}</button><br><small>${esc(r.situacao)}</small></div>`).join('');
 }
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-fisc]'); if (!b) return;
@@ -94,15 +97,18 @@ async function mostrarFiscal(tipo, id) {
     ['Itens (06.2)', esc(d.texto)], ['Outras frentes do elemento', (d.outras_atividades || []).map(o => esc(o.nomenclatura)).join(', ') || '—'], ['Trechos ligados', d.trechos_ligados.map(t => esc(curto(t.ponto))).join(', ') || '—'],
     ['Posição', d.lat ? `${d.lat}, ${d.lon}` : '<span class="chip vermelho">sem posição</span>'],
   ];
-  const decs = Object.fromEntries((d.decisoes || []).map(x => [x.id, x]));
+  const decs = Object.fromEntries([...(d.decisoes || []), ...(d.decisoes_sugeridas || [])].map(x => [x.id, x]));
   const avisos = (d.avisos || []).map(a => `<div class="aviso ${a.tipo === 'PROBLEMA' ? 'problema' : 'sugestao'}"><b>${a.tipo === 'PROBLEMA' ? 'Problema (AA)' : 'Sugestão (AB)'}</b>
       ${a.prioridade ? `<span class="chip">${esc(a.prioridade)}</span>` : ''} ${esc(a.texto)}
-      ${a.decisoes.map(i => `<br><span class="chip verde">${esc(i)} · ${esc(decs[i] ? decs[i].status : '')}</span> <small>${esc(decs[i] ? decs[i].decisao : '')}</small>`).join('')}</div>`).join('')
-    + (d.avisos && d.avisos.length ? '<p class="vazio" style="margin:4px 0">Avisos = texto de origem da 06.2 (AA/AB/AW). Decisões posteriores aparecem em verde e não são reabertas pela reimportação.</p>' : '');
+      ${a.decisoes.map(i => `<br><span class="chip verde">${esc(i)} · ${esc(decs[i] ? decs[i].status : '')}</span> <small>${esc(decs[i] ? decs[i].decisao : '')}</small>`).join('')}
+      ${(a.sugestoes || []).map(i => `<br><span class="chip" title="Sugestão por semelhança de texto: a decisão NÃO foi aplicada a este aviso">possível relação com ${esc(i)} — revisar</span>`).join('')}</div>`).join('')
+    + (d.avisos && d.avisos.length ? '<p class="vazio" style="margin:4px 0">Avisos = texto de origem da 06.2 (AA/AB/AW). Em verde, só decisões com vínculo explícito a este aviso (não reabertas pela reimportação). "Revisar" = semelhança de texto, sem decisão aplicada.</p>' : '')
+    + ((d.decisoes || []).filter(x => !(d.avisos || []).some(a => a.decisoes.includes(x.id))).map(x => `<div class="aviso info"><span class="chip verde">${esc(x.id)} · ${esc(x.status)}</span> ${esc(x.assunto)} — <small>${esc(x.decisao)}</small></div>`).join(''));
   const bloqueio = d.perfil_bloqueado ? `<div class="aviso problema"><b>E06:</b> ${esc(d.perfil_bloqueado)} — cálculo bloqueado.</div>` : '';
   const pode = ex && ex.concluido && !st.length && !ex.ok_fiscal_em;
   $('#fiscDetalhe').className = '';
   $('#fiscDetalhe').innerHTML = `<h2 style="word-break:break-all">${esc(curto(d.nome))}</h2>
+    ${d.retirado ? '<div class="aviso problema"><b>Retirado da revisão vigente do projeto.</b> Consulta do histórico; novos lançamentos bloqueados.</div>' : ''}
     <table>${linhas.map(([k, v]) => `<tr><th style="position:static;width:40%">${k}</th><td>${v}</td></tr>`).join('')}</table>
     ${bloqueio}${avisos}
     <p>Fotos: ${st.length ? st.map(c => `<span class="chip vermelho">falta ${c}</span>`).join(' ') : '<span class="chip verde">completas</span>'}
@@ -363,12 +369,14 @@ async function carregarMedicao() {
   $('#medExport').href = '/api/medicao/exportar?id=' + id;
   $('#medFechar').disabled = r.medicao.status !== 'ABERTA';
   $('#medResumo').className = '';
-  $('#medResumo').innerHTML = (r.teste ? `<div class="aviso problema"><b>MEDIÇÃO DE TESTE — NÃO OFICIAL.</b> Regras financeiras, controle de acesso e exportação no modelo oficial (01ª MC) ainda não validados.</div>` : '') + `<div class="kpis">${Object.entries(r.gavetas).map(([g, d]) => `<div class="kpi"><span>Gaveta ${g} — ${esc(d.nome)}</span><b>${brl(d.valor)}</b></div>`).join('')}</div>
+  $('#medResumo').innerHTML = (r.teste ? `<div class="aviso problema"><b>MEDIÇÃO DE TESTE — NÃO OFICIAL.</b> Regras financeiras, controle de acesso e exportação no modelo oficial (01ª MC) ainda não validados.</div>` : '')
+    + ((r.hipoteses || []).length ? `<div class="aviso info"><b>Simulação com hipóteses não validadas:</b><ul style="margin:4px 0 0 18px">${r.hipoteses.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : '')
+    + (r.congelada ? `<div class="aviso info"><b>Medição fechada — valores congelados no fechamento.</b>${r.alerta_recalculo ? ' ' + esc(r.alerta_recalculo) : ''}</div>` : '') + `<div class="kpis">${Object.entries(r.gavetas).map(([g, d]) => `<div class="kpi"><span>Gaveta ${g} — ${esc(d.nome)}</span><b>${brl(d.valor)}</b></div>`).join('')}</div>
     <table style="max-width:560px;margin-bottom:12px">
       <tr><td>Σ material / Σ serviço (ROUND por item, s/ BDI)</td><td class="n">${brl(r.totalizacao.material)} / ${brl(r.totalizacao.servico)}</td></tr>
       <tr><td>Subtotal P0 = (Σ + BDI por classe) × (1 + K)</td><td class="n">${brl(r.valor_pi)}</td></tr>
-      <tr><td>(−) Excedente sobre teto de subgrupo</td><td class="n">${brl(-r.excedente_teto)}</td></tr>
-      <tr><td>Reajuste ${r.indice_reajuste != null ? nf(r.indice_reajuste * 100) + ' %' : ''}</td><td class="n">${brl(r.valor_reajuste)}</td></tr>
+      <tr><td>(−) Excedente sobre teto de subgrupo <small>(hipótese — controle proposto)</small></td><td class="n">${brl(-r.excedente_teto)}</td></tr>
+      <tr><td>Reajuste ${r.indice_reajuste != null ? nf(r.indice_reajuste * 100) + ' %' : ''} <small>(simulado)</small></td><td class="n">${brl(r.valor_reajuste)}</td></tr>
       <tr class="destaque"><td><b>Total da medição</b></td><td class="n"><b>${brl(r.valor_total)}</b></td></tr></table>
     ${r.aviso_reajuste ? `<div class="aviso problema">${esc(r.aviso_reajuste)}</div>` : ''}
     ${r.pendentes ? `<div class="aviso info"><b>${r.pendentes}</b> lançamento(s) PENDENTE(S) — fora do valor até haver item/regra com fonte (não é R$ 0 contratual).</div>` : ''}

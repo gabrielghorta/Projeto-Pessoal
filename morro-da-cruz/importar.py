@@ -1,14 +1,19 @@
 """Importação das planilhas oficiais — simulação por padrão, aplicação só com --aplicar.
 
   python importar.py              # SIMULAÇÃO: roda tudo numa cópia do banco e mostra o relatório; nada muda
-  python importar.py --aplicar    # backup verificado → migração (se v1) → importação → auditoria, numa transação
+  python importar.py --aplicar    # trava de manutenção → backup verificado → migração → importação → conferências
+                                  # → COMMIT só se nenhuma conferência impeditiva reprovar
 
 Garantias:
   * nunca apaga o banco nem movimentos; o que sai de uma revisão fica com vigente = 0;
-  * --aplicar faz backup verificado (backup.py) antes de tocar no banco e aborta se a verificação falhar;
-  * qualquer erro desfaz a transação inteira (o banco volta ao estado anterior; o backup fica guardado);
+  * --aplicar faz backup verificado e COMPLETO (banco + fotos referenciadas) antes de tocar no banco;
+  * as conferências são avaliadas ANTES do COMMIT. Se alguma reprovar, a transação é desfeita e o banco
+    fica byte a byte igual. O relatório da reprovação fica em dados/relatorios/:
+      - controles aprovados para estes arquivos (config/controles.json): contagens, unidades, agrupamento;
+      - totalização do BM igual ao rodapé da própria planilha;
+      - pendências impeditivas de identidade (nome × geometria, retirada de objeto com histórico, conciliação inválida);
   * reimportar os mesmos arquivos termina em SEM_ALTERACOES;
-  * banco no esquema v1 (MVP) é migrado: tabelas antigas preservadas como v1_*, referências remapeadas.
+  * banco em esquema anterior (v1 do MVP ou v2) é migrado sem perda.
 """
 import argparse
 import json
@@ -17,6 +22,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import traceback
 from datetime import datetime
 
 import backup
@@ -30,13 +36,37 @@ OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontam
                 "funcionarios", "maquinas", "medicoes", "medicao_lancamentos"]
 
 
+class ImportacaoReprovada(RuntimeError):
+    """Conferência impeditiva reprovada: a transação foi desfeita. `relatorio` traz os motivos."""
+
+    def __init__(self, relatorio):
+        super().__init__(f"Importação REPROVADA ({len(relatorio['bloqueios'])} bloqueio(s)); banco não alterado. "
+                         f"Relatório: {relatorio.get('arquivo_relatorio')}")
+        self.relatorio = relatorio
+
+
 def contar_operacionais(conn):
     tabelas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     return {t: conn.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0] for t in OPERACIONAIS if t in tabelas}
 
 
-def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None, cfg=None):
-    """Roda a importação completa sobre `caminho_db`. Retorna o relatório (dict)."""
+def _gravar_relatorio(rel, dir_relatorios):
+    os.makedirs(dir_relatorios, exist_ok=True)
+    destino = os.path.join(dir_relatorios, f"importacao_{rel['modo'].lower()}_{rel['status'].lower()}_"
+                                           f"{datetime.now():%Y%m%d-%H%M%S-%f}.json")
+    rel["arquivo_relatorio"] = destino
+    with open(destino, "w", encoding="utf-8") as f:
+        json.dump(rel, f, ensure_ascii=False, indent=2, default=str)
+    return destino
+
+
+def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None, cfg=None, dir_relatorios=DIR_RELATORIOS):
+    """Roda a importação completa sobre `caminho_db` numa transação.
+
+    Retorna o relatório (dict). Se uma conferência impeditiva reprovar, faz ROLLBACK, grava o
+    relatório de reprovação e lança ImportacaoReprovada. Erro inesperado também faz ROLLBACK e
+    grava relatório FALHOU.
+    """
     cfg = cfg or I.carregar_config()
     conn = sqlite3.connect(caminho_db, isolation_level=None)
     conn.row_factory = sqlite3.Row
@@ -44,91 +74,119 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
     antes = contar_operacionais(conn)
     conn.execute("PRAGMA foreign_keys = OFF" if versao == 1 else "PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA legacy_alter_table = ON")
+    base_rel = {"modo": modo, "esquema_antes": versao, "esquema_depois": S.VERSAO_ESQUEMA, "backup": backup_dir,
+                "banco": os.path.abspath(caminho_db), "planilhas": os.path.abspath(pasta_planilhas)}
     conn.execute("BEGIN")
     try:
+        congeladas = []
         if versao == 1:
             I.preparar_v1(conn)
+        elif versao == 2:
+            I.preparar_v3(conn)
         else:
             S.aplicar_esquema(conn)
+        if versao in (1, 2):
+            congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar
         imp = conn.execute("INSERT INTO importacoes(iniciada_em,modo,status,backup) VALUES (?,?,?,?)",
                            (S._agora(), modo, "EM_ANDAMENTO", backup_dir)).lastrowid
         imp_obj = I.Importador(conn, cfg, imp, pasta_planilhas)
         imp_obj.executar()
         migracao = I.remapear_v1(conn, imp) if versao == 1 else None
-        aud = I.auditar(conn, cfg, imp)
+        aud = I.auditar(conn, cfg, imp, imp_obj.fontes, imp_obj.conferencias)
         depois = contar_operacionais(conn)
         # tabelas v1_* são arquivo de auditoria (referências antigas preservadas como estavam)
         fk = [tuple(r) for r in conn.execute("PRAGMA foreign_key_check").fetchall() if not str(r[0]).startswith("v1_")]
         n_alt = conn.execute("SELECT COUNT(*) FROM alteracoes WHERE importacao_id=?", (imp,)).fetchone()[0]
-        status = "SEM_ALTERACOES" if n_alt == 0 and versao == 2 else "CONCLUIDA"
         perdidos = {t: (antes[t], depois.get(t)) for t in antes if depois.get(t) != antes[t]}
+        bloqueios = imp_obj.bloqueios + aud["bloqueios"]
         if perdidos:
-            raise RuntimeError(f"Contagem de registros operacionais mudou: {perdidos}")
+            bloqueios.append({"tipo": "REGISTROS_OPERACIONAIS_ALTERADOS", "referencia": "contagem", "detalhe": str(perdidos)})
         if fk:
-            raise RuntimeError(f"Violação de chave estrangeira após a importação: {fk[:5]}")
+            bloqueios.append({"tipo": "CHAVE_ESTRANGEIRA_VIOLADA", "referencia": "foreign_key_check", "detalhe": str(fk[:5])})
+        status = "REPROVADA" if bloqueios else ("SEM_ALTERACOES" if n_alt == 0 and versao == S.VERSAO_ESQUEMA else "CONCLUIDA")
         rel = {
-            "importacao_id": imp, "modo": modo, "status": status, "esquema_antes": versao, "esquema_depois": 2,
-            "backup": backup_dir,
+            "importacao_id": imp, **base_rel, "status": status,
+            "bloqueios": bloqueios,
             "fontes": imp_obj.fontes,
             "colunas_06_2_localizadas_pelo_cabecalho": imp_obj.colunas_06_2,
             "conferencias": imp_obj.conferencias,
             "alteracoes": {e: dict(c) for e, c in imp_obj.stats.items()},
             "alteracoes_registradas": n_alt,
             "decisoes_novas": imp_obj.decisoes_novas,
+            "medicoes_congeladas_na_migracao": congeladas,
             "registros_operacionais_preservados": depois,
             "migracao_v1": migracao,
+            "pendencias": [dict(r) for r in conn.execute(
+                "SELECT tipo, referencia, detalhe, bloqueante FROM pendencias_importacao WHERE importacao_id=? ORDER BY id",
+                (imp,))],
             "auditoria": aud,
         }
+        if bloqueios:
+            conn.execute("ROLLBACK")
+            rel["resultado"] = "Transação desfeita: o banco não foi alterado."
+            _gravar_relatorio(rel, dir_relatorios)
+            raise ImportacaoReprovada(rel)
         conn.execute("UPDATE importacoes SET concluida_em=?, status=?, relatorio=? WHERE id=?",
                      (S._agora(), status, json.dumps(rel, ensure_ascii=False, default=str), imp))
         conn.execute("COMMIT")
+        _gravar_relatorio(rel, dir_relatorios)
         return rel
-    except Exception:
+    except ImportacaoReprovada:
+        raise
+    except Exception as e:
         conn.execute("ROLLBACK")
+        _gravar_relatorio({**base_rel, "status": "FALHOU", "bloqueios": [], "erro": f"{type(e).__name__}: {e}",
+                           "traceback": traceback.format_exc(),
+                           "resultado": "Transação desfeita: o banco não foi alterado."}, dir_relatorios)
         raise
     finally:
         conn.close()
 
 
-def simular(db, pasta_planilhas=I.DIR_PLANILHAS, cfg=None):
+def simular(db, pasta_planilhas=I.DIR_PLANILHAS, cfg=None, dir_relatorios=DIR_RELATORIOS):
     """Executa sobre uma cópia temporária do banco (ou banco novo) e descarta a cópia."""
     tmp = tempfile.mkdtemp(prefix="simulacao_")
     copia = os.path.join(tmp, "simulacao.db")
     try:
         if os.path.exists(db):
-            o, d = sqlite3.connect(db), sqlite3.connect(copia)
-            o.backup(d)
-            d.close()
-            o.close()
-        return executar(copia, "SIMULACAO", pasta_planilhas, cfg=cfg)
+            backup.copiar_banco(db, copia)
+        return executar(copia, "SIMULACAO", pasta_planilhas, cfg=cfg, dir_relatorios=dir_relatorios)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def aplicar(db, pasta_planilhas=I.DIR_PLANILHAS, destino_backup=None, dir_fotos=None, cfg=None):
-    """Backups ficam em <pasta do banco>/backups e as fotos copiadas são <pasta do banco>/fotos."""
+def aplicar(db, pasta_planilhas=I.DIR_PLANILHAS, destino_backup=None, dir_fotos=None, cfg=None,
+            dir_relatorios=DIR_RELATORIOS, aceitar_backup_incompleto=False):
+    """Com a trava de manutenção: backup verificado e completo → importação numa transação.
+    Backups ficam em <pasta do banco>/backups e as fotos copiadas são <pasta do banco>/fotos."""
     base_db = os.path.dirname(os.path.abspath(db))
     destino_backup = destino_backup or os.path.join(base_db, "backups")
     dir_fotos = dir_fotos or os.path.join(base_db, "fotos")
-    pasta = None
-    if os.path.exists(db):
-        pasta = backup.criar(db, destino_backup, dir_fotos, rotulo="antes_importacao")   # já verificado; lança se falhar
-    return executar(db, "APLICACAO", pasta_planilhas, pasta, cfg=cfg)
+    with backup.trava_manutencao(base_db, "importação"):
+        pasta = None
+        if os.path.exists(db):
+            # lança RuntimeError (não íntegro) ou BackupIncompleto (anexo ausente) — a importação não começa
+            pasta = backup.criar(db, destino_backup, dir_fotos, rotulo="antes_importacao",
+                                 permitir_incompleto=aceitar_backup_incompleto, trava=False)
+        rel = executar(db, "APLICACAO", pasta_planilhas, pasta, cfg=cfg, dir_relatorios=dir_relatorios)
+        if pasta:
+            rel["backup_completo"] = backup.verificar_detalhado(pasta)["completo"]
+        return rel
 
 
 def imprimir(rel):
     a = rel["auditoria"]
-    print(f"\n=== IMPORTAÇÃO — {rel['modo']} — {rel['status']} (esquema v{rel['esquema_antes']} → v2) ===")
-    if rel["backup"]:
+    print(f"\n=== IMPORTAÇÃO — {rel['modo']} — {rel['status']} (esquema v{rel['esquema_antes']} → v{rel['esquema_depois']}) ===")
+    if rel.get("backup"):
         print(f"Backup verificado: {rel['backup']}")
     for k, f in rel["fontes"].items():
         print(f"  fonte {k:<10} {f['revisao'] or '-':<6} sha256 {f['sha256'][:16]}…  {f['nome']}")
     print("\nAlterações por entidade:")
     for e, c in sorted(rel["alteracoes"].items()):
         print(f"  {e:<14} " + "  ".join(f"{k} {v}" for k, v in sorted(c.items())))
-    print("\nContagens (vigentes):")
+    print(f"\nControles aplicados: {a['controle_aplicado'] or 'NENHUM conjunto aprovado para estes arquivos'}")
     for k, c in a["contagens"].items():
-        print(f"  [{'OK ' if c['ok'] else 'ERRO'}] {k:<12} esperado {c['esperado']!s:<28} obtido {c['obtido']}")
+        print(f"  [{'OK ' if c['ok'] else 'ERRO'}] {k:<30} esperado {c['esperado']!s:<28} obtido {c['obtido']}")
     t = a["totalizacao_bm"]
     print(f"\nTotalização do BM na ordem das células: {'OK' if t['ok'] else 'DIVERGE'} — "
           f"sistema P0 {t['sistema']['p0']:.7f} × célula {t['celulas_bm']['p0_bm']:.7f}")
@@ -143,26 +201,39 @@ def imprimir(rel):
     print(f"Pendências da importação: {a['pendencias_importacao'] or 'nenhuma'}")
     if rel["migracao_v1"] is not None:
         print(f"Migração v1: {rel['migracao_v1']}")
+    if rel["medicoes_congeladas_na_migracao"]:
+        print(f"Medições fechadas congeladas na migração: {rel['medicoes_congeladas_na_migracao']}")
     print(f"Registros operacionais preservados: {rel['registros_operacionais_preservados']}")
+    if rel["bloqueios"]:
+        print(f"\n*** REPROVADA — {len(rel['bloqueios'])} bloqueio(s); transação desfeita, banco NÃO alterado ***")
+        for b in rel["bloqueios"]:
+            print(f"  [{b['tipo']}] {b['referencia']}: {b['detalhe']}")
+        if a.get("modelo_controles"):
+            print("\nModelo de conjunto de controles (conferir na fonte antes de copiar para config/controles.json):")
+            print(json.dumps(a["modelo_controles"], ensure_ascii=False, indent=2))
 
 
 def main():
+    backup.utf8_console()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", default=S.DB_PADRAO)
     ap.add_argument("--aplicar", action="store_true", help="aplica no banco (com backup verificado antes)")
-    ap.add_argument("--json", help="grava o relatório completo neste arquivo")
+    ap.add_argument("--aceitar-backup-incompleto", action="store_true",
+                    help="prossegue mesmo com foto referenciada ausente (o backup fica marcado INCOMPLETO)")
     a = ap.parse_args()
-    rel = aplicar(a.db) if a.aplicar else simular(a.db)
+    try:
+        rel = (aplicar(a.db, aceitar_backup_incompleto=a.aceitar_backup_incompleto) if a.aplicar else simular(a.db))
+    except ImportacaoReprovada as e:
+        imprimir(e.relatorio)
+        print(f"\nRelatório da reprovação: {e.relatorio['arquivo_relatorio']}")
+        sys.exit(2)
+    except (backup.BackupIncompleto, backup.EmManutencao) as e:
+        print(f"Importação não iniciada: {e}")
+        sys.exit(3)
     imprimir(rel)
-    os.makedirs(DIR_RELATORIOS, exist_ok=True)
-    destino = a.json or os.path.join(DIR_RELATORIOS, f"importacao_{rel['modo'].lower()}_{datetime.now():%Y%m%d-%H%M%S}.json")
-    with open(destino, "w", encoding="utf-8") as f:
-        json.dump(rel, f, ensure_ascii=False, indent=2, default=str)
-    print(f"\nRelatório completo: {destino}")
+    print(f"\nRelatório completo: {rel['arquivo_relatorio']}")
     if not a.aplicar:
         print("SIMULAÇÃO: nenhum dado foi alterado. Para aplicar: python importar.py --aplicar")
-    ok = rel["auditoria"]["contagens_ok"] and rel["auditoria"]["totalizacao_bm"]["ok"]
-    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

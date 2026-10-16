@@ -71,12 +71,17 @@ def planilha_medicao(conn, medicao_id):
         ws.append(["", rot, "", "", val])
         ws.cell(row=ws.max_row, column=2).font = Font(bold=True)
         _fmt(ws, ws.max_row, {5: f})
-    for linha in filter(None, [r["aviso_reajuste"],
+    for linha in filter(None, [("Valores CONGELADOS no fechamento da medição." if r.get("congelada") else None),
+                               r.get("alerta_recalculo"), r["aviso_reajuste"],
                                f"{r['pendentes']} lançamento(s) PENDENTE(s): fora do valor até haver item/regra com fonte."
-                               if r["pendentes"] else None]):
+                               if r["pendentes"] else None]
+                        + [f"SIMULAÇÃO — hipótese não validada: {h}" for h in r.get("hipoteses", [])]):
         ws.append(["", linha])
         ws.cell(row=ws.max_row, column=2).font = Font(bold=True, color="C92A2A")
 
+    # preço usado nesta medição (congelado, se fechada)
+    preco_med = {l["bm_item_id"]: l["preco_unitario"] for d in r["gavetas"].values() for l in d["lancamentos"]
+                 if l["status"] == "PROPOSTO" and l["bm_item_id"] is not None}
     # quantidades PROPOSTAS por item (esta medição e anteriores do mesmo tipo)
     atual, anterior = defaultdict(float), defaultdict(float)
     for l in conn.execute(
@@ -98,7 +103,8 @@ def planilha_medicao(conn, medicao_id):
                 c.fill, c.font = SUB, Font(bold=True)
         qa, qm = anterior[b["id"]], atual[b["id"]]
         ws.append([b["subgrupo"], b["item"], b["descricao"], b["classificacao"], b["unidade"], b["quantidade"], b["preco_unitario"],
-                   qa, qm, qa + qm, (b["quantidade"] or 0) - qa - qm, float(R.produto_excel(qm, b["preco_unitario"]))])
+                   qa, qm, qa + qm, (b["quantidade"] or 0) - qa - qm,
+                   float(R.produto_excel(qm, preco_med.get(b["id"], b["preco_unitario"])))])
         _fmt(ws, ws.max_row, {6: QTD, 7: MOEDA, 8: QTD, 9: QTD, 10: QTD, 11: QTD, 12: MOEDA})
 
     for nome, filtro in (("MC REDE", lambda l: l["alvo_tipo"] == "TRECHO"), ("MC NÓS E NF", lambda l: l["alvo_tipo"] != "TRECHO")):

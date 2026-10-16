@@ -1,9 +1,11 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v2. Banco SQLite local.
+-- Esquema v3. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
 --   * alvo_tipo ∈ ('TRECHO','ATIVIDADE').
+--   * v3: pendência bloqueante, escopo explícito das decisões, medição fechada congelada,
+--     identidade dos itens pela assinatura técnica completa (não pela ordem das linhas).
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS schema_versao (
@@ -18,7 +20,7 @@ CREATE TABLE IF NOT EXISTS importacoes (
   iniciada_em TEXT NOT NULL,
   concluida_em TEXT,
   modo TEXT NOT NULL CHECK (modo IN ('SIMULACAO','APLICACAO')),
-  status TEXT NOT NULL,                -- EM_ANDAMENTO / CONCLUIDA / FALHOU / SEM_ALTERACOES
+  status TEXT NOT NULL,                -- EM_ANDAMENTO / CONCLUIDA / SEM_ALTERACOES (reprovação = rollback + relatório em arquivo)
   backup TEXT,                         -- pasta do backup verificado feito antes
   relatorio TEXT                       -- JSON
 );
@@ -72,7 +74,8 @@ CREATE TABLE IF NOT EXISTS pendencias_importacao (
   importacao_id INTEGER NOT NULL REFERENCES importacoes(id),
   tipo TEXT NOT NULL,
   referencia TEXT,
-  detalhe TEXT NOT NULL
+  detalhe TEXT NOT NULL,
+  bloqueante INTEGER NOT NULL DEFAULT 0  -- 1 = impede o COMMIT (só aparece no relatório de reprovação)
 );
 
 -- Mapa de migração de referências antigas (v1) para identidades estáveis (v2)
@@ -188,7 +191,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_atividades_nom ON atividades(nomenclatura) 
 CREATE TABLE IF NOT EXISTS itens_projeto (
   id TEXT PRIMARY KEY,                 -- IP-000001 (estável)
   atividade_id TEXT NOT NULL REFERENCES atividades(id),
-  chave_ocorrencia TEXT NOT NULL,      -- descrição|diâmetro|pressão|nº da ocorrência na atividade
+  chave_ocorrencia TEXT NOT NULL,      -- assinatura técnica (descr|DE|PN|resina|tipo|solda|material) + '#' nº de criação
+                                       -- (o nº é sequencial de criação, nunca a posição da linha)
   vigente INTEGER NOT NULL DEFAULT 1,
   descricao TEXT NOT NULL,
   pressao TEXT, resina TEXT, tipo_conexao TEXT, solda TEXT, diametro TEXT, material TEXT, grupo TEXT,
@@ -227,8 +231,25 @@ CREATE TABLE IF NOT EXISTS decisoes (
   responsavel TEXT,
   evidencia TEXT NOT NULL,
   data TEXT,
-  padrao_aviso TEXT,                   -- trecho de texto que liga a decisão aos avisos (LIKE)
+  padrao_aviso TEXT,                   -- só SUGERE avisos relacionados para revisão; nunca vincula
   registrada_em TEXT NOT NULL
+);
+
+-- Escopo explícito: objetos (nº do elemento de projeto) sobre os quais a decisão foi tomada
+CREATE TABLE IF NOT EXISTS decisao_objetos (
+  decisao_id TEXT NOT NULL REFERENCES decisoes(id),
+  objeto_tipo TEXT NOT NULL CHECK (objeto_tipo IN ('ELEMENTO')),
+  objeto_ref TEXT NOT NULL,            -- nº de projeto: DF-05, MV-11 ...
+  PRIMARY KEY (decisao_id, objeto_tipo, objeto_ref)
+);
+
+-- Vínculo explícito decisão × aviso de origem (elemento + hash do texto). Só estes ficam como "decididos".
+CREATE TABLE IF NOT EXISTS decisao_vinculos (
+  decisao_id TEXT NOT NULL REFERENCES decisoes(id),
+  elemento_numero TEXT NOT NULL,
+  texto_hash TEXT NOT NULL,
+  registrado_em TEXT NOT NULL,
+  PRIMARY KEY (decisao_id, elemento_numero, texto_hash)
 );
 
 -- ---------------------------------------------------------------- BM
@@ -408,6 +429,8 @@ CREATE TABLE IF NOT EXISTS medicoes (
   periodo_ini TEXT NOT NULL,
   periodo_fim TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'ABERTA' CHECK (status IN ('ABERTA','FECHADA')),
+  congelada_em TEXT,                   -- fechamento: preços, fatores e totais congelados
+  resumo_congelado TEXT,               -- JSON do resumo no fechamento (revisão cadastral posterior não recalcula)
   UNIQUE (tipo, numero)
 );
 
@@ -426,7 +449,10 @@ CREATE TABLE IF NOT EXISTS medicao_lancamentos (
   quantidade REAL NOT NULL,
   status TEXT NOT NULL DEFAULT 'PENDENTE' CHECK (status IN ('PROPOSTO','PENDENTE')),
   motivo TEXT,
-  observacao TEXT
+  observacao TEXT,
+  preco_congelado REAL,                -- preço sem BDI do item no fechamento da medição
+  classificacao_congelada TEXT,
+  item_congelado TEXT
 );
 
 CREATE INDEX IF NOT EXISTS ix_itens_ativ ON itens_projeto(atividade_id);

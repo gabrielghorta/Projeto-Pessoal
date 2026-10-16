@@ -12,6 +12,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import backup
 import exportar
 import regras as R
 import servicos as S
@@ -20,6 +21,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(BASE, "web")
 LOCK = threading.Lock()
 CONN = None
+DB_PATH = S.DB_PADRAO
 
 
 def _cfg():
@@ -266,6 +268,9 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path not in POST:
             return self._send(404, {"erro": "rota inexistente"})
+        if backup.em_manutencao(os.path.dirname(os.path.abspath(DB_PATH))):
+            return self._send(503, {"erro": "Manutenção em andamento (backup, restauração ou importação): gravações "
+                                            "suspensas. Tente de novo quando terminar."})
         n = int(self.headers.get("Content-Length") or 0)
         try:
             body = json.loads(self.rfile.read(n) or b"{}")
@@ -287,7 +292,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global CONN
+    global CONN, DB_PATH
+    backup.utf8_console()
     ap = argparse.ArgumentParser()
     ap.add_argument("--porta", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1")
@@ -295,6 +301,7 @@ def main():
     a = ap.parse_args()
     if not os.path.exists(a.db):
         raise SystemExit(f"Banco {a.db} não existe — rode antes: python importar.py --aplicar")
+    DB_PATH = a.db
     try:
         CONN = S.conectar(a.db)
     except S.EsquemaAntigo as e:

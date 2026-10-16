@@ -9,6 +9,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Medição oficial bloqueada.
   - Regras financeiras de material pendentes: veja `docs/MATRIZ_REGIMES_FATURAMENTO.md`.
   - Detalhes das etapas 0 e 1: `docs/ETAPAS_0_1_APROVACAO.md`.
+  - Correções da auditoria do commit `b63b5db` (A01–A12): `docs/CORRECOES_AUDITORIA_b63b5db.md`.
 
 ## Como rodar (Windows)
 
@@ -17,14 +18,15 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 3. Faça a importação. Ela nunca apaga o banco nem movimentos.
    ```
    python importar.py              # simulação: mostra o relatório, não altera nada
-   python importar.py --aplicar    # backup verificado + importação numa transação
+   python importar.py --aplicar    # trava + backup verificado e completo + importação numa transação
    ```
+   Se uma conferência reprovar, nada é gravado (código de saída 2) e o motivo fica em `dados/relatorios/`.
 4. Suba o sistema e abra **http://127.0.0.1:8765**:
    ```
    python server.py
    ```
-5. Backup a qualquer momento: `python backup.py criar | verificar <pasta> | restaurar <pasta>`.
-6. Testes: `python -m unittest discover -s tests -v`. Os 8 testes do piloto Zona01 exigem as planilhas reais em `planilhas/`.
+5. Backup a qualquer momento: `python backup.py criar | verificar <pasta> | restaurar <pasta>` (pare o servidor antes de restaurar).
+6. Testes: `python -m unittest discover -s tests -v`. Os testes do piloto Zona01 e de `test_base_real.py` exigem as planilhas reais em `planilhas/` (sempre em cópias descartáveis).
 
 ## Importação (`importar.py` / `importacao.py`)
 
@@ -37,12 +39,15 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 | 03.3.2 REV03 REAJUSTE | Data-base, aniversário, índice CEFR | — |
 
 **Garantias da importação:**
-- **Identidade estável:** TR-, EL-, AT- e IP- casados por chave natural, nunca pelo nº da linha.
+- **Conferências antes do COMMIT:** controles aprovados por conjunto exato de arquivos (`config/controles.json`, SHA-256 de cada fonte), totalização do BM igual ao rodapé da planilha e pendências de identidade impeditivas. Reprovou → rollback + relatório.
+- **Identidade física:** trecho = handle + pontas UTM; elemento = handle (provisório pelo nº, promovido quando o handle aparecer); item = assinatura técnica completa. Nunca pelo nº da linha, pela ordem nem só pelo nome.
+- **Sem transferência presumida:** histórico (check-in, foto, execução, medição, cadastro) só muda de identidade por de-para explícito (`config/conciliacoes.json`).
+- **Fonte ausente não apaga dado:** sem EVIDÊNCIAS, zona/status/ID ficam preservados com pendência.
 - **Proveniência:** cada registro guarda arquivo, SHA-256, aba, linha e células lidas.
 - **Histórico:** os nomes antigos ficam registrados, e cada diferença entre revisões também.
 - **Nada é apagado:** o que sai de uma revisão fica com `vigente = 0`.
 - **Pendente não vira chute:** quantidade e unidade sem fonte ficam **pendentes** (361 linhas "APROVAR — sem item no BM").
-- **Decisões posteriores** (`config/decisoes.json`) nunca são alteradas pela reimportação.
+- **Decisões posteriores** (`config/decisoes.json`) nunca são alteradas pela reimportação e só se ligam a avisos por vínculo explícito (semelhança de texto = "revisar").
 - **Divergência registrada:** o valor do contrato (R$ 49.878.748,56, cláusula 3.1) e o P0 do BM (R$ 49.878.748,6575869) aparecem lado a lado, sem ajuste.
 
 ## Regras em vigor
@@ -58,6 +63,9 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - `PENDENTE` (fora do valor) sem item ou regra; não é R$ 0 contratual;
   - **material nunca recebe regime automático:** sem 80/20 e sem 100 % na aplicação;
   - **MND** sem substituição automática de item.
+- **Objeto retirado** da revisão vigente: consulta permitida; check-in, apontamento, foto, OK, recomposição e cadastro bloqueados.
+- **Medição fechada é congelada:** revisão posterior do BM não muda o valor dela (só alerta).
+- **Simulação explícita:** a medição de TESTE lista as hipóteses não validadas (teto que desconta excedente, reajuste sem fração elegível, rateio da escavação, soldas ⌈L/6⌉).
 - **OK interno:** o "[✓] OK" é da Ankara e só gera proposta numa medição de **TESTE**. Também envia o trecho para a esteira GDOC.
 - **Fotos e clima:** controles operacionais propostos (3 fotos por trecho, 2 por nó com sinalização herdada; clima por turno).
 - **Pin do mapa:** mostra a programação do check-in, não a posição atual da equipe.

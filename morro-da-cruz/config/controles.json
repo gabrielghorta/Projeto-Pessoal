@@ -1,0 +1,49 @@
+{
+  "_leia": "Controles aprovados por CONJUNTO EXATO de arquivos (SHA-256 de cada fonte). A importação só é gravada se existir um conjunto para os arquivos lidos e todos os valores conferirem. Nova revisão de qualquer planilha = novo conjunto: rode a simulação, confira cada valor do 'modelo_controles' do relatório contra a fonte (EVIDÊNCIAS, resumos das planilhas) e acrescente aqui com origem, responsável e data. Nunca altere um conjunto antigo para fazer uma revisão passar.",
+  "conjuntos": [
+    {
+      "id": "CTRL-01 · 06.1 REV01 + 06.2 REV08 + EVIDÊNCIAS REV08 + BM REV04 + REAJUSTE REV03",
+      "fontes": {
+        "redes": "77f8b66f881064484a03c0c12904a46ccf5330ca873653f87343f5d5645cf48f",
+        "conexoes": "cc4852be77bf908945fda128276858c296187c515856a292fd68e47c72189bad",
+        "evidencias": "cbce7aa683c8291b5b0c1a9e81689d61279241e949d5403e59d3bd6474f64130",
+        "bm": "f724bc45661064562fbbc12021f538aa5b042b5093978696f98d1760831f10d0",
+        "reajuste": "ded265879c40be295466193fe28ad4ac595ff318b6476135a83e6baf085d1694"
+      },
+      "arquivos": {
+        "redes": "06.1 - LEV_DMC_MORRO_DA_CRUZ_REDES_REV01_13-10-26.xlsx",
+        "conexoes": "06.2 - LEV_DMC_MORRO_DA_CRUZ_CONEXÕES_REV08_13-10-26.xlsm",
+        "evidencias": "EVIDENCIAS_REV08_06.2_e_REV01_06.1_MORRO_DA_CRUZ.xlsx",
+        "bm": "BM_MORRO_DA_CRUZ_REV04_IDENTIFICACAO_09-10-26.xlsx",
+        "reajuste": "03.3.2 - BM_MORRO_DA_CRUZ_REV03_REAJUSTE_13-10-26.xlsx"
+      },
+      "esperado": {
+        "trechos": 1436,
+        "extensao_m": 110686.03,
+        "elementos": 1191,
+        "nos": 1059,
+        "caixas": 132,
+        "atividades": 1242,
+        "itens_projeto": 6539,
+        "bm_vertical": 432,
+        "bm_juntada": 347,
+        "sem_posicao": [
+          "MV-11",
+          "VTF-12",
+          "VTF-16"
+        ],
+        "agrupamento_evidencias_iguais": 1191,
+        "unidades_linhas": {
+          "M": 73,
+          "PENDENTE": 361,
+          "PÇ": 54,
+          "UN": 6051
+        },
+        "quantidade_m": 72.95
+      },
+      "origem_dos_valores": "Contagens do pacote de 15/10/2026 (EVIDÊNCIAS REV08: 1.191 grupos; 06.1: 1.436 trechos / 110.686,03 m; BM REV04: 432 Vertical / 347 Juntada; MV-11, VTF-12, VTF-16 sem posição) e unidades por item da Juntada conferidas na auditoria independente de 15/10/2026 (UN 6.051 · M 73 linhas = 72,95 m · PÇ 54 · 361 pendentes).",
+      "aprovado_por": "A CONFIRMAR pelo usuário — valores conferidos na auditoria independente de 15/10/2026",
+      "data": "2026-10-15"
+    }
+  ]
+}

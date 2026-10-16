@@ -1,5 +1,5 @@
 {
-  "_leia": "Decisões posteriores aos avisos históricos (AA/AB da 06.2 e relatórios). A importação só INSERE decisões novas; nunca altera ou apaga uma decisão já registrada no banco. Para mudar uma decisão, registre outra com novo ID e evidência.",
+  "_leia": "Decisões posteriores aos avisos históricos (AA/AB da 06.2 e relatórios). A importação só INSERE decisões, escopos e vínculos novos; nunca altera nem apaga o que já foi registrado no banco. Uma decisão só fica ligada a um aviso por 'vinculos_avisos' (nº do elemento + hash SHA-1 do texto do aviso) ou ao objeto pelo 'escopo'. 'padrao_sugestao' apenas sugere avisos parecidos para revisão: não aplica a decisão. Para mudar uma decisão, registre outra com novo ID e evidência.",
   "decisoes": [
     {
       "id": "DEC-0001",
@@ -11,7 +11,24 @@
       "responsavel": "Usuário (Ankara)",
       "evidencia": "CONTEXTO_COMPARTILHADO_MORRO_DA_CRUZ_REV01_15-10-2026.md, §7 (atualizações de 15/10)",
       "data": "2026-10-15",
-      "padrao_aviso": "DF-?05|duplic|sobrepos"
+      "escopo": {
+        "elementos": [
+          "DF-05"
+        ]
+      },
+      "vinculos_avisos": [
+        {
+          "elemento": "DF-05",
+          "texto_hash": "ae75ab8abd67fc75159a2230422dddbb2807692b",
+          "texto": "P1 — DF-05 contada em duas pranchas (16 e 19)."
+        },
+        {
+          "elemento": "DF-05",
+          "texto_hash": "bba7ed2df6674e301bdf412c6190d8cd23fe44ef",
+          "texto": "Tirar a DF-05 do resumo e do quadro de uma das pranchas."
+        }
+      ],
+      "padrao_sugestao": "\\bDF-?05\\b"
     },
     {
       "id": "DEC-0002",
@@ -23,7 +40,11 @@
       "responsavel": "Usuário (Ankara)",
       "evidencia": "CONTEXTO_COMPARTILHADO_MORRO_DA_CRUZ_REV01_15-10-2026.md, §7",
       "data": "2026-10-15",
-      "padrao_aviso": "521|488|saldo 33|33 tês"
+      "escopo": {
+        "elementos": []
+      },
+      "vinculos_avisos": [],
+      "padrao_sugestao": "\\b521\\b|\\b488\\b|saldo 33|33 tês"
     },
     {
       "id": "DEC-0003",
@@ -35,7 +56,11 @@
       "responsavel": "Usuário (Ankara)",
       "evidencia": "CONTEXTO_COMPARTILHADO_MORRO_DA_CRUZ_REV01_15-10-2026.md, §5 e §9",
       "data": "2026-10-15",
-      "padrao_aviso": "sem chamada|F10"
+      "escopo": {
+        "elementos": []
+      },
+      "vinculos_avisos": [],
+      "padrao_sugestao": "sem chamada|\\bF10\\b"
     },
     {
       "id": "DEC-0004",
@@ -47,7 +72,15 @@
       "responsavel": "Usuário (Ankara)",
       "evidencia": "CONTEXTO_COMPARTILHADO_MORRO_DA_CRUZ_REV01_15-10-2026.md, §5",
       "data": "2026-10-15",
-      "padrao_aviso": "MV-11|VTF-12|VTF-16"
+      "escopo": {
+        "elementos": [
+          "MV-11",
+          "VTF-12",
+          "VTF-16"
+        ]
+      },
+      "vinculos_avisos": [],
+      "padrao_sugestao": "\\bMV-11\\b|\\bVTF-12\\b|\\bVTF-16\\b"
     }
   ]
 }

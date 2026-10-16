@@ -1,14 +1,20 @@
-"""Backup verificável do banco e dos arquivos operacionais (fotos).
+"""Backup verificável do banco e dos anexos (fotos).
 
 Uso:
-  python backup.py criar      [--db dados/morro_da_cruz.db] [--destino dados/backups]
+  python backup.py criar      [--db dados/morro_da_cruz.db] [--destino dados/backups] [--permitir-incompleto]
   python backup.py verificar  <pasta-do-backup>
   python backup.py restaurar  <pasta-do-backup> [--db dados/morro_da_cruz.db]
 
-O banco é copiado pela API de backup do SQLite (cópia consistente mesmo com o servidor aberto).
-O manifesto registra SHA-256 e tamanho de cada arquivo, contagem de linhas por tabela e o
-resultado de PRAGMA integrity_check. `verificar` recalcula tudo e falha se algo divergir.
-Backups nunca são apagados por este programa.
+* O banco é copiado pela API de backup do SQLite: a cópia é consistente e inclui o que estiver no WAL.
+* Primeiro se copia o banco; depois, as fotos. Assim toda foto referenciada na cópia já existia no disco
+  (o servidor grava o arquivo antes da linha em `fotos`).
+* Duas verificações separadas:
+  - integridade: hash e tamanho de cada arquivo, `integrity_check`, linhas e conteúdo de cada tabela;
+  - completude: toda foto referenciada no banco copiado está na cópia.
+  Backup incompleto é guardado, mas marcado INCOMPLETO e reprovado na verificação.
+* Backup, restauração e importação rodam com a trava de manutenção (MANUTENCAO.lock ao lado do banco).
+  Com a trava, o servidor recusa gravações.
+* Backups nunca são apagados por este programa.
 """
 import argparse
 import hashlib
@@ -17,6 +23,7 @@ import os
 import shutil
 import sqlite3
 import sys
+from contextlib import contextmanager
 from datetime import datetime
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +31,56 @@ DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
 DESTINO_PADRAO = os.path.join(BASE, "dados", "backups")
 MANIFESTO = "manifesto.json"
+TRAVA = "MANUTENCAO.lock"
+
+
+class BackupIncompleto(RuntimeError):
+    """Backup íntegro, mas sem todos os anexos referenciados no banco. A pasta fica guardada."""
+
+    def __init__(self, pasta, ausentes):
+        super().__init__(f"Backup INCOMPLETO em {pasta}: {len(ausentes)} anexo(s) referenciado(s) no banco e ausente(s): "
+                         + ", ".join(ausentes[:10]))
+        self.pasta, self.ausentes = pasta, ausentes
+
+
+class EmManutencao(RuntimeError):
+    """Outra operação de manutenção (backup, restauração ou importação) está em andamento."""
+
+
+def utf8_console():
+    """Saída em UTF-8 mesmo com a saída redirecionada no Windows (cp1252 não tem '→', '✓' etc.)."""
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
+def caminho_trava(pasta_db):
+    return os.path.join(pasta_db, TRAVA)
+
+
+def em_manutencao(pasta_db):
+    return os.path.exists(caminho_trava(pasta_db))
+
+
+@contextmanager
+def trava_manutencao(pasta_db, operacao):
+    """Cria MANUTENCAO.lock de forma exclusiva; o servidor recusa gravações enquanto ela existir."""
+    os.makedirs(pasta_db, exist_ok=True)
+    p = caminho_trava(pasta_db)
+    try:
+        fd = os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            dono = f.read().strip()
+        raise EmManutencao(f"Manutenção em andamento ({dono}). Se nenhuma operação estiver rodando, apague {p}.") from None
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(f"{operacao} · pid {os.getpid()} · {datetime.now().isoformat(timespec='seconds')}")
+    try:
+        yield
+    finally:
+        os.remove(p)
 
 
 def sha256(caminho):
@@ -34,8 +91,12 @@ def sha256(caminho):
     return h.hexdigest()
 
 
+def _ler(caminho_db):
+    return sqlite3.connect(f"file:{caminho_db}?mode=ro", uri=True)
+
+
 def contagens(caminho_db):
-    c = sqlite3.connect(f"file:{caminho_db}?mode=ro", uri=True)
+    c = _ler(caminho_db)
     try:
         integridade = c.execute("PRAGMA integrity_check").fetchone()[0]
         tabelas = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
@@ -45,57 +106,117 @@ def contagens(caminho_db):
     return integridade, linhas
 
 
-def criar(db=DB_PADRAO, destino=DESTINO_PADRAO, dir_fotos=DIR_FOTOS, rotulo=None):
-    """Cria e verifica um backup. Retorna a pasta. Lança RuntimeError se a verificação falhar."""
+def conteudo(caminho_db):
+    """SHA-256 do conteúdo de cada tabela (linhas em ordem de rowid). Confere valores e vínculos, não só contagens."""
+    c = _ler(caminho_db)
+    try:
+        out = {}
+        for (t,) in c.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall():
+            h = hashlib.sha256()
+            for row in c.execute(f'SELECT * FROM "{t}" ORDER BY rowid'):
+                h.update(json.dumps(row, ensure_ascii=False, default=str).encode("utf-8"))
+                h.update(b"\n")
+            out[t] = h.hexdigest()
+        return out
+    finally:
+        c.close()
+
+
+def anexos_referenciados(caminho_db):
+    """Arquivos de foto citados na tabela `fotos` (únicos anexos gravados em disco pelo sistema)."""
+    c = _ler(caminho_db)
+    try:
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fotos'").fetchone():
+            return []
+        return sorted({r[0] for r in c.execute("SELECT arquivo FROM fotos WHERE arquivo IS NOT NULL")})
+    finally:
+        c.close()
+
+
+def copiar_banco(origem, destino):
+    """Cópia pela API de backup do SQLite (inclui o WAL; consistente com o banco em uso)."""
+    o, d = sqlite3.connect(origem), sqlite3.connect(destino)
+    try:
+        o.backup(d)
+    finally:
+        d.close()
+        o.close()
+
+
+def _pasta_nova(destino, rotulo):
+    base = os.path.join(destino, datetime.now().strftime("%Y%m%d-%H%M%S-%f") + (f"_{rotulo}" if rotulo else ""))
+    pasta, n = base, 1
+    while True:
+        try:
+            os.makedirs(pasta, exist_ok=False)
+            return pasta
+        except FileExistsError:
+            n += 1
+            pasta = f"{base}_{n}"
+
+
+def criar(db=DB_PADRAO, destino=DESTINO_PADRAO, dir_fotos=DIR_FOTOS, rotulo=None, permitir_incompleto=False, trava=True):
+    """Cria e verifica um backup e retorna a pasta.
+
+    Lança RuntimeError se a cópia não for íntegra. Lança BackupIncompleto se faltar anexo
+    referenciado; a pasta fica guardada e marcada como incompleta. Com permitir_incompleto=True,
+    devolve a pasta mesmo assim, ainda marcada como incompleta.
+    """
     if not os.path.exists(db):
         raise RuntimeError(f"Banco {db} não existe — nada a copiar.")
-    carimbo = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    pasta = os.path.join(destino, carimbo + (f"_{rotulo}" if rotulo else ""))
-    os.makedirs(pasta, exist_ok=False)
+    if trava:
+        with trava_manutencao(os.path.dirname(os.path.abspath(db)), "backup"):
+            return criar(db, destino, dir_fotos, rotulo, permitir_incompleto, trava=False)
+    pasta = _pasta_nova(destino, rotulo)
     alvo_db = os.path.join(pasta, os.path.basename(db))
-    origem = sqlite3.connect(db)
-    copia = sqlite3.connect(alvo_db)
-    try:
-        origem.backup(copia)
-    finally:
-        copia.close()
-        origem.close()
-    arquivos = [os.path.basename(db)]
-    if os.path.isdir(dir_fotos):
-        shutil.copytree(dir_fotos, os.path.join(pasta, "fotos"))
-        for raiz, _, nomes in os.walk(os.path.join(pasta, "fotos")):
-            arquivos += [os.path.relpath(os.path.join(raiz, n), pasta) for n in sorted(nomes)]
+    copiar_banco(db, alvo_db)                                     # 1º o banco (instantâneo consistente)
+    referenciados = anexos_referenciados(alvo_db)
+    copiados = []
+    if os.path.isdir(dir_fotos):                                  # 2º os arquivos (todos, inclusive não referenciados)
+        for raiz, _, nomes in os.walk(dir_fotos):
+            for n in sorted(nomes):
+                orig = os.path.join(raiz, n)
+                rel = os.path.relpath(orig, dir_fotos)
+                dest = os.path.join(pasta, "fotos", rel)
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                shutil.copy2(orig, dest)
+                if sha256(orig) != sha256(dest):
+                    raise RuntimeError(f"Foto {rel} divergiu durante a cópia.")
+                copiados.append(rel.replace(os.sep, "/"))
+    ausentes = sorted(set(referenciados) - set(copiados))
     integridade, linhas = contagens(alvo_db)
     if integridade != "ok":
         raise RuntimeError(f"Cópia do banco falhou no integrity_check: {integridade}")
+    arquivos = [os.path.basename(db)] + ["fotos/" + a for a in copiados]
     manifesto = {
         "criado_em": datetime.now().isoformat(timespec="seconds"),
         "banco_origem": os.path.abspath(db),
         "fotos_origem": os.path.abspath(dir_fotos) if os.path.isdir(dir_fotos) else None,
         "integrity_check": integridade,
         "linhas_por_tabela": linhas,
+        "conteudo_por_tabela": conteudo(alvo_db),
         "arquivos": {a: {"sha256": sha256(os.path.join(pasta, a)), "bytes": os.path.getsize(os.path.join(pasta, a))}
                      for a in arquivos},
+        "anexos": {"referenciados_no_banco": len(referenciados), "copiados": len(copiados), "ausentes": ausentes},
+        "completo": not ausentes,
+        "situacao": "COMPLETO" if not ausentes else "INCOMPLETO",
     }
-    # as fotos de origem precisam ser idênticas às copiadas
-    if manifesto["fotos_origem"]:
-        for a, info in manifesto["arquivos"].items():
-            if a.startswith("fotos" + os.sep) and sha256(os.path.join(dir_fotos, a[len("fotos") + 1:])) != info["sha256"]:
-                raise RuntimeError(f"Foto {a} divergiu durante a cópia.")
     with open(os.path.join(pasta, MANIFESTO), "w", encoding="utf-8") as f:
         json.dump(manifesto, f, ensure_ascii=False, indent=2)
-    ok, erros = verificar(pasta)
-    if not ok:
-        raise RuntimeError("Backup criado mas não verificou: " + "; ".join(erros))
+    det = verificar_detalhado(pasta)
+    if not det["integro"]:
+        raise RuntimeError("Backup criado mas não verificou: " + "; ".join(det["erros_integridade"]))
+    if det["ausentes"] and not permitir_incompleto:
+        raise BackupIncompleto(pasta, det["ausentes"])
     return pasta
 
 
-def verificar(pasta):
-    """Recalcula hashes, tamanhos, integridade e contagens. Retorna (ok, lista_de_erros)."""
-    erros = []
+def verificar_detalhado(pasta):
+    """Integridade (arquivos, banco, linhas, conteúdo) e completude (anexos referenciados × copiados)."""
+    erros, ausentes = [], []
     caminho = os.path.join(pasta, MANIFESTO)
     if not os.path.exists(caminho):
-        return False, ["manifesto.json ausente"]
+        return {"integro": False, "completo": False, "erros_integridade": ["manifesto.json ausente"], "ausentes": []}
     with open(caminho, encoding="utf-8") as f:
         m = json.load(f)
     for a, info in m["arquivos"].items():
@@ -105,71 +226,126 @@ def verificar(pasta):
         elif os.path.getsize(p) != info["bytes"] or sha256(p) != info["sha256"]:
             erros.append(f"{a}: hash/tamanho diverge")
     db = os.path.join(pasta, os.path.basename(m["banco_origem"]))
-    if os.path.exists(db):
+    if not os.path.exists(db):
+        erros.append("banco ausente")
+    else:
         integridade, linhas = contagens(db)
         if integridade != "ok":
             erros.append(f"integrity_check: {integridade}")
         if linhas != m["linhas_por_tabela"]:
             erros.append("contagem de linhas diverge do manifesto")
+        if "conteudo_por_tabela" not in m:
+            erros.append("manifesto sem conteúdo por tabela (backup de versão anterior: refazer)")
+        elif conteudo(db) != m["conteudo_por_tabela"]:
+            erros.append("conteúdo de tabela diverge do manifesto")
+        # completude: recalculada a partir do banco copiado, não só do manifesto
+        copiados = {a[len("fotos/"):] for a in m["arquivos"] if a.startswith("fotos/")}
+        ausentes = sorted(set(anexos_referenciados(db)) - copiados)
+    return {"integro": not erros, "completo": not ausentes and not erros, "erros_integridade": erros, "ausentes": ausentes}
+
+
+def verificar(pasta):
+    """(ok, erros): ok só se o backup for íntegro E completo."""
+    d = verificar_detalhado(pasta)
+    erros = d["erros_integridade"] + [f"INCOMPLETO: anexo referenciado no banco e ausente no backup: {a}" for a in d["ausentes"]]
     return not erros, erros
 
 
-def restaurar(pasta, db=DB_PADRAO, dir_fotos=DIR_FOTOS):
-    """Volta o banco ao estado do backup. Nada é apagado: o banco atual é guardado ao lado como
-    <nome>.substituido-<data>; fotos do backup ausentes ou diferentes são copiadas de volta e fotos
-    novas (posteriores ao backup) são mantidas."""
-    ok, erros = verificar(pasta)
-    if not ok:
-        raise RuntimeError("Backup não verificou; restauração cancelada: " + "; ".join(erros))
+def restaurar(pasta, db=DB_PADRAO, dir_fotos=DIR_FOTOS, destino_seguranca=None, permitir_incompleto=False):
+    """Volta o banco ao estado do backup, em manutenção (trava ativa), sem apagar nada.
+
+    1. Verifica o backup. Se estiver incompleto, só restaura com permitir_incompleto=True.
+    2. Cria um backup de segurança do estado atual pela API do SQLite (inclui o WAL) com as
+       fotos atuais, e o verifica. É uma pasta completa em backups/, não uma cópia solta do arquivo.
+    3. Restaura o banco pela API do SQLite. Devolve as fotos do backup ausentes ou diferentes e
+       mantém as fotos posteriores.
+    4. Verificação final: conteúdo de cada tabela igual ao manifesto e fotos referenciadas presentes e íntegras.
+    Retorna a pasta do backup de segurança.
+    """
+    det = verificar_detalhado(pasta)
+    if not det["integro"]:
+        raise RuntimeError("Backup não verificou; restauração cancelada: " + "; ".join(det["erros_integridade"]))
+    if det["ausentes"] and not permitir_incompleto:
+        raise BackupIncompleto(pasta, det["ausentes"])
     with open(os.path.join(pasta, MANIFESTO), encoding="utf-8") as f:
         m = json.load(f)
+    pasta_db = os.path.dirname(os.path.abspath(db))
+    destino_seguranca = destino_seguranca or os.path.join(pasta_db, "backups")
     origem = os.path.join(pasta, os.path.basename(m["banco_origem"]))
-    guardado = None
-    if os.path.exists(db):
-        guardado = f"{db}.substituido-{datetime.now():%Y%m%d-%H%M%S}"
-        shutil.copy2(db, guardado)
-    o, d = sqlite3.connect(origem), sqlite3.connect(db)
-    try:
-        o.backup(d)
-    finally:
-        d.close()
-        o.close()
-    fotos_bkp = os.path.join(pasta, "fotos")
-    if os.path.isdir(fotos_bkp):
-        for raiz, _, nomes in os.walk(fotos_bkp):
-            for n in nomes:
-                rel = os.path.relpath(os.path.join(raiz, n), fotos_bkp)
-                alvo = os.path.join(dir_fotos, rel)
-                if not os.path.exists(alvo) or sha256(alvo) != sha256(os.path.join(raiz, n)):
-                    os.makedirs(os.path.dirname(alvo), exist_ok=True)
-                    shutil.copy2(os.path.join(raiz, n), alvo)
-    if contagens(db)[1] != m["linhas_por_tabela"]:
-        raise RuntimeError("Banco restaurado não confere com o manifesto.")
-    return guardado
+    with trava_manutencao(pasta_db, f"restauração de {os.path.basename(pasta)}"):
+        seguranca = None
+        if os.path.exists(db):
+            seguranca = criar(db, destino_seguranca, dir_fotos, rotulo="antes_restauracao", permitir_incompleto=True,
+                              trava=False)
+        d = sqlite3.connect(db, timeout=30)
+        try:
+            d.execute("BEGIN IMMEDIATE")                         # espera gravações já em curso terminarem
+            d.execute("COMMIT")
+            o = sqlite3.connect(origem)
+            try:
+                o.backup(d)
+            finally:
+                o.close()
+        finally:
+            d.close()
+        fotos_bkp = os.path.join(pasta, "fotos")
+        for a, info in m["arquivos"].items():
+            if not a.startswith("fotos/"):
+                continue
+            alvo = os.path.join(dir_fotos, *a[len("fotos/"):].split("/"))
+            if not os.path.exists(alvo) or sha256(alvo) != info["sha256"]:
+                os.makedirs(os.path.dirname(alvo), exist_ok=True)
+                shutil.copy2(os.path.join(fotos_bkp, *a[len("fotos/"):].split("/")), alvo)
+        erros = []
+        integridade, _ = contagens(db)
+        if integridade != "ok":
+            erros.append(f"integrity_check: {integridade}")
+        if conteudo(db) != m["conteudo_por_tabela"]:
+            erros.append("conteúdo restaurado diverge do manifesto")
+        for a in anexos_referenciados(db):
+            info = m["arquivos"].get("fotos/" + a)
+            p = os.path.join(dir_fotos, *a.split("/"))
+            if info and (not os.path.exists(p) or sha256(p) != info["sha256"]):
+                erros.append(f"foto {a} não restaurada")
+        if erros:
+            raise RuntimeError("Restauração não conferiu: " + "; ".join(erros) +
+                               (f". O estado anterior está em {seguranca}" if seguranca else ""))
+    return seguranca
 
 
 def main():
+    utf8_console()
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("criar")
     c.add_argument("--db", default=DB_PADRAO)
     c.add_argument("--destino", default=DESTINO_PADRAO)
+    c.add_argument("--permitir-incompleto", action="store_true", help="guarda o backup mesmo sem todos os anexos")
     v = sub.add_parser("verificar")
     v.add_argument("pasta")
     r = sub.add_parser("restaurar")
     r.add_argument("pasta")
     r.add_argument("--db", default=DB_PADRAO)
+    r.add_argument("--permitir-incompleto", action="store_true", help="restaura backup marcado INCOMPLETO")
     a = ap.parse_args()
+    fotos = os.path.join(os.path.dirname(os.path.abspath(getattr(a, "db", DB_PADRAO))), "fotos")
     if a.cmd == "criar":
-        pasta = criar(a.db, a.destino)
-        print(f"Backup verificado: {pasta}")
+        pasta = criar(a.db, a.destino, fotos, permitir_incompleto=a.permitir_incompleto)
+        d = verificar_detalhado(pasta)
+        print(f"Backup {'COMPLETO' if d['completo'] else 'INCOMPLETO'} e íntegro: {pasta}")
+        for x in d["ausentes"]:
+            print(f"  anexo ausente: {x}")
     elif a.cmd == "restaurar":
-        guardado = restaurar(a.pasta, a.db, os.path.join(os.path.dirname(os.path.abspath(a.db)), "fotos"))
-        print(f"Banco restaurado de {a.pasta}." + (f" Banco anterior guardado em {guardado}" if guardado else ""))
+        seg = restaurar(a.pasta, a.db, fotos, permitir_incompleto=a.permitir_incompleto)
+        print(f"Banco restaurado de {a.pasta}." + (f" Estado anterior guardado (backup verificado) em {seg}" if seg else ""))
     else:
-        ok, erros = verificar(a.pasta)
-        print("OK — backup íntegro" if ok else "FALHOU:\n  " + "\n  ".join(erros))
-        sys.exit(0 if ok else 1)
+        d = verificar_detalhado(a.pasta)
+        print(f"Integridade: {'OK' if d['integro'] else 'FALHOU'}   Completude: {'OK' if d['completo'] else 'INCOMPLETO'}")
+        for e in d["erros_integridade"]:
+            print(f"  {e}")
+        for x in d["ausentes"]:
+            print(f"  anexo referenciado e ausente: {x}")
+        sys.exit(0 if d["integro"] and d["completo"] else 1)
 
 
 if __name__ == "__main__":

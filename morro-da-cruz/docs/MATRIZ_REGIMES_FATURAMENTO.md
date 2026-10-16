@@ -1,12 +1,12 @@
 # Matriz de regimes, marcos e fontes — para aprovação antes da etapa financeira
 
-CT 10239/2026 · versão de 15/10/2026 · **nada desta matriz está aplicado no sistema**.
+CT 10239/2026 · versão de 15/10/2026, revista em 16/10/2026 após a auditoria · **nada desta matriz está aplicado como regra validada**.
 
 Hoje o sistema funciona assim:
 - Lançamento de material fica `PENDENTE` com o motivo "regime de faturamento pendente".
 - Não existe 80/20 global nem 100 % na aplicação.
 - Trecho MND não recebe item automaticamente.
-- Só existe medição de **TESTE**.
+- Só existe medição de **TESTE**. Todo valor dela é **simulação**: a tela e a exportação listam as hipóteses não validadas (itens 11, 15, 18 e soldas abaixo).
 
 **Como ler a coluna Situação:**
 
@@ -36,11 +36,12 @@ Hoje o sistema funciona assim:
 | 8 | Valor de cada medição | Preço sem BDI × (1 + BDI da classe) × (1 + K), com K = −1 + (1 − 14,04 %). O valor é arredondado por item (`ROUND(q×p;2)`), o BDI é aplicado por classe e o K no total. | Contrato 5.2 e 5.3, p. 4; células do BM (`W`, `T548:T556`) | DOC (fórmula esclarecida) | Implementado e conferido contra as células (P0 49.878.748,6575869). |
 | 9 | Momento da medição de serviço | Medição mensal das quantidades executadas e aprovadas pela fiscalização. | Contrato 5.3, p. 4 | DOC | O OK interno só gera **proposta** em medição de TESTE; não é aprovação Caesb. |
 | 10 | Serviços da 06.1 sem item comprovado | Lastro, aterro de areia, reaterro, carga (inclusive de rocha), escoramento (pontalete e descontínuo), transporte, sondagem, tapume, placa e sinalização noturna, passadiços (veículos e pedestres), solda e recomposição. | `config/servicos_rede.json` | PEND | Ficam PENDENTE, fora do valor. |
-| 11 | Escavação mecanizada em dois itens (5.4.11 + 5.4.13; 5.4.15 + 5.4.14) | A APOIO_REDES liga cada categoria a dois itens **sem critério de divisão**. Hoje o volume é dividido pela proporção das quantidades contratuais e a linha leva a observação "estimativa". | 06.1 APOIO_REDES AA9/AA10 | PEND | PROPOSTO com observação de estimativa. **Precisa de regra antes de qualquer medição oficial.** |
+| 11 | Escavação mecanizada em dois itens (5.4.11 + 5.4.13; 5.4.15 + 5.4.14) | A APOIO_REDES liga cada categoria a dois itens **sem critério de divisão**. Hoje o volume é dividido pela proporção das quantidades contratuais e a linha leva a observação "estimativa". | 06.1 APOIO_REDES AA9/AA10 | PEND | **Simulação:** PROPOSTO com observação de estimativa, listado como hipótese na medição de TESTE. **Precisa de regra antes de qualquer medição oficial.** |
+| 11a | Soldas de eletrofusão dos trechos | Quantidade prevista = ⌈L/6⌉ (barras de 6 m). Não há regra conferida de barra, solda de topo ou conexões. | `config/servicos_rede.json` | PEND | **Simulação:** previsão de campo; listada como hipótese quando aparece na medição de TESTE. |
 | 12 | MND (4 trechos, 291,26 m) | A 06.1 traz 5.8.44 (assentamento em vala) nesses trechos. O BM tem perfuração direcional 5.16.x por DE; restam 6.978,95 m de MND no BM sem localização. | 06.1 col. AC; BM 2.2_5.16.x | PEND | Assentamento MND fica PENDENTE; sem substituição automática. |
 | 13 | Cadastro de canalizações (2.2_5.2.1, M) | O MVP mede na aprovação do GDOC, uma única vez por trecho. Falta conferir o critério contratual e se o memorando ESET é exigido. | Item do BM; procedimento GDOC não conferido | PROP | Lança PROPOSTO só na etapa 6 da esteira (medição de TESTE). |
 | 14 | Recomposição de calçada e asfalto | Itens candidatos: 5.9.3 (passeio), 5.9.5 (concreto asfáltico) e outros 5.9.x. | BM 2.2_5.9.x | PEND | PENDENTE. |
-| 15 | Teto por subgrupo do BM Vertical | O valor medido acumulado por subgrupo é limitado ao valor P0 do subgrupo. | Estrutura do BM | PROP (controle interno) | Implementado só como alerta na medição de TESTE. |
+| 15 | Teto por subgrupo do BM Vertical | O valor medido acumulado por subgrupo é limitado ao valor P0 do subgrupo. | Estrutura do BM | PROP (controle interno) | **Simulação — não é só alerta:** na medição de TESTE o excedente é **descontado** do "total limitado", e o reajuste simulado incide sobre esse total. Hipótese listada na tela e na exportação. Não validado. |
 
 ## 3. Reajuste
 
@@ -48,7 +49,7 @@ Hoje o sistema funciona assim:
 |---|---|---|---|---|
 | 16 | Data-base e 1º reajuste | Preços fixos por 1 ano a partir de 31/01/2025. Depois disso, reajuste pelo ICC-Brasília-DI, **desde que haja pedido da contratada**. | Contrato 6.1–6.2, p. 6 | DOC |
 | 17 | Percentual | Até 3,29 % (CEFR), base 31/01/2025, 1º aniversário 31/01/2026. | Despacho 322/2026-CEFR (GDOC 2998208); aba REAJUSTE | DOC (ainda falta a memória SISFINR) |
-| 18 | Parcela elegível | A REV04 pede frações elegíveis separadas para material e serviço; a REV03 usa a fração posterior ao aniversário. | BM REV03 × REV04, aba REAJUSTE (E24:H24) | PEND (divergência entre revisões) |
+| 18 | Parcela elegível | A REV04 pede frações elegíveis separadas para material e serviço; a REV03 usa a fração posterior ao aniversário. **O sistema hoje simula o reajuste sobre o total limitado inteiro, sem fração elegível e sem confirmar o pedido (6.2)** — hipótese listada na medição de TESTE. | BM REV03 × REV04, aba REAJUSTE (E24:H24) | PEND (divergência entre revisões) |
 | 19 | Reajustes seguintes | O intervalo conta a partir dos **efeitos financeiros do último reajuste**. Jan/2027 em diante fica pendente. | Contrato 6.4, p. 6 | DOC; sistema bloqueia |
 
 ## 4. Estados financeiros (proposta de modelo para a etapa 2)
@@ -56,6 +57,8 @@ Hoje o sistema funciona assim:
 Conferido pela Ankara → pronto para apresentar → aprovação da Caesb (com evidência: documento, data, responsável) → elegível pela regra da categoria → apresentado → aprovado → faturado → pago.
 
 Um clique interno nunca cria aprovação da Caesb. Cada marco do item 4 (FoFo 80/10/10) e do item 3 (equipamentos) vira um lançamento próprio, com a evidência do marco.
+
+Medição fechada fica **congelada** (preço, classificação, item, BDI, K e resumo gravados no fechamento): uma revisão posterior do BM não altera o valor dela; a diferença aparece só como alerta.
 
 ## 5. Decisões que preciso de você para abrir a etapa financeira
 

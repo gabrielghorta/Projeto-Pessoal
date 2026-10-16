@@ -9,22 +9,6 @@
     "reajuste": "03.3.2 - BM_MORRO_DA_CRUZ_REV03_REAJUSTE_13-10-26.xlsx",
     "mapa": "PLANTAS_TRECHOS_E_NOS_MORRO_DA_CRUZ_REV02_EQUIPES.html"
   },
-  "auditoria": {
-    "trechos": 1436,
-    "extensao_m": 110686.03,
-    "elementos": 1191,
-    "nos": 1059,
-    "caixas": 132,
-    "conjuntos": 1242,
-    "pecas": 6539,
-    "bm_vertical": 432,
-    "bm_juntada": 347,
-    "sem_posicao": [
-      "MV-11",
-      "VTF-12",
-      "VTF-16"
-    ]
-  },
   "materiais_consumo": [
     {
       "id": "CONS-AREIA",

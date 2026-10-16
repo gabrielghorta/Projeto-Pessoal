@@ -5,5 +5,10 @@ O seed.py antigo apagava o banco antes de carregar; isso destruía movimentos, f
 import sys
 
 if __name__ == "__main__":
-    sys.exit("seed.py foi substituído. Use:\n  python importar.py            (simulação, não altera nada)\n"
-             "  python importar.py --aplicar  (backup verificado + importação)")
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")   # saída previsível também no Windows
+    except (AttributeError, ValueError):
+        pass
+    print("seed.py foi substituído. Use:\n  python importar.py            (simulação, não altera nada)\n"
+          "  python importar.py --aplicar  (backup verificado + importação)", file=sys.stderr)
+    sys.exit(1)
