@@ -100,14 +100,31 @@
               <option value="ROMANEIO_CAESB">Romaneio Caesb (retirada de tubo)</option>
               <option value="EMPRESTIMO_OUTRA_OBRA">Tubo Caesb emprestado p/ outra obra</option>
               <option value="ENTRADA_CONSUMO">Caminhão / nota — consumo diário</option>
-              <option value="BAIXA_TEORICA">Baixa teórica (volume geométrico)</option>
             </select></label>
           </div>
           <label>Material<select name="material_id" class="selMaterial" required></select></label>
           <div class="linha"><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
-            <label>Documento<input name="documento" placeholder="nº romaneio / nota"></label></div>
+            <label>Documento<input name="documento" placeholder="nº romaneio / nota / ofício"></label></div>
+          <div class="linha"><label>Responsável<input name="responsavel" placeholder="quem lança"></label>
+            <label>Autorização (empréstimo)<input name="autorizacao" placeholder="quem autorizou + documento"></label></div>
+          <p class="vazio" style="margin:4px 0">Empréstimo exige documento, responsável e autorização. Consumo não é baixado por estimativa: confirma-se no check-out.</p>
           <div class="acoes"><button class="btn prim">Lançar</button></div>
         </form>
+      </div>
+      <div class="painel">
+        <h3>Reserva para a programação</h3>
+        <form id="fReserva">
+          <div class="linha">
+            <label>Dia<input type="date" name="data" required></label>
+            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
+          </div>
+          <label>Material<select name="material_id" class="selMaterialReserva" required></select></label>
+          <div class="linha"><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
+            <label>Responsável<input name="responsavel"></label></div>
+          <p class="vazio" style="margin:4px 0">A reserva não tira material do almoxarifado: só reduz o disponível para as outras equipes. É consumida no check-in da equipe naquele dia.</p>
+          <div class="acoes"><button class="btn prim">Reservar</button></div>
+        </form>
+        <div id="reservasLista" style="margin-top:10px"></div>
       </div>
       <div class="painel">
         <h3>Nota fiscal — material Ankara</h3>
@@ -128,6 +145,14 @@
       <div class="painel" style="grid-column:1/-1">
         <h3>Tabela de compatibilização de tubos Caesb</h3>
         <div class="tabela" id="compat"></div>
+      </div>
+      <div class="painel" style="grid-column:1/-1">
+        <h3>Tubos Caesb — consumo previsto (apontado) × aplicado confirmado no check-out</h3>
+        <div class="tabela" id="consumo"></div>
+      </div>
+      <div class="painel" style="grid-column:1/-1">
+        <h3>Movimentos recentes (correção só por estorno, com motivo)</h3>
+        <div class="tabela" id="movimentos"></div>
       </div>
       <div class="painel" style="grid-column:1/-1">
         <h3>Estoque</h3>

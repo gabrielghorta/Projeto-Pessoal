@@ -919,6 +919,15 @@ def preparar_v3(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v4(conn):
+    """Esquema v3 → v4 (etapa 3, estoque), sem perda: colunas de responsável/autorização nos movimentos e as
+    tabelas de reservas, estornos e saldo declarado com a equipe. Movimentos existentes ficam como estão
+    (BAIXA_TEORICA antiga continua registrada, mas deixa de reduzir o saldo físico)."""
+    _add_coluna(conn, "movimentos", "responsavel", "TEXT")
+    _add_coluna(conn, "movimentos", "autorizacao", "TEXT")
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

@@ -13,7 +13,7 @@ Garantias:
       - totalização do BM igual ao rodapé da própria planilha;
       - pendências impeditivas de identidade (nome × geometria, retirada de objeto com histórico, conciliação inválida);
   * reimportar os mesmos arquivos termina em SEM_ALTERACOES;
-  * banco em esquema anterior (v1 do MVP ou v2) é migrado sem perda.
+  * banco em esquema anterior (v1 do MVP, v2 ou v3) é migrado sem perda.
 """
 import argparse
 import json
@@ -33,7 +33,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 DIR_RELATORIOS = os.path.join(BASE, "dados", "relatorios")
 OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontamentos", "apontamento_quantidades", "fotos",
                 "execucao", "cadastro", "cadastro_historico", "ligacoes_prediais", "notas_fiscais", "nf_itens",
-                "funcionarios", "maquinas", "medicoes", "medicao_lancamentos"]
+                "funcionarios", "maquinas", "medicoes", "medicao_lancamentos", "reservas", "estornos", "custodia_declarada"]
 
 
 class ImportacaoReprovada(RuntimeError):
@@ -84,8 +84,9 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v1(conn)
         elif versao == 2:
             I.preparar_v3(conn)
-        else:
-            S.aplicar_esquema(conn)
+        if 0 < versao < 4:
+            I.preparar_v4(conn)
+        S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar
         imp = conn.execute("INSERT INTO importacoes(iniciada_em,modo,status,backup) VALUES (?,?,?,?)",

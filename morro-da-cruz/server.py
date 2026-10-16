@@ -7,6 +7,8 @@ import argparse
 import json
 import mimetypes
 import os
+import signal
+import sys
 import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -96,8 +98,36 @@ def r_compat(q, c):
 
 
 def p_movimento(b, c):
-    S.entrada_material(c, b["data"], b["material_id"], float(b["quantidade"]), b["tipo"], b.get("documento"))
+    S.entrada_material(c, b["data"], b["material_id"], float(b["quantidade"]), b["tipo"], b.get("documento"),
+                       b.get("responsavel"), b.get("autorizacao"))
     return {"ok": True}
+
+
+def r_movimentos(q, c):
+    return S.movimentos(c, int(q.get("limite", 100)), q.get("material_id"))
+
+
+def p_estorno(b, c):
+    S.estornar(c, int(b["movimento_id"]), b.get("motivo"), b.get("responsavel"))
+    return {"ok": True}
+
+
+def r_reservas(q, c):
+    return S.reservas_ativas(c, q.get("data"))
+
+
+def p_reserva(b, c):
+    return {"id": S.reservar(c, b["data"], b["equipe_id"], b["material_id"], float(b["quantidade"]), b.get("alvo_tipo"),
+                             b.get("alvo_id"), b.get("responsavel"))}
+
+
+def p_reserva_cancelar(b, c):
+    S.cancelar_reserva(c, int(b["reserva_id"]), b.get("motivo"))
+    return {"ok": True}
+
+
+def r_consumo(q, c):
+    return S.consumo_previsto_x_confirmado(c)
 
 
 def r_nfs(q, c):
@@ -191,12 +221,14 @@ def p_medicao_fechar(b, c):
 GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detalhe, "/api/previsto": r_previsto,
        "/api/mapa/estado": r_mapa_estado, "/api/equipe": r_equipe, "/api/estoque": r_estoque,
        "/api/compat-caesb": r_compat, "/api/nfs": r_nfs, "/api/checkins": r_checkins, "/api/histograma": r_histograma,
-       "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao}
+       "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
+       "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento, "/api/nf": p_nf,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
-        "/api/medicao/fechar": p_medicao_fechar}
+        "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/reserva": p_reserva,
+        "/api/reserva/cancelar": p_reserva_cancelar}
 
 
 def _mapa_path():
@@ -312,6 +344,7 @@ def main():
     marca = backup.marcar_servidor(os.path.dirname(os.path.abspath(a.db)), a.host, a.porta)
     print(f"Sistema Morro da Cruz em http://{a.host}:{a.porta}  (Ctrl+C para sair)")
     print("Importação e restauração exigem este servidor parado.")
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))      # encerramento externo também apaga a marca
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

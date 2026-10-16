@@ -21,7 +21,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 3
+VERSAO_ESQUEMA = 4
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -51,8 +51,7 @@ def aplicar_esquema(conn):
         for cmd in comandos_sql(f.read()):
             conn.execute(cmd)
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "conferências impeditivas, identidade física, decisões com escopo, "
-                                            "medição congelada"))
+                 (VERSAO_ESQUEMA, _agora(), "estoque: reservas, saldo com a equipe, empréstimo autorizado, estorno"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -253,9 +252,13 @@ def fotos_faltando(conn, alvo_tipo, ref):
     return R.fotos_pendentes(a["alvo_tipo"], cats, _sinalizacao_herdada(conn, a["alvo_tipo"], a["id"]))
 
 
-# ------------------------------------------------------------------ almoxarifado
+# ------------------------------------------------------------------ almoxarifado (etapa 3)
+# Saldo físico do almoxarifado = entradas − saídas físicas, sem movimentos estornados.
+# BAIXA_TEORICA (MVP antigo) não é saída física: estimativa geométrica não baixa estoque.
+# Disponível = físico − reservas ATIVAS. Custódia é da EQUIPE (o que fica com ela passa para o dia seguinte).
 ENTRA_ALMOX = ("ROMANEIO_CAESB", "ENTRADA_NF", "ENTRADA_CONSUMO", "SOBRA")
-SAI_ALMOX = ("EMPRESTIMO_OUTRA_OBRA", "CUSTODIA", "BAIXA_TEORICA")
+SAI_ALMOX = ("EMPRESTIMO_OUTRA_OBRA", "CUSTODIA")
+VALIDO = "id NOT IN (SELECT movimento_id FROM estornos)"
 
 
 def saldo_almox(conn, material_id):
@@ -264,37 +267,61 @@ def saldo_almox(conn, material_id):
               COALESCE(SUM(CASE WHEN tipo IN {ENTRA_ALMOX} AND COALESCE(status,'ACEITO')='ACEITO' THEN quantidade END),0)
             - COALESCE(SUM(CASE WHEN tipo IN {SAI_ALMOX} THEN quantidade END),0) AS saldo,
               COALESCE(SUM(CASE WHEN tipo='ENTRADA_NF' AND status='QUARENTENA' THEN quantidade END),0) AS quarentena
-            FROM movimentos WHERE material_id=?""", (material_id,)).fetchone()
+            FROM movimentos WHERE material_id=? AND {VALIDO}""", (material_id,)).fetchone()
     return r["saldo"], r["quarentena"]
 
 
-def custodia_checkin(conn, checkin_id, material_id):
-    r = conn.execute(
-        """SELECT COALESCE(SUM(CASE WHEN tipo='CUSTODIA' THEN quantidade
-                                   WHEN tipo IN ('APLICADO','SOBRA','PERDA') THEN -quantidade END),0)
-           FROM movimentos WHERE checkin_id=? AND material_id=?""", (checkin_id, material_id)).fetchone()
-    return r[0]
+def reservado(conn, material_id, equipe_id=None, data=None):
+    sql, args = "SELECT COALESCE(SUM(quantidade),0) FROM reservas WHERE material_id=? AND status='ATIVA'", [material_id]
+    if equipe_id:
+        sql, args = sql + " AND equipe_id=? AND data=?", args + [equipe_id, data]
+    return conn.execute(sql, args).fetchone()[0]
+
+
+def disponivel(conn, material_id):
+    return saldo_almox(conn, material_id)[0] - reservado(conn, material_id)
+
+
+def custodia_equipe(conn, equipe_id, material_id):
+    """Material com a equipe (todas as retiradas menos aplicado, sobra devolvida e perda), sem estornos."""
+    return conn.execute(
+        f"""SELECT COALESCE(SUM(CASE WHEN tipo='CUSTODIA' THEN quantidade
+                                    WHEN tipo IN ('APLICADO','SOBRA','PERDA') THEN -quantidade END),0)
+            FROM movimentos WHERE equipe_id=? AND material_id=? AND checkin_id IS NOT NULL AND {VALIDO}""",
+        (equipe_id, material_id)).fetchone()[0]
+
+
+def _materiais_com_equipe(conn, equipe_id):
+    return [r[0] for r in conn.execute(
+        f"SELECT DISTINCT material_id FROM movimentos WHERE equipe_id=? AND checkin_id IS NOT NULL AND {VALIDO} "
+        "ORDER BY material_id", (equipe_id,)) if abs(custodia_equipe(conn, equipe_id, r[0])) > 1e-9]
+
+
+def _soma(conn, material_id, tipo):
+    return conn.execute(f"SELECT COALESCE(SUM(quantidade),0) FROM movimentos WHERE material_id=? AND tipo=? AND {VALIDO}",
+                        (material_id, tipo)).fetchone()[0]
 
 
 def estoque(conn):
     out = []
     for m in _rows(conn.execute("SELECT * FROM materiais ORDER BY propriedade, id")):
         saldo, quar = saldo_almox(conn, m["id"])
+        res = reservado(conn, m["id"])
         cust = conn.execute(
-            """SELECT COALESCE(SUM(CASE WHEN tipo='CUSTODIA' THEN quantidade
-                                       WHEN tipo IN ('APLICADO','SOBRA','PERDA') THEN -quantidade END),0)
-               FROM movimentos WHERE material_id=? AND checkin_id IS NOT NULL""", (m["id"],)).fetchone()[0]
-        out.append({**m, "saldo_almox": round(saldo, 3), "quarentena": round(quar, 3), "custodia": round(cust, 3)})
+            f"""SELECT COALESCE(SUM(CASE WHEN tipo='CUSTODIA' THEN quantidade
+                                        WHEN tipo IN ('APLICADO','SOBRA','PERDA') THEN -quantidade END),0)
+                FROM movimentos WHERE material_id=? AND checkin_id IS NOT NULL AND {VALIDO}""", (m["id"],)).fetchone()[0]
+        out.append({**m, "saldo_almox": round(saldo, 3), "quarentena": round(quar, 3), "reservado": round(res, 3),
+                    "disponivel": round(saldo - res, 3), "custodia": round(cust, 3),
+                    "baixa_teorica_legada": round(_soma(conn, m["id"], "BAIXA_TEORICA"), 3)})
     return out
 
 
 def compatibilizacao_caesb(conn):
-    """Projeto 06.1 × Estoque Caesb × Emprestado × Retirado × Aplicado × Saldo Virtual."""
+    """Projeto 06.1 × Estoque Caesb × Emprestado × Retirado × Aplicado × Saldo Virtual (sem movimentos estornados)."""
     out = []
     for m in _rows(conn.execute("SELECT * FROM materiais WHERE propriedade='CAESB' ORDER BY id")):
-        s = {t: conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM movimentos WHERE material_id=? AND tipo=?",
-                             (m["id"], t)).fetchone()[0]
-             for t in ("ROMANEIO_CAESB", "EMPRESTIMO_OUTRA_OBRA", "APLICADO", "PERDA")}
+        s = {t: _soma(conn, m["id"], t) for t in ("ROMANEIO_CAESB", "EMPRESTIMO_OUTRA_OBRA", "APLICADO", "PERDA")}
         projeto = m["qtd_projeto"] or 0
         out.append({
             "material_id": m["id"], "descricao": m["descricao"], "unidade": m["unidade"],
@@ -307,9 +334,38 @@ def compatibilizacao_caesb(conn):
     return out
 
 
-def entrada_material(conn, data, material_id, quantidade, tipo, documento=None):
-    if tipo not in ("ROMANEIO_CAESB", "ENTRADA_CONSUMO", "EMPRESTIMO_OUTRA_OBRA", "BAIXA_TEORICA"):
+def consumo_previsto_x_confirmado(conn):
+    """Tubos PEAD Caesb: metros apontados nos trechos de cada DE (previsto) × APLICADO no check-out (confirmado).
+    O previsto é só referência de conferência: nunca baixa estoque."""
+    out = []
+    for m in _rows(conn.execute("SELECT * FROM materiais WHERE propriedade='CAESB' AND id LIKE 'CAESB-PEAD-DE%' ORDER BY id")):
+        de = float(m["id"].rsplit("DE", 1)[1])
+        prev = conn.execute(
+            """SELECT COALESCE(SUM(ap.metros_executados),0) FROM apontamentos ap JOIN trechos t ON t.id=ap.alvo_id
+               WHERE ap.alvo_tipo='TRECHO' AND t.de_mm=?""", (de,)).fetchone()[0]
+        conf = _soma(conn, m["id"], "APLICADO")
+        out.append({"material_id": m["id"], "unidade": m["unidade"], "previsto_apontado": round(prev, 3),
+                    "aplicado_confirmado": round(conf, 3), "diferenca": round(conf - prev, 3)})
+    return out
+
+
+def movimentos(conn, limite=100, material_id=None):
+    sql = """SELECT m.*, e.motivo AS estorno_motivo, e.responsavel AS estorno_responsavel, e.em AS estornado_em
+             FROM movimentos m LEFT JOIN estornos e ON e.movimento_id=m.id"""
+    args = []
+    if material_id:
+        sql, args = sql + " WHERE m.material_id=?", [material_id]
+    return _rows(conn.execute(sql + " ORDER BY m.id DESC LIMIT ?", args + [limite]))
+
+
+def entrada_material(conn, data, material_id, quantidade, tipo, documento=None, responsavel=None, autorizacao=None):
+    if tipo == "BAIXA_TEORICA":
+        raise RegraViolada("Baixa teórica não altera o estoque físico: o consumo é confirmado no check-out "
+                           "(aplicado / sobra / perda). Para corrigir um lançamento, use o estorno.")
+    if tipo not in ("ROMANEIO_CAESB", "ENTRADA_CONSUMO", "EMPRESTIMO_OUTRA_OBRA"):
         raise RegraViolada(f"Tipo de movimento inválido aqui: {tipo}")
+    if not quantidade or quantidade <= 0:
+        raise RegraViolada("Informe uma quantidade maior que zero.")
     m = _one(conn, "SELECT * FROM materiais WHERE id=?", material_id)
     if not m:
         raise RegraViolada(f"Material '{material_id}' não cadastrado.")
@@ -317,10 +373,77 @@ def entrada_material(conn, data, material_id, quantidade, tipo, documento=None):
         raise RegraViolada("Romaneio/empréstimo só se aplica a tubos de fornecimento Caesb.")
     if tipo == "ENTRADA_CONSUMO" and m["propriedade"] != "CONSUMO":
         raise RegraViolada("Entrada por caminhão/nota de canteiro só para materiais de consumo diário.")
-    if tipo in ("EMPRESTIMO_OUTRA_OBRA", "BAIXA_TEORICA") and saldo_almox(conn, material_id)[0] + TOL < quantidade:
-        raise RegraViolada("Saldo insuficiente no almoxarifado.")
-    conn.execute("INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,status) VALUES (?,?,?,?,?,?)",
-                 (data, material_id, tipo, quantidade, documento, "ACEITO"))
+    if tipo == "EMPRESTIMO_OUTRA_OBRA":
+        falta = [n for n, v in (("documento", documento), ("responsável", responsavel), ("autorização", autorizacao))
+                 if not (v or "").strip()]
+        if falta:
+            raise RegraViolada("Empréstimo para outra obra exige " + ", ".join(falta) + ".")
+        if disponivel(conn, material_id) + TOL < quantidade:
+            raise RegraViolada(f"Disponível insuficiente ({disponivel(conn, material_id):g} {m['unidade']}, já descontadas "
+                               "as reservas das equipes).")
+    conn.execute("INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,status,responsavel,autorizacao) "
+                 "VALUES (?,?,?,?,?,?,?,?)", (data, material_id, tipo, quantidade, documento, "ACEITO", responsavel, autorizacao))
+
+
+def reservar(conn, data, equipe_id, material_id, quantidade, alvo_tipo=None, alvo_id=None, responsavel=None):
+    """Reserva do almoxarifado para a programação de uma equipe/dia. Não é saída: só tira do disponível."""
+    if equipe_id not in [r[0] for r in conn.execute("SELECT id FROM equipes")]:
+        raise RegraViolada(f"Equipe '{equipe_id}' não cadastrada.")
+    m = _one(conn, "SELECT * FROM materiais WHERE id=?", material_id)
+    if not m:
+        raise RegraViolada(f"Material '{material_id}' não cadastrado.")
+    if m["propriedade"] == "CONSUMO":
+        raise RegraViolada("Material de consumo diário não é reservado por equipe.")
+    q = float(quantidade or 0)
+    if q <= 0:
+        raise RegraViolada("Informe uma quantidade maior que zero.")
+    tipo = ref = None
+    if alvo_tipo and alvo_id:
+        a = alvo(conn, alvo_tipo, alvo_id, operacao=True)
+        tipo, ref = a["alvo_tipo"], a["id"]
+    disp = disponivel(conn, material_id)
+    if disp + TOL < q:
+        raise RegraViolada(f"Disponível insuficiente de {material_id}: {disp:g} {m['unidade']} (saldo físico menos "
+                           "reservas de outras equipes).")
+    return conn.execute(
+        "INSERT INTO reservas(data,equipe_id,material_id,quantidade,alvo_tipo,alvo_id,responsavel,criada_em) "
+        "VALUES (?,?,?,?,?,?,?,?)", (data, equipe_id, material_id, q, tipo, ref, responsavel, _agora())).lastrowid
+
+
+def cancelar_reserva(conn, reserva_id, motivo):
+    r = _one(conn, "SELECT * FROM reservas WHERE id=?", reserva_id)
+    if not r or r["status"] != "ATIVA":
+        raise RegraViolada("Reserva inexistente ou já encerrada.")
+    if not (motivo or "").strip():
+        raise RegraViolada("Informe o motivo do cancelamento.")
+    conn.execute("UPDATE reservas SET status='CANCELADA', encerrada_em=?, motivo=? WHERE id=?", (_agora(), motivo, reserva_id))
+
+
+def reservas_ativas(conn, data=None):
+    sql = "SELECT * FROM reservas WHERE status='ATIVA'" + (" AND data=?" if data else "") + " ORDER BY data, equipe_id"
+    return _rows(conn.execute(sql, (data,) if data else ()))
+
+
+def estornar(conn, movimento_id, motivo, responsavel):
+    """Correção de movimento sem apagar: o original fica, marcado como estornado, e sai dos saldos.
+    Recusa se o estorno deixaria saldo do almoxarifado ou custódia da equipe negativos."""
+    mv = _one(conn, "SELECT * FROM movimentos WHERE id=?", movimento_id)
+    if not mv:
+        raise RegraViolada("Movimento não encontrado.")
+    if _one(conn, "SELECT 1 AS x FROM estornos WHERE movimento_id=?", movimento_id):
+        raise RegraViolada("Movimento já estornado.")
+    if not (motivo or "").strip() or not (responsavel or "").strip():
+        raise RegraViolada("Estorno exige motivo e responsável.")
+    if mv["tipo"] == "ENTRADA_NF":
+        raise RegraViolada("Entrada por NF não é estornada aqui: trate pela nota fiscal (devolução/recusa).")
+    with transacao(conn):
+        conn.execute("INSERT INTO estornos VALUES (?,?,?,?)", (movimento_id, motivo.strip(), responsavel.strip(), _agora()))
+        if saldo_almox(conn, mv["material_id"])[0] < -TOL:
+            raise RegraViolada("Estorno recusado: o saldo do almoxarifado ficaria negativo (o material já saiu). "
+                               "Estorne antes os movimentos posteriores.")
+        if mv["equipe_id"] and mv["checkin_id"] and custodia_equipe(conn, mv["equipe_id"], mv["material_id"]) < -TOL:
+            raise RegraViolada("Estorno recusado: a custódia da equipe ficaria negativa. Estorne antes o "
+                               "aplicado/sobra/perda correspondente.")
 
 
 def registrar_nf(conn, numero, fornecedor, data_entrega, itens, faturamento_etapas=False, chave_nfe=None, arquivo=None):
@@ -364,6 +487,8 @@ def aceitar_nf(conn, nf_id, laudo_arquivo):
 # ------------------------------------------------------------------ check-in / check-out
 def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=(), maquinas=(),
             materiais=(), contingencia=None):
+    """Presença + retirada do dia. A retirada consome primeiro a reserva da própria equipe para o dia;
+    o restante precisa caber no disponível (saldo físico − reservas de outras equipes)."""
     if equipe_id not in [r[0] for r in conn.execute("SELECT id FROM equipes")]:
         raise RegraViolada(f"Equipe '{equipe_id}' não cadastrada.")
     tipo = ref = None
@@ -393,29 +518,45 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
                 raise RegraViolada(f"Material '{it['material_id']}' não cadastrado.")
             if mat["propriedade"] == "CONSUMO":
                 raise RegraViolada(f"{mat['descricao']}: material de consumo não sai por requisição de equipe.")
-            if saldo_almox(conn, mat["id"])[0] + TOL < q:
-                raise RegraViolada(f"Saldo insuficiente de {mat['descricao']} no almoxarifado.")
+            propria = reservado(conn, mat["id"], equipe_id, data)
+            livre = disponivel(conn, mat["id"]) + propria          # a reserva da própria equipe pode ser usada
+            if livre + TOL < q:
+                raise RegraViolada(f"Disponível insuficiente de {mat['descricao']}: {livre:g} {mat['unidade']} "
+                                   f"(inclui a reserva da {equipe_id} para {data}; reservas de outras equipes não são usadas).")
             conn.execute(
                 """INSERT INTO movimentos(data,material_id,tipo,quantidade,equipe_id,alvo_tipo,alvo_id,checkin_id)
                    VALUES (?,?,'CUSTODIA',?,?,?,?,?)""", (data, mat["id"], q, equipe_id, tipo, ref, cid))
+            if propria:
+                obs = "retirada menor que a reserva; restante liberado" if q + TOL < propria else None
+                conn.execute("UPDATE reservas SET status='ATENDIDA', checkin_id=?, encerrada_em=?, motivo=? "
+                             "WHERE material_id=? AND equipe_id=? AND data=? AND status='ATIVA'",
+                             (cid, _agora(), obs, mat["id"], equipe_id, data))
     return cid
 
 
 def checkout(conn, checkin_id, itens):
-    """itens: [{material_id, aplicado, sobra, perda, motivo}] — fecha a custódia do dia."""
+    """Fecha o dia com o encarregado. Para cada material com a equipe (inclusive o que ela trouxe de dias
+    anteriores): aplicado + sobra devolvida + perda + fica_com_equipe = custódia da equipe.
+    O que fica com a equipe é declarado e volta como custódia no próximo check-in."""
     ck = _one(conn, "SELECT * FROM checkins WHERE id=?", checkin_id)
     if not ck or ck["encerrado"]:
         raise RegraViolada("Check-in inexistente ou já encerrado.")
+    declarados = {it["material_id"]: it for it in itens}
+    faltam = [m for m in _materiais_com_equipe(conn, ck["equipe_id"]) if m not in declarados]
+    if faltam:
+        raise RegraViolada("Declare no check-out todo material com a equipe (aplicado, sobra, perda ou fica com a "
+                           "equipe): " + ", ".join(faltam))
     with transacao(conn):
-        for it in itens:
-            mid = it["material_id"]
-            ap, so, pe = (float(it.get(k) or 0) for k in ("aplicado", "sobra", "perda"))
+        for mid, it in declarados.items():
+            ap, so, pe, fica = (float(it.get(k) or 0) for k in ("aplicado", "sobra", "perda", "fica_com_equipe"))
+            if min(ap, so, pe, fica) < 0:
+                raise RegraViolada("Quantidades do check-out não podem ser negativas.")
             if pe > 0 and not (it.get("motivo") or "").strip():
                 raise RegraViolada("Informe o motivo da quebra/perda.")
-            cust = custodia_checkin(conn, checkin_id, mid)
-            if abs((ap + so + pe) - cust) > 1e-3:
-                raise RegraViolada(
-                    f"{mid}: aplicado + sobra + perda ({ap + so + pe:g}) deve fechar a custódia do dia ({cust:g}).")
+            cust = custodia_equipe(conn, ck["equipe_id"], mid)
+            if abs((ap + so + pe + fica) - cust) > 1e-3:
+                raise RegraViolada(f"{mid}: aplicado + sobra + perda + fica com a equipe ({ap + so + pe + fica:g}) deve "
+                                   f"fechar a custódia da equipe ({cust:g}).")
             for tipo, q in (("APLICADO", ap), ("SOBRA", so), ("PERDA", pe)):
                 if q > 0:
                     conn.execute(
@@ -423,11 +564,8 @@ def checkout(conn, checkin_id, itens):
                            VALUES (?,?,?,?,?,?,?,?,?)""",
                         (ck["data"], mid, tipo, q, ck["equipe_id"], ck["alvo_tipo"], ck["alvo_id"],
                          it.get("motivo") if tipo == "PERDA" else None, checkin_id))
-        pend = [r["material_id"] for r in conn.execute(
-            "SELECT DISTINCT material_id FROM movimentos WHERE checkin_id=?", (checkin_id,))
-            if abs(custodia_checkin(conn, checkin_id, r["material_id"])) > 1e-3]
-        if pend:
-            raise RegraViolada("Custódia não fechada para: " + ", ".join(pend))
+            if fica > 0:
+                conn.execute("INSERT OR REPLACE INTO custodia_declarada VALUES (?,?,?,?)", (checkin_id, mid, fica, _agora()))
         conn.execute("UPDATE checkins SET encerrado=1 WHERE id=?", (checkin_id,))
 
 
@@ -437,9 +575,13 @@ def checkins_abertos(conn, data=None):
     for c in out:
         c["alvo_nome"] = nome_alvo(conn, c["alvo_tipo"], c["alvo_id"]) if c["alvo_id"] else None
         c["alvo_retirado"] = bool(c["alvo_id"]) and _retirado(conn, c["alvo_tipo"], c["alvo_id"])
-        c["materiais"] = _rows(conn.execute(
-            "SELECT material_id, SUM(quantidade) AS quantidade FROM movimentos WHERE checkin_id=? AND tipo='CUSTODIA' "
-            "GROUP BY material_id", (c["id"],)))
+        hoje = {r[0]: r[1] for r in conn.execute(
+            f"SELECT material_id, SUM(quantidade) FROM movimentos WHERE checkin_id=? AND tipo='CUSTODIA' AND {VALIDO} "
+            "GROUP BY material_id", (c["id"],))}
+        c["materiais"] = [{"material_id": m, "quantidade": custodia_equipe(conn, c["equipe_id"], m),
+                           "retirado_hoje": hoje.get(m, 0.0),
+                           "trazido": round(custodia_equipe(conn, c["equipe_id"], m) - hoje.get(m, 0.0), 6)}
+                          for m in _materiais_com_equipe(conn, c["equipe_id"])]
     return out
 
 

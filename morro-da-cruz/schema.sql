@@ -1,11 +1,13 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v3. Banco SQLite local.
+-- Esquema v4. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
 --   * alvo_tipo ∈ ('TRECHO','ATIVIDADE').
 --   * v3: pendência bloqueante, escopo explícito das decisões, medição fechada congelada,
 --     identidade dos itens pela assinatura técnica completa (não pela ordem das linhas).
+--   * v4 (etapa 3, estoque): reservas, saldo que fica com a equipe, empréstimo autorizado, estorno sem apagar,
+--     baixa teórica fora do saldo físico.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS schema_versao (
@@ -319,7 +321,35 @@ CREATE TABLE IF NOT EXISTS movimentos (
   status TEXT,
   motivo TEXT,
   checkin_id INTEGER REFERENCES checkins(id),
-  nf_id INTEGER REFERENCES notas_fiscais(id)
+  nf_id INTEGER REFERENCES notas_fiscais(id),
+  responsavel TEXT,                    -- quem registrou/autorizou (obrigatório no empréstimo)
+  autorizacao TEXT                     -- documento/pessoa que autorizou (empréstimo para outra obra)
+);
+-- BAIXA_TEORICA (MVP antigo) fica só como registro: não altera o saldo físico. Movimento nunca é apagado:
+-- correção = estorno (tabela estornos), que tira o movimento dos saldos e guarda motivo e responsável.
+
+-- Estorno de movimento (o movimento original permanece; saldos ignoram movimentos estornados)
+CREATE TABLE IF NOT EXISTS estornos (
+  movimento_id INTEGER PRIMARY KEY REFERENCES movimentos(id),
+  motivo TEXT NOT NULL,
+  responsavel TEXT NOT NULL,
+  em TEXT NOT NULL
+);
+
+-- Reserva do almoxarifado para uma equipe/dia (programação). Disponível = saldo físico − reservas ativas.
+CREATE TABLE IF NOT EXISTS reservas (
+  id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  equipe_id TEXT NOT NULL REFERENCES equipes(id),
+  material_id TEXT NOT NULL REFERENCES materiais(id),
+  quantidade REAL NOT NULL CHECK (quantidade > 0),
+  alvo_tipo TEXT, alvo_id TEXT,
+  responsavel TEXT,
+  status TEXT NOT NULL DEFAULT 'ATIVA' CHECK (status IN ('ATIVA','ATENDIDA','CANCELADA')),
+  checkin_id INTEGER REFERENCES checkins(id),
+  criada_em TEXT NOT NULL,
+  encerrada_em TEXT,
+  motivo TEXT
 );
 
 -- ---------------------------------------------------------------- campo
@@ -330,6 +360,15 @@ CREATE TABLE IF NOT EXISTS checkins (
   alvo_tipo TEXT, alvo_id TEXT,
   contingencia TEXT,
   encerrado INTEGER NOT NULL DEFAULT 0
+);
+
+-- Saldo que fica com a equipe no check-out (contado com o encarregado); volta como custódia no dia seguinte
+CREATE TABLE IF NOT EXISTS custodia_declarada (
+  checkin_id INTEGER NOT NULL REFERENCES checkins(id),
+  material_id TEXT NOT NULL REFERENCES materiais(id),
+  quantidade REAL NOT NULL CHECK (quantidade >= 0),
+  em TEXT NOT NULL,
+  PRIMARY KEY (checkin_id, material_id)
 );
 
 CREATE TABLE IF NOT EXISTS checkin_presencas (
@@ -459,6 +498,7 @@ CREATE INDEX IF NOT EXISTS ix_itens_ativ ON itens_projeto(atividade_id);
 CREATE INDEX IF NOT EXISTS ix_ativ_elem ON atividades(elemento_id);
 CREATE INDEX IF NOT EXISTS ix_avisos_item ON avisos_origem(item_id);
 CREATE INDEX IF NOT EXISTS ix_mov_mat ON movimentos(material_id);
+CREATE INDEX IF NOT EXISTS ix_reservas ON reservas(material_id, status);
 CREATE INDEX IF NOT EXISTS ix_fotos_alvo ON fotos(alvo_tipo, alvo_id);
 CREATE INDEX IF NOT EXISTS ix_lanc_med ON medicao_lancamentos(medicao_id, gaveta);
 CREATE INDEX IF NOT EXISTS ix_prov_fonte ON proveniencia(fonte_id);

@@ -10,6 +10,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Regras financeiras de material pendentes: veja `docs/MATRIZ_REGIMES_FATURAMENTO.md`.
   - Detalhes das etapas 0 e 1: `docs/ETAPAS_0_1_APROVACAO.md`.
   - Correções da auditoria do commit `b63b5db` (A01–A12): `docs/CORRECOES_AUDITORIA_b63b5db.md`.
+  - Etapa 3, estoque (reserva, saldo com a equipe, empréstimo autorizado, estorno): `docs/ETAPA_3_ESTOQUE.md`.
 
 ## Como rodar (Windows)
 
@@ -66,6 +67,13 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - `PENDENTE` (fora do valor) sem item ou regra; não é R$ 0 contratual;
   - **material nunca recebe regime automático:** sem 80/20 e sem 100 % na aplicação;
   - **MND** sem substituição automática de item.
+- **Estoque:**
+  - disponível = saldo físico − reservas;
+  - a reserva é da equipe e do dia;
+  - o que fica com a equipe é declarado no check-out e volta no dia seguinte;
+  - empréstimo só com documento, responsável e autorização;
+  - correção só por estorno (com motivo, sem apagar);
+  - baixa teórica não reduz o saldo físico.
 - **Objeto retirado** da revisão vigente: consulta permitida; check-in, apontamento, foto, OK, recomposição e cadastro bloqueados.
 - **Medição fechada é congelada:** revisão posterior do BM não muda o valor dela (só alerta).
 - **Simulação explícita:** a medição de TESTE lista as hipóteses não validadas (teto que desconta excedente, reajuste sem fração elegível, rateio da escavação, soldas ⌈L/6⌉).
@@ -86,6 +94,7 @@ O servidor abre `mapa/PLANTAS_..._REV02_EQUIPES.html` **sem alterá-lo** e injet
 - **Itens de BM a definir:** 14 serviços da 06.1, o MND e o critério da escavação em dois itens.
 - **Reajuste:** frações elegíveis e o pedido da contratada.
 - **Próximas etapas:**
-  - soldas, intervalos por estaca, reserva de estoque e foto original com hash;
+  - soldas, intervalos por estaca e foto original com hash (etapa 4);
+  - NF com pedido e aceite parcial (complemento da etapa 3);
   - exportação no modelo oficial (`01ª MC`);
   - usuários, perfis e acesso de campo.

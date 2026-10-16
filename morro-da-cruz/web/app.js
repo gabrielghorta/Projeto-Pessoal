@@ -143,7 +143,15 @@ async function carregarAlmox() {
   const opt = m => `<option value="${esc(m.id)}">${esc(m.id)} — ${esc(m.descricao.slice(0, 70))} (${esc(m.unidade)})</option>`;
   $$('.selMaterial').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'ANKARA').map(opt).join(''));
   $$('.selMaterialAnkara').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade === 'ANKARA').map(opt).join(''));
+  $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
+  const res = await api('/api/reservas');
+  $('#reservasLista').innerHTML = res.length ? `<table><thead><tr><th>Dia</th><th>Equipe</th><th>Material</th><th class="n">Qtd.</th><th></th></tr></thead><tbody>${res.map(r => `<tr><td>${esc(r.data)}</td><td>${esc(r.equipe_id)}</td><td>${esc(r.material_id)}</td><td class="n">${nf(r.quantidade, 3)}</td><td><button class="btn" data-cancelar-reserva="${r.id}">Cancelar</button></td></tr>`).join('')}</tbody></table>` : '<span class="vazio">Nenhuma reserva ativa.</span>';
+  const cons = await api('/api/consumo');
+  $('#consumo').innerHTML = `<table><thead><tr><th>Tubo</th><th class="n">Previsto (metros apontados)</th><th class="n">Aplicado confirmado</th><th class="n">Diferença</th></tr></thead><tbody>${cons.map(c => `<tr><td>${esc(c.material_id)}</td><td class="n">${nf(c.previsto_apontado)}</td><td class="n">${nf(c.aplicado_confirmado)}</td><td class="n">${c.diferenca ? `<span class="chip amarelo">${nf(c.diferenca)}</span>` : '—'}</td></tr>`).join('')}</tbody></table><p class="vazio" style="margin:4px 0">O previsto é só referência: nunca baixa estoque.</p>`;
+  const movs = await api('/api/movimentos?limite=40');
+  $('#movimentos').innerHTML = movs.length ? `<table><thead><tr><th>#</th><th>Data</th><th>Tipo</th><th>Material</th><th class="n">Qtd.</th><th>Equipe</th><th>Documento / responsável</th><th></th></tr></thead><tbody>${movs.map(m => `<tr${m.estornado_em ? ' style="opacity:.55;text-decoration:line-through"' : ''}><td>${m.id}</td><td>${esc(m.data)}</td><td>${esc(m.tipo)}${m.tipo === 'BAIXA_TEORICA' ? ' <small>(legado, fora do saldo)</small>' : ''}</td><td>${esc(m.material_id)}</td><td class="n">${nf(m.quantidade, 3)}</td><td>${esc(m.equipe_id || '')}</td><td>${esc([m.documento, m.responsavel, m.autorizacao].filter(Boolean).join(' · '))}</td>
+    <td>${m.estornado_em ? `<small style="text-decoration:none">estornado: ${esc(m.estorno_motivo)}</small>` : (m.tipo === 'ENTRADA_NF' ? '' : `<button class="btn" data-estornar="${m.id}">Estornar</button>`)}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio" style="padding:10px">Nenhum movimento.</div>';
   const comp = await api('/api/compat-caesb');
   $('#compat').innerHTML = `<table><thead><tr><th>Tubo</th><th class="n">Projeto 06.1 (m)</th><th class="n">Estoque Caesb</th><th class="n">Emprestado p/ outras obras</th><th class="n">Retirado pela Ankara</th><th class="n">Aplicado em obra</th><th class="n">Perdido</th><th class="n">Saldo virtual a retirar</th><th class="n">Saldo físico</th></tr></thead><tbody>
     ${comp.map(c => `<tr><td>${esc(c.descricao)}</td><td class="n">${nf(c.projeto)}</td><td class="n">${nf(c.estoque_caesb)}</td><td class="n">${nf(c.emprestado)}</td><td class="n">${nf(c.retirado)}</td><td class="n">${nf(c.aplicado)}</td><td class="n">${nf(c.perdido)}</td><td class="n"><b>${nf(c.saldo_virtual)}</b></td><td class="n">${nf(c.saldo_fisico)}</td></tr>`).join('')}</tbody></table>`;
@@ -157,10 +165,10 @@ async function carregarAlmox() {
 }
 function renderEstoque() {
   const f = $('#estFiltro').value, so = $('#estSaldo').checked;
-  const lst = MATERIAIS.filter(m => (!f || m.propriedade === f) && (!so || m.saldo_almox || m.custodia || m.quarentena));
-  $('#estoque').innerHTML = lst.length ? `<table><thead><tr><th>Material</th><th>Propriedade</th><th>Unid.</th><th class="n">Saldo almox.</th><th class="n">Quarentena</th><th class="n">Em custódia</th><th class="n">Preço BM</th></tr></thead><tbody>
+  const lst = MATERIAIS.filter(m => (!f || m.propriedade === f) && (!so || m.saldo_almox || m.custodia || m.quarentena || m.reservado));
+  $('#estoque').innerHTML = lst.length ? `<table><thead><tr><th>Material</th><th>Propriedade</th><th>Unid.</th><th class="n">Saldo físico</th><th class="n">Reservado</th><th class="n">Disponível</th><th class="n">Quarentena</th><th class="n">Com as equipes</th><th class="n">Preço BM</th></tr></thead><tbody>
     ${lst.map(m => `<tr><td>${esc(m.id)} — ${esc(m.descricao.slice(0, 80))}</td><td><span class="chip ${m.propriedade === 'CAESB' ? 'azul' : m.propriedade === 'ANKARA' ? 'laranja' : ''}">${m.propriedade}</span></td><td>${esc(m.unidade)}</td>
-      <td class="n">${nf(m.saldo_almox, 3)}</td><td class="n">${nf(m.quarentena, 3)}</td><td class="n">${nf(m.custodia, 3)}</td><td class="n">${m.propriedade === 'CAESB' ? 'R$ 0,00' : brl(m.preco_unitario)}</td></tr>`).join('')}</tbody></table>`
+      <td class="n">${nf(m.saldo_almox, 3)}</td><td class="n">${nf(m.reservado, 3)}</td><td class="n"><b>${nf(m.disponivel, 3)}</b></td><td class="n">${nf(m.quarentena, 3)}</td><td class="n">${nf(m.custodia, 3)}</td><td class="n">${m.propriedade === 'CAESB' ? 'R$ 0,00' : brl(m.preco_unitario)}</td></tr>`).join('')}</tbody></table>`
     : '<div class="vazio" style="padding:10px">Nenhum material com movimento.</div>';
 }
 $('#estFiltro').addEventListener('change', renderEstoque);
@@ -174,6 +182,23 @@ $('#nfLista').addEventListener('click', async ev => {
 $('#fMov').addEventListener('submit', async ev => {
   ev.preventDefault();
   await acao(() => api('/api/movimento', formObj(ev.target)), 'Movimento lançado.'); ev.target.reset(); carregarAlmox();
+});
+$('#fReserva').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  await acao(() => api('/api/reserva', formObj(ev.target)), 'Reserva registrada — disponível reduzido para as outras equipes.'); ev.target.reset(); carregarAlmox();
+});
+document.addEventListener('click', async ev => {
+  const c = ev.target.closest('[data-cancelar-reserva]');
+  if (c) {
+    const motivo = prompt('Motivo do cancelamento da reserva:'); if (!motivo) return;
+    await acao(() => api('/api/reserva/cancelar', { reserva_id: c.dataset.cancelarReserva, motivo }), 'Reserva cancelada.'); carregarAlmox();
+  }
+  const e = ev.target.closest('[data-estornar]');
+  if (e) {
+    const motivo = prompt('Motivo do estorno (o movimento não é apagado):'); if (!motivo) return;
+    const responsavel = prompt('Responsável pelo estorno:'); if (!responsavel) return;
+    await acao(() => api('/api/estorno', { movimento_id: e.dataset.estornar, motivo, responsavel }), 'Movimento estornado.'); carregarAlmox();
+  }
 });
 $('#fNF').addEventListener('submit', async ev => {
   ev.preventDefault(); const o = formObj(ev.target);
@@ -199,7 +224,7 @@ $('select[name=equipe_id]', fCk).addEventListener('change', async ev => {
 });
 $('#ckAddMat').addEventListener('click', () => {
   const div = document.createElement('div'); div.className = 'linha';
-  div.innerHTML = `<select data-mat>${MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.saldo_almox > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (saldo ${nf(m.saldo_almox)} ${esc(m.unidade)})</option>`).join('') || '<option value="">sem saldo no almoxarifado</option>'}</select><input type="number" step="any" min="0" data-qtd placeholder="quantidade">`;
+  div.innerHTML = `<select data-mat>${MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.saldo_almox > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} + reserva da equipe · ${esc(m.unidade)})</option>`).join('') || '<option value="">sem saldo no almoxarifado</option>'}</select><input type="number" step="any" min="0" data-qtd placeholder="quantidade">`;
   $('#ckMateriais').append(div);
 });
 fCk.addEventListener('submit', async ev => {
@@ -216,15 +241,16 @@ async function carregarCheckouts() {
   $('#checkoutLista').className = cks.length ? '' : 'vazio';
   $('#checkoutLista').innerHTML = cks.length ? cks.map(c => `<form class="form" data-co="${c.id}" style="border-bottom:1px solid var(--borda);padding-bottom:10px;margin-bottom:10px">
     <div><b>${esc(c.equipe_id)}</b> · ${esc(c.data)} · ${c.alvo_id ? '📍 ' + esc(curto(c.alvo_nome)) : esc(c.contingencia || '')}</div>
-    ${c.materiais.length ? `<table><thead><tr><th>Material</th><th class="n">Custódia</th><th>Aplicado</th><th>Sobra</th><th>Perda</th><th>Motivo</th></tr></thead><tbody>
-      ${c.materiais.map(m => `<tr data-m="${esc(m.material_id)}"><td>${esc(m.material_id)}</td><td class="n">${nf(m.quantidade, 3)}</td>
+    ${c.materiais.length ? `<table><thead><tr><th>Material</th><th class="n">Com a equipe</th><th>Aplicado</th><th>Sobra (devolve)</th><th>Perda</th><th>Fica com a equipe</th><th>Motivo da perda</th></tr></thead><tbody>
+      ${c.materiais.map(m => `<tr data-m="${esc(m.material_id)}"><td>${esc(m.material_id)}</td><td class="n">${nf(m.quantidade, 3)}${m.trazido ? `<br><small>trazido ${nf(m.trazido, 3)}</small>` : ''}</td>
       <td><input type="number" step="any" min="0" name="aplicado" value="${m.quantidade}"></td><td><input type="number" step="any" min="0" name="sobra" value="0"></td>
-      <td><input type="number" step="any" min="0" name="perda" value="0"></td><td><input name="motivo"></td></tr>`).join('')}</tbody></table>` : '<span class="vazio">Sem materiais em custódia.</span>'}
+      <td><input type="number" step="any" min="0" name="perda" value="0"></td><td><input type="number" step="any" min="0" name="fica_com_equipe" value="0"></td><td><input name="motivo"></td></tr>`).join('')}</tbody></table>
+      <p class="vazio" style="margin:4px 0">Aplicado + sobra + perda + fica com a equipe = material com a equipe. O que fica volta no próximo check-in.</p>` : '<span class="vazio">Sem materiais em custódia.</span>'}
     <div class="acoes"><button class="btn ok">Confirmar check-out com o encarregado</button></div></form>`).join('') : 'Nenhum check-in aberto.';
 }
 $('#checkoutLista').addEventListener('submit', async ev => {
   ev.preventDefault(); const f = ev.target;
-  const itens = $$('tr[data-m]', f).map(tr => ({ material_id: tr.dataset.m, aplicado: +$('[name=aplicado]', tr).value || 0, sobra: +$('[name=sobra]', tr).value || 0, perda: +$('[name=perda]', tr).value || 0, motivo: $('[name=motivo]', tr).value }));
+  const itens = $$('tr[data-m]', f).map(tr => ({ material_id: tr.dataset.m, aplicado: +$('[name=aplicado]', tr).value || 0, sobra: +$('[name=sobra]', tr).value || 0, perda: +$('[name=perda]', tr).value || 0, fica_com_equipe: +$('[name=fica_com_equipe]', tr).value || 0, motivo: $('[name=motivo]', tr).value }));
   await acao(() => api('/api/checkout', { checkin_id: f.dataset.co, itens }), 'Check-out confirmado.'); carregarAlmox();
 });
 async function carregarHistograma() {
