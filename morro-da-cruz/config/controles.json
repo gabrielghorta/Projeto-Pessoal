@@ -1,8 +1,9 @@
 {
-  "_leia": "Controles aprovados por CONJUNTO EXATO de arquivos (SHA-256 de cada fonte). A importação só é gravada se existir um conjunto para os arquivos lidos e todos os valores conferirem. Nova revisão de qualquer planilha = novo conjunto: rode a simulação, confira cada valor do 'modelo_controles' do relatório contra a fonte (EVIDÊNCIAS, resumos das planilhas) e acrescente aqui com origem, responsável e data. Nunca altere um conjunto antigo para fazer uma revisão passar.",
+  "_leia": "Controles por CONJUNTO EXATO de arquivos (SHA-256 de cada fonte). A importação só é APLICADA se existir um conjunto para os arquivos lidos, com perfil \"REAL\", todas as conferências obrigatórias preenchidas (trechos, extensao_m, elementos, atividades, itens_projeto, bm_vertical, bm_juntada, sem_posicao, unidades_linhas e, com EVIDÊNCIAS, agrupamento_evidencias_iguais), origem dos valores indicada, APROVAÇÃO EFETIVA e nenhum valor divergente. Aprovação efetiva = \"aprovacao\": {\"status\": \"APROVADO\", \"por\": \"<nome de quem conferiu>\", \"em\": \"AAAA-MM-DD\"}, escrita pela pessoa responsável depois de conferir cada valor na fonte. O sistema nunca preenche a aprovação. A simulação (python importar.py) funciona sem aprovação, para conferir. Nova revisão = novo conjunto; nunca altere um conjunto antigo para fazer uma revisão passar.",
   "conjuntos": [
     {
       "id": "CTRL-01 · 06.1 REV01 + 06.2 REV08 + EVIDÊNCIAS REV08 + BM REV04 + REAJUSTE REV03",
+      "perfil": "REAL",
       "fontes": {
         "redes": "77f8b66f881064484a03c0c12904a46ccf5330ca873653f87343f5d5645cf48f",
         "conexoes": "cc4852be77bf908945fda128276858c296187c515856a292fd68e47c72189bad",
@@ -42,8 +43,11 @@
         "quantidade_m": 72.95
       },
       "origem_dos_valores": "Contagens do pacote de 15/10/2026 (EVIDÊNCIAS REV08: 1.191 grupos; 06.1: 1.436 trechos / 110.686,03 m; BM REV04: 432 Vertical / 347 Juntada; MV-11, VTF-12, VTF-16 sem posição) e unidades por item da Juntada conferidas na auditoria independente de 15/10/2026 (UN 6.051 · M 73 linhas = 72,95 m · PÇ 54 · 361 pendentes).",
-      "aprovado_por": "A CONFIRMAR pelo usuário — valores conferidos na auditoria independente de 15/10/2026",
-      "data": "2026-10-15"
+      "aprovacao": {
+        "status": "PENDENTE",
+        "por": null,
+        "em": null
+      }
     }
   ]
 }

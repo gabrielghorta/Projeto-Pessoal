@@ -178,15 +178,23 @@ def conjunto_controles(pasta, esperado, ident="CTRL-SINTETICO", arquivos=None):
     """Conjunto de controles para os arquivos presentes em `pasta` (hash de cada um)."""
     arquivos = arquivos or ARQ
     fontes = {k: sha(os.path.join(pasta, n)) for k, n in arquivos.items() if os.path.exists(os.path.join(pasta, n))}
-    return {"id": ident, "fontes": fontes, "esperado": esperado, "origem_dos_valores": "listas do gerador sintético",
-            "aprovado_por": "teste", "data": "2026-10-16"}
+    return {"id": ident, "perfil": "TESTE", "fontes": fontes, "esperado": esperado,
+            "origem_dos_valores": "listas do gerador sintético (perfil de TESTE)",
+            "aprovacao": {"status": "APROVADO", "por": "teste automatizado (perfil sintético)", "em": "2026-10-16"}}
 
 
 def esperado_de(trechos, conexoes, evidencias=True):
     """Controles calculados das listas de entrada (independentes do importador)."""
     elementos = {l[6] or l[0].split("_")[-1] for l in conexoes}
-    e = {"trechos": len(trechos), "elementos": len(elementos), "atividades": len({l[0] for l in conexoes}),
-         "itens_projeto": len(conexoes), "bm_vertical": len(VERTICAL), "bm_juntada": len(JUNTADA)}
+    unidades = {it: un.upper() for it, un, _, _ in JUNTADA}
+    linhas = {}
+    for l in conexoes:
+        u = unidades.get(l[5], "PENDENTE")
+        linhas[u] = linhas.get(u, 0) + 1
+    e = {"trechos": len(trechos), "extensao_m": round(sum(t[3] for t in trechos), 2), "elementos": len(elementos),
+         "atividades": len({l[0] for l in conexoes}), "itens_projeto": len(conexoes), "bm_vertical": len(VERTICAL),
+         "bm_juntada": len(JUNTADA), "sem_posicao": sorted({l[0].split("_")[-1] for l in conexoes if not l[6]}),
+         "unidades_linhas": dict(sorted(linhas.items()))}
     if evidencias:
         e["agrupamento_evidencias_iguais"] = len(elementos)
     return e
@@ -206,7 +214,7 @@ def gerar(pasta, trechos=None, conexoes=None, bm_override=None, precos=None, evi
     elif os.path.exists(pe):
         os.remove(pe)
     return {
-        "contrato": "CT SINTÉTICO", "obra": "teste",
+        "contrato": "CT SINTÉTICO", "obra": "teste", "perfil": "TESTE",
         "valor_contrato": {"valor": "1.00", "fonte": "teste"},
         "arquivos": dict(ARQ, mapa="inexistente.html"),
         "controles": [conjunto_controles(pasta, esperado_de(trechos, conexoes, evidencias))],

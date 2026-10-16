@@ -308,8 +308,18 @@ def main():
         raise SystemExit(str(e))
     if a.host not in ("127.0.0.1", "localhost"):
         raise SystemExit("Este servidor não tem autenticação: só pode escutar em 127.0.0.1 (uso local).")
+    srv = ThreadingHTTPServer((a.host, a.porta), Handler)
+    marca = backup.marcar_servidor(os.path.dirname(os.path.abspath(a.db)), a.host, a.porta)
     print(f"Sistema Morro da Cruz em http://{a.host}:{a.porta}  (Ctrl+C para sair)")
-    ThreadingHTTPServer((a.host, a.porta), Handler).serve_forever()
+    print("Importação e restauração exigem este servidor parado.")
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        srv.server_close()
+        if os.path.exists(marca):
+            os.remove(marca)
 
 
 if __name__ == "__main__":

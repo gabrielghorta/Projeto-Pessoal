@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import sqlite3
 import sys
 from contextlib import contextmanager
@@ -32,6 +33,7 @@ DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
 DESTINO_PADRAO = os.path.join(BASE, "dados", "backups")
 MANIFESTO = "manifesto.json"
 TRAVA = "MANUTENCAO.lock"
+MARCA_SERVIDOR = "SERVIDOR_ATIVO.json"
 
 
 class BackupIncompleto(RuntimeError):
@@ -54,6 +56,41 @@ def utf8_console():
             s.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
+
+
+class ServidorAtivo(EmManutencao):
+    """Importação e restauração exigem o servidor parado (limitação de concorrência desta versão)."""
+
+
+def marcar_servidor(pasta_db, host, porta):
+    """O servidor registra onde está escutando; removido ao encerrar."""
+    p = os.path.join(pasta_db, MARCA_SERVIDOR)
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump({"pid": os.getpid(), "host": host, "porta": porta,
+                   "desde": datetime.now().isoformat(timespec="seconds")}, f)
+    return p
+
+
+def servidor_ativo(pasta_db):
+    """Há servidor do sistema respondendo para este banco? (marca + porta aceitando conexão; marca órfã não conta)."""
+    p = os.path.join(pasta_db, MARCA_SERVIDOR)
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, encoding="utf-8") as f:
+            m = json.load(f)
+        with socket.create_connection((m["host"], int(m["porta"])), timeout=0.5):
+            return m
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def exigir_servidor_parado(pasta_db, operacao):
+    m = servidor_ativo(pasta_db)
+    if m:
+        raise ServidorAtivo(f"{operacao} exige o servidor parado: há um servidor em http://{m['host']}:{m['porta']} "
+                            f"(pid {m['pid']}, desde {m['desde']}). Encerre-o (Ctrl+C), aguarde as operações em curso "
+                            "e repita.")
 
 
 def caminho_trava(pasta_db):
@@ -252,7 +289,7 @@ def verificar(pasta):
 
 
 def restaurar(pasta, db=DB_PADRAO, dir_fotos=DIR_FOTOS, destino_seguranca=None, permitir_incompleto=False):
-    """Volta o banco ao estado do backup, em manutenção (trava ativa), sem apagar nada.
+    """Volta o banco ao estado do backup, em manutenção (trava ativa), sem apagar nada. Exige o servidor parado.
 
     1. Verifica o backup. Se estiver incompleto, só restaura com permitir_incompleto=True.
     2. Cria um backup de segurança do estado atual pela API do SQLite (inclui o WAL) com as
@@ -270,6 +307,7 @@ def restaurar(pasta, db=DB_PADRAO, dir_fotos=DIR_FOTOS, destino_seguranca=None, 
     with open(os.path.join(pasta, MANIFESTO), encoding="utf-8") as f:
         m = json.load(f)
     pasta_db = os.path.dirname(os.path.abspath(db))
+    exigir_servidor_parado(pasta_db, "A restauração")
     destino_seguranca = destino_seguranca or os.path.join(pasta_db, "backups")
     origem = os.path.join(pasta, os.path.basename(m["banco_origem"]))
     with trava_manutencao(pasta_db, f"restauração de {os.path.basename(pasta)}"):

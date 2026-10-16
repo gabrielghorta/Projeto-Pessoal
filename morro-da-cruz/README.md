@@ -21,11 +21,14 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
    python importar.py --aplicar    # trava + backup verificado e completo + importação numa transação
    ```
    Se uma conferência reprovar, nada é gravado (código de saída 2) e o motivo fica em `dados/relatorios/`.
+   - **A aplicação exige o servidor parado** e um conjunto de controles completo e **aprovado por você** em `config/controles.json`: bloco `aprovacao` com status `APROVADO`, nome e data.
+   - Sem isso, só a simulação roda (`SIMULADA_SEM_CONTROLE_APROVADO`).
+   - O sistema não preenche a aprovação.
 4. Suba o sistema e abra **http://127.0.0.1:8765**:
    ```
    python server.py
    ```
-5. Backup a qualquer momento: `python backup.py criar | verificar <pasta> | restaurar <pasta>` (pare o servidor antes de restaurar).
+5. Backup a qualquer momento: `python backup.py criar | verificar <pasta> | restaurar <pasta>`. A restauração exige o servidor parado.
 6. Testes: `python -m unittest discover -s tests -v`. Os testes do piloto Zona01 e de `test_base_real.py` exigem as planilhas reais em `planilhas/` (sempre em cópias descartáveis).
 
 ## Importação (`importar.py` / `importacao.py`)

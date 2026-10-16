@@ -230,6 +230,43 @@ Se o conjunto de controles aprovado inclui o hash das evidências, a ausência d
 
 ---
 
+## Reavaliação de 16/10 — controles sem aprovação efetiva (commit seguinte ao `46616af`)
+
+**Problema confirmado na reavaliação:** um conjunto de controles com `esperado` vazio e sem aprovador era aceito: `CONCLUIDA` e `contagens_ok = true`. Era uma falsa confirmação de conferência.
+
+**Correção:** `importacao.validar_controle` confere a estrutura e a aprovação antes de aplicar.
+
+| Exigência | Resultado se faltar |
+|---|---|
+| `id` e `perfil` (`REAL` ou `TESTE`, igual ao da importação) | `CONTROLE_INCOMPLETO` |
+| Hashes SHA-256 válidos em `fontes` | `CONTROLE_INCOMPLETO` |
+| Todas as conferências obrigatórias em `esperado`, com tipo válido (`trechos`, `extensao_m`, `elementos`, `atividades`, `itens_projeto`, `bm_vertical`, `bm_juntada`, `sem_posicao`, `unidades_linhas`; com EVIDÊNCIAS, `agrupamento_evidencias_iguais`) | `CONTROLE_INCOMPLETO`, com a lista do que falta |
+| `origem_dos_valores` preenchida | `CONTROLE_INCOMPLETO` |
+| Bloco `aprovacao` com `status: "APROVADO"`, `por` (nome) e `em` (AAAA-MM-DD), sem texto provisório | `CONTROLE_SEM_APROVACAO` |
+
+- Na **aplicação**, qualquer um desses problemas reprova (rollback e relatório legível).
+- Na **simulação**, vira aviso: status `SIMULADA_SEM_CONTROLE_APROVADO`, `contagens_ok = false`. A comparação dos valores continua visível, para conferir antes de aprovar.
+- `aprovado_por` solto ou "A CONFIRMAR" não vale como aprovação.
+- **O sistema não preenche a aprovação.** O conjunto real (CTRL-01) está com `aprovacao.status = "PENDENTE"`; aplicar a importação real fica recusado até você preencher.
+- **Perfis separados:** os testes usam perfil `TESTE` (sintético, ou cópia dos controles reais aprovada pelo teste automatizado). Um conjunto `TESTE` não vale numa importação `REAL`.
+
+**Servidor parado:** importação (`--aplicar`) e restauração recusam rodar se o servidor deste banco estiver respondendo (`ServidorAtivo`). O servidor registra `SERVIDOR_ATIVO.json` ao iniciar e o apaga ao sair. Marca órfã (servidor que caiu) não bloqueia. A simulação continua liberada.
+
+**Testes:** 11 novos em `TestControlesAprovacao` e `TestServidorParado`, mais 1 na base real:
+- os dois casos da sonda da auditoria (esperado vazio + sem aprovador; sem aprovador);
+- campo obrigatório ausente;
+- tipo inválido, origem provisória e conferência desconhecida;
+- aprovação solta, provisória, pendente ou com data inválida;
+- perfil trocado;
+- aprovação válida (`CONCLUIDA`, registra quem aprovou);
+- simulação sem aprovação;
+- modelo com aprovação pendente;
+- conjunto real completo e sem aprovação inventada;
+- servidor respondendo;
+- na base real: perfil real pendente simula, mas não aplica.
+
+**Suíte:** 102 testes OK.
+
 ## Verificações sobre a base real (em cópias)
 
 | Verificação | Resultado |
@@ -254,7 +291,7 @@ Se o conjunto de controles aprovado inclui o hash das evidências, a ausência d
 - **Concorrência real servidor × restauração.**
   - Coberta pela trava, pelo 503 do servidor e por `BEGIN IMMEDIATE`.
   - Resta uma janela teórica: uma requisição que conferiu a trava pouco antes de ela ser criada ainda pode gravar.
-  - **Procedimento:** pare o servidor antes de restaurar.
+  - **Nesta versão, importação e restauração exigem o servidor parado** (agora verificado pelo programa). Aguarde as operações em curso antes de importar ou restaurar. Manutenção com usuários simultâneos exige sincronização adicional, não implementada.
 - **Só com sintéticos** (não há revisões reais desses casos):
   - MV-11 com handle;
   - divisão e união de trechos;

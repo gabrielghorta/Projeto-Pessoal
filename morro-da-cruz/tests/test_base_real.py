@@ -24,8 +24,10 @@ import backup  # noqa: E402
 import importacao as I  # noqa: E402
 import importar  # noqa: E402
 import servicos as S  # noqa: E402
+from perfil_teste import cfg_teste_real  # noqa: E402
 
-CFG = I.carregar_config()
+CFG = I.carregar_config()                 # perfil REAL (aprovação do usuário)
+CFGT = cfg_teste_real()                   # perfil TESTE: mesmos controles, aprovados pelo teste automatizado
 TEM_DADOS = all(I.caminho(CFG, k) for k in ("redes", "conexoes", "evidencias", "bm", "reajuste"))
 TR001, TR002 = "Zona01_PB01_Rede_TR001", "Zona01_PB01_Rede_TR002"
 D = "2026-10-15"
@@ -38,7 +40,7 @@ class BaseReal(unittest.TestCase):
         cls.raiz = tempfile.mkdtemp(prefix="base_real_")
         cls.db0 = os.path.join(cls.raiz, "carga", "obra.db")
         os.makedirs(os.path.join(cls.raiz, "carga", "fotos"))
-        cls.rel0 = importar.aplicar(cls.db0, I.DIR_PLANILHAS, dir_relatorios=os.path.join(cls.raiz, "rel"))
+        cls.rel0 = importar.aplicar(cls.db0, I.DIR_PLANILHAS, cfg=CFGT, dir_relatorios=os.path.join(cls.raiz, "rel"))
 
     @classmethod
     def tearDownClass(cls):
@@ -86,11 +88,27 @@ class BaseReal(unittest.TestCase):
     def test_reimportacao_real_nao_muda_conteudo(self):
         self.copia()
         antes = backup.conteudo(self.db)
-        rel = importar.aplicar(self.db, I.DIR_PLANILHAS, dir_relatorios=self.rels)
+        rel = importar.aplicar(self.db, I.DIR_PLANILHAS, cfg=CFGT, dir_relatorios=self.rels)
         self.assertEqual(rel["status"], "SEM_ALTERACOES")
         depois = backup.conteudo(self.db)
         mudou = sorted(t for t in antes if antes[t] != depois[t])
         self.assertEqual(mudou, ["importacoes"])                 # só o registro da própria importação
+
+    def test_perfil_real_sem_aprovacao_simula_mas_nao_aplica(self):
+        estrutura, aprovacao = I.validar_controle(CFG["controles"][0], "REAL")
+        self.assertEqual(estrutura, [])                                  # conjunto real completo
+        if not aprovacao:
+            self.skipTest("o conjunto real já foi aprovado pelo usuário")
+        self.copia()
+        antes = backup.conteudo(self.db)
+        sim = importar.simular(self.db, I.DIR_PLANILHAS, cfg=CFG, dir_relatorios=self.rels)
+        self.assertEqual(sim["status"], "SIMULADA_SEM_CONTROLE_APROVADO")
+        self.assertFalse(sim["auditoria"]["contagens_ok"])
+        self.assertTrue(all(c["ok"] for c in sim["auditoria"]["contagens"].values()))   # valores conferem, sem confirmação
+        with self.assertRaises(importar.ImportacaoReprovada) as cm:
+            importar.aplicar(self.db, I.DIR_PLANILHAS, cfg=CFG, dir_relatorios=self.rels)
+        self.assertIn("CONTROLE_SEM_APROVACAO", [b["tipo"] for b in cm.exception.relatorio["bloqueios"]])
+        self.assertEqual(backup.conteudo(self.db), antes)
 
     # ---------------------------------------------------------------- nomes trocados na 06.1 real
     def test_nomes_trocados_na_06_1_real(self):
@@ -111,7 +129,7 @@ class BaseReal(unittest.TestCase):
         ws.cell(linhas[TR002], 18, TR001)
         wb.save(p)
         wb.close()
-        cfg = json.loads(json.dumps(CFG))
+        cfg = json.loads(json.dumps(CFGT))
         ctl = dict(cfg["controles"][0], id="CTRL-TESTE nomes trocados")
         ctl["fontes"] = dict(ctl["fontes"], redes=backup.sha256(p))
         cfg["controles"] = [ctl]
@@ -147,7 +165,7 @@ class BaseReal(unittest.TestCase):
         c.close()
         with open(os.path.join(self.fotos, "a.jpg"), "wb") as f:
             f.write(b"a")
-        rel = importar.aplicar(self.db, I.DIR_PLANILHAS, dir_relatorios=self.rels)
+        rel = importar.aplicar(self.db, I.DIR_PLANILHAS, cfg=CFGT, dir_relatorios=self.rels)
         self.assertEqual((rel["esquema_antes"], rel["status"]), (1, "CONCLUIDA"))
         self.assertTrue(rel["auditoria"]["contagens_ok"])
         tr = self.q("SELECT id FROM trechos WHERE ponto=? AND vigente=1", TR001)[0][0]

@@ -23,6 +23,7 @@ APP = os.path.dirname(AQUI)
 sys.path.insert(0, APP)
 sys.path.insert(0, AQUI)
 import backup  # noqa: E402
+import importacao as I  # noqa: E402
 import importar  # noqa: E402
 import planilhas_sinteticas as PS  # noqa: E402
 import servicos as S  # noqa: E402
@@ -87,7 +88,7 @@ class Base(unittest.TestCase):
         achados = [b["tipo"] for b in rel["bloqueios"]]
         for t in tipos:
             self.assertIn(t, achados, rel["bloqueios"])
-        self.assertEqual(sha(self.db), antes)                       # banco byte a byte igual
+        self.assertEqual(sha(self.db) if os.path.exists(self.db) else None, antes)   # banco byte a byte igual (ou inexistente)
         self.assertTrue(os.path.exists(rel["arquivo_relatorio"]))    # relatório persistente da reprovação
         with open(rel["arquivo_relatorio"], encoding="utf-8") as f:
             self.assertEqual(json.load(f)["status"], "REPROVADA")
@@ -315,6 +316,120 @@ class TestA01ConferenciasAntesDoCommit(Base):
         rel = self.aplicar()
         self.assertEqual(rel["status"], "CONCLUIDA")
         self.assertEqual(self.q("SELECT vigente FROM itens_projeto WHERE descricao='TUBO'"), [(0,)])
+
+
+# ====================================================================== controles: completos e com aprovação efetiva
+class TestControlesAprovacao(Base):
+    """Controle vazio, incompleto ou sem aprovação efetiva não pode virar 'conferência confirmada'."""
+
+    def ctl(self, **mudancas):
+        c = self.cfg["controles"][0]
+        for k, v in mudancas.items():
+            if v is None:
+                c.pop(k, None)
+            else:
+                c[k] = v
+        return c
+
+    def test_sonda_auditoria_esperado_vazio_e_sem_aprovador(self):
+        self.ctl(esperado={}, aprovacao=None)
+        rel = self.reprovar("CONTROLE_INCOMPLETO", "CONTROLE_SEM_APROVACAO")
+        self.assertFalse(rel["auditoria"]["contagens_ok"])
+        self.assertFalse(os.path.exists(self.db) and self.q("SELECT name FROM sqlite_master WHERE name='trechos'"))
+
+    def test_sonda_auditoria_sem_aprovador(self):
+        self.ctl(aprovacao=None)
+        rel = self.reprovar("CONTROLE_SEM_APROVACAO")
+        self.assertEqual(rel["auditoria"]["controle_situacao"], "SEM_APROVACAO")
+
+    def test_aprovado_por_solto_ou_provisorio_nao_vale(self):
+        self.ctl(aprovacao=None, aprovado_por="Fulano")
+        self.reprovar("CONTROLE_SEM_APROVACAO")
+        self.ctl(aprovacao={"status": "APROVADO", "por": "A CONFIRMAR pelo usuário", "em": "2026-10-16"})
+        self.reprovar("CONTROLE_SEM_APROVACAO")
+        self.ctl(aprovacao={"status": "PENDENTE", "por": "Fulano", "em": "2026-10-16"})
+        self.reprovar("CONTROLE_SEM_APROVACAO")
+        self.ctl(aprovacao={"status": "APROVADO", "por": "Fulano", "em": "ontem"})
+        self.reprovar("CONTROLE_SEM_APROVACAO")
+
+    def test_campo_obrigatorio_ausente(self):
+        self.ctl()["esperado"].pop("trechos")
+        rel = self.reprovar("CONTROLE_INCOMPLETO")
+        b = next(x for x in rel["bloqueios"] if x["tipo"] == "CONTROLE_INCOMPLETO")
+        self.assertIn("trechos", b["detalhe"])                                   # relatório legível: diz o que falta
+
+    def test_tipo_invalido_origem_ausente_e_conferencia_desconhecida(self):
+        c = self.ctl(origem_dos_valores="PREENCHER")
+        c["esperado"]["trechos"] = "3"
+        c["esperado"]["qualquer_coisa"] = 1
+        b = next(x for x in self.reprovar("CONTROLE_INCOMPLETO")["bloqueios"] if x["tipo"] == "CONTROLE_INCOMPLETO")
+        for trecho in ("esperado.trechos", "origem_dos_valores", "qualquer_coisa"):
+            self.assertIn(trecho, b["detalhe"])
+
+    def test_perfil_de_teste_nao_vale_no_perfil_real(self):
+        self.cfg["perfil"] = "REAL"
+        self.reprovar("CONTROLE_INCOMPLETO")
+
+    def test_aprovacao_valida_conclui_e_registra_quem_aprovou(self):
+        self.ctl(aprovacao={"status": "APROVADO", "por": "Eng. Responsável", "em": "2026-10-16"})
+        rel = self.aplicar()
+        a = rel["auditoria"]
+        self.assertEqual((rel["status"], a["controle_situacao"], a["contagens_ok"]), ("CONCLUIDA", "APROVADO", True))
+        self.assertEqual(a["controle_aprovacao"]["por"], "Eng. Responsável")
+
+    def test_simulacao_continua_disponivel_sem_aprovacao(self):
+        self.aplicar()
+        antes = sha(self.db)
+        self.ctl(aprovacao=None)
+        rel = importar.simular(self.db, self.planilhas, cfg=self.cfg, dir_relatorios=self.rels)
+        self.assertEqual(rel["status"], "SIMULADA_SEM_CONTROLE_APROVADO")
+        self.assertFalse(rel["auditoria"]["contagens_ok"])                       # sem falsa confirmação
+        self.assertTrue(all(c["ok"] for c in rel["auditoria"]["contagens"].values()))
+        self.assertEqual([x["tipo"] for x in rel["auditoria"]["avisos_controle"]], ["CONTROLE_SEM_APROVACAO"])
+        self.assertEqual(rel["bloqueios"], [])
+        self.assertEqual(sha(self.db), antes)
+        self.assertIsNone(self.cfg["controles"][0].get("aprovacao"))             # nada preenchido em lugar da pessoa
+
+    def test_simulacao_sem_conjunto_traz_modelo_com_aprovacao_pendente(self):
+        self.cfg["controles"] = []
+        rel = importar.simular(self.db, self.planilhas, cfg=self.cfg, dir_relatorios=self.rels)
+        m = rel["auditoria"]["modelo_controles"]
+        self.assertEqual(m["aprovacao"], {"status": "PENDENTE", "por": None, "em": None})
+        self.assertEqual(I.validar_controle(m, "TESTE")[1] != [], True)          # o modelo sozinho não aprova nada
+
+    def test_conjunto_real_versionado_esta_completo_e_sem_aprovacao_inventada(self):
+        real = I.carregar_config()
+        self.assertEqual(real["perfil"], "REAL")
+        for c in real["controles"]:
+            estrutura, _ = I.validar_controle(c, "REAL")
+            self.assertEqual(estrutura, [], c["id"])
+            ap = c.get("aprovacao") or {}
+            self.assertTrue(ap.get("status") != "APROVADO" or "teste" not in str(ap.get("por")).lower())
+
+
+class TestServidorParado(Base):
+    """Importação e restauração exigem o servidor parado (limitação de concorrência desta versão)."""
+
+    def test_aplicar_e_restaurar_recusam_com_servidor_respondendo(self):
+        import socket
+        self.aplicar()
+        pasta = backup.criar(self.db, os.path.join(self.dados, "backups"), self.fotos)
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen()
+        try:
+            marca = backup.marcar_servidor(self.dados, "127.0.0.1", srv.getsockname()[1])
+            antes = sha(self.db)
+            with self.assertRaises(backup.ServidorAtivo):
+                self.aplicar()
+            with self.assertRaises(backup.ServidorAtivo):
+                backup.restaurar(pasta, self.db, self.fotos)
+            self.assertEqual(sha(self.db), antes)
+            importar.simular(self.db, self.planilhas, cfg=self.cfg, dir_relatorios=self.rels)   # simulação liberada
+        finally:
+            srv.close()
+        self.assertEqual(self.aplicar()["status"], "SEM_ALTERACOES")              # marca órfã não bloqueia
+        os.remove(marca)
 
 
 # ====================================================================== A02 — identidade física dos trechos

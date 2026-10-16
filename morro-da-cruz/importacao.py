@@ -68,6 +68,7 @@ def carregar_config():
             with open(p, encoding="utf-8") as f:
                 dados = json.load(f)
         cfg[chave] = dados["conjuntos"] if chave == "controles" else dados["conciliacoes"]
+    cfg.setdefault("perfil", "REAL")          # perfis de teste são explícitos e nunca valem para o perfil real
     return cfg
 
 
@@ -997,30 +998,120 @@ def obter_contagens(conn, conferencias):
 
 
 def controle_para(cfg, fontes):
-    """Conjunto de controles aprovado para EXATAMENTE estes arquivos (hash de cada fonte)."""
+    """Conjunto de controles para EXATAMENTE estes arquivos (hash de cada fonte). Não diz se é válido/aprovado."""
     atual = {k: v["sha256"] for k, v in fontes.items()}
     return next((c for c in cfg.get("controles", []) if c.get("fontes") == atual), None)
 
 
-def auditar(conn, cfg, imp, fontes, conferencias):
-    """Conferências da carga. `bloqueios` lista o que impede o COMMIT."""
+# Conferências que todo conjunto precisa trazer (tipo esperado de cada valor)
+CONTROLES_OBRIGATORIOS = {"trechos": "inteiro", "extensao_m": "número", "elementos": "inteiro", "atividades": "inteiro",
+                          "itens_projeto": "inteiro", "bm_vertical": "inteiro", "bm_juntada": "inteiro",
+                          "sem_posicao": "lista de nº de projeto", "unidades_linhas": "unidade → nº de linhas"}
+CONTROLES_OPCIONAIS = {"nos": "inteiro", "caixas": "inteiro", "quantidade_m": "número",
+                       "agrupamento_evidencias_iguais": "inteiro"}
+TEXTO_PROVISORIO = re.compile(r"\bA CONFIRMAR\b|\bPREENCHER\b|\bTODO\b|\bXXX\b|^\s*(PENDENTE|A DEFINIR|-+|\?+)\s*$",
+                              re.I)
+
+
+def _tipo_ok(tipo, v):
+    inteiro = lambda x: isinstance(x, int) and not isinstance(x, bool) and x >= 0
+    if tipo == "inteiro":
+        return inteiro(v)
+    if tipo == "número":
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
+    if tipo == "lista de nº de projeto":
+        return isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v)
+    if tipo == "unidade → nº de linhas":
+        return isinstance(v, dict) and bool(v) and all(isinstance(k, str) and k.strip() and inteiro(x) for k, x in v.items())
+    return False
+
+
+def validar_controle(c, perfil):
+    """(problemas de estrutura, problemas de aprovação) de um conjunto de controles.
+
+    Aprovação efetiva = bloco `aprovacao` com status "APROVADO", nome de quem aprovou e data ISO, sem
+    texto provisório. O sistema nunca preenche a aprovação: ela é escrita pela pessoa em config/controles.json.
+    """
+    texto_ok = lambda v: isinstance(v, str) and bool(v.strip()) and not TEXTO_PROVISORIO.search(v)
+    estrutura, aprovacao = [], []
+    if not texto_ok(c.get("id")):
+        estrutura.append("campo 'id' ausente ou provisório")
+    if c.get("perfil") != perfil:
+        estrutura.append(f"perfil do conjunto = {c.get('perfil')!r}; esta importação exige perfil {perfil!r}")
+    fontes = c.get("fontes")
+    if not isinstance(fontes, dict) or not fontes or not all(
+            isinstance(h, str) and re.fullmatch(r"[0-9a-f]{64}", h) for h in fontes.values()):
+        estrutura.append("campo 'fontes' ausente, vazio ou com hash SHA-256 inválido")
+    esperado = c.get("esperado")
+    if not isinstance(esperado, dict) or not esperado:
+        estrutura.append("campo 'esperado' ausente ou vazio: nenhuma conferência de contagem seria feita")
+        esperado = {}
+    obrig = dict(CONTROLES_OBRIGATORIOS)
+    if isinstance(fontes, dict) and "evidencias" in fontes:
+        obrig["agrupamento_evidencias_iguais"] = "inteiro"
+    faltam = [k for k in obrig if k not in esperado]
+    if faltam and esperado:
+        estrutura.append("conferências obrigatórias ausentes em 'esperado': " + ", ".join(faltam))
+    tipos = {**CONTROLES_OPCIONAIS, **obrig}
+    for k, v in esperado.items():
+        if k not in tipos:
+            estrutura.append(f"'esperado.{k}' não é uma conferência conhecida")
+        elif not _tipo_ok(tipos[k], v):
+            estrutura.append(f"'esperado.{k}' = {v!r}: tipo inválido (esperado {tipos[k]})")
+    if not texto_ok(c.get("origem_dos_valores")):
+        estrutura.append("campo 'origem_dos_valores' ausente ou provisório: indique o documento que confirma os valores")
+    ap = c.get("aprovacao")
+    if not isinstance(ap, dict):
+        aprovacao.append("bloco 'aprovacao' ausente" + (" ('aprovado_por' solto não vale como aprovação)"
+                                                         if "aprovado_por" in c else ""))
+    else:
+        if ap.get("status") != "APROVADO":
+            aprovacao.append(f"aprovacao.status = {ap.get('status')!r} (precisa ser \"APROVADO\")")
+        if not texto_ok(ap.get("por")):
+            aprovacao.append("aprovacao.por ausente ou provisório: nome de quem conferiu e aprovou")
+        try:
+            date.fromisoformat(str(ap.get("em")))
+        except ValueError:
+            aprovacao.append(f"aprovacao.em = {ap.get('em')!r}: data AAAA-MM-DD da aprovação")
+    return estrutura, aprovacao
+
+
+def auditar(conn, cfg, imp, fontes, conferencias, modo="APLICACAO"):
+    """Conferências da carga. `bloqueios` lista o que impede o COMMIT.
+
+    Controle inexistente, incompleto ou sem aprovação efetiva bloqueia a APLICAÇÃO. Na SIMULAÇÃO
+    vira aviso (`avisos_controle`): a simulação serve justamente para conferir e preparar a aprovação.
+    """
     q = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
-    bloqueios = []
+    bloqueios, avisos_controle = [], []
     obtido = obter_contagens(conn, conferencias)
     controle = controle_para(cfg, fontes)
+    perfil = cfg.get("perfil", "REAL")
+    estrutura, aprovacao = validar_controle(controle, perfil) if controle else ([], [])
     if controle is None:
+        avisos_controle.append({"tipo": "SEM_CONTROLES_APROVADOS", "referencia": "config/controles.json",
+                                "detalhe": "não há conjunto de controles para estes arquivos (hash). Confira os valores "
+                                           "obtidos contra as fontes e registre o conjunto em config/controles.json "
+                                           "(modelo no relatório)."})
+    if estrutura:
+        avisos_controle.append({"tipo": "CONTROLE_INCOMPLETO", "referencia": controle.get("id"),
+                                "detalhe": "; ".join(estrutura)})
+    if aprovacao:
+        avisos_controle.append({"tipo": "CONTROLE_SEM_APROVACAO", "referencia": controle.get("id"),
+                                "detalhe": "; ".join(aprovacao) + ". A aprovação é escrita pela pessoa responsável em "
+                                           "config/controles.json depois de conferir os valores; o sistema não a preenche."})
+    if modo == "APLICACAO":
+        bloqueios += avisos_controle
+    esperado = controle.get("esperado") if controle else None
+    if not isinstance(esperado, dict):
         contagens = {}
-        bloqueios.append({"tipo": "SEM_CONTROLES_APROVADOS", "referencia": "config/controles.json",
-                          "detalhe": "não há conjunto de controles aprovado para estes arquivos (hash). Confira os valores "
-                                     "obtidos contra as fontes e registre o conjunto em config/controles.json "
-                                     "(modelo no relatório)."})
     else:
         contagens = {k: {"esperado": v, "obtido": obtido.get(k), "ok": obtido.get(k) == v}
-                     for k, v in controle["esperado"].items()}
+                     for k, v in esperado.items()}
         for k, c in contagens.items():
             if not c["ok"]:
                 bloqueios.append({"tipo": "CONTROLE_DIVERGENTE", "referencia": k,
-                                  "detalhe": f"esperado {c['esperado']} × obtido {c['obtido']} ({controle['id']})"})
+                                  "detalhe": f"esperado {c['esperado']} × obtido {c['obtido']} ({controle.get('id')})"})
 
     # BM: a totalização do sistema reproduz o rodapé da própria planilha (mesma ordem de arredondamento)?
     bdi_m, bdi_s, k = (float(S.parametro(conn, x, 0)) for x in ("bdi_material", "bdi_servico", "coef_k"))
@@ -1054,15 +1145,20 @@ def auditar(conn, cfg, imp, fontes, conferencias):
     pendencias = {r[0]: r[1] for r in conn.execute(
         "SELECT tipo, COUNT(*) FROM pendencias_importacao WHERE importacao_id=? GROUP BY 1", (imp,))}
     return {
-        "controle_aplicado": controle["id"] if controle else None,
+        "controle_aplicado": controle.get("id") if controle else None,
+        "controle_situacao": ("INEXISTENTE" if controle is None else "INCOMPLETO" if estrutura
+                              else "SEM_APROVACAO" if aprovacao else "APROVADO"),
+        "controle_aprovacao": controle.get("aprovacao") if controle else None,
+        "avisos_controle": avisos_controle,
         "contagens": contagens,
-        "contagens_ok": controle is not None and all(c["ok"] for c in contagens.values()),
+        # só há confirmação de conferência com conjunto completo, aprovado e sem divergência
+        "contagens_ok": bool(controle) and not estrutura and not aprovacao and all(c["ok"] for c in contagens.values()),
         "obtido": obtido,
         "modelo_controles": None if controle else {
-            "id": "PREENCHER", "fontes": {k: v["sha256"] for k, v in fontes.items()},
+            "id": "PREENCHER", "perfil": perfil, "fontes": {k: v["sha256"] for k, v in fontes.items()},
             "arquivos": {k: v["nome"] for k, v in fontes.items()},
             "esperado": obtido, "origem_dos_valores": "PREENCHER: documento/fonte que confirma cada valor",
-            "aprovado_por": "PREENCHER", "data": "PREENCHER",
+            "aprovacao": {"status": "PENDENTE", "por": None, "em": None},
             "_atencao": "valores 'esperado' copiados do obtido nesta simulação: confira cada um na fonte antes de aprovar"},
         "totalizacao_bm": totalizacao,
         "total_contratual": total_contratual,

@@ -15,7 +15,7 @@ O código está pronto e testado, mas **ainda não foi executado no seu banco**.
 | Sem backup | `backup.py criar \| verificar \| restaurar`. O backup copia o banco pela API do SQLite (inclui o WAL) e depois as fotos. O manifesto guarda SHA-256 e tamanho de cada arquivo, linhas **e SHA-256 do conteúdo** de cada tabela, e o `integrity_check`. **Completude:** toda foto citada no banco copiado precisa estar na cópia; senão o backup fica guardado como INCOMPLETO e a verificação falha. Os backups nunca são apagados. |
 | Carga direta | **Simulação por padrão:** a importação roda inteira numa cópia temporária e mostra o relatório. `--aplicar` faz backup verificado e completo, depois executa tudo numa única transação. **As conferências são avaliadas antes do COMMIT:** se alguma reprovar (controles da revisão, totalização do BM, identidade com histórico sem conciliação), ou se houver erro, a transação inteira é desfeita, o banco fica byte a byte igual e o relatório da reprovação é gravado em `dados/relatorios/`. |
 | Restauração manual | `backup.py restaurar` verifica o backup, cria antes um **backup completo do estado atual** (API do SQLite, inclui o WAL, com as fotos) e restaura em manutenção. Devolve fotos ausentes ou diferentes sem apagar as novas e confere o conteúdo final contra o manifesto. |
-| Gravações durante manutenção | Backup, restauração e importação criam `MANUTENCAO.lock`; enquanto existir, o servidor recusa gravações (503). Pare o servidor antes de restaurar. |
+| Gravações durante manutenção | Backup, restauração e importação criam `MANUTENCAO.lock`; enquanto existir, o servidor recusa gravações (503). **Importação e restauração exigem o servidor parado** e recusam rodar se ele estiver respondendo. |
 | Servidor abria qualquer banco | O servidor recusa banco v1 sem migração e só escuta em `127.0.0.1`, porque não tem autenticação. |
 
 ### Etapa 1 — importação
@@ -111,7 +111,11 @@ python backup.py verificar dados/backups/<pasta>     # 3) conferir o backup a qu
 python server.py                   # 4) http://127.0.0.1:8765
 ```
 
-**Antes de aplicar:** confirme o conjunto de controles `CTRL-01` em `config/controles.json` (campo `aprovado_por`, hoje "A CONFIRMAR") e os vínculos da DEC-0001 em `config/decisoes.json`.
+**Antes de aplicar:**
+- Pare o servidor. Importação e restauração recusam rodar com ele ligado, por limitação de concorrência desta versão.
+- Rode a simulação e confira cada valor de `CTRL-01` na fonte.
+- Preencha você mesmo, em `config/controles.json`, o bloco `"aprovacao": {"status": "APROVADO", "por": "<seu nome>", "em": "AAAA-MM-DD"}`. Hoje ele está `PENDENTE`, e a aplicação é recusada (`CONTROLE_SEM_APROVACAO`) até lá. O sistema nunca preenche a aprovação.
+- Confirme os vínculos da DEC-0001 em `config/decisoes.json`.
 
 **Para desfazer:** pare o servidor e rode `python backup.py restaurar dados/backups/<pasta>`. O estado atual vira antes um backup completo e verificado em `dados/backups/`.
 

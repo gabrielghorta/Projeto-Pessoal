@@ -68,6 +68,7 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
     grava relatório FALHOU.
     """
     cfg = cfg or I.carregar_config()
+    existia = os.path.exists(caminho_db)
     conn = sqlite3.connect(caminho_db, isolation_level=None)
     conn.row_factory = sqlite3.Row
     versao = S.versao_banco(conn)
@@ -92,7 +93,7 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
         imp_obj = I.Importador(conn, cfg, imp, pasta_planilhas)
         imp_obj.executar()
         migracao = I.remapear_v1(conn, imp) if versao == 1 else None
-        aud = I.auditar(conn, cfg, imp, imp_obj.fontes, imp_obj.conferencias)
+        aud = I.auditar(conn, cfg, imp, imp_obj.fontes, imp_obj.conferencias, modo)
         depois = contar_operacionais(conn)
         # tabelas v1_* são arquivo de auditoria (referências antigas preservadas como estavam)
         fk = [tuple(r) for r in conn.execute("PRAGMA foreign_key_check").fetchall() if not str(r[0]).startswith("v1_")]
@@ -103,7 +104,12 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             bloqueios.append({"tipo": "REGISTROS_OPERACIONAIS_ALTERADOS", "referencia": "contagem", "detalhe": str(perdidos)})
         if fk:
             bloqueios.append({"tipo": "CHAVE_ESTRANGEIRA_VIOLADA", "referencia": "foreign_key_check", "detalhe": str(fk[:5])})
-        status = "REPROVADA" if bloqueios else ("SEM_ALTERACOES" if n_alt == 0 and versao == S.VERSAO_ESQUEMA else "CONCLUIDA")
+        if bloqueios:
+            status = "REPROVADA"
+        elif aud["avisos_controle"]:                 # só na simulação: conferência ainda não confirmada
+            status = "SIMULADA_SEM_CONTROLE_APROVADO"
+        else:
+            status = "SEM_ALTERACOES" if n_alt == 0 and versao == S.VERSAO_ESQUEMA else "CONCLUIDA"
         rel = {
             "importacao_id": imp, **base_rel, "status": status,
             "bloqueios": bloqueios,
@@ -141,6 +147,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
         raise
     finally:
         conn.close()
+        if not existia and os.path.exists(caminho_db) and os.path.getsize(caminho_db) == 0:
+            os.remove(caminho_db)                      # primeira carga desfeita: não deixa banco vazio para trás
 
 
 def simular(db, pasta_planilhas=I.DIR_PLANILHAS, cfg=None, dir_relatorios=DIR_RELATORIOS):
@@ -162,6 +170,7 @@ def aplicar(db, pasta_planilhas=I.DIR_PLANILHAS, destino_backup=None, dir_fotos=
     base_db = os.path.dirname(os.path.abspath(db))
     destino_backup = destino_backup or os.path.join(base_db, "backups")
     dir_fotos = dir_fotos or os.path.join(base_db, "fotos")
+    backup.exigir_servidor_parado(base_db, "A aplicação da importação")
     with backup.trava_manutencao(base_db, "importação"):
         pasta = None
         if os.path.exists(db):
@@ -184,7 +193,14 @@ def imprimir(rel):
     print("\nAlterações por entidade:")
     for e, c in sorted(rel["alteracoes"].items()):
         print(f"  {e:<14} " + "  ".join(f"{k} {v}" for k, v in sorted(c.items())))
-    print(f"\nControles aplicados: {a['controle_aplicado'] or 'NENHUM conjunto aprovado para estes arquivos'}")
+    print(f"\nControles: {a['controle_aplicado'] or 'NENHUM conjunto para estes arquivos'} — situação {a['controle_situacao']}")
+    if a["controle_situacao"] == "APROVADO":
+        ap = a["controle_aprovacao"]
+        print(f"  aprovado por {ap['por']} em {ap['em']}")
+    for x in a["avisos_controle"] if not rel["bloqueios"] else []:
+        print(f"  [AVISO {x['tipo']}] {x['detalhe']}")
+    if a["avisos_controle"] and rel["modo"] == "SIMULACAO":
+        print("  SIMULAÇÃO: a conferência NÃO está confirmada; a aplicação será recusada até o conjunto estar completo e aprovado.")
     for k, c in a["contagens"].items():
         print(f"  [{'OK ' if c['ok'] else 'ERRO'}] {k:<30} esperado {c['esperado']!s:<28} obtido {c['obtido']}")
     t = a["totalizacao_bm"]
@@ -208,9 +224,10 @@ def imprimir(rel):
         print(f"\n*** REPROVADA — {len(rel['bloqueios'])} bloqueio(s); transação desfeita, banco NÃO alterado ***")
         for b in rel["bloqueios"]:
             print(f"  [{b['tipo']}] {b['referencia']}: {b['detalhe']}")
-        if a.get("modelo_controles"):
-            print("\nModelo de conjunto de controles (conferir na fonte antes de copiar para config/controles.json):")
-            print(json.dumps(a["modelo_controles"], ensure_ascii=False, indent=2))
+    if a.get("modelo_controles"):
+        print("\nModelo de conjunto de controles (conferir na fonte antes de copiar para config/controles.json;"
+              " a aprovação fica PENDENTE até a pessoa responsável preenchê-la):")
+        print(json.dumps(a["modelo_controles"], ensure_ascii=False, indent=2))
 
 
 def main():

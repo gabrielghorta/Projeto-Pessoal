@@ -13,11 +13,13 @@ import unittest
 
 AQUI = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, AQUI)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exportar  # noqa: E402
 import importacao as I  # noqa: E402
 import importar  # noqa: E402
 import regras as R  # noqa: E402
 import servicos as S  # noqa: E402
+from perfil_teste import cfg_teste_real  # noqa: E402
 
 CFG = I.carregar_config()
 TEM_DADOS = all(I.caminho(CFG, k) for k in ("redes", "conexoes", "bm", "reajuste"))
@@ -34,7 +36,7 @@ class PilotoZona01(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.mkdtemp()
         cls.db = os.path.join(cls.tmp, "piloto.db")
-        cls.rel = importar.executar(cls.db, "APLICACAO", dir_relatorios=os.path.join(cls.tmp, "relatorios"))
+        cls.rel = importar.executar(cls.db, "APLICACAO", cfg=cfg_teste_real(), dir_relatorios=os.path.join(cls.tmp, "relatorios"))
         cls.c = S.conectar(cls.db)
         cls.fotos = os.path.join(cls.tmp, "fotos")
         cls.med = S.criar_medicao(cls.c, 1, "2026-10-01", "2026-10-31")
@@ -156,7 +158,7 @@ class PilotoZona01(unittest.TestCase):
         o.backup(d)
         d.close()
         o.close()
-        rel = importar.executar(copia, "SIMULACAO", dir_relatorios=os.path.join(self.tmp, "relatorios"))
+        rel = importar.executar(copia, "SIMULACAO", cfg=cfg_teste_real(), dir_relatorios=os.path.join(self.tmp, "relatorios"))
         self.assertEqual(rel["status"], "SEM_ALTERACOES")
 
 
