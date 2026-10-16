@@ -287,11 +287,17 @@ let CAMPO = null;
 async function selecionarCampo(tipo, id) {
   const d = await acao(() => api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(id)}`));
   CAMPO = { tipo, id, d };
-  $('#apMetros').style.display = $('#apEstacas').style.display = tipo === 'TRECHO' ? '' : 'none';
-  const ex = d.execucao;
+  $('#apMetros').style.display = tipo === 'TRECHO' ? '' : 'none';
+  const ex = d.execucao, iv = d.intervalos;
+  const faixa = l => l.length ? l.map(([a, b]) => `${nf(a)}–${nf(b)}`).join(', ') : '—';
   $('#apAlvo').innerHTML = tipo === 'TRECHO'
-    ? `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · já executado ${nf(ex ? ex.metros_executados : 0)} m, reaterrado ${nf(ex ? ex.metros_reaterrados : 0)} m${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''}</div>`
+    ? `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · ${esc(d.metodologia)}${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''}
+        <table style="margin-top:6px"><thead><tr><th>Etapa</th><th class="n">Metros</th><th>Feito (m)</th><th>Lacunas (m)</th></tr></thead><tbody>
+        ${Object.entries(iv.etapas).map(([e, v]) => `<tr><td>${esc(e)}</td><td class="n">${nf(v.metros)}</td><td>${faixa(v.cobertura)}</td><td>${faixa(v.lacunas)}</td></tr>`).join('')}</tbody></table>
+        ${iv.intervalos.filter(i => !i.verificado_em).map(i => `<div style="margin-top:4px"><small>${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m · ${esc(i.data)} · ${esc(i.origem)}${i.informado_por ? ' · ' + esc(i.informado_por) : ''}</small> <button type="button" class="btn" data-verificar-intervalo="${i.id}">Verificar</button></div>`).join('')}</div>
+      ${iv.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}`
     : `<div class="aviso info">${esc(curto(d.nome))}: ${esc(d.texto)}</div>`;
+  renderSoldas();
   $('#apQuant').innerHTML = '';
   renderFotos();
 }
@@ -302,12 +308,13 @@ function renderFotos() {
   $('#fotoPend').innerHTML = d.fotos_faltando.length ? 'Faltam: ' + d.fotos_faltando.map(c => `<span class="chip vermelho">${c}</span>`).join(' ')
     + (CAMPO.tipo !== 'TRECHO' && !d.fotos_faltando.includes('SINALIZACAO') ? ' <small>(sinalização herdada do trecho da área)</small>' : '')
     : '<span class="chip verde">Fotos obrigatórias completas</span>';
-  $('#fotoLista').innerHTML = d.fotos.map(f => `<figure><img src="/fotos/${encodeURIComponent(f.arquivo)}" alt="${esc(f.categoria)}"><figcaption>${esc(f.categoria)} · ${esc(f.data_hora)}</figcaption></figure>`).join('');
+  $('#fotoLista').innerHTML = d.fotos.map(f => `<figure class="foto-carimbo"><img src="/fotos/${encodeURIComponent(f.arquivo)}" alt="${esc(f.categoria)}"><span class="carimbo">${esc(f.carimbo)}</span>
+    <figcaption>${esc(f.categoria)} · ${esc(f.data_hora)} <small>(data: ${esc(f.origem_data || '—')}${f.origem_gps ? ' · GPS: ' + esc(f.origem_gps) : ''}${f.sha256 ? ' · sha256 ' + esc(f.sha256.slice(0, 12)) + '…' : ''})</small></figcaption></figure>`).join('');
 }
 $('#apPrevisto').addEventListener('click', async () => {
   if (!CAMPO) return toast('Selecione o trecho/nó.', 'erro');
   const o = formObj(fAp);
-  let metros = +o.metros_executados || 0;
+  let metros = Math.max(0, (+o.ass_fim || 0) - (+o.ass_ini || 0));
   if (CAMPO.tipo === 'TRECHO' && o.concluido_100) metros = CAMPO.d.extensao_m - (CAMPO.d.execucao ? CAMPO.d.execucao.metros_executados : 0);
   const prev = await acao(() => api(`/api/previsto?tipo=${CAMPO.tipo}&id=${encodeURIComponent(CAMPO.id)}&metros=${metros}`));
   $('#apQuant').innerHTML = `<div class="tabela" style="max-height:340px"><table><thead><tr><th>Serviço / peça</th><th>Unid.</th><th class="n">Previsto</th><th style="width:120px">Confirmado</th></tr></thead><tbody>
@@ -320,45 +327,67 @@ async function enviarApontamento(editado) {
   const o = formObj(fAp);
   await acao(() => api('/api/clima', { data: o.data, equipe_id: o.equipe_id, MANHA: o.MANHA, TARDE: o.TARDE }));
   const quantidades = editado ? $$('#apQuant input[data-s]').filter(i => +i.value !== +i.dataset.p).map(i => ({ servico: i.dataset.s, unidade: i.dataset.u, confirmado: +i.value })) : null;
+  const intervalos = [['ASSENTADO', 'ass'], ['CADASTRO_CAMPO', 'cad'], ['REATERRADO', 'rea']]
+    .filter(([, k]) => o[k + '_ini'] !== '' && o[k + '_fim'] !== '' && o[k + '_ini'] != null)
+    .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'] }));
   await acao(() => api('/api/apontamento', { data: o.data, equipe_id: o.equipe_id, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id,
-    metros_executados: o.metros_executados, metros_reaterrados: o.metros_reaterrados, concluido_100: !!o.concluido_100,
+    concluido_100: !!o.concluido_100, intervalos: o.concluido_100 ? null : intervalos, informado_por: o.informado_por,
     estaca_ini: o.estaca_ini, estaca_fim: o.estaca_fim, quantidades }), 'Apontamento registrado.');
-  $('#apQuant').innerHTML = ''; $('input[name=metros_executados]', fAp).value = ''; $('input[name=metros_reaterrados]', fAp).value = '';
+  $('#apQuant').innerHTML = ''; ['ass', 'cad', 'rea'].forEach(k => { $(`input[name=${k}_ini]`, fAp).value = ''; $(`input[name=${k}_fim]`, fAp).value = ''; });
   $('input[name=concluido_100]', fAp).checked = false;
   selecionarCampo(CAMPO.tipo, CAMPO.id);
 }
 
-// fotos: carimbo gravado na imagem (canvas) + GPS do aparelho
-function gps() {
-  return new Promise(res => { if (!navigator.geolocation) return res(null);
-    navigator.geolocation.getCurrentPosition(p => res({ lat: p.coords.latitude, lon: p.coords.longitude }), () => res(null), { timeout: 8000, enableHighAccuracy: true }); });
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-verificar-intervalo]'); if (!b) return;
+  const quem = prompt('Verificado por (não pode ser quem informou):'); if (!quem) return;
+  await acao(() => api('/api/intervalo/verificar', { intervalo_id: b.dataset.verificarIntervalo, verificado_por: quem }), 'Intervalo verificado.');
+  selecionarCampo(CAMPO.tipo, CAMPO.id);
+});
+function renderSoldas() {
+  if (!CAMPO || !$('#soldas')) return;
+  const s = CAMPO.d.soldas;
+  $('#soldas').innerHTML = `<p style="margin:4px 0">${s.estimativa_barras_6m != null ? `Estimativa ⌈L/6⌉: <b>${s.estimativa_barras_6m}</b> (só referência) · ` : ''}Informadas <b>${s.informadas}</b> · aprovadas ${s.aprovadas} · reprovadas ${s.reprovadas} · sem verificação ${s.sem_verificacao}</p>
+    ${s.registros.map(r => `<div><small>${esc(r.data)} · ${r.quantidade} ${esc(r.tipo)}${r.posicao_m != null ? ' @ ' + nf(r.posicao_m) + ' m' : ''} · ${esc(r.soldador)} · inf. ${esc(r.informado_por)}</small>
+      ${r.verificado_em ? `<span class="chip ${r.resultado === 'APROVADA' ? 'verde' : 'vermelho'}">${esc(r.resultado)} · ${esc(r.verificado_por)}</span>` : `<button type="button" class="btn" data-verificar-solda="${r.id}">Verificar</button>`}</div>`).join('')}`;
 }
-function carimbar(arquivo, linhas) {
+$('#fSolda').addEventListener('submit', async ev => {
+  ev.preventDefault(); if (!CAMPO) return toast('Selecione o trecho/nó no apontamento.', 'erro');
+  const o = formObj(ev.target), d = formObj(fAp);
+  await acao(() => api('/api/solda', { ...o, data: d.data || hoje(), equipe_id: d.equipe_id || null, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id }), 'Soldas registradas (aguardam verificação).');
+  ev.target.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id);
+});
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-verificar-solda]'); if (!b) return;
+  const quem = prompt('Verificado por (não pode ser o soldador nem quem informou):'); if (!quem) return;
+  const ok = confirm('Soldas APROVADAS? (Cancelar = reprovadas)');
+  const obs = ok ? null : prompt('Motivo da reprovação:');
+  await acao(() => api('/api/solda/verificar', { solda_id: b.dataset.verificarSolda, verificado_por: quem, resultado: ok ? 'APROVADA' : 'REPROVADA', obs }), 'Verificação registrada.');
+  selecionarCampo(CAMPO.tipo, CAMPO.id);
+});
+
+// fotos: arquivo ORIGINAL (sem recompressão nem carimbo gravado) + data do aparelho + GPS do navegador
+function gps() {   // nunca bloqueia o envio: sem resposta em 10 s (inclusive permissão pendente) segue sem GPS
+  return new Promise(res => { if (!navigator.geolocation) return res(null);
+    const t = setTimeout(() => res(null), 10000);
+    navigator.geolocation.getCurrentPosition(p => { clearTimeout(t); res({ lat: p.coords.latitude, lon: p.coords.longitude }); },
+      () => { clearTimeout(t); res(null); }, { timeout: 8000, enableHighAccuracy: true }); });
+}
+function lerOriginal(arquivo) {
   return new Promise((res, rej) => {
-    const img = new Image();
-    img.onload = () => {
-      const max = 1600, k = Math.min(1, max / Math.max(img.width, img.height));
-      const cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
-      const g = cv.getContext('2d'); g.drawImage(img, 0, 0, cv.width, cv.height);
-      const fs = Math.max(14, Math.round(cv.width / 55)), h = fs * 1.35 * linhas.length + fs;
-      g.fillStyle = 'rgba(23,32,43,.72)'; g.fillRect(0, cv.height - h, cv.width, h);
-      g.fillStyle = '#fff'; g.font = `600 ${fs}px system-ui, sans-serif`;
-      linhas.forEach((l, i) => g.fillText(l, fs * .6, cv.height - h + fs * 1.3 * (i + 1)));
-      g.fillStyle = '#E85D22'; g.fillRect(0, cv.height - h, 6, h);
-      res(cv.toDataURL('image/jpeg', .85).split(',')[1]);
-    };
-    img.onerror = () => rej(new Error('Arquivo de imagem inválido.'));
-    img.src = URL.createObjectURL(arquivo);
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(new Error('Não foi possível ler o arquivo.'));
+    r.readAsDataURL(arquivo);
   });
 }
 $('#fFoto').addEventListener('submit', async ev => {
   ev.preventDefault();
   if (!CAMPO) return toast('Selecione o trecho/nó no apontamento.', 'erro');
   const f = ev.target, arq = f.arquivo.files[0], cat = f.categoria.value;
-  const pos = await gps(), quando = new Date(), dh = new Date(quando - quando.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
-  const b64 = await carimbar(arq, [RESUMO ? RESUMO.contrato : 'CT 10239/2026', `${curto(CAMPO.d.nome)} · ${cat}`,
-    `${quando.toLocaleString('pt-BR')} · ${pos ? pos.lat.toFixed(6) + ', ' + pos.lon.toFixed(6) : 'GPS indisponível'}`]);
-  await acao(() => api('/api/foto', { alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id, categoria: cat, conteudo_b64: b64, extensao: 'jpg', data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon }), 'Foto carimbada enviada.');
+  const pos = await gps(), quando = new Date(arq.lastModified || Date.now()), dh = new Date(quando - quando.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+  const b64 = await lerOriginal(arq);
+  await acao(() => api('/api/foto', { alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id, categoria: cat, conteudo_b64: b64, data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon }), 'Foto original enviada (hash registrado).');
   f.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id);
 });
 

@@ -934,6 +934,18 @@ def preparar_v5(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v6(conn):
+    """Esquema v5 → v6 (etapa 4, campo): metadados da foto original, informante do apontamento, intervalos
+    por etapa e soldas. Fotos existentes ficam marcadas LEGADO (imagem já carimbada; original não preservado).
+    Apontamentos antigos não ganham intervalo inventado: a posição deles é desconhecida."""
+    for c, t in (("sha256", "TEXT"), ("bytes", "INTEGER"), ("mime", "TEXT"), ("origem_data", "TEXT"),
+                 ("origem_gps", "TEXT"), ("enviada_em", "TEXT")):
+        _add_coluna(conn, "fotos", c, t)
+    conn.execute("UPDATE fotos SET origem_data='LEGADO' WHERE origem_data IS NULL")
+    _add_coluna(conn, "apontamentos", "informado_por", "TEXT")
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

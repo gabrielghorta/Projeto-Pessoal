@@ -13,7 +13,7 @@ Garantias:
       - totalização do BM igual ao rodapé da própria planilha;
       - pendências impeditivas de identidade (nome × geometria, retirada de objeto com histórico, conciliação inválida);
   * reimportar os mesmos arquivos termina em SEM_ALTERACOES;
-  * banco em esquema anterior (v1 do MVP, v2, v3 ou v4) é migrado sem perda.
+  * banco em esquema anterior (v1 do MVP, v2 a v5) é migrado sem perda.
 """
 import argparse
 import json
@@ -34,7 +34,7 @@ DIR_RELATORIOS = os.path.join(BASE, "dados", "relatorios")
 OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontamentos", "apontamento_quantidades", "fotos",
                 "execucao", "cadastro", "cadastro_historico", "ligacoes_prediais", "notas_fiscais", "nf_itens",
                 "funcionarios", "maquinas", "medicoes", "medicao_lancamentos", "reservas", "estornos", "custodia_declarada",
-                "retificacoes", "reserva_ajustes"]
+                "retificacoes", "reserva_ajustes", "intervalos_execucao", "soldas"]
 
 
 class ImportacaoReprovada(RuntimeError):
@@ -89,6 +89,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v4(conn)
         if 0 < versao < 5:
             I.preparar_v5(conn)
+        if 0 < versao < 6:
+            I.preparar_v6(conn)
         S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar

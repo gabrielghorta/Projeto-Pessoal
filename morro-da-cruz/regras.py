@@ -309,3 +309,54 @@ def aplicar_teto(valor_pedido, ja_medido, teto):
     disponivel = max(0.0, teto - ja_medido)
     aceito = min(valor_pedido, disponivel)
     return round(aceito, 2), round(valor_pedido - aceito, 2)
+
+
+# ------------------------------------------------------------------ intervalos de execução por etapa (etapa 4)
+ETAPAS_INTERVALO = ("ASSENTADO", "CADASTRO_CAMPO", "REATERRADO")
+TOL_M = 1e-3
+
+
+def unir_intervalos(intervalos):
+    """[(ini, fim)] → lista ordenada e unida (intervalos que se tocam viram um só)."""
+    out = []
+    for a, b in sorted((float(a), float(b)) for a, b in intervalos):
+        if out and a <= out[-1][1] + TOL_M:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [tuple(x) for x in out]
+
+
+def comprimento(intervalos):
+    return round(sum(b - a for a, b in unir_intervalos(intervalos)), 6)
+
+
+def sobreposicao(intervalo, intervalos):
+    """Trecho comum (> 1 mm) entre `intervalo` e algum dos `intervalos`, ou None."""
+    a, b = intervalo
+    for c, d in intervalos:
+        ini, fim = max(a, c), min(b, d)
+        if fim - ini > TOL_M:
+            return (ini, fim)
+    return None
+
+
+def fora_da_cobertura(intervalo, cobertura):
+    """Partes de `intervalo` não cobertas pela `cobertura` (lista unida)."""
+    a, b = intervalo
+    faltas, pos = [], a
+    for c, d in unir_intervalos(cobertura):
+        if d <= pos + TOL_M:
+            continue
+        if c > b - TOL_M:
+            break
+        if c > pos + TOL_M:
+            faltas.append((pos, min(c, b)))
+        pos = max(pos, d)
+    if pos < b - TOL_M:
+        faltas.append((pos, b))
+    return faltas
+
+
+def lacunas(cobertura, extensao):
+    return fora_da_cobertura((0.0, float(extensao)), cobertura)

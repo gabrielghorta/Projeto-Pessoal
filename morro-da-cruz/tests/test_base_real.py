@@ -24,6 +24,7 @@ import backup  # noqa: E402
 import importacao as I  # noqa: E402
 import importar  # noqa: E402
 import servicos as S  # noqa: E402
+from fotos_teste import jpeg  # noqa: E402
 from perfil_teste import cfg_teste_real  # noqa: E402
 
 CFG = I.carregar_config()                 # perfil REAL (aprovação do usuário)
@@ -118,7 +119,7 @@ class BaseReal(unittest.TestCase):
         tid1 = c.execute("SELECT id FROM trechos WHERE ponto=?", (TR001,)).fetchone()[0]
         geo1 = c.execute("SELECT handle, utm_ini, utm_fim, extensao_m FROM trechos WHERE id=?", (tid1,)).fetchone()
         S.checkin(c, D, "Zona01", "TRECHO", TR001)
-        S.registrar_foto(c, "TRECHO", TR001, "SINALIZACAO", "aGVsbG8=", data_hora=f"{D}T08:00:00", dir_fotos=self.fotos)
+        S.registrar_foto(c, "TRECHO", TR001, "SINALIZACAO", jpeg(), data_hora=f"{D}T08:00:00", dir_fotos=self.fotos)
         pl = os.path.join(self.tmp, "planilhas")
         shutil.copytree(I.DIR_PLANILHAS, pl)
         p = os.path.join(pl, CFG["arquivos"]["redes"])
@@ -182,7 +183,7 @@ class BaseReal(unittest.TestCase):
     def test_restauracao_real_wal_e_fotos(self):
         self.copia()
         c0 = self.conectar()
-        S.registrar_foto(c0, "TRECHO", TR001, "SINALIZACAO", "aGVsbG8=", data_hora=f"{D}T08:00:00", dir_fotos=self.fotos)
+        S.registrar_foto(c0, "TRECHO", TR001, "SINALIZACAO", jpeg(), data_hora=f"{D}T08:00:00", dir_fotos=self.fotos)
         pasta = backup.criar(self.db, os.path.join(self.dados, "backups"), self.fotos)
         w = sqlite3.connect(self.db, isolation_level=None)
         self._conns.append(w)

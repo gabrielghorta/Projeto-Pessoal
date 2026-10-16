@@ -11,6 +11,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Detalhes das etapas 0 e 1: `docs/ETAPAS_0_1_APROVACAO.md`.
   - Correções da auditoria do commit `b63b5db` (A01–A12): `docs/CORRECOES_AUDITORIA_b63b5db.md`.
   - Etapa 3, estoque (reserva, saldo com a equipe, empréstimo autorizado, estorno): `docs/ETAPA_3_ESTOQUE.md`.
+  - Etapa 4, campo (intervalos por etapa, cadastro de campo, soldas verificadas, foto original com hash): `docs/ETAPA_4_CAMPO.md`.
 
 ## Como rodar (Windows)
 
@@ -82,6 +83,11 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 - **Simulação explícita:** a medição de TESTE lista as hipóteses não validadas (teto que desconta excedente, reajuste sem fração elegível, rateio da escavação, soldas ⌈L/6⌉).
 - **OK interno:** o "[✓] OK" é da Ankara e só gera proposta numa medição de **TESTE**. Também envia o trecho para a esteira GDOC.
 - **Fotos e clima:** controles operacionais propostos (3 fotos por trecho, 2 por nó com sinalização herdada; clima por turno).
+- **Foto original:** guardada sem alteração, com SHA-256 conferido no backup. Data e GPS vêm do EXIF, depois do aparelho, sem nunca inventar; a origem fica registrada. A mesma imagem não pode ser reutilizada. O carimbo é exibido, não gravado.
+- **Intervalos por etapa no trecho** (assentado, cadastro de campo, reaterrado):
+  - sobreposição e repetição são recusadas;
+  - reaterro sem cadastro de campo gera alerta;
+  - soldas são informadas e verificadas por outra pessoa.
 - **Pin do mapa:** mostra a programação do check-in, não a posição atual da equipe.
 
 ## Mapa
@@ -97,7 +103,7 @@ O servidor abre `mapa/PLANTAS_..._REV02_EQUIPES.html` **sem alterá-lo** e injet
 - **Itens de BM a definir:** 14 serviços da 06.1, o MND e o critério da escavação em dois itens.
 - **Reajuste:** frações elegíveis e o pedido da contratada.
 - **Próximas etapas:**
-  - soldas, intervalos por estaca e foto original com hash (etapa 4);
+  - etapa 4: correção de intervalo, etapa de escavação, interligações e manobras, carimbo derivado para relatório;
   - NF com pedido/compra e aceite parcial (complemento da etapa 3 — o fluxo integral de almoxarifado ainda não está concluído);
   - exportação no modelo oficial (`01ª MC`);
   - usuários, perfis e acesso de campo.

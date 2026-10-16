@@ -118,3 +118,8 @@ td input { width: 100%; padding: 4px 6px; }
   .grade-2 { grid-template-columns: 1fr; }
   .obra { display: none; }
 }
+
+/* foto original com carimbo exibido por cima (não gravado na imagem) */
+.foto-carimbo { position: relative; }
+.foto-carimbo .carimbo { position: absolute; left: 0; right: 0; top: 0; padding: 4px 6px; font-size: 11px; line-height: 1.25;
+  color: #fff; background: rgba(23,32,43,.72); border-left: 4px solid #E85D22; word-break: break-word; }

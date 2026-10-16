@@ -27,9 +27,9 @@ import importacao as I  # noqa: E402
 import importar  # noqa: E402
 import planilhas_sinteticas as PS  # noqa: E402
 import servicos as S  # noqa: E402
+from fotos_teste import jpeg  # noqa: E402
 
 D = "2026-10-15"
-FOTO = "aGVsbG8="
 TR001, TR002 = "Zona01_PB01_Rede_TR001", "Zona01_PB01_Rede_TR002"
 
 
@@ -114,7 +114,7 @@ class Base(unittest.TestCase):
 class TestBackup(Base):
     def test_criar_verificar_e_detectar_adulteracao(self):
         self.aplicar()
-        S.registrar_foto(self.conectar(), "TRECHO", TR001, "EXECUCAO", FOTO, data_hora=f"{D}T10:00:00", dir_fotos=self.fotos)
+        S.registrar_foto(self.conectar(), "TRECHO", TR001, "EXECUCAO", jpeg(), data_hora=f"{D}T10:00:00", dir_fotos=self.fotos)
         pasta = backup.criar(self.db, os.path.join(self.dados, "backups"), self.fotos)
         self.assertEqual(backup.verificar(pasta), (True, []))
         nome = self.q("SELECT arquivo FROM fotos")[0][0]
@@ -177,7 +177,7 @@ class TestA03BackupCompletude(Base):
 
     def test_backup_completo_com_foto_real(self):
         self.aplicar()
-        S.registrar_foto(self.conectar(), "TRECHO", TR001, "SINALIZACAO", FOTO, data_hora=f"{D}T09:00:00", dir_fotos=self.fotos)
+        S.registrar_foto(self.conectar(), "TRECHO", TR001, "SINALIZACAO", jpeg(), data_hora=f"{D}T09:00:00", dir_fotos=self.fotos)
         pasta = backup.criar(self.db, os.path.join(self.tmp, "bk"), self.fotos)
         det = backup.verificar_detalhado(pasta)
         self.assertTrue(det["integro"] and det["completo"])
@@ -199,7 +199,7 @@ class TestA04Restauracao(Base):
     def test_restaurar_com_wal_e_fotos(self):
         self.aplicar()
         c0 = self.conectar()
-        S.registrar_foto(c0, "TRECHO", TR001, "EXECUCAO", FOTO, data_hora=f"{D}T10:00:00", dir_fotos=self.fotos)
+        S.registrar_foto(c0, "TRECHO", TR001, "EXECUCAO", jpeg(), data_hora=f"{D}T10:00:00", dir_fotos=self.fotos)
         f1 = self.q("SELECT arquivo FROM fotos")[0][0]
         pasta = backup.criar(self.db, os.path.join(self.dados, "backups"), self.fotos)
         # estado posterior ao backup, confirmado mas ainda no WAL (conexão aberta, sem checkpoint)
@@ -210,7 +210,7 @@ class TestA04Restauracao(Base):
         c.execute("CREATE TABLE marca(x)")
         c.execute("INSERT INTO marca VALUES ('antes')")
         c.execute("INSERT INTO marca VALUES ('posterior')")
-        S.registrar_foto(c0, "TRECHO", TR002, "EXECUCAO", FOTO, data_hora=f"{D}T11:00:00", dir_fotos=self.fotos)
+        S.registrar_foto(c0, "TRECHO", TR002, "EXECUCAO", jpeg(), data_hora=f"{D}T11:00:00", dir_fotos=self.fotos)
         f2 = [r[0] for r in self.q("SELECT arquivo FROM fotos") if r[0] != f1][0]
         self.assertTrue(os.path.getsize(self.db + "-wal") > 0)
         os.remove(os.path.join(self.fotos, f1))                   # foto perdida depois do backup
@@ -726,7 +726,7 @@ class TestA10ObjetoRetirado(Base):
         with self.assertRaisesRegex(S.RegraViolada, "retirado"):
             S.checkin(c, "2026-10-16", "Zona02", "TRECHO", tid)
         self.assertEqual(S.detalhe(c, "TRECHO", tid)["id"], tid)          # consulta histórica continua possível
-        for f in (lambda: S.registrar_foto(c, "TRECHO", tid, "EXECUCAO", FOTO, dir_fotos=self.fotos),
+        for f in (lambda: S.registrar_foto(c, "TRECHO", tid, "EXECUCAO", jpeg(), dir_fotos=self.fotos),
                   lambda: S.ok_fiscalizacao(c, "TRECHO", tid, "x", D)):
             with self.assertRaisesRegex(S.RegraViolada, "retirado"):
                 f()

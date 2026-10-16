@@ -1,5 +1,5 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v5. Banco SQLite local.
+-- Esquema v6. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
@@ -9,6 +9,7 @@
 --   * v4 (etapa 3, estoque): reservas, saldo que fica com a equipe, empréstimo autorizado, estorno sem apagar,
 --     baixa teórica fora do saldo físico.
 --   * v5: custódia por sessão (fechamentos em ordem), reserva nunca descoberta, retificação de fechamento.
+--   * v6 (etapa 4, campo): intervalos por etapa no trecho, soldas informadas × verificadas, foto original com hash.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS schema_versao (
@@ -419,7 +420,47 @@ CREATE TABLE IF NOT EXISTS apontamentos (
   alvo_tipo TEXT NOT NULL, alvo_id TEXT NOT NULL,
   metros_executados REAL NOT NULL DEFAULT 0,
   metros_reaterrados REAL NOT NULL DEFAULT 0,
-  estaca_ini TEXT, estaca_fim TEXT
+  estaca_ini TEXT, estaca_fim TEXT,
+  informado_por TEXT
+);
+
+-- Intervalo executado de um trecho, por etapa (metros a partir do início do trecho, sentido da 06.1).
+-- Não pode sobrepor outro da mesma etapa; reaterro e cadastro de campo só sobre o que foi assentado.
+-- origem: INFORMADO (ini/fim do campo) · COMPLETO (100 % concluído: preenche as lacunas)
+--         · SEQUENCIAL (apontamento só em metros: posição presumida em sequência, sinalizada)
+CREATE TABLE IF NOT EXISTS intervalos_execucao (
+  id INTEGER PRIMARY KEY,
+  trecho_id TEXT NOT NULL REFERENCES trechos(id),
+  etapa TEXT NOT NULL CHECK (etapa IN ('ASSENTADO','CADASTRO_CAMPO','REATERRADO')),
+  ini_m REAL NOT NULL CHECK (ini_m >= 0),
+  fim_m REAL NOT NULL,
+  data TEXT NOT NULL,
+  equipe_id TEXT REFERENCES equipes(id),
+  apontamento_id INTEGER REFERENCES apontamentos(id),
+  origem TEXT NOT NULL CHECK (origem IN ('INFORMADO','COMPLETO','SEQUENCIAL')),
+  informado_por TEXT,
+  sem_cadastro_campo INTEGER NOT NULL DEFAULT 0,   -- reaterro sobre trecho ainda sem cadastro de campo (alerta)
+  verificado_em TEXT, verificado_por TEXT,
+  registrado_em TEXT NOT NULL,
+  CHECK (fim_m > ini_m)
+);
+
+-- Soldas informadas pela equipe e verificadas por outra pessoa (o previsto ⌈L/6⌉ continua só estimativa)
+CREATE TABLE IF NOT EXISTS soldas (
+  id INTEGER PRIMARY KEY,
+  alvo_tipo TEXT NOT NULL, alvo_id TEXT NOT NULL,
+  data TEXT NOT NULL,
+  equipe_id TEXT REFERENCES equipes(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('ELETROFUSAO','TOPO')),
+  quantidade INTEGER NOT NULL CHECK (quantidade > 0),
+  posicao_m REAL,
+  soldador TEXT NOT NULL,
+  maquina TEXT,
+  informado_por TEXT NOT NULL,
+  verificado_em TEXT, verificado_por TEXT,
+  resultado TEXT CHECK (resultado IN ('APROVADA','REPROVADA')),
+  obs TEXT,
+  registrado_em TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS apontamento_quantidades (
@@ -439,8 +480,15 @@ CREATE TABLE IF NOT EXISTS fotos (
   arquivo TEXT NOT NULL,
   data_hora TEXT NOT NULL,
   lat REAL, lon REAL,
-  carimbo TEXT NOT NULL
+  carimbo TEXT NOT NULL,                -- texto exibido sobre a foto (não é gravado na imagem)
+  sha256 TEXT,                         -- hash do ARQUIVO ORIGINAL guardado (NULL = foto legada carimbada)
+  bytes INTEGER,
+  mime TEXT,
+  origem_data TEXT,                    -- EXIF · DISPOSITIVO · ENVIO · LEGADO
+  origem_gps TEXT,                     -- EXIF · NAVEGADOR · (NULL = indisponível)
+  enviada_em TEXT
 );
+-- índice único de fotos.sha256: criado por servicos.aplicar_esquema quando a coluna existe (migração v6)
 
 CREATE TABLE IF NOT EXISTS execucao (
   alvo_tipo TEXT NOT NULL, alvo_id TEXT NOT NULL,
@@ -525,6 +573,8 @@ CREATE INDEX IF NOT EXISTS ix_ativ_elem ON atividades(elemento_id);
 CREATE INDEX IF NOT EXISTS ix_avisos_item ON avisos_origem(item_id);
 CREATE INDEX IF NOT EXISTS ix_mov_mat ON movimentos(material_id);
 CREATE INDEX IF NOT EXISTS ix_reservas ON reservas(material_id, status);
+CREATE INDEX IF NOT EXISTS ix_intervalos ON intervalos_execucao(trecho_id, etapa);
+CREATE INDEX IF NOT EXISTS ix_soldas ON soldas(alvo_tipo, alvo_id);
 CREATE INDEX IF NOT EXISTS ix_fotos_alvo ON fotos(alvo_tipo, alvo_id);
 CREATE INDEX IF NOT EXISTS ix_lanc_med ON medicao_lancamentos(medicao_id, gaveta);
 CREATE INDEX IF NOT EXISTS ix_prov_fonte ON proveniencia(fonte_id);

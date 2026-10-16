@@ -9,7 +9,9 @@ Travas desta versão (etapas 0 e 1 — regras financeiras ainda não aprovadas):
   * medição fechada fica congelada: revisão posterior do BM não altera o valor dela.
 """
 import base64
+import hashlib
 import json
+import struct
 import os
 import re
 import sqlite3
@@ -21,7 +23,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 5
+VERSAO_ESQUEMA = 6
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -50,8 +52,10 @@ def aplicar_esquema(conn):
     with open(os.path.join(BASE, "schema.sql"), encoding="utf-8") as f:
         for cmd in comandos_sql(f.read()):
             conn.execute(cmd)
+    if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "estoque: custódia por sessão, reserva coberta, retificação de fechamento"))
+                 (VERSAO_ESQUEMA, _agora(), "campo: intervalos por etapa, soldas verificadas, foto original com hash"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -716,9 +720,99 @@ def registrar_clima(conn, data, equipe_id, turno, condicao):
     conn.execute("INSERT OR REPLACE INTO clima VALUES (?,?,?,?)", (data, equipe_id, turno, condicao))
 
 
+# ------------------------------------------------------------------ intervalos de execução (etapa 4)
+def intervalos(conn, trecho_id, etapa=None):
+    sql, args = "SELECT * FROM intervalos_execucao WHERE trecho_id=?", [trecho_id]
+    if etapa:
+        sql, args = sql + " AND etapa=?", args + [etapa]
+    return _rows(conn.execute(sql + " ORDER BY etapa, ini_m", args))
+
+
+def _cobertura(conn, trecho_id, etapa, extra=()):
+    return R.unir_intervalos([(i["ini_m"], i["fim_m"]) for i in intervalos(conn, trecho_id, etapa)] + list(extra))
+
+
+def _validar_intervalos(conn, t, novos):
+    """Recusa sobreposição (na mesma etapa, com o já registrado ou entre si), intervalo fora do trecho e reaterro/
+    cadastro de campo sobre o que não foi assentado. MND não tem vala: só ASSENTADO e CADASTRO_CAMPO."""
+    ext, mnd = float(t["extensao_m"]), t.get("metodologia") == "MND"
+    por_etapa = {e: [] for e in R.ETAPAS_INTERVALO}
+    for n in novos:
+        e, a, b = n["etapa"], float(n["ini_m"]), float(n["fim_m"])
+        if e not in R.ETAPAS_INTERVALO:
+            raise RegraViolada(f"Etapa inválida: {e}.")
+        if mnd and e == "REATERRADO":
+            raise RegraViolada("Trecho MND não tem vala: registre só ASSENTADO e CADASTRO_CAMPO.")
+        if not (0 <= a < b <= ext + R.TOL_M):
+            raise RegraViolada(f"{e} {a:g}–{b:g} m fora do trecho (0–{ext:g} m) ou com início ≥ fim.")
+        existentes = [(i["ini_m"], i["fim_m"]) for i in intervalos(conn, t["id"], e)]
+        sob = R.sobreposicao((a, b), existentes + por_etapa[e])
+        if sob:
+            raise RegraViolada(f"{e} {a:g}–{b:g} m sobrepõe intervalo já registrado ({sob[0]:g}–{sob[1]:g} m). "
+                               "Intervalo repetido ou sobreposto não é aceito.")
+        por_etapa[e].append((a, b))
+    assentado = _cobertura(conn, t["id"], "ASSENTADO", por_etapa["ASSENTADO"])
+    for e in ("REATERRADO", "CADASTRO_CAMPO"):
+        for a, b in por_etapa[e]:
+            falta = R.fora_da_cobertura((a, b), assentado)
+            if falta:
+                raise RegraViolada(f"{e} {a:g}–{b:g} m inclui trecho não assentado: "
+                                   + ", ".join(f"{x:g}–{y:g} m" for x, y in falta) + ".")
+    return por_etapa
+
+
+def _intervalos_por_metros(conn, t, metros_exec, metros_reat, completo):
+    """Compatibilidade com apontamento só em metros: ocupa as lacunas em sequência a partir do início
+    (origem SEQUENCIAL, sinalizada). '100 % concluído' preenche todas as lacunas (origem COMPLETO)."""
+    ext, mnd = float(t["extensao_m"]), t.get("metodologia") == "MND"
+    if mnd and metros_reat and not completo:
+        raise RegraViolada("Trecho MND não tem vala: não há metros reaterrados.")
+    novos = []
+
+    def ocupar(etapa, metros, cobertura, limite, origem):
+        resto = metros
+        for a, b in R.fora_da_cobertura((0.0, ext), cobertura):
+            for c, d in ([(a, b)] if limite is None else
+                         [(max(a, x), min(b, y)) for x, y in limite if min(b, y) - max(a, x) > R.TOL_M]):
+                if resto is not None and resto <= R.TOL_M:
+                    return
+                fim = d if resto is None else min(d, c + resto)
+                novos.append({"etapa": etapa, "ini_m": round(c, 6), "fim_m": round(fim, 6), "origem": origem})
+                if resto is not None:
+                    resto -= fim - c
+        if resto is not None and resto > R.TOL_M:
+            raise RegraViolada(f"{etapa}: {metros:g} m não cabem nas lacunas do trecho ({ext:g} m).")
+
+    origem = "COMPLETO" if completo else "SEQUENCIAL"
+    if completo or metros_exec:
+        ocupar("ASSENTADO", None if completo else metros_exec, _cobertura(conn, t["id"], "ASSENTADO"), None, origem)
+    if not mnd and (completo or metros_reat):
+        assent = R.unir_intervalos([(i["ini_m"], i["fim_m"]) for i in intervalos(conn, t["id"], "ASSENTADO")]
+                                   + [(n["ini_m"], n["fim_m"]) for n in novos if n["etapa"] == "ASSENTADO"])
+        ocupar("REATERRADO", None if completo else metros_reat, _cobertura(conn, t["id"], "REATERRADO"), assent, origem)
+    return novos
+
+
+def _atualizar_execucao_trecho(conn, t):
+    ext = float(t["extensao_m"])
+    ass = R.comprimento(_cobertura(conn, t["id"], "ASSENTADO"))
+    reat = ass if t.get("metodologia") == "MND" else R.comprimento(_cobertura(conn, t["id"], "REATERRADO"))
+    conn.execute(
+        """INSERT INTO execucao(alvo_tipo,alvo_id,metros_executados,metros_reaterrados,concluido) VALUES ('TRECHO',?,?,?,?)
+           ON CONFLICT(alvo_tipo,alvo_id) DO UPDATE SET metros_executados=excluded.metros_executados,
+             metros_reaterrados=excluded.metros_reaterrados, concluido=MAX(concluido, excluded.concluido)""",
+        (t["id"], ass, reat, 1 if reat >= ext - R.TOL_M else 0))
+
+
 def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_reaterrados=0,
-            concluido_100=False, estaca_ini=None, estaca_fim=None, quantidades=None):
-    """Lança avanço de campo. `quantidades=None` equivale a [✅ OK, Confirmar Previsto]."""
+            concluido_100=False, estaca_ini=None, estaca_fim=None, quantidades=None, intervalos_novos=None,
+            informado_por=None):
+    """Lança avanço de campo. `quantidades=None` equivale a [✅ OK, Confirmar Previsto].
+
+    Trecho: o avanço é registrado em INTERVALOS por etapa (`intervalos_novos`: [{etapa, ini_m, fim_m}], em metros
+    desde o início do trecho). Sem intervalos, os metros ocupam as lacunas em sequência (origem SEQUENCIAL,
+    sinalizada) e '100 % concluído' preenche todas as lacunas. Reaterro sem cadastro de campo gera alerta.
+    """
     turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
     if turnos != {"MANHA", "TARDE"}:
         raise RegraViolada("Clima do dia obrigatório nos dois turnos (manhã e tarde) antes do apontamento.")
@@ -727,28 +821,28 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     ex = execucao(conn, tipo, aid) or {"metros_executados": 0, "metros_reaterrados": 0, "concluido": 0}
     if ex.get("ok_fiscal_em"):
         raise RegraViolada("Alvo já validado pela fiscalização — não aceita novos apontamentos.")
+    novos = []
     if tipo == "TRECHO":
-        ext = a["extensao_m"]
-        if concluido_100:
-            metros_executados = ext - ex["metros_executados"]
-            metros_reaterrados = ext - ex["metros_reaterrados"]
-        novo_exec = ex["metros_executados"] + metros_executados
-        novo_reat = ex["metros_reaterrados"] + metros_reaterrados
-        if novo_exec > ext + 1e-3:
-            raise RegraViolada(f"Metros executados ({novo_exec:g}) excedem a extensão do trecho ({ext:g} m).")
-        if novo_reat > novo_exec + 1e-3:
-            raise RegraViolada("Não é possível reaterrar mais do que foi executado.")
-        concluido = 1 if novo_reat >= ext - 1e-3 else 0
+        if intervalos_novos:
+            novos = [dict(n, origem="INFORMADO") for n in intervalos_novos]
+        else:
+            novos = _intervalos_por_metros(conn, a, float(metros_executados or 0), float(metros_reaterrados or 0),
+                                           concluido_100)
+        if not novos:
+            raise RegraViolada("Informe o intervalo executado (de/até, em metros) ou marque 100 % concluído.")
+        por_etapa = _validar_intervalos(conn, a, novos)
+        metros_executados = sum(b - x for x, b in por_etapa["ASSENTADO"])
+        metros_reaterrados = sum(b - x for x, b in por_etapa["REATERRADO"])
         prev = previsto(conn, tipo, aid, metros_executados) if metros_executados > 0 else []
     else:
-        novo_exec = novo_reat = 0
         concluido = 1 if concluido_100 else 0
         prev = previsto(conn, tipo, aid, 0) if concluido else []
     with transacao(conn):
         apid = conn.execute(
-            """INSERT INTO apontamentos(data,equipe_id,alvo_tipo,alvo_id,metros_executados,metros_reaterrados,estaca_ini,estaca_fim)
-               VALUES (?,?,?,?,?,?,?,?)""",
-            (data, equipe_id, tipo, aid, metros_executados, metros_reaterrados, estaca_ini, estaca_fim)).lastrowid
+            """INSERT INTO apontamentos(data,equipe_id,alvo_tipo,alvo_id,metros_executados,metros_reaterrados,estaca_ini,
+                 estaca_fim,informado_por) VALUES (?,?,?,?,?,?,?,?,?)""",
+            (data, equipe_id, tipo, aid, metros_executados, metros_reaterrados, estaca_ini, estaca_fim,
+             informado_por)).lastrowid
         confirmadas = {(q["servico"], q["unidade"]): q["confirmado"] for q in (quantidades or [])}
         for q in prev:
             conf = confirmadas.pop((q["servico"], q["unidade"]), q["previsto"])
@@ -756,30 +850,239 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
                          (apid, q["servico"], q["unidade"], q["previsto"], float(conf)))
         for (serv, un), conf in confirmadas.items():
             conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,NULL,?)", (apid, serv, un, float(conf)))
-        conn.execute(
-            """INSERT INTO execucao(alvo_tipo,alvo_id,metros_executados,metros_reaterrados,concluido)
-               VALUES (?,?,?,?,?)
-               ON CONFLICT(alvo_tipo,alvo_id) DO UPDATE SET metros_executados=excluded.metros_executados,
-                 metros_reaterrados=excluded.metros_reaterrados, concluido=MAX(concluido, excluded.concluido)""",
-            (tipo, aid, novo_exec, novo_reat, concluido))
+        if tipo == "TRECHO":
+            cad = _cobertura(conn, aid, "CADASTRO_CAMPO", [(float(n["ini_m"]), float(n["fim_m"])) for n in novos
+                                                           if n["etapa"] == "CADASTRO_CAMPO"])
+            for n in novos:
+                sem_cad = n["etapa"] == "REATERRADO" and bool(R.fora_da_cobertura((float(n["ini_m"]), float(n["fim_m"])), cad))
+                conn.execute(
+                    """INSERT INTO intervalos_execucao(trecho_id,etapa,ini_m,fim_m,data,equipe_id,apontamento_id,origem,
+                         informado_por,sem_cadastro_campo,registrado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    (aid, n["etapa"], float(n["ini_m"]), float(n["fim_m"]), data, equipe_id, apid, n["origem"],
+                     informado_por, 1 if sem_cad else 0, _agora()))
+            _atualizar_execucao_trecho(conn, a)
+        else:
+            conn.execute(
+                """INSERT INTO execucao(alvo_tipo,alvo_id,metros_executados,metros_reaterrados,concluido) VALUES (?,?,0,0,?)
+                   ON CONFLICT(alvo_tipo,alvo_id) DO UPDATE SET concluido=MAX(concluido, excluded.concluido)""",
+                (tipo, aid, concluido))
     return apid
 
 
-def registrar_foto(conn, alvo_tipo, ref, categoria, conteudo_b64, extensao="jpg", data_hora=None, lat=None, lon=None,
+def verificar_intervalo(conn, intervalo_id, verificado_por):
+    """Fiscal confere em campo um intervalo informado (quem informou não verifica)."""
+    i = _one(conn, "SELECT * FROM intervalos_execucao WHERE id=?", intervalo_id)
+    if not i:
+        raise RegraViolada("Intervalo não encontrado.")
+    if i["verificado_em"]:
+        raise RegraViolada("Intervalo já verificado.")
+    if not (verificado_por or "").strip():
+        raise RegraViolada("Informe quem verificou.")
+    if i["informado_por"] and i["informado_por"].strip().lower() == verificado_por.strip().lower():
+        raise RegraViolada("Quem informou o intervalo não pode verificá-lo.")
+    conn.execute("UPDATE intervalos_execucao SET verificado_em=?, verificado_por=? WHERE id=?", (_agora(), verificado_por.strip(), intervalo_id))
+
+
+def situacao_intervalos(conn, trecho_id):
+    t = alvo(conn, "TRECHO", trecho_id)
+    ext = float(t["extensao_m"])
+    out = {"extensao_m": ext, "etapas": {}, "alertas": []}
+    for e in R.ETAPAS_INTERVALO:
+        if e == "REATERRADO" and t.get("metodologia") == "MND":
+            continue
+        cob = _cobertura(conn, t["id"], e)
+        out["etapas"][e] = {"metros": R.comprimento(cob), "cobertura": cob, "lacunas": R.lacunas(cob, ext)}
+    out["intervalos"] = intervalos(conn, t["id"])
+    sem_cad = [i for i in out["intervalos"] if i["sem_cadastro_campo"]]
+    if sem_cad:
+        out["alertas"].append("Reaterro sem cadastro de campo registrado antes: " +
+                              ", ".join(f"{i['ini_m']:g}–{i['fim_m']:g} m ({i['data']})" for i in sem_cad))
+    seq = [i for i in out["intervalos"] if i["origem"] == "SEQUENCIAL"]
+    if seq:
+        out["alertas"].append(f"{len(seq)} intervalo(s) com posição presumida (apontamento só em metros): confirme a "
+                              "posição em campo.")
+    pend = [i for i in out["intervalos"] if not i["verificado_em"]]
+    if pend:
+        out["alertas"].append(f"{len(pend)} intervalo(s) informados ainda sem verificação.")
+    return out
+
+
+# ------------------------------------------------------------------ soldas (informadas × verificadas)
+def registrar_soldas(conn, data, equipe_id, alvo_tipo, ref, tipo, quantidade, soldador, informado_por,
+                     posicao_m=None, maquina=None, obs=None):
+    a = alvo(conn, alvo_tipo, ref, operacao=True)
+    if tipo not in ("ELETROFUSAO", "TOPO"):
+        raise RegraViolada("Tipo de solda inválido (ELETROFUSAO ou TOPO).")
+    try:
+        q = int(quantidade)
+    except (TypeError, ValueError):
+        q = 0
+    if q <= 0 or float(quantidade) != q:
+        raise RegraViolada("Quantidade de soldas deve ser um inteiro maior que zero.")
+    if not (soldador or "").strip() or not (informado_por or "").strip():
+        raise RegraViolada("Informe o soldador e quem registra.")
+    if posicao_m is not None and a["alvo_tipo"] == "TRECHO" and not (0 <= float(posicao_m) <= float(a["extensao_m"]) + R.TOL_M):
+        raise RegraViolada("Posição da solda fora do trecho.")
+    return conn.execute(
+        """INSERT INTO soldas(alvo_tipo,alvo_id,data,equipe_id,tipo,quantidade,posicao_m,soldador,maquina,informado_por,obs,
+             registrado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (a["alvo_tipo"], a["id"], data, equipe_id, tipo, q, posicao_m, soldador.strip(), maquina, informado_por.strip(), obs,
+         _agora())).lastrowid
+
+
+def verificar_soldas(conn, solda_id, verificado_por, resultado, obs=None):
+    s_ = _one(conn, "SELECT * FROM soldas WHERE id=?", solda_id)
+    if not s_:
+        raise RegraViolada("Registro de solda não encontrado.")
+    if s_["verificado_em"]:
+        raise RegraViolada("Soldas já verificadas.")
+    if resultado not in ("APROVADA", "REPROVADA"):
+        raise RegraViolada("Resultado: APROVADA ou REPROVADA.")
+    if not (verificado_por or "").strip():
+        raise RegraViolada("Informe quem verificou.")
+    if verificado_por.strip().lower() in (s_["informado_por"].lower(), s_["soldador"].lower()):
+        raise RegraViolada("Quem soldou ou informou não pode verificar.")
+    if resultado == "REPROVADA" and not (obs or "").strip():
+        raise RegraViolada("Descreva o motivo da reprovação.")
+    conn.execute("UPDATE soldas SET verificado_em=?, verificado_por=?, resultado=?, obs=COALESCE(?, obs) WHERE id=?",
+                 (_agora(), verificado_por.strip(), resultado, obs, solda_id))
+
+
+def resumo_soldas(conn, alvo_tipo, ref):
+    a = alvo(conn, alvo_tipo, ref)
+    regs = _rows(conn.execute("SELECT * FROM soldas WHERE alvo_tipo=? AND alvo_id=? ORDER BY data, id", (a["alvo_tipo"], a["id"])))
+    soma = lambda f: sum(r["quantidade"] for r in regs if f(r))
+    est = None
+    if a["alvo_tipo"] == "TRECHO" and str(a.get("material") or "").upper() == "PEAD" and a.get("metodologia") != "MND":
+        est = R.qtd_soldas(float(a["extensao_m"]), mapa_servicos()["solda"]["comprimento_barra_m"])
+    return {"estimativa_barras_6m": est, "informadas": soma(lambda r: True),
+            "aprovadas": soma(lambda r: r["resultado"] == "APROVADA"), "reprovadas": soma(lambda r: r["resultado"] == "REPROVADA"),
+            "sem_verificacao": soma(lambda r: not r["verificado_em"]), "registros": regs}
+
+
+# ------------------------------------------------------------------ fotos: original preservado com hash
+LIMITE_FOTO = 20 * 1024 * 1024
+
+
+def _tipo_imagem(dados):
+    if dados[:3] == b"\xff\xd8\xff":
+        return "jpg", "image/jpeg"
+    if dados[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png", "image/png"
+    if dados[4:8] == b"ftyp" and dados[8:12] in (b"heic", b"heix", b"mif1", b"heim", b"heis"):
+        return "heic", "image/heic"
+    return None, None
+
+
+def exif_jpeg(dados):
+    """Data/hora de captura (DateTimeOriginal) e GPS do EXIF de um JPEG. {} se não houver ou estiver ilegível."""
+    try:
+        i = 2
+        while i + 4 <= len(dados) and dados[i] == 0xFF:
+            marcador, tam = dados[i + 1], struct.unpack(">H", dados[i + 2:i + 4])[0]
+            if marcador == 0xE1 and dados[i + 4:i + 10] == b"Exif\x00\x00":
+                return _ler_tiff(dados[i + 10:i + 2 + tam])
+            if marcador == 0xDA:
+                break
+            i += 2 + tam
+    except (struct.error, IndexError, ValueError, ZeroDivisionError):
+        pass
+    return {}
+
+
+def _ler_tiff(t):
+    e = "<" if t[:2] == b"II" else ">"
+    u16 = lambda o: struct.unpack(e + "H", t[o:o + 2])[0]
+    u32 = lambda o: struct.unpack(e + "I", t[o:o + 4])[0]
+
+    def ifd(o):
+        out = {}
+        for k in range(u16(o)):
+            p = o + 2 + 12 * k
+            out[u16(p)] = (u16(p + 2), u32(p + 4), p + 8)
+        return out
+
+    def valor(ent):
+        tipo, n, p = ent
+        if tipo == 2:                                               # ASCII
+            o = p if n <= 4 else u32(p)
+            return t[o:o + n].rstrip(b"\x00").decode("ascii", "replace")
+        if tipo == 5:                                               # RATIONAL
+            o = u32(p)
+            return [u32(o + 8 * j) / u32(o + 8 * j + 4) for j in range(n)]
+        if tipo in (3, 4):
+            return u16(p) if tipo == 3 else u32(p)
+        return None
+
+    out = {}
+    ifd0 = ifd(u32(4))
+    if 0x8769 in ifd0:
+        ex = ifd(valor(ifd0[0x8769]))
+        if 0x9003 in ex:
+            d = valor(ex[0x9003])                                   # "AAAA:MM:DD HH:MM:SS"
+            out["capturada_em"] = d[:10].replace(":", "-") + "T" + d[11:19]
+    if 0x8825 in ifd0:
+        g = ifd(valor(ifd0[0x8825]))
+        if all(k in g for k in (1, 2, 3, 4)):
+            dms = lambda v: v[0] + v[1] / 60 + v[2] / 3600
+            lat, lon = dms(valor(g[2])), dms(valor(g[4]))
+            out["lat"] = -lat if valor(g[1]).startswith("S") else lat
+            out["lon"] = -lon if valor(g[3]).startswith("W") else lon
+    return out
+
+
+def registrar_foto(conn, alvo_tipo, ref, categoria, conteudo_b64, extensao=None, data_hora=None, lat=None, lon=None,
                    dir_fotos=DIR_FOTOS):
+    """Guarda o ARQUIVO ORIGINAL (sem recompressão nem carimbo), com SHA-256, tipo e tamanho.
+
+    Data de captura: EXIF (DateTimeOriginal) > informada pelo aparelho (`data_hora`) > hora do envio; a origem fica
+    registrada. GPS: EXIF > navegador (`lat`/`lon`) > indisponível (nunca inventado). O carimbo é texto exibido sobre
+    a foto. A mesma imagem (mesmo hash) não pode ser usada em outro registro.
+    """
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     if categoria not in R.FOTOS_TRECHO:
         raise RegraViolada("Categoria de foto inválida.")
-    data_hora = data_hora or _agora()
-    carimbo = R.carimbo(contrato(conn), a["nome"], data_hora, lat, lon)
+    try:
+        dados = base64.b64decode(conteudo_b64, validate=True)
+    except (ValueError, TypeError):
+        raise RegraViolada("Conteúdo da foto inválido.") from None
+    if not dados or len(dados) > LIMITE_FOTO:
+        raise RegraViolada(f"Foto vazia ou maior que {LIMITE_FOTO // (1024 * 1024)} MB.")
+    ext, mime = _tipo_imagem(dados)
+    if not ext:
+        raise RegraViolada("Arquivo não é uma imagem JPEG, PNG ou HEIC.")
+    h = hashlib.sha256(dados).hexdigest()
+    dup = _one(conn, "SELECT alvo_tipo, alvo_id, categoria, data_hora FROM fotos WHERE sha256=?", h)
+    if dup:
+        raise RegraViolada(f"Esta mesma imagem já foi registrada ({dup['categoria']} de {nome_alvo(conn, dup['alvo_tipo'], dup['alvo_id'])}, "
+                           f"{dup['data_hora']}). Cada evidência precisa de uma foto própria.")
+    ex = exif_jpeg(dados) if ext == "jpg" else {}
+    agora = _agora()
+    if ex.get("capturada_em"):
+        quando, origem_data = ex["capturada_em"], "EXIF"
+    elif data_hora:
+        quando, origem_data = data_hora, "DISPOSITIVO"
+    else:
+        quando, origem_data = agora, "ENVIO"
+    if "lat" in ex:
+        lat, lon, origem_gps = ex["lat"], ex["lon"], "EXIF"
+    elif lat is not None and lon is not None:
+        origem_gps = "NAVEGADOR"
+    else:
+        lat = lon = origem_gps = None
+    carimbo = R.carimbo(contrato(conn), a["nome"], quando, lat, lon)
     os.makedirs(dir_fotos, exist_ok=True)
-    nome = re.sub(r"[^\w.-]", "_", f"{a['id']}_{categoria}_{data_hora.replace(':', '').replace('-', '')}.{extensao}")
-    with open(os.path.join(dir_fotos, nome), "wb") as f:
-        f.write(base64.b64decode(conteudo_b64))
+    nome = f"{h}.{ext}"
+    caminho = os.path.join(dir_fotos, nome)
+    if not os.path.exists(caminho):
+        with open(caminho, "xb") as f:
+            f.write(dados)
     conn.execute(
-        "INSERT INTO fotos(alvo_tipo,alvo_id,area,categoria,arquivo,data_hora,lat,lon,carimbo) VALUES (?,?,?,?,?,?,?,?,?)",
-        (a["alvo_tipo"], a["id"], a.get("area"), categoria, nome, data_hora, lat, lon, carimbo))
-    return {"arquivo": nome, "carimbo": carimbo}
+        """INSERT INTO fotos(alvo_tipo,alvo_id,area,categoria,arquivo,data_hora,lat,lon,carimbo,sha256,bytes,mime,origem_data,
+             origem_gps,enviada_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (a["alvo_tipo"], a["id"], a.get("area"), categoria, nome, quando, lat, lon, carimbo, h, len(dados), mime,
+         origem_data, origem_gps, agora))
+    return {"arquivo": nome, "carimbo": carimbo, "sha256": h, "origem_data": origem_data, "origem_gps": origem_gps}
 
 
 # ------------------------------------------------------------------ lançamentos (sem regime financeiro aplicado)
@@ -1163,6 +1466,7 @@ def detalhe(conn, alvo_tipo, ref):
         d["cadastro"] = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", aid)
         d["perfil_bloqueado"] = R.bloqueio_perfil(a)       # mesma regra do cálculo (MND não tem vala)
         d["mnd"] = a.get("metodologia") == "MND"
+        d["intervalos"] = situacao_intervalos(conn, aid)
     else:
         d.update(totais_atividade(conn, aid))
         d["itens"] = itens_atividade(conn, aid)
@@ -1171,6 +1475,7 @@ def detalhe(conn, alvo_tipo, ref):
             "SELECT id, nomenclatura, frente_id FROM atividades WHERE elemento_id=? AND id<>? AND vigente=1",
             (a["elemento_id"], aid)))
         d.update(avisos_e_decisoes(conn, aid))
+    d["soldas"] = resumo_soldas(conn, tipo, aid)
     return d
 
 

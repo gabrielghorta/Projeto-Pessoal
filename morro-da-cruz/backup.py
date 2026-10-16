@@ -170,6 +170,17 @@ def anexos_referenciados(caminho_db):
         c.close()
 
 
+def hashes_registrados(caminho_db):
+    """{arquivo: sha256} das fotos originais registradas no banco (fotos legadas não têm hash)."""
+    c = _ler(caminho_db)
+    try:
+        if "sha256" not in {r[1] for r in c.execute("PRAGMA table_info(fotos)")}:
+            return {}
+        return {r[0]: r[1] for r in c.execute("SELECT arquivo, sha256 FROM fotos WHERE sha256 IS NOT NULL")}
+    finally:
+        c.close()
+
+
 def copiar_banco(origem, destino):
     """Cópia pela API de backup do SQLite (inclui o WAL; consistente com o banco em uso)."""
     o, d = sqlite3.connect(origem), sqlite3.connect(destino)
@@ -278,6 +289,11 @@ def verificar_detalhado(pasta):
         # completude: recalculada a partir do banco copiado, não só do manifesto
         copiados = {a[len("fotos/"):] for a in m["arquivos"] if a.startswith("fotos/")}
         ausentes = sorted(set(anexos_referenciados(db)) - copiados)
+        # foto original: o arquivo copiado precisa ter o hash registrado no banco (cadeia de evidência)
+        for arq, h in hashes_registrados(db).items():
+            info = m["arquivos"].get("fotos/" + arq)
+            if info and info["sha256"] != h:
+                erros.append(f"foto {arq}: hash do arquivo difere do registrado no banco")
     return {"integro": not erros, "completo": not ausentes and not erros, "erros_integridade": erros, "ausentes": ausentes}
 
 

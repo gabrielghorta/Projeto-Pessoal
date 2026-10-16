@@ -19,6 +19,7 @@ import importacao as I  # noqa: E402
 import importar  # noqa: E402
 import regras as R  # noqa: E402
 import servicos as S  # noqa: E402
+from fotos_teste import jpeg  # noqa: E402
 from perfil_teste import cfg_teste_real  # noqa: E402
 
 CFG = I.carregar_config()
@@ -27,7 +28,6 @@ TR = "Zona01_PB01_Rede_TR001"
 MND = "Zona02_PB04_Rede_TR036"
 NO18 = "Zona01_PB01_Rede_NÓ1.8"
 D = "2026-10-15"
-FOTO = "aGVsbG8="
 
 
 @unittest.skipUnless(TEM_DADOS, "planilhas oficiais ausentes em planilhas/")
@@ -50,7 +50,7 @@ class PilotoZona01(unittest.TestCase):
         shutil.rmtree(cls.tmp)
 
     def foto(self, tipo, alvo, cat):
-        S.registrar_foto(self.c, tipo, alvo, cat, FOTO, data_hora=f"{D}T10:00:00", dir_fotos=self.fotos)
+        S.registrar_foto(self.c, tipo, alvo, cat, jpeg(), data_hora=f"{D}T10:00:00", dir_fotos=self.fotos)
 
     def lanc(self, alvo_id):
         return S.resumo_medicao(self.c, self.med), [dict(r) for r in self.c.execute(

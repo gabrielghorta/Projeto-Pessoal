@@ -24,6 +24,7 @@ WEB = os.path.join(BASE, "web")
 LOCK = threading.Lock()
 CONN = None
 DB_PATH = S.DB_PADRAO
+DIR_FOTOS = S.DIR_FOTOS                 # sempre <pasta do banco>/fotos (é o que o backup copia e confere)
 
 
 def _cfg():
@@ -180,12 +181,29 @@ def p_clima(b, c):
 def p_apontamento(b, c):
     return {"id": S.apontar(c, b["data"], b["equipe_id"], b["alvo_tipo"], b["alvo_id"], float(b.get("metros_executados") or 0),
                             float(b.get("metros_reaterrados") or 0), bool(b.get("concluido_100")), b.get("estaca_ini"),
-                            b.get("estaca_fim"), b.get("quantidades"))}
+                            b.get("estaca_fim"), b.get("quantidades"), b.get("intervalos") or None, b.get("informado_por"))}
+
+
+def p_intervalo_verificar(b, c):
+    S.verificar_intervalo(c, int(b["intervalo_id"]), b.get("verificado_por"))
+    return {"ok": True}
+
+
+def p_solda(b, c):
+    return {"id": S.registrar_soldas(c, b["data"], b.get("equipe_id"), b["alvo_tipo"], b["alvo_id"], b.get("tipo"),
+                                     b.get("quantidade"), b.get("soldador"), b.get("informado_por"),
+                                     float(b["posicao_m"]) if b.get("posicao_m") not in (None, "") else None,
+                                     b.get("maquina"), b.get("obs"))}
+
+
+def p_solda_verificar(b, c):
+    S.verificar_soldas(c, int(b["solda_id"]), b.get("verificado_por"), b.get("resultado"), b.get("obs"))
+    return {"ok": True}
 
 
 def p_foto(b, c):
-    return S.registrar_foto(c, b["alvo_tipo"], b["alvo_id"], b["categoria"], b["conteudo_b64"], b.get("extensao", "jpg"),
-                            b.get("data_hora"), b.get("lat"), b.get("lon"))
+    return S.registrar_foto(c, b["alvo_tipo"], b["alvo_id"], b["categoria"], b["conteudo_b64"], None,
+                            b.get("data_hora"), b.get("lat"), b.get("lon"), dir_fotos=DIR_FOTOS)
 
 
 def p_ok_fiscal(b, c):
@@ -232,7 +250,8 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
-        "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar, "/api/reserva": p_reserva,
+        "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar,
+        "/api/intervalo/verificar": p_intervalo_verificar, "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
         "/api/reserva/cancelar": p_reserva_cancelar}
 
 
@@ -296,7 +315,7 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ("/mapa", "/mapa/"):
             return self._mapa()
         if u.path.startswith("/fotos/"):
-            return self._static(S.DIR_FOTOS, u.path[len("/fotos/"):])
+            return self._static(DIR_FOTOS, u.path[len("/fotos/"):])
         if u.path in ("/", "/index.html"):
             return self._static(WEB, "index.html")
         return self._static(WEB, u.path.lstrip("/"))
@@ -329,7 +348,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global CONN, DB_PATH
+    global CONN, DB_PATH, DIR_FOTOS
     backup.utf8_console()
     ap = argparse.ArgumentParser()
     ap.add_argument("--porta", type=int, default=8765)
@@ -339,6 +358,7 @@ def main():
     if not os.path.exists(a.db):
         raise SystemExit(f"Banco {a.db} não existe — rode antes: python importar.py --aplicar")
     DB_PATH = a.db
+    DIR_FOTOS = os.path.join(os.path.dirname(os.path.abspath(a.db)), "fotos")
     try:
         CONN = S.conectar(a.db)
     except S.EsquemaAntigo as e:

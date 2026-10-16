@@ -197,15 +197,15 @@
             <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div>
           </label>
           <div id="apAlvo"></div>
-          <div class="linha" id="apMetros">
-            <label>Metros executados (vala aberta + tubo)<input type="number" step="any" min="0" name="metros_executados"></label>
-            <label>Metros reaterrados<input type="number" step="any" min="0" name="metros_reaterrados"></label>
+          <div id="apMetros">
+            <p class="vazio" style="margin:4px 0">Intervalos em metros a partir do início do trecho (sentido da 06.1). Sobreposição e repetição são recusadas; reaterro e cadastro de campo só sobre o assentado.</p>
+            <div class="linha"><label>Assentado de (m)<input type="number" step="any" min="0" name="ass_ini"></label><label>até (m)<input type="number" step="any" min="0" name="ass_fim"></label></div>
+            <div class="linha"><label>Cadastro de campo de (m)<input type="number" step="any" min="0" name="cad_ini"></label><label>até (m)<input type="number" step="any" min="0" name="cad_fim"></label></div>
+            <div class="linha"><label>Reaterrado de (m)<input type="number" step="any" min="0" name="rea_ini"></label><label>até (m)<input type="number" step="any" min="0" name="rea_fim"></label></div>
+            <div class="linha"><label>Estaca inicial (NS, referência)<input name="estaca_ini"></label><label>Estaca final<input name="estaca_fim"></label></div>
           </div>
-          <label class="check"><input type="checkbox" name="concluido_100"> 100 % concluído (executado e reaterrado)</label>
-          <div class="linha" id="apEstacas">
-            <label>Estaca inicial (NS)<input name="estaca_ini"></label>
-            <label>Estaca final (NS)<input name="estaca_fim"></label>
-          </div>
+          <label class="check"><input type="checkbox" name="concluido_100"> 100 % concluído (preenche as lacunas de assentado e reaterro)</label>
+          <label>Informado por<input name="informado_por" placeholder="encarregado"></label>
           <div class="acoes"><button type="button" class="btn azul" id="apPrevisto">Calcular previsto</button></div>
           <div id="apQuant"></div>
         </form>
@@ -220,10 +220,21 @@
             <option value="CONCLUIDO">3. Serviço concluído / reaterrado</option>
           </select></label>
           <label>Foto<input type="file" name="arquivo" accept="image/*" capture="environment" required></label>
-          <p class="vazio" style="margin:0">O carimbo (contrato, ID, data/hora e GPS) é gravado na própria imagem.</p>
-          <div class="acoes"><button class="btn prim">Enviar foto carimbada</button></div>
+          <p class="vazio" style="margin:0">O arquivo ORIGINAL é guardado sem alteração, com hash SHA-256. Data e GPS vêm do EXIF da foto; sem EXIF, do aparelho/navegador (a origem fica registrada). O carimbo é exibido sobre a foto.</p>
+          <div class="acoes"><button class="btn prim">Enviar foto original</button></div>
         </form>
         <div class="fotos" id="fotoLista" style="margin-top:12px"></div>
+        <h3 style="margin-top:16px">Soldas — informadas × verificadas</h3>
+        <form id="fSolda" class="form">
+          <div class="linha">
+            <label>Tipo<select name="tipo"><option value="ELETROFUSAO">Eletrofusão</option><option value="TOPO">Topo</option></select></label>
+            <label>Quantidade<input type="number" min="1" step="1" name="quantidade" required></label>
+            <label>Posição (m, opcional)<input type="number" step="any" min="0" name="posicao_m"></label>
+          </div>
+          <div class="linha"><label>Soldador<input name="soldador" required></label><label>Informado por<input name="informado_por" required></label></div>
+          <div class="acoes"><button class="btn prim">Registrar soldas</button></div>
+        </form>
+        <div id="soldas" style="margin-top:8px"></div>
       </div>
     </div>
   </section>
