@@ -69,6 +69,16 @@ async function acao(fn, okMsg) {
 }
 const formObj = f => Object.fromEntries(new FormData(f).entries());
 
+/* ---------------------------------------------------------------- tema (escuro por padrão; o mapa REV02 acompanha) */
+function aplicarTema(t) {
+  document.documentElement.dataset.tema = t;
+  $('#temaBtn').textContent = t === 'claro' ? '🌙 Tema escuro' : '☀️ Tema claro';
+  try { localStorage.setItem('mc-tema', t); } catch (_) { /* sem storage */ }
+  try { $('#mapaFrame').contentWindow.postMessage({ tipo: 'mc-tema', tema: t }, location.origin); } catch (_) { /* mapa ausente */ }
+}
+$('#temaBtn').addEventListener('click', () => aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'escuro' : 'claro'));
+aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escuro');
+
 /* ---------------------------------------------------------------- abas */
 $$('nav.abas button').forEach(b => b.addEventListener('click', () => abrirAba(b.dataset.aba)));
 function abrirAba(id) {

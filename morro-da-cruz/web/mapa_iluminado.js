@@ -11,6 +11,9 @@
   const MIOLO = { INFORMADO: '2 3', PARCIAL: '7 3', LEGADO_SEM_POSICAO: '0.6 2.4' };
   let modo = 'iluminado', estado = { status: {}, verificacao: {}, pins: [] };
   try { modo = localStorage.getItem('mc-modo') || 'iluminado'; } catch (_) { /* sem storage */ }
+  // tema da tela principal (escuro por padrão), pelo mecanismo da própria REV02 (data-theme); o arquivo não muda
+  const tema = t => document.documentElement.setAttribute('data-theme', t === 'claro' ? 'light' : 'dark');
+  try { tema(localStorage.getItem('mc-tema') || 'escuro'); } catch (_) { tema('escuro'); }
 
   // ---- controle de modo
   const box = document.createElement('div');
@@ -116,6 +119,7 @@
   window.addEventListener('message', ev => {
     if (ev.origin !== location.origin || !ev.data) return;
     if (ev.data.tipo === 'mc-recarregar') recarregar();
+    if (ev.data.tipo === 'mc-tema') tema(ev.data.tema);
     if (ev.data.tipo === 'mc-focar') {
       const q = document.getElementById('q'); if (!q) return;
       const nome = ev.data.alvo_tipo === 'TRECHO' ? ev.data.alvo_id : String(ev.data.alvo_id).split('_').pop();

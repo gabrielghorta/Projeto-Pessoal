@@ -1,6 +1,6 @@
 .mc-modo { position: fixed; z-index: 9999; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 0;
-  background: #fff; border: 1px solid #E2E5EA; border-radius: 999px; box-shadow: 0 2px 10px rgba(23, 32, 43, .18); overflow: hidden; }
-.mc-modo button { border: 0; background: none; padding: 8px 14px; font: 600 12px system-ui, sans-serif; color: #5B6675; cursor: pointer; }
+  background: var(--panel, #fff); border: 1px solid var(--line, #E2E5EA); border-radius: 999px; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); overflow: hidden; }
+.mc-modo button { border: 0; background: none; padding: 8px 14px; font: 600 12px system-ui, sans-serif; color: var(--muted, #5B6675); cursor: pointer; }
 .mc-modo button.on { background: #E85D22; color: #fff; }
 svg.mc-iluminado polyline.tr[data-mc="NAO_EXECUTADO"] { stroke-dasharray: 1.5 3; opacity: .85; }
 svg.mc-iluminado polyline.tr[data-mc="EM_EXECUCAO"] { stroke-dasharray: 7 4; }
@@ -9,4 +9,4 @@ svg.mc-iluminado polyline.tr[data-mc="OK_FISCAL"],
 svg.mc-iluminado polyline.tr[data-mc="MEDIDO_ANTERIOR"] { stroke-dasharray: none; }
 .mc-pin { pointer-events: none; }
 .mc-verif { pointer-events: none; fill: none; stroke-linecap: butt; }
-.mc-pin text { font: 700 9px system-ui, sans-serif; fill: #17202B; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.mc-pin text { font: 700 9px system-ui, sans-serif; fill: var(--ink, #17202B); paint-order: stroke; stroke: var(--panel, #fff); stroke-width: 3px; }

@@ -3,10 +3,13 @@
 <head>
 <meta charset="utf-8">
 <title>Plantas REV02 ausentes</title>
+<script>try { if (localStorage.getItem('mc-tema') === 'claro') document.documentElement.dataset.tema = 'claro'; } catch (_) { /* escuro */ }</script>
 <style>
-  body { margin: 0; height: 100vh; display: grid; place-items: center; background: #F4F5F7; color: #17202B; font: 14px/1.5 system-ui, sans-serif; }
-  div { max-width: 520px; background: #fff; border: 1px solid #E2E5EA; border-top: 4px solid #E85D22; border-radius: 8px; padding: 20px 24px; }
-  code { background: #F4F5F7; padding: 1px 5px; border-radius: 4px; }
+  :root { --bg: #0E1116; --painel: #161A21; --borda: #2A313C; --texto: #E7EAEE; color-scheme: dark; }
+  :root[data-tema="claro"] { --bg: #F4F5F7; --painel: #FFFFFF; --borda: #E2E5EA; --texto: #17202B; color-scheme: light; }
+  body { margin: 0; height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--texto); font: 14px/1.5 system-ui, sans-serif; }
+  div { max-width: 520px; background: var(--painel); border: 1px solid var(--borda); border-top: 4px solid #E85D22; border-radius: 8px; padding: 20px 24px; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
 </style>
 </head>
 <body>

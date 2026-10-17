@@ -5,6 +5,7 @@
 <link rel="icon" href="data:,">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Morro da Cruz — Gestão de Obra</title>
+<script>try { if (localStorage.getItem('mc-tema') === 'claro') document.documentElement.dataset.tema = 'claro'; } catch (_) { /* sem storage: escuro */ }</script>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
@@ -18,7 +19,10 @@
       <div><b>ANKARA</b><small>ENGENHARIA</small></div>
     </div>
     <div class="obra"><strong id="obraNome">Implantação de Redes de Distribuição — Morro da Cruz, São Sebastião/DF</strong><span id="obraContrato">Contrato Caesb × Ankara nº 10239/2026 · LC 014/2026</span></div>
-    <div class="caesb" aria-label="Caesb">Caesb</div>
+    <div class="direita">
+      <button type="button" class="btn tema" id="temaBtn" title="Alternar entre tema escuro e claro">☀️ Tema claro</button>
+      <div class="caesb" aria-label="Caesb">Caesb</div>
+    </div>
   </div>
   <nav class="abas" role="tablist">
     <button role="tab" data-aba="mapa" aria-selected="true">🗺️ 1. Mapa Iluminado &amp; Fiscalização</button>
