@@ -249,6 +249,8 @@ A v8 só acrescenta colunas e tabelas: nenhuma linha é alterada. Para aplicar: 
 
 ## Decisões para você
 
+Consolidadas em `docs/DECISOES_PENDENTES.md`. Correspondência: 1 → D-12, 2 → D-18, 3 → D-13, 4 → D-14, 5 → D-15, 6 → D-16, 7 → D-17.
+
 1. **Reaterro sem cadastro de campo:** hoje é alerta. Deve **bloquear** o reaterro?
 2. **Verificação dos intervalos e das soldas:** deve ser exigida antes do OK interno? Hoje não é, e o OK continua como antes.
 3. **Herança da foto de sinalização (D3):** um nó herda a sinalização de qualquer trecho ligado, sem conferir a data. Deve exigir a mesma data ou uma janela de dias?

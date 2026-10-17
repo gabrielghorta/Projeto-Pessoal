@@ -11,6 +11,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Detalhes das etapas 0 e 1: `docs/ETAPAS_0_1_APROVACAO.md`.
   - Correções da auditoria do commit `b63b5db` (A01–A12): `docs/CORRECOES_AUDITORIA_b63b5db.md`.
   - Etapa 3, estoque (reserva, saldo com a equipe, empréstimo autorizado, estorno): `docs/ETAPA_3_ESTOQUE.md`.
+  - **Plano de entrega completa** (requisitos, situação, aceitação): `docs/PLANO_ENTREGA_COMPLETA.md`. **Decisões pendentes** (documento único): `docs/DECISOES_PENDENTES.md`.
   - Etapa 4, campo e cadastro (intervalos por etapa, retificação, conciliação do legado, levantamento de campo, conferência interna do cadastro, soldas verificadas, foto original com hash): `docs/ETAPA_4_CAMPO.md`.
 
 ## Como rodar (Windows)
