@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morro da Cruz — link para a equipe</title>
+<style>
+:root { color-scheme: dark; }
+body { margin: 0; font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif; background: #0f141b; color: #e7ebf0; }
+main { max-width: 640px; margin: 0 auto; padding: 28px 16px; }
+h1 { font-size: 22px; margin: 0 0 6px; }
+p.sub { color: #9aa5b1; margin: 0 0 18px; }
+.caixa { background: #171e27; border: 1px solid #273140; border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+label { display: block; margin: 0 0 12px; font-weight: 600; font-size: 13px; color: #c3cbd5; }
+input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 10px; border-radius: 8px; border: 1px solid #334152;
+  background: #0f141b; color: #e7ebf0; font-size: 15px; }
+button, a.bt { display: inline-block; background: #E85D22; color: #fff; border: 0; border-radius: 8px; padding: 11px 18px; font-size: 15px;
+  font-weight: 600; cursor: pointer; text-decoration: none; }
+button.sec, a.sec { background: #273140; }
+.link { font-size: 18px; font-weight: 700; word-break: break-all; color: #7cc4ff; }
+.erro { color: #ff6b6b; } .ok { color: #3ecf8e; } small { color: #9aa5b1; }
+</style>
+</head>
+<body><main>
+<h1>Link para a equipe</h1>
+<p class="sub">Com o link, a equipe entra no sistema pela internet (computador ou celular) enquanto este programa estiver aberto neste computador.</p>
+
+<div class="caixa" id="form" hidden>
+  <p style="margin-top:0">Primeiro, crie o <b>seu usuário de administrador</b>. Os usuários de demonstração (com a senha escrita na tela) serão desativados, para que ninguém de fora entre com eles.</p>
+  <label>Login<input id="login" placeholder="ex.: gabriel.horta" autocomplete="username"></label>
+  <label>Nome<input id="nome" placeholder="Seu nome"></label>
+  <label>Senha (mín. 10 caracteres)<input id="senha" type="password" autocomplete="new-password"></label>
+  <label>Repita a senha<input id="senha2" type="password" autocomplete="new-password"></label>
+  <button id="criar">Criar administrador e ligar o link</button>
+  <p id="msg"></p>
+</div>
+
+<div class="caixa" id="estado" hidden>
+  <div id="situacao">Verificando…</div>
+  <p><button class="sec" id="copiar" hidden>Copiar o link</button> <a class="bt" href="/">Entrar no sistema</a></p>
+  <small>O link muda quando o programa reinicia. O atual aparece sempre na janela do programa, no arquivo LINK_DA_EQUIPE.txt e na aba 6 do sistema.
+  Cada pessoa entra com o próprio usuário, criado por você na aba 6.</small>
+</div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let URL_ATUAL = null;
+async function estado() {
+  const r = await fetch('/api/link').then(r => r.json()).catch(() => null);
+  if (!r) return null;
+  $('#form').hidden = r.configurado; $('#estado').hidden = !r.configurado;
+  if (!r.configurado) return r;
+  const s = $('#situacao');
+  URL_ATUAL = r.url; $('#copiar').hidden = !r.url;
+  if (!r.ligado) s.innerHTML = 'O link para a equipe não está ligado neste modo de abertura.';
+  else if (r.situacao === 'NO_AR') s.innerHTML = `<span class="ok">● No ar.</span> Envie este link para a equipe:<p class="link">${r.url}</p>`;
+  else if (r.situacao === 'CONECTANDO' || r.situacao === 'DESLIGADO') s.innerHTML = 'Ligando o link… (alguns segundos)';
+  else s.innerHTML = `<span class="erro">O link não ligou:</span> ${r.erro || r.situacao}`;
+  return r;
+}
+async function acompanhar() {
+  for (let i = 0; i < 90; i++) { const r = await estado(); if (r && r.configurado && (r.situacao === 'NO_AR' || r.situacao === 'ERRO' || r.situacao === 'SEM_PROGRAMA' || !r.ligado)) return; await new Promise(z => setTimeout(z, 1500)); }
+}
+$('#criar').onclick = async () => {
+  const m = $('#msg'); m.className = 'erro';
+  if ($('#senha').value !== $('#senha2').value) { m.textContent = 'As senhas não conferem.'; return; }
+  $('#criar').disabled = true;
+  const r = await fetch('/api/configurar-acesso', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MC': '1' },
+    body: JSON.stringify({ login: $('#login').value, nome: $('#nome').value, senha: $('#senha').value }) });
+  const j = await r.json(); $('#criar').disabled = false;
+  if (!r.ok) { m.textContent = j.erro; return; }
+  m.className = 'ok'; m.textContent = `Administrador criado. ${j.desativados} usuário(s) de demonstração desativado(s).`;
+  acompanhar();
+};
+$('#copiar').onclick = async () => { try { await navigator.clipboard.writeText(URL_ATUAL); $('#copiar').textContent = 'Copiado!'; } catch (_) { prompt('Copie o link:', URL_ATUAL); } };
+acompanhar();
+</script>
+</body>
+</html>

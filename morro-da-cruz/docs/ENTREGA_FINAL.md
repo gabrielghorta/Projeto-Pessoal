@@ -116,7 +116,7 @@ A demonstração também apontou três comportamentos, registrados no documento:
   - O `MorroDaCruz.exe` foi gerado e abriu a primeira abertura no Windows.
   - Ainda não ensaiados no Windows: a montagem com as planilhas reais e o uso completo. Confira o primeiro backup e a primeira restauração na máquina da obra.
 - **Servidor de um processo:** as gravações são serializadas. A concorrência é segura, mas o servidor é dimensionado para o porte da obra, não para muitos acessos simultâneos.
-- **Só 127.0.0.1** até a D-60; o login está pronto para quando houver hospedagem com HTTPS.
+- **Acesso pela equipe (D-60, decidida em 17/10):** link https pelo computador do escritório. O link vale enquanto o programa estiver aberto e muda a cada reinício. O servidor continua só em 127.0.0.1, atrás do túnel.
 - **Medição de TESTE:** valores com hipóteses (teto por subgrupo, reajuste sem frações elegíveis, rateio da escavação) e pendências fora do valor. Nada é oficial.
 - **Relatórios ao vivo:** não há histórico mensal além da medição fechada (congelada).
 - **Material sem de-para** numa revisão do BM (A2).

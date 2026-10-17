@@ -1,8 +1,6 @@
-# Dados do contrato ficam só na máquina local (não versionar)
-planilhas/*
-!planilhas/LEIA-ME.md
-mapa/*
-!mapa/LEIA-ME.md
+# Bancos de dados e anexos da obra ficam só na máquina (não versionar).
+# As planilhas e o mapa da licitação são versionados por decisão do responsável (17/10/2026): o pacote e o site já
+# abrem com a obra carregada.
 dados/
 dados_demo/
 __pycache__/
@@ -10,3 +8,6 @@ __pycache__/
 build/
 dist/
 MorroDaCruz_Obra_Windows.zip
+LINK_DA_EQUIPE.txt
+cloudflared
+cloudflared.exe

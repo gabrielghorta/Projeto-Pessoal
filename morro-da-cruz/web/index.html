@@ -23,6 +23,7 @@
       <span id="quem" class="quem"></span>
       <button type="button" class="btn tema" id="senhaBtn" hidden>Trocar senha</button>
       <button type="button" class="btn tema" id="sairBtn" hidden>Sair</button>
+      <button type="button" class="btn tema" id="linkBtn" hidden title="Copiar o link para a equipe">🔗 Link da equipe</button>
       <button type="button" class="btn tema" id="temaBtn" title="Alternar entre tema escuro e claro">☀️ Tema claro</button>
       <div class="caesb" aria-label="Caesb">Caesb</div>
     </div>
@@ -433,6 +434,7 @@
 
   <!-- ======================================================= 6. ADMIN -->
   <section class="aba" id="aba-admin">
+    <div class="painel" id="painelLink" hidden style="margin-bottom:16px"><h3>Link para a equipe</h3><div id="linkEstado"></div></div>
     <div class="grade-2">
       <div class="painel">
         <h3>Histórico de alterações (auditoria)</h3>
@@ -461,6 +463,7 @@
     <label>Usuário<input name="login" autocomplete="username" required></label>
     <label>Senha<input name="senha" type="password" autocomplete="current-password" required></label>
     <div id="loginMsg" class="aviso problema" hidden></div>
+    <div id="dicaLink" class="aviso sugestao" hidden><b>Link para a equipe:</b> para abrir o sistema pela internet, <a href="/configurar">crie o seu administrador</a>. Os usuários de demonstração serão desativados.</div>
     <div id="dicaDemo" class="aviso info" hidden><b>Demonstração:</b> usuário <code>eng.demo</code> (ou <code>eng2.demo</code>, <code>almox.demo</code>, <code>equipe.demo</code>, <code>admin.demo</code>, <code>topo.demo</code>, <code>cadastro.demo</code>) e senha <code>demo-morro-123</code>.</div>
     <div class="acoes"><button class="btn prim">Entrar</button></div>
     <p class="vazio" style="margin:0">Cada lançamento fica registrado com o seu usuário. Usuários são criados pela administração.</p>

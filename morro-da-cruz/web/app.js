@@ -992,7 +992,21 @@ function renderMateriaisRel() {
 $('#rlSoMov').addEventListener('change', () => RELATORIO && renderMateriaisRel());
 
 /* ---------------------------------------------------------------- 6. usuários e histórico */
+async function carregarLink() {
+  const r = await api('/api/link').catch(() => null);
+  LINK_ATUAL = r && r.situacao === 'NO_AR' ? r.url : null;
+  $('#linkBtn').hidden = !LINK_ATUAL;
+  $('#painelLink').hidden = !(r && r.ligado);
+  if (r && r.ligado) $('#linkEstado').innerHTML = LINK_ATUAL
+    ? `<p style="margin:0 0 6px">Envie este endereço para a equipe (cada pessoa entra com o próprio usuário):</p><p style="font-size:17px;font-weight:700;word-break:break-all;margin:0 0 6px">${esc(LINK_ATUAL)}</p><small class="vazio">Vale enquanto o programa estiver aberto no computador do escritório; muda quando ele reinicia.</small>`
+    : `<p class="vazio" style="margin:0">${r.configurado ? esc(r.erro || 'Ligando o link…') : 'Crie o administrador no computador do programa (endereço /configurar).'}</p>`;
+}
+let LINK_ATUAL = null;
+$('#linkBtn').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(LINK_ATUAL); toast('Link copiado: ' + LINK_ATUAL, 'ok'); } catch (_) { prompt('Copie o link:', LINK_ATUAL); }
+});
 async function carregarAdmin() {
+  carregarLink();
   $('#painelUsuarios').hidden = !pode('usuarios');
   if (pode('usuarios')) {
     const us = await api('/api/usuarios');
@@ -1059,6 +1073,7 @@ async function iniciar() {
     try { const r = await api('/api/sessao'); USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; } catch (_) { return; }   // sem sessão: tela de login
   }
   aplicarPermissoes();
+  carregarLink();
   if (INICIADO) return;
   INICIADO = true;
   RESUMO = await api('/api/resumo');

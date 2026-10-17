@@ -17,14 +17,14 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Etapa 4, campo e cadastro (intervalos por etapa, retificação, conciliação do legado, levantamento de campo, conferência interna do cadastro, soldas verificadas, foto original com hash): `docs/ETAPA_4_CAMPO.md`.
   - Módulos do plano: acesso e auditoria `docs/MODULO_A_ACESSO.md`; campo `docs/MODULO_B_CAMPO.md`; compras e recebimento `docs/MODULO_C_COMPRAS.md`; planejamento e mapa `docs/MODULO_D_PLANEJAMENTO.md`; medição (parcela única, elegibilidade, conferência antes do fechamento, regras bloqueadas) `docs/MODULO_E_MEDICAO.md`; relatórios e operação `docs/MODULO_F_RELATORIOS.md`.
 
-## Abrir no computador com dois cliques (Windows)
+## Site para a equipe: um link, a partir do computador do escritório (Windows)
 
-1. Baixe `MorroDaCruz-Windows.zip` em **Releases** do repositório (versão mais recente) e descompacte numa pasta.
+1. Baixe `MorroDaCruz-Windows.zip` em **Releases** do repositório (versão mais recente) e descompacte numa pasta. Ele já traz as planilhas, o mapa e o túnel (cloudflared).
 2. Dê dois cliques em `MorroDaCruz.exe`. Se o Windows avisar "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
-3. O navegador abre sozinho. Na primeira vez, arraste para a página as 5 planilhas e o mapa REV02. Os arquivos são reconhecidos pelo conteúdo e a demonstração é montada em menos de 1 minuto.
-4. Entre com `eng.demo` / `demo-morro-123` (os outros usuários aparecem na tela de login).
+3. Na primeira vez, a obra é montada sozinha e o navegador abre em "Link para a equipe". Crie o seu administrador; os usuários de demonstração são desativados.
+4. Aparece o **link para a equipe** (`https://….trycloudflare.com`). Quem abre o link entra pelo computador ou celular, de qualquer lugar. Crie os usuários de cada pessoa na aba 6.
 
-Não precisa instalar o Python. Para fechar, feche a janela do programa. Os dados ficam na pasta do programa (`dados_demo/`, `planilhas/`, `mapa/`, `config/`).
+Não precisa instalar o Python nem criar conta em lugar nenhum. O link vale enquanto o programa estiver aberto e muda a cada reinício. O link atual fica na janela do programa, em `LINK_DA_EQUIPE.txt` e no botão "Link da equipe" do sistema. Os dados ficam na pasta do programa (`dados_demo/`).
 
 O executável é gerado e testado no Windows pelo GitHub Actions (`.github/workflows/morro-da-cruz-windows.yml`). Para gerar à mão: `python -m PyInstaller MorroDaCruz.spec`. Sem o executável, `ABRIR_SISTEMA.bat` faz o mesmo usando o Python instalado.
 

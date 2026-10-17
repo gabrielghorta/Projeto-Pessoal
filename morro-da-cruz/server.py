@@ -25,6 +25,7 @@ import medicao as M
 import planejamento as P
 import relatorios as RL
 import exportar
+import link
 import regras as R
 import servicos as S
 
@@ -34,6 +35,8 @@ LOCK = threading.Lock()
 CONN = None
 DB_PATH = S.DB_PADRAO
 DEMONSTRACAO = False                  # banco de demonstração (dados_demo/): a interface mostra a faixa de aviso
+LINK = False                          # link para a equipe (túnel), ligado pelo programa do escritório (iniciar.py)
+PORTA = 8765
 DIR_FOTOS = S.DIR_FOTOS                 # sempre <pasta do banco>/fotos (é o que o backup copia e confere)
 COOKIE = "mc_sessao"
 COOKIE_SEGURO = False                   # True só atrás de HTTPS (decisão D-60); em 127.0.0.1 é HTTP
@@ -515,8 +518,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
-        LOG.info("%s %s %s %s %d", self.client_address[0], getattr(self, "_login", "-") or "-", self.command,
+        LOG.info("%s %s %s %s %d", self._ip(), getattr(self, "_login", "-") or "-", self.command,
                  urlparse(self.path).path, status)
+
+    def _local(self):
+        """Pedido feito no próprio computador (não veio pelo link da equipe: o túnel acrescenta Cf-Connecting-Ip)."""
+        return (self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("Cf-Connecting-Ip")
+                and not self.headers.get("X-Forwarded-For"))
+
+    def _ip(self):
+        return self.headers.get("Cf-Connecting-Ip") or self.client_address[0]
+
+    def _https(self):
+        return (self.headers.get("X-Forwarded-Proto") == "https" or '"https"' in (self.headers.get("Cf-Visitor") or "")
+                or bool(self.headers.get("Cf-Connecting-Ip")))
 
     def _token(self):
         c = SimpleCookie(self.headers.get("Cookie") or "")
@@ -556,14 +571,32 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if u.path in PUBLICOS:
-            if u.path in ("/", "/index.html") and DEMONSTRACAO:          # demonstração: mostra os usuários no login
+            if u.path in ("/", "/index.html"):
                 with open(os.path.join(WEB, "index.html"), "rb") as f:
-                    return self._send(200, f.read().replace(b'id="dicaDemo" class="aviso info" hidden', b'id="dicaDemo" class="aviso info"'),
-                                      "text/html; charset=utf-8")
+                    html = f.read()
+                if self._local():                       # avisos só para quem está no próprio computador
+                    with LOCK:
+                        configurado = A.acesso_configurado(CONN)
+                    if DEMONSTRACAO and not configurado:
+                        html = html.replace(b'id="dicaDemo" class="aviso info" hidden', b'id="dicaDemo" class="aviso info"')
+                    if LINK and not configurado:
+                        html = html.replace(b'id="dicaLink" class="aviso sugestao" hidden', b'id="dicaLink" class="aviso sugestao"')
+                return self._send(200, html, "text/html; charset=utf-8")
             return self._static(WEB, "index.html" if u.path in ("/", "/index.html") else u.path.lstrip("/"))
         with LOCK:
             sem = not A.ha_usuarios(CONN)
             usuario = None if sem else self._usuario()
+        if u.path == "/configurar":
+            if not self._local():
+                return self._send(403, "A configuração do acesso só pode ser feita no computador do programa.",
+                                  "text/plain; charset=utf-8")
+            return self._static(WEB, "configurar.html")
+        if u.path == "/api/link":
+            if usuario is None and not self._local():
+                return self._send(401, {"erro": "Entre com seu usuário."})
+            with LOCK:
+                configurado = A.acesso_configurado(CONN)
+            return self._send(200, {**link.estado, "ligado": LINK, "configurado": configurado})
         if u.path == "/api/sessao":
             if sem:
                 return self._send(401, self._sem_usuarios())
@@ -613,7 +646,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         rota = u.path
-        if rota not in POST and rota not in POST_USUARIO and rota not in ("/api/login", "/api/logout"):
+        if rota not in POST and rota not in POST_USUARIO and rota not in ("/api/login", "/api/logout", "/api/configurar-acesso"):
             return self._send(404, {"erro": "rota inexistente"})
         if self.headers.get("X-MC") != "1":            # só a própria aplicação grava (proteção contra CSRF)
             return self._send(403, {"erro": "Requisição recusada: origem não reconhecida."})
@@ -625,6 +658,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"erro": "JSON inválido"})
         if rota == "/api/login":
             return self._login_post(body)
+        if rota == "/api/configurar-acesso":
+            return self._configurar_acesso(body)
         if rota == "/api/logout":
             with LOCK:
                 usuario = self._usuario()
@@ -642,14 +677,30 @@ class Handler(BaseHTTPRequestHandler):
             if not A.ha_usuarios(CONN):
                 return self._send(401, self._sem_usuarios())
             try:
-                token, usuario = A.autenticar(CONN, body.get("login"), body.get("senha"), self.client_address[0])
+                token, usuario = A.autenticar(CONN, body.get("login"), body.get("senha"), self._ip())
             except A.AcessoNegado as e:
                 A.auditar(CONN, None, "POST", "/api/login", e.status, body, str(e), login=str(body.get("login") or "").lower())
                 return self._send(e.status, {"erro": str(e)})
             A.auditar(CONN, usuario, "POST", "/api/login", 200, body)
             self._login = usuario["login"]
-        cookie = f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict" + ("; Secure" if COOKIE_SEGURO else "")
+        cookie = f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict" + ("; Secure" if COOKIE_SEGURO or self._https() else "")
         return self._send(200, {"usuario": usuario, "demonstracao": DEMONSTRACAO}, extra={"Set-Cookie": cookie})
+
+    def _configurar_acesso(self, body):
+        """Primeiro administrador real, só no próprio computador; depois liga o link da equipe."""
+        if not self._local():
+            return self._send(403, {"erro": "A configuração do acesso só pode ser feita no computador do programa."})
+        with LOCK:
+            try:
+                with S.transacao(CONN):
+                    uid, desativados = A.configurar_acesso(CONN, body.get("login"), body.get("nome"), body.get("senha"))
+            except R.RegraViolada as e:
+                return self._send(422, {"erro": str(e)})
+            A.auditar(CONN, None, "POST", "/api/configurar-acesso", 200, {"login": body.get("login")},
+                      f"administrador criado; {desativados} usuário(s) de demonstração desativado(s)", login=str(body.get("login")).lower())
+        if LINK:
+            link.iniciar(PORTA, _anunciar_link)
+        return self._send(200, {"ok": True, "desativados": desativados, "link": dict(link.estado)})
 
     def _gravar(self, rota, body):
         """Uma requisição = uma transação: permissão, autoria, reenvio, a operação e a auditoria do aceite.
@@ -712,16 +763,25 @@ def configurar_log(pasta_db):
     LOG.setLevel(logging.INFO)
 
 
+def _anunciar_link(url):
+    print("\n" + "=" * 72)
+    print(f" LINK PARA A EQUIPE:  {url}")
+    print(" Envie este link. Ele vale enquanto este programa estiver aberto (muda quando reiniciar).")
+    print(f" Ele também fica em {link.ARQUIVO}, na pasta do programa, e na aba 6 do sistema.")
+    print("=" * 72 + "\n", flush=True)
+
+
 def main():
-    global CONN, DB_PATH, DIR_FOTOS, DEMONSTRACAO
+    global CONN, DB_PATH, DIR_FOTOS, DEMONSTRACAO, LINK, PORTA
     backup.utf8_console()
     ap = argparse.ArgumentParser()
     ap.add_argument("--porta", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--db", default=S.DB_PADRAO)
     ap.add_argument("--demonstracao", action="store_true", help="mostra a faixa DEMONSTRAÇÃO na interface")
+    ap.add_argument("--link", action="store_true", help="liga o link para a equipe (túnel https) depois do administrador")
     a = ap.parse_args()
-    DEMONSTRACAO = a.demonstracao
+    DEMONSTRACAO, LINK, PORTA = a.demonstracao, a.link, a.porta
     if not os.path.exists(a.db):
         raise SystemExit(f"Banco {a.db} não existe — rode antes: python importar.py --aplicar")
     DB_PATH = a.db
@@ -739,12 +799,19 @@ def main():
     marca = backup.marcar_servidor(os.path.dirname(os.path.abspath(a.db)), a.host, a.porta)
     print(f"Sistema Morro da Cruz em http://{a.host}:{a.porta}  (Ctrl+C para sair)")
     print("Importação e restauração exigem este servidor parado.")
+    if LINK:
+        if A.acesso_configurado(CONN):
+            print("Ligando o link para a equipe (alguns segundos)…", flush=True)
+            link.iniciar(PORTA, _anunciar_link)
+        else:
+            print(f"Link para a equipe: crie antes o administrador em http://127.0.0.1:{a.porta}/configurar", flush=True)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))      # encerramento externo também apaga a marca
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        link.parar()
         srv.server_close()
         if os.path.exists(marca):
             os.remove(marca)

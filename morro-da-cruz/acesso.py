@@ -151,6 +151,30 @@ def ha_usuarios(conn):
     return conn.execute("SELECT 1 FROM usuarios WHERE ativo=1 LIMIT 1").fetchone() is not None
 
 
+DEMO = "%.demo"                                    # usuários de demonstração (senha conhecida, escrita na tela)
+
+
+def acesso_configurado(conn):
+    """Há administrador real ativo? Só então o sistema pode ser aberto pelo link da equipe."""
+    return conn.execute("SELECT 1 FROM usuarios WHERE ativo=1 AND perfil='ADMINISTRACAO' AND login NOT LIKE ? LIMIT 1",
+                        (DEMO,)).fetchone() is not None
+
+
+def configurar_acesso(conn, login, nome, senha):
+    """Cria o primeiro administrador real e DESATIVA os usuários de demonstração (a senha deles é pública). Os registros
+    feitos por eles continuam no histórico; podem ser reativados com `usuarios.py reativar`."""
+    if acesso_configurado(conn):
+        raise R.RegraViolada("O acesso já foi configurado: entre com o administrador.")
+    if str(login or "").strip().lower().endswith(".demo"):
+        raise R.RegraViolada("Escolha um login seu (o final .demo é dos usuários de demonstração).")
+    uid = criar_usuario(conn, login, nome, "ADMINISTRACAO", senha, None, "configuração do link da equipe")
+    demos = [r[0] for r in conn.execute("SELECT id FROM usuarios WHERE ativo=1 AND login LIKE ?", (DEMO,))]
+    for i in demos:
+        conn.execute("UPDATE usuarios SET ativo=0 WHERE id=?", (i,))
+        conn.execute("DELETE FROM sessoes WHERE usuario_id=?", (i,))
+    return uid, len(demos)
+
+
 def autenticar(conn, login, senha, origem=None):
     """Devolve (token, usuário público). Falha → AcessoNegado 401 (mensagem única, sem dizer o que errou)."""
     login = str(login or "").strip().lower()

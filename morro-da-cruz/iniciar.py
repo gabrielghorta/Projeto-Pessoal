@@ -139,7 +139,7 @@ bt.onclick=async()=>{bt.disabled=true;msg.textContent='Montando a demonstração
  const r=await fetch('/assistente/montar',{method:'POST'});const j=await r.json();
  if(!r.ok){msg.innerHTML='<span class="er">'+j.erro+'</span>';bt.disabled=false;return}
  msg.textContent='Pronto. Abrindo o sistema…';
- for(let i=0;i<120;i++){await new Promise(z=>setTimeout(z,700));try{const s=await fetch('/api/sessao');if(s.status===401||s.status===200){location.href='/';return}}catch(_){}}
+ for(let i=0;i<120;i++){await new Promise(z=>setTimeout(z,700));try{const s=await fetch('/api/sessao');if(s.status===401||s.status===200){location.href='/configurar';return}}catch(_){}}
  msg.textContent='Atualize a página (F5).';};
 </script></body></html>"""
 
@@ -239,16 +239,24 @@ def main():
             abrir = False                                         # a página da primeira abertura já está no navegador
         else:
             demo.criar()
+    import acesso
+    import servicos
+    c = servicos.conectar(db)
+    try:
+        configurado = acesso.acesso_configurado(c)
+    finally:
+        c.close()
     print("\n" + "=" * 72)
     print(f" Sistema Morro da Cruz — {'DEMONSTRAÇÃO (banco separado em dados_demo/)' if demonstracao else 'banco OFICIAL'}")
-    print(f" Endereço: http://127.0.0.1:{porta}")
-    if demonstracao:
-        print(f" Usuários de demonstração (senha {demo.SENHA}): " + ", ".join(u[0] for u in demo.USUARIOS))
-    print(" Deixe esta janela aberta enquanto usa o sistema. Para fechar o sistema, feche esta janela.")
-    print("=" * 72 + "\n")
+    print(f" Neste computador: http://127.0.0.1:{porta}")
+    if not configurado:
+        print(f" Para ligar o LINK DA EQUIPE, crie o seu administrador: http://127.0.0.1:{porta}/configurar")
+    print(" Deixe esta janela aberta enquanto o sistema estiver em uso. Fechar a janela fecha o sistema e o link.")
+    print("=" * 72 + "\n", flush=True)
     if abrir:
-        threading.Timer(1.2, webbrowser.open, [f"http://127.0.0.1:{porta}/"]).start()
-    sys.argv = ["server.py", "--db", db, "--porta", str(porta)] + (["--demonstracao"] if demonstracao else [])
+        destino = "/" if configurado else "/configurar"
+        threading.Timer(1.2, webbrowser.open, [f"http://127.0.0.1:{porta}{destino}"]).start()
+    sys.argv = (["server.py", "--db", db, "--porta", str(porta), "--link"] + (["--demonstracao"] if demonstracao else []))
     return server.main()
 
 

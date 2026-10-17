@@ -42,6 +42,23 @@ morro-da-cruz/
 
 As pastas `planilhas/`, `mapa/` e `dados/` ficam **fora do Git** (`.gitignore`). Os dados da obra não vão para o repositório.
 
+## 1.1 Link para a equipe (decisão D-60, 17/10/2026)
+
+O programa do escritório publica o sistema num endereço `https://….trycloudflare.com`, pelo túnel gratuito da Cloudflare (`cloudflared.exe`, que vem no pacote). Não precisa de conta, de domínio nem de abrir porta no roteador; o servidor continua escutando só em 127.0.0.1.
+
+Como funciona:
+- **Primeira vez:** a página `http://127.0.0.1:8765/configurar` só abre no próprio computador. Nela você cria o administrador real, e os usuários `*.demo` (com senha conhecida) são desativados. Só então o link liga.
+- **Pelo link:**
+  - não aparecem as dicas de demonstração;
+  - `/configurar` é recusado (403);
+  - o cookie de sessão vai com `Secure`;
+  - o IP de origem (Cf-Connecting-Ip) fica no log e na sessão.
+- **Cada pessoa** entra com o próprio usuário, criado na aba 6.
+- **Limites:**
+  - o link vale enquanto o computador e o programa estiverem ligados, e muda a cada reinício. O atual aparece na janela, em `LINK_DA_EQUIPE.txt` e na aba 6;
+  - se a internet cair, ele religa sozinho, até 5 vezes, com um endereço novo;
+  - o serviço gratuito da Cloudflare não tem garantia de disponibilidade.
+
 ## 2.0 Programa de dois cliques (MorroDaCruz.exe)
 
 O pacote `MorroDaCruz-Windows.zip` (Releases do repositório, gerado pelo GitHub Actions) traz um único executável, sem precisar instalar o Python.

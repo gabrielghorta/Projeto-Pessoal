@@ -1,32 +1,37 @@
 SISTEMA MORRO DA CRUZ — Ankara Engenharia · CT 10.239/2026
 ====================================================================
+Já vem com as planilhas e o mapa da obra. Não precisa instalar nada.
 
-COMO ABRIR
-1. Descompacte este arquivo .zip numa pasta (por exemplo, Documentos\MorroDaCruz).
+COMO ABRIR (no computador do escritório)
+1. Descompacte este .zip numa pasta (por exemplo, Documentos\MorroDaCruz).
    Não abra o programa de dentro do .zip.
 2. Dê dois cliques em MorroDaCruz.exe.
    Se o Windows mostrar "O Windows protegeu o computador", clique em
-   "Mais informações" e depois em "Executar assim mesmo"
-   (o programa ainda não tem assinatura digital).
-3. O navegador abre sozinho.
-   - Na PRIMEIRA vez, ele pede as 5 planilhas do contrato e o mapa REV02:
-     arraste os arquivos para a página (pode ser todos de uma vez) e clique em
-     "Montar a demonstração e abrir o sistema". Leva menos de 1 minuto.
-   - Nas próximas vezes, abre direto na tela de login.
-4. Entre com o usuário eng.demo e a senha demo-morro-123
-   (outros perfis: eng2.demo, almox.demo, almox2.demo, equipe.demo,
-   admin.demo, topo.demo, cadastro.demo — mesma senha).
+   "Mais informações" e depois em "Executar assim mesmo".
+   Se o firewall perguntar, permita o acesso.
+3. Na PRIMEIRA vez, o programa monta a obra (menos de 1 minuto) e o navegador
+   abre na página "Link para a equipe": crie o SEU usuário de administrador
+   (login, nome e senha de pelo menos 10 caracteres).
+4. Em alguns segundos aparece o LINK PARA A EQUIPE, algo como
+   https://palavras-aleatorias.trycloudflare.com
+   Envie esse link. Quem abrir o link entra no sistema pelo computador ou
+   pelo celular, de qualquer lugar.
+5. Crie o usuário de cada pessoa na aba "6. Usuários & Histórico".
+   Cada lançamento fica registrado com o nome de quem fez.
 
-PARA FECHAR
-Feche a janela preta do programa. Os dados ficam salvos na pasta.
-
-ONDE FICAM OS DADOS
-Na mesma pasta do programa: dados_demo\ (demonstração), planilhas\, mapa\ e config\.
-Para recomeçar a demonstração do zero, apague a pasta dados_demo e abra o programa de novo.
+TODO DIA
+- Deixe o programa aberto (a janela preta) enquanto a equipe usa o sistema.
+  Fechar a janela fecha o sistema e o link.
+- O link MUDA cada vez que o programa é aberto de novo. O link atual aparece:
+  na janela preta, no arquivo LINK_DA_EQUIPE.txt (nesta pasta) e no botão
+  "Link da equipe" no topo do sistema (clique para copiar).
+- Se o computador desligar ou ficar sem internet, o link para de funcionar.
 
 IMPORTANTE
-- É uma DEMONSTRAÇÃO: o banco é separado e nada nele vale como registro oficial
-  (a faixa amarela no topo avisa). A medição é sempre de TESTE.
-- O sistema abre só neste computador (http://127.0.0.1:8765).
-- Para atualizar o programa, baixe a versão nova e substitua só o MorroDaCruz.exe;
-  as pastas de dados continuam.
+- Os dados ficam nesta pasta (dados_demo\). Faça cópia dela de vez em quando.
+- A faixa amarela DEMONSTRAÇÃO continua enquanto os controles das planilhas
+  (CTRL-01) não forem aprovados; a medição é sempre de TESTE.
+- Os usuários de demonstração (eng.demo etc.) são desligados quando você cria
+  o administrador, porque a senha deles é conhecida.
+- Para atualizar o programa, baixe a versão nova e substitua só o
+  MorroDaCruz.exe; as pastas de dados continuam.
