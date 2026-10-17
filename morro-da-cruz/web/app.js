@@ -14,6 +14,46 @@ const STATUS = {
 };
 let RESUMO = null, MATERIAIS = [], MEDICAO_ATUAL = null;
 
+/* ---------------------------------------------------------------- visão integrada (detalhe do trecho e campo) */
+const faixa = l => l && l.length ? l.map(([a, b]) => `${nf(a)}–${nf(b)}`).join(', ') : '—';
+const NIVEL = { BLOQUEIO: 'vermelho', ALERTA: 'amarelo', PENDENTE: '' };
+// "verificado" = conferência interna Ankara (azul), nunca verde de aprovação
+const VERIF = { INFORMADO: ['informado, sem verificação', 'amarelo'], PARCIAL: ['verificação parcial', 'amarelo'],
+  VERIFICADO: ['verificado — conferência interna', 'azul'], LEGADO_SEM_POSICAO: ['avanço legado sem posição', 'vermelho'] };
+const FASE_STATUS = {
+  NAO_INICIADO: ['não iniciado', 'vermelho'], PARCIAL: ['parcial', 'amarelo'], COMPLETO: ['completo (informado)', 'azul'],
+  AGUARDA_OK_INTERNO: ['aguarda OK interno', ''], PRONTO_PARA_ENVIO: ['pronto p/ envio', 'amarelo'], EM_PRODUCAO: ['em produção na empresa', 'amarelo'], RECEBIDO: ['recebido', 'azul'],
+  AGUARDA_ARQUIVOS: ['aguarda arquivos', ''], SEM_CONFERENCIA: ['sem conferência', 'amarelo'], CONFORME: ['conforme (interno)', 'azul'],
+  NAO_CONFORME: ['não conforme (interno)', 'vermelho'], PROTOCOLADO_SEM_CONFERENCIA: ['protocolado sem conferência', 'amarelo'],
+  NAO_PROTOCOLADO: ['não protocolado', ''], EM_ANALISE_CAESB: ['em análise na Caesb', 'amarelo'], NEGADO_CAESB: ['negado pela Caesb', 'vermelho'],
+  APROVACAO_CAESB_REGISTRADA: ['aprovação Caesb registrada (memorando ESET)', 'verde'],
+};
+const chipVerif = v => v ? `<span class="chip ${VERIF[v][1]}">${VERIF[v][0]}</span>` : '';
+function htmlEtapas(iv) {
+  return `<table><thead><tr><th>Etapa</th><th class="n">Informado (m)</th><th class="n">Verificado (m)</th><th>Feito (m)</th><th>Lacunas (m)</th></tr></thead><tbody>
+    ${Object.entries(iv.etapas).map(([e, v]) => `<tr><td>${esc(e)}</td><td class="n">${nf(v.metros)}</td><td class="n">${nf(v.verificado_m)}</td><td>${faixa(v.cobertura)}</td><td>${faixa(v.lacunas)}</td></tr>`).join('')}</tbody></table>`;
+}
+function htmlRegistros(iv, editavel) {
+  return iv.registros.map(g => `<div class="registro"><div><b>${g.ref_tipo === 'CONCILIACAO' ? 'Conciliação do legado' : 'Apontamento'} #${g.ref_id}</b>
+      ${editavel ? `<button type="button" class="btn" data-retificar-ref="${g.ref_tipo}|${g.ref_id}">Retificar</button>` : ''}</div>
+    ${g.intervalos.map(i => `<div><small>${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m · ${esc(i.data)} · ${esc(i.origem)}${i.informado_por ? ' · ' + esc(i.informado_por) : ''}${i.referencia ? ' · registro: ' + esc(i.referencia) : ''}</small>
+      ${i.verificado_em ? `<span class="chip azul">verificado · ${esc(i.verificado_por)}</span>` : editavel ? `<button type="button" class="btn" data-verificar-intervalo="${i.id}">Verificar</button>` : '<span class="chip amarelo">sem verificação</span>'}</div>`).join('')}</div>`).join('')
+    || '<div class="vazio">Nenhum intervalo registrado.</div>';
+}
+function htmlHistorico(iv) {
+  if (!iv.retificacoes.length && !iv.anulados.length && !iv.conciliacoes.length) return '';
+  return `<details><summary>Histórico: ${iv.conciliacoes.length} conciliação(ões), ${iv.retificacoes.length} retificação(ões), ${iv.anulados.length} intervalo(s) anulado(s)</summary>
+    ${iv.conciliacoes.map(c => `<div><small>Conciliação #${c.id} · ${esc(String(c.em).slice(0, 10))} · ${esc(c.responsavel)} · ${nf(c.metros_assentado)} m assentados / ${nf(c.metros_reaterrado)} m reaterrados — ${esc(c.motivo)}</small></div>`).join('')}
+    ${iv.retificacoes.map(r => `<div><small>Retificação #${r.id} · ${esc(String(r.em).slice(0, 10))} · ${esc(r.responsavel)} · ${r.ref_tipo === 'CONCILIACAO' ? 'conciliação' : 'apontamento'} #${r.ref_id}${r.novo_apontamento_id ? ' → apontamento #' + r.novo_apontamento_id : ''} — ${esc(r.motivo)}</small></div>`).join('')}
+    ${iv.anulados.map(i => `<div style="opacity:.6;text-decoration:line-through"><small>${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m · ${esc(i.data)} · ${esc(i.origem)}${i.verificado_por ? ' · verificado por ' + esc(i.verificado_por) : ''} (anulado pela retificação #${i.anulado_por})</small></div>`).join('')}</details>`;
+}
+const htmlPendencias = ps => ps && ps.length ? `<ul class="pend">${ps.map(p => `<li><span class="chip ${NIVEL[p.nivel]}">${esc(p.nivel.toLowerCase())}</span> <b>${esc(p.area)}:</b> ${esc(p.texto)}</li>`).join('')}</ul>`
+  : '<div class="vazio">Sem pendências registradas.</div>';
+const htmlFases = fs => (fs || []).map(f => `<div class="fase"><b>${esc(f.nome)}</b> <span class="chip ${(FASE_STATUS[f.status] || ['', ''])[1]}">${esc((FASE_STATUS[f.status] || [f.status])[0])}</span>
+    ${f.evidencias.length ? `<ul>${f.evidencias.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
+    ${f.pendencias.length ? `<ul class="pendencias">${f.pendencias.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}</div>`).join('');
+const FOTO_OK = v => v && !['INVALIDA', 'ARQUIVO_AUSENTE'].includes(v);
+
 async function api(url, body) {
   const r = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
@@ -71,6 +111,10 @@ async function carregarMapa() {
   $('#pins').innerHTML = est.pins.length ? est.pins.map(p => `<div class="acoes" style="margin-bottom:6px">📍 <b>${esc(p.equipe)}</b> <button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(curto(p.alvo_id))}</button></div>`).join('')
     : '<span class="vazio">Nenhum check-in aberto hoje.</span>';
   $('#semPosicao').innerHTML = est.sem_posicao.map(e => `<div style="margin-bottom:6px"><b>${esc(e.numero)}</b> <span class="chip ${String(e.status_posicao || '').startsWith('PROV') ? 'amarelo' : 'vermelho'}">${esc(e.status_posicao || 'sem posição')}</span><br><small>${esc(e.nomenclaturas)}</small></div>`).join('');
+  const leg = est.legado_sem_posicao || [];
+  $('#painelLegado').hidden = !leg.length;
+  $('#legadoLista').innerHTML = leg.map(l => `<div style="margin-bottom:6px"><button class="btn" data-fisc="TRECHO|${esc(l.alvo_id)}">${esc(curto(l.nome))}</button>
+    <small>${nf(l.assentado_m)} m assentados / ${nf(l.reaterrado_m)} m reaterrados sem posição</small></div>`).join('');
   const ret = est.retirados_com_historico || [];
   $('#painelRetirados').hidden = !ret.length;
   $('#retirados').innerHTML = ret.map(r => `<div style="margin-bottom:6px"><button class="btn" data-fisc="${esc(r.alvo_tipo)}|${esc(r.alvo_id)}">${esc(curto(r.nome))}</button><br><small>histórico: ${esc((r.historico || []).join(', '))}${(r.situacoes || []).length ? ' · ' + esc(r.situacoes.join('; ')) : ''}</small></div>`).join('');
@@ -111,8 +155,14 @@ async function mostrarFiscal(tipo, id) {
     ${d.retirado ? '<div class="aviso problema"><b>Retirado da revisão vigente do projeto.</b> Consulta do histórico; novos lançamentos bloqueados.</div>' : ''}
     <table>${linhas.map(([k, v]) => `<tr><th style="position:static;width:40%">${k}</th><td>${v}</td></tr>`).join('')}</table>
     ${bloqueio}${avisos}
+    <h4 style="margin:12px 0 4px">Pendências</h4>${htmlPendencias(d.pendencias)}
+    ${tipo === 'TRECHO' ? `<h4 style="margin:12px 0 4px">Execução — informado × verificado ${chipVerif(d.intervalos.verificacao)}</h4>${htmlEtapas(d.intervalos)}
+      <details><summary>Intervalos por registro (${d.intervalos.intervalos.length})</summary>${htmlRegistros(d.intervalos, false)}</details>${htmlHistorico(d.intervalos)}` : ''}
+    <p style="margin:8px 0">Soldas: ${d.soldas.estimativa_barras_6m != null ? `estimativa ⌈L/6⌉ ${d.soldas.estimativa_barras_6m} (referência) · ` : ''}informadas ${d.soldas.informadas} · aprovadas ${d.soldas.aprovadas} · reprovadas ${d.soldas.reprovadas} · sem verificação ${d.soldas.sem_verificacao}</p>
     <p>Fotos: ${st.length ? st.map(c => `<span class="chip vermelho">falta ${c}</span>`).join(' ') : '<span class="chip verde">completas</span>'}
+       ${d.fotos.map(f => `<span class="chip ${FOTO_OK(f.validacao) ? '' : 'vermelho'}" title="${esc(f.validacao || 'não validada')}">${esc(f.categoria)}${FOTO_OK(f.validacao) ? '' : ' · não conta: ' + esc(f.validacao || 'não validada')}</span>`).join(' ')}
        ${ex && ex.ok_fiscal_em ? `<span class="chip verde">OK em ${esc(ex.ok_fiscal_em)} por ${esc(ex.ok_fiscal_por)}</span>` : ''}</p>
+    ${tipo === 'TRECHO' ? `<h4 style="margin:12px 0 4px">Cadastro — do levantamento de campo à entrega</h4>${htmlFases(d.fases_cadastro)}` : ''}
     <label class="check" style="margin:8px 0"><input type="checkbox" id="okFiscal" ${ex && ex.ok_fiscal_em ? 'checked disabled' : pode ? '' : 'disabled'}>
       <b>[✓] OK Fiscalização — Pronto p/ Medir</b></label>
     ${!pode && !(ex && ex.ok_fiscal_em) ? '<div class="vazio">Exige 100 % reaterrado e as fotos obrigatórias.</div>' : ''}
@@ -288,34 +338,87 @@ async function selecionarCampo(tipo, id) {
   const d = await acao(() => api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(id)}`));
   CAMPO = { tipo, id, d };
   $('#apMetros').style.display = tipo === 'TRECHO' ? '' : 'none';
-  const ex = d.execucao, iv = d.intervalos;
-  const faixa = l => l.length ? l.map(([a, b]) => `${nf(a)}–${nf(b)}`).join(', ') : '—';
+  const iv = d.intervalos;
+  const editavel = tipo === 'TRECHO' && !(d.execucao && d.execucao.ok_fiscal_em);
   $('#apAlvo').innerHTML = tipo === 'TRECHO'
-    ? `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · ${esc(d.metodologia)}${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''}
-        <table style="margin-top:6px"><thead><tr><th>Etapa</th><th class="n">Metros</th><th>Feito (m)</th><th>Lacunas (m)</th></tr></thead><tbody>
-        ${Object.entries(iv.etapas).map(([e, v]) => `<tr><td>${esc(e)}</td><td class="n">${nf(v.metros)}</td><td>${faixa(v.cobertura)}</td><td>${faixa(v.lacunas)}</td></tr>`).join('')}</tbody></table>
-        ${iv.intervalos.filter(i => !i.verificado_em).map(i => `<div style="margin-top:4px"><small>${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m · ${esc(i.data)} · ${esc(i.origem)}${i.informado_por ? ' · ' + esc(i.informado_por) : ''}</small> <button type="button" class="btn" data-verificar-intervalo="${i.id}">Verificar</button></div>`).join('')}</div>
+    ? `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · ${esc(d.metodologia)}${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''} ${chipVerif(iv.verificacao)}
+        <div style="margin-top:6px">${htmlEtapas(iv)}</div></div>
       ${iv.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}
-      ${iv.legado ? `<div class="form" id="fLegado" style="border:1px dashed var(--borda);padding:8px">
+      ${iv.legado ? `<div class="caixa-retif" id="fLegado">
         <b>Conciliar avanço anterior sem posição</b> — ${nf(iv.legado.ASSENTADO)} m assentados${d.mnd ? '' : ` e ${nf(iv.legado.REATERRADO)} m reaterrados`}
-        (apontamentos de ${esc([...new Set(iv.legado.apontamentos.map(a => a.data))].join(', '))}). Informe onde esses metros estão; a soma precisa ser igual. Não gera quantidades novas.
-        <div class="linha"><label>Assentado de (m)<input name="la_ini" type="number" step="any" min="0"></label><label>até<input name="la_fim" type="number" step="any" min="0"></label></div>
-        ${d.mnd ? '' : '<div class="linha"><label>Reaterrado de (m)<input name="lr_ini" type="number" step="any" min="0"></label><label>até<input name="lr_fim" type="number" step="any" min="0"></label></div>'}
-        <div class="linha"><label>Como a posição foi confirmada<input name="motivo"></label><label>Responsável<input name="responsavel"></label></div>
-        <div class="acoes"><button type="button" class="btn prim" id="legadoBtn">Conciliar</button></div></div>` : ''}`
+        (apontamentos de ${esc([...new Set(iv.legado.apontamentos.map(a => a.data))].join(', '))}). Informe onde esses metros estão (um ou mais intervalos por etapa); a soma por etapa precisa ser igual. Não gera quantidades novas.
+        <div class="editor" data-etapas="${d.mnd ? 'ASSENTADO' : 'ASSENTADO,REATERRADO'}" data-com-data="1">${(d.mnd ? ['ASSENTADO'] : ['ASSENTADO', 'REATERRADO']).map((e, _, et) => linhaIntervalo(et, { etapa: e }, true, false)).join('')}</div>
+        <button type="button" class="btn" data-mais-linha>+ intervalo</button>
+        <div class="linha"><label>Como a posição foi confirmada<input data-r="motivo"></label><label>Responsável<input data-r="responsavel"></label></div>
+        <div class="acoes"><button type="button" class="btn prim" id="legadoBtn">Conciliar</button></div></div>` : ''}
+      <h4 style="margin:10px 0 4px">Intervalos por registro</h4>
+      ${htmlRegistros(iv, editavel)}
+      ${editavel ? '<p class="vazio" style="margin:2px 0">Retificar substitui os intervalos daquele registro. O trecho inteiro é conferido antes de gravar (tudo ou nada); o original fica no histórico.</p>' : ''}
+      <div id="retifBox"></div>${htmlHistorico(iv)}`
     : `<div class="aviso info">${esc(curto(d.nome))}: ${esc(d.texto)}</div>`;
   renderSoldas();
   $('#apQuant').innerHTML = '';
   renderFotos();
   const fl = $('#fLegado');   // bloco dentro do formulário de apontamento: não pode ser <form> aninhado
   if (fl) $('#legadoBtn').addEventListener('click', async () => {
-    const o = Object.fromEntries($$('input', fl).map(i => [i.name, i.value]));
-    const intervalos = [['ASSENTADO', 'la'], ['REATERRADO', 'lr']].filter(([, k]) => o[k + '_ini'] && o[k + '_fim'])
-      .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'] }));
-    await acao(() => api('/api/legado/conciliar', { trecho_id: CAMPO.id, intervalos, motivo: o.motivo, responsavel: o.responsavel }), 'Avanço anterior conciliado (sem quantidades novas).');
-    selecionarCampo(CAMPO.tipo, CAMPO.id);
+    const r = Object.fromEntries($$('[data-r]', fl).map(i => [i.dataset.r, i.value]));
+    const ok = await acao(() => api('/api/legado/conciliar', { trecho_id: CAMPO.id, intervalos: lerLinhas(fl), motivo: r.motivo, responsavel: r.responsavel }),
+      'Avanço anterior conciliado (sem quantidades novas).').catch(() => null);
+    if (ok) { selecionarCampo(CAMPO.tipo, CAMPO.id); recarregarCamadaMapa(); }   // recusa: mantém o que foi digitado
   });
 }
+// editor de intervalos (conciliação e retificação): uma linha por intervalo
+function linhaIntervalo(etapas, l = {}, comData = false, comRef = true) {
+  return `<div class="linha lin-iv"><select data-k="etapa">${etapas.map(e => `<option ${e === l.etapa ? 'selected' : ''}>${e}</option>`).join('')}</select>
+    <input data-k="ini_m" type="number" step="any" min="0" placeholder="de (m)" value="${l.ini_m ?? ''}"><input data-k="fim_m" type="number" step="any" min="0" placeholder="até (m)" value="${l.fim_m ?? ''}">
+    ${comData ? `<input data-k="data" type="date" value="${esc(l.data || '')}" title="data do serviço">` : ''}${comRef ? `<input data-k="referencia" placeholder="registro do levantamento" value="${esc(l.referencia || '')}" title="só para CADASTRO_CAMPO">` : ''}
+    <button type="button" class="btn" data-remover-linha title="remover">×</button></div>`;
+}
+const lerLinhas = box => $$('.lin-iv', box).map(l => Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.type === 'number' ? (i.value === '' ? null : +i.value) : i.value])))
+  .filter(o => o.ini_m != null && o.fim_m != null).map(o => ({ ...o, data: o.data || undefined, referencia: o.etapa === 'CADASTRO_CAMPO' ? o.referencia : undefined }));
+document.addEventListener('click', ev => {
+  const mais = ev.target.closest('[data-mais-linha]');
+  if (mais) {
+    const ed = mais.parentElement.querySelector('.editor'), et = ed.dataset.etapas.split(',');
+    ed.insertAdjacentHTML('beforeend', linhaIntervalo(et, { etapa: et[0] }, !!ed.dataset.comData, !ed.dataset.comData));
+  }
+  const rm = ev.target.closest('[data-remover-linha]');
+  if (rm) rm.closest('.lin-iv').remove();
+});
+// retificação de intervalos (aba Campo)
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-retificar-ref]'); if (!b || !CAMPO) return;
+  const [ref_tipo, ref_id] = b.dataset.retificarRef.split('|');
+  const iv = CAMPO.d.intervalos, g = iv.registros.find(x => x.ref_tipo === ref_tipo && String(x.ref_id) === ref_id);
+  const conc = ref_tipo === 'CONCILIACAO', etapas = conc ? (CAMPO.d.mnd ? ['ASSENTADO'] : ['ASSENTADO', 'REATERRADO']) : Object.keys(iv.etapas);
+  $('#retifBox').innerHTML = `<div class="caixa-retif" data-ref="${ref_tipo}|${ref_id}">
+    <b>Retificar ${conc ? 'conciliação do legado' : 'apontamento'} #${ref_id}</b> — informe o conjunto CORRETO de intervalos deste registro (linha vazia ou removida = intervalo anulado).
+    ${conc ? 'A soma por etapa continua igual à da conciliação; não há quantidades.' : 'As quantidades do apontamento são recalculadas sem dupla contagem (veja a prévia).'}
+    <div class="editor" data-etapas="${etapas.join(',')}" ${conc ? 'data-com-data="1"' : ''}>${g.intervalos.map(i => linhaIntervalo(etapas, i, conc, !conc)).join('')}</div>
+    <button type="button" class="btn" data-mais-linha>+ intervalo</button>
+    <div class="linha">${conc ? '' : `<label>Data do apontamento<input type="date" data-r="data" value="${esc(g.intervalos[0].data)}"></label>`}
+      <label>Motivo (o que estava errado e como foi confirmado)<input data-r="motivo"></label><label>Responsável<input data-r="responsavel"></label></div>
+    <div class="acoes"><button type="button" class="btn azul" data-retif-acao="previa">Prévia</button><button type="button" class="btn prim" data-retif-acao="aplicar">Aplicar retificação</button><button type="button" class="btn" data-retif-acao="cancelar">Cancelar</button></div>
+    <div class="retif-previa"></div></div>`;
+});
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-retif-acao]'); if (!b) return;
+  const box = b.closest('.caixa-retif');
+  if (b.dataset.retifAcao === 'cancelar') { box.remove(); return; }
+  const [ref_tipo, ref_id] = box.dataset.ref.split('|'), r = Object.fromEntries($$('[data-r]', box).map(i => [i.dataset.r, i.value]));
+  const corpo = { ref_tipo, ref_id, intervalos: lerLinhas($('.editor', box)), motivo: r.motivo, responsavel: r.responsavel, data: r.data, simular: b.dataset.retifAcao === 'previa' };
+  const p = await acao(() => api('/api/intervalos/retificar', corpo), corpo.simular ? null : 'Retificação aplicada — original preservado no histórico.').catch(() => null);
+  if (!p) return;
+  if (!corpo.simular) { selecionarCampo(CAMPO.tipo, CAMPO.id); recarregarCamadaMapa(); return; }
+  const lin = l => l.map(i => `${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m (${esc(i.data)})`).join('<br>') || '—';
+  const qs = (p.quantidades_depois || []).map(q => [q, (p.quantidades_antes || []).find(a => a.servico === q.servico && a.unidade === q.unidade)])
+    .filter(([q, a]) => !a || a.confirmado !== q.confirmado).concat((p.quantidades_antes || []).filter(a => p.quantidades_depois && !p.quantidades_depois.some(q => q.servico === a.servico && q.unidade === a.unidade)).map(a => [null, a]));
+  $('.retif-previa', box).innerHTML = `<table style="margin-top:8px"><thead><tr><th>Antes (anulado)</th><th>Depois</th></tr></thead><tbody><tr><td>${lin(p.anulados)}</td><td>${lin(p.novos)}</td></tr></tbody></table>
+    <p style="margin:4px 0">Trecho: ${Object.keys(p.resumo_depois).map(e => `${esc(e)} ${nf(p.resumo_antes[e])} → <b>${nf(p.resumo_depois[e])}</b> m`).join(' · ')}</p>
+    ${p.quantidades_depois ? (qs.length ? `<p style="margin:4px 0">Quantidades confirmadas que mudam: ${qs.map(([q, a]) => `${esc((q || a).servico)} ${nf(a ? a.confirmado : 0, 3)} → <b>${nf(q ? q.confirmado : 0, 3)}</b> ${esc((q || a).unidade)}`).join(' · ')}</p>` : '<p style="margin:4px 0">Quantidades confirmadas: sem mudança.</p>') : ''}
+    ${(p.alertas || []).map(a => `<div class="aviso info">${esc(a)}</div>`).join('')}
+    <p class="vazio" style="margin:2px 0">Prévia: nada foi gravado. Confira e use "Aplicar retificação".</p>`;
+});
 function renderFotos() {
   if (!CAMPO) return;
   const { d } = CAMPO;
@@ -345,11 +448,12 @@ async function enviarApontamento(editado) {
   const quantidades = editado ? $$('#apQuant input[data-s]').filter(i => +i.value !== +i.dataset.p).map(i => ({ servico: i.dataset.s, unidade: i.dataset.u, confirmado: +i.value })) : null;
   const intervalos = [['ASSENTADO', 'ass'], ['CADASTRO_CAMPO', 'cad'], ['REATERRADO', 'rea']]
     .filter(([, k]) => o[k + '_ini'] !== '' && o[k + '_fim'] !== '' && o[k + '_ini'] != null)
-    .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'] }));
+    .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'], ...(k === 'cad' && o.cad_ref ? { referencia: o.cad_ref } : {}) }));
   await acao(() => api('/api/apontamento', { data: o.data, equipe_id: o.equipe_id, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id,
     concluido_100: !!o.concluido_100, intervalos: o.concluido_100 ? null : intervalos, informado_por: o.informado_por,
     estaca_ini: o.estaca_ini, estaca_fim: o.estaca_fim, quantidades }), 'Apontamento registrado.');
   $('#apQuant').innerHTML = ''; ['ass', 'cad', 'rea'].forEach(k => { $(`input[name=${k}_ini]`, fAp).value = ''; $(`input[name=${k}_fim]`, fAp).value = ''; });
+  $('input[name=cad_ref]', fAp).value = '';
   $('input[name=concluido_100]', fAp).checked = false;
   selecionarCampo(CAMPO.tipo, CAMPO.id);
 }
@@ -357,8 +461,8 @@ async function enviarApontamento(editado) {
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-verificar-intervalo]'); if (!b) return;
   const quem = prompt('Verificado por (não pode ser quem informou):'); if (!quem) return;
-  await acao(() => api('/api/intervalo/verificar', { intervalo_id: b.dataset.verificarIntervalo, verificado_por: quem }), 'Intervalo verificado.');
-  selecionarCampo(CAMPO.tipo, CAMPO.id);
+  const r = await acao(() => api('/api/intervalo/verificar', { intervalo_id: b.dataset.verificarIntervalo, verificado_por: quem }), 'Intervalo verificado (conferência interna).').catch(() => null);
+  if (r) { selecionarCampo(CAMPO.tipo, CAMPO.id); recarregarCamadaMapa(); }
 });
 function renderSoldas() {
   if (!CAMPO || !$('#soldas')) return;
@@ -370,16 +474,16 @@ function renderSoldas() {
 $('#fSolda').addEventListener('submit', async ev => {
   ev.preventDefault(); if (!CAMPO) return toast('Selecione o trecho/nó no apontamento.', 'erro');
   const o = formObj(ev.target), d = formObj(fAp);
-  await acao(() => api('/api/solda', { ...o, data: d.data || hoje(), equipe_id: d.equipe_id || null, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id }), 'Soldas registradas (aguardam verificação).');
-  ev.target.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id);
+  const r = await acao(() => api('/api/solda', { ...o, data: d.data || hoje(), equipe_id: d.equipe_id || null, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id }), 'Soldas registradas (aguardam verificação).').catch(() => null);
+  if (r) { ev.target.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id); }
 });
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-verificar-solda]'); if (!b) return;
   const quem = prompt('Verificado por (não pode ser o soldador nem quem informou):'); if (!quem) return;
   const ok = confirm('Soldas APROVADAS? (Cancelar = reprovadas)');
   const obs = ok ? null : prompt('Motivo da reprovação:');
-  await acao(() => api('/api/solda/verificar', { solda_id: b.dataset.verificarSolda, verificado_por: quem, resultado: ok ? 'APROVADA' : 'REPROVADA', obs }), 'Verificação registrada.');
-  selecionarCampo(CAMPO.tipo, CAMPO.id);
+  const r = await acao(() => api('/api/solda/verificar', { solda_id: b.dataset.verificarSolda, verificado_por: quem, resultado: ok ? 'APROVADA' : 'REPROVADA', obs }), 'Verificação registrada.').catch(() => null);
+  if (r) selecionarCampo(CAMPO.tipo, CAMPO.id);
 });
 
 // fotos: arquivo ORIGINAL (sem recompressão nem carimbo gravado) + data do aparelho + GPS do navegador
@@ -411,7 +515,8 @@ $('#fFoto').addEventListener('submit', async ev => {
 const CAMPOS_ETAPA = {
   '1_PRONTO': [['2_ENVIADO', 'Enviar dados p/ empresa', [['empresa', 'Empresa'], ['data_envio', 'Data', 'date']]]],
   '2_ENVIADO': [['3_RECEBIDO', 'Cadastro recebido', [['arquivos', 'Arquivos DWG/PDF/BIM']]]],
-  '3_RECEBIDO': [['4_GDOC_ANALISE', 'Catalogar no GDOC', [['protocolo_gdoc', 'Nº protocolo GDOC']]]],
+  '3_RECEBIDO': [['4_GDOC_ANALISE', 'Catalogar no GDOC', [['protocolo_gdoc', 'Nº protocolo GDOC']]],
+    ['2_ENVIADO', 'Devolver à empresa (conferência não conforme)', []]],
   '4_GDOC_ANALISE': [['6_APROVADO', 'Aprovado', [['memorando_eset', 'Memorando ESET']]], ['5A_NEGADO', 'Negado', [['motivo_negativa', 'Motivo da negativa']]]],
   '5A_NEGADO': [['2_ENVIADO', 'Reenviar p/ empresa ajustar', []]],
 };
@@ -424,16 +529,31 @@ async function carregarEsteira() {
       ${esc(c.frente_id)} · ${nf(c.extensao_m)} m ${c.revisao ? `<span class="chip laranja">Rev. ${c.revisao}</span>` : ''}
       ${c.empresa ? `<div>Empresa: ${esc(c.empresa)}</div>` : ''}${c.protocolo_gdoc ? `<div>GDOC: ${esc(c.protocolo_gdoc)}</div>` : ''}
       ${c.motivo_negativa ? `<div class="aviso problema">${esc(c.motivo_negativa)}</div>` : ''}${c.memorando_eset ? `<div>ESET: ${esc(c.memorando_eset)}</div>` : ''}
-      ${(CAMPOS_ETAPA[k] || []).map(([dest, rot, campos]) => `<form class="form" data-tr="${esc(c.trecho_id)}" data-dest="${dest}">
+      <div><span class="chip ${c.levantamento_completo ? 'azul' : 'amarelo'}" title="intervalos CADASTRO_CAMPO registrados antes do reaterro">levantamento de campo ${c.levantamento_completo ? 'completo' : nf(c.levantamento_m) + ' m de ' + nf(c.extensao_m)}</span></div>
+      ${c.conferencia ? `<div><span class="chip ${c.conferencia.resultado === 'CONFORME' ? 'azul' : 'vermelho'}" title="conferência interna Ankara — não é aprovação da Caesb">Rev. ${c.conferencia.revisao}: ${c.conferencia.resultado === 'CONFORME' ? 'conforme' : 'não conforme'} (interno) · ${esc(c.conferencia.revisor)}</span>${c.conferencia.obs ? `<div class="aviso problema">${esc(c.conferencia.obs)}</div>` : ''}</div>` : ''}
+      ${k === '3_RECEBIDO' ? `<details class="conf" data-tr="${esc(c.trecho_id)}"><summary>Conferência interna Ankara (não é aprovação da Caesb)</summary>
+        ${Object.entries(RESUMO.checklist_conferencia || {}).map(([ck, txt]) => `<label class="check"><input type="checkbox" data-ck="${ck}"> ${esc(txt)}</label>`).join('')}
+        <input data-c="revisor" placeholder="Conferido por"><input data-c="obs" placeholder="Divergência (obrigatória se não conforme)">
+        <div class="acoes"><button type="button" class="btn" data-conf="CONFORME">Conforme</button><button type="button" class="btn" data-conf="NAO_CONFORME">Não conforme</button></div></details>` : ''}
+      ${(CAMPOS_ETAPA[k] || []).filter(([dest]) => k !== '3_RECEBIDO' || (dest === '2_ENVIADO') === !!(c.conferencia && c.conferencia.resultado === 'NAO_CONFORME'))
+        .map(([dest, rot, campos]) => `<form class="form" data-tr="${esc(c.trecho_id)}" data-dest="${dest}">
         ${campos.map(([n, l, t]) => `<input name="${n}" placeholder="${l}" ${t ? `type="${t}"` : ''} required>`).join('')}
-        <button class="btn ${dest === '5A_NEGADO' ? '' : 'prim'}">${rot}</button></form>`).join('')}</div>`).join('') || '<div class="vazio">—</div>'}</div>`;
+        <button class="btn ${dest === '5A_NEGADO' || (k === '3_RECEBIDO' && dest === '2_ENVIADO') ? '' : 'prim'}">${rot}</button></form>`).join('')}</div>`).join('') || '<div class="vazio">—</div>'}</div>`;
   }).join('');
 }
+$('#kanban').addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-conf]'); if (!b) return;
+  const box = b.closest('details.conf');
+  const checklist = Object.fromEntries($$('[data-ck]', box).map(i => [i.dataset.ck, i.checked]));
+  const ok = await acao(() => api('/api/cadastro/conferencia', { trecho_id: box.dataset.tr, resultado: b.dataset.conf, checklist,
+    revisor: $('[data-c=revisor]', box).value, obs: $('[data-c=obs]', box).value }), 'Conferência interna registrada (não é aprovação da Caesb).').catch(() => null);
+  if (ok) carregarEsteira();
+});
 $('#kanban').addEventListener('submit', async ev => {
   ev.preventDefault(); const f = ev.target, dados = formObj(f);
   if (dados.arquivos) dados.arquivos = dados.arquivos.split(/[;,]/).map(s => s.trim()).filter(Boolean);
-  await acao(() => api('/api/cadastro', { trecho_id: f.dataset.tr, destino: f.dataset.dest, dados, data: hoje() }), 'Esteira atualizada.');
-  carregarEsteira();
+  const ok = await acao(() => api('/api/cadastro', { trecho_id: f.dataset.tr, destino: f.dataset.dest, dados, data: hoje() }), 'Esteira atualizada.').catch(() => null);
+  if (ok) carregarEsteira();
 });
 
 /* ---------------------------------------------------------------- 5. medição */

@@ -962,6 +962,20 @@ def preparar_v7(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v8(conn):
+    """Esquema v7 → v8, só acréscimos (nenhuma linha alterada):
+    * intervalos_execucao: `anulado_por` / `retificacao_id` (retificação sem apagar) e `referencia` (registro do
+      levantamento de campo);
+    * apontamentos: `anulado_por` / `retificacao_id` (o original retificado sai das somas e fica no histórico);
+    * tabelas retificacoes_intervalos e revisoes_cadastro (conferência interna Ankara, não é aprovação Caesb)."""
+    retif = "INTEGER REFERENCES retificacoes_intervalos(id)"
+    for tabela, coluna, tipo in (("intervalos_execucao", "referencia", "TEXT"), ("intervalos_execucao", "anulado_por", retif),
+                                 ("intervalos_execucao", "retificacao_id", retif), ("apontamentos", "anulado_por", retif),
+                                 ("apontamentos", "retificacao_id", retif)):
+        _add_coluna(conn, tabela, coluna, tipo)
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

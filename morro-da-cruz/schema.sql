@@ -423,7 +423,9 @@ CREATE TABLE IF NOT EXISTS apontamentos (
   metros_executados REAL NOT NULL DEFAULT 0,
   metros_reaterrados REAL NOT NULL DEFAULT 0,
   estaca_ini TEXT, estaca_fim TEXT,
-  informado_por TEXT
+  informado_por TEXT,
+  anulado_por INTEGER REFERENCES retificacoes_intervalos(id),   -- v8: retificado: fica no histórico, fora das somas
+  retificacao_id INTEGER REFERENCES retificacoes_intervalos(id) -- v8: apontamento criado por uma retificação
 );
 
 -- Intervalo executado de um trecho, por etapa (metros a partir do início do trecho, sentido da 06.1).
@@ -432,6 +434,8 @@ CREATE TABLE IF NOT EXISTS apontamentos (
 --         · SEQUENCIAL (v6: apontamento só em metros, posição presumida — não é mais aceito; confirmar por retificação)
 --         · LEGADO (metros de apontamento anterior aos intervalos, posição confirmada por conciliação; sem quantidades novas)
 --         · RETIFICACAO (substitui intervalos anulados por retificação)
+-- v8: intervalo nunca é apagado. Retificação ANULA (anulado_por) e grava os substitutos (retificacao_id); só os
+--     efetivos (anulado_por IS NULL) contam. referencia = registro do levantamento de campo (caderneta, croqui, arquivo).
 CREATE TABLE IF NOT EXISTS intervalos_execucao (
   id INTEGER PRIMARY KEY,
   trecho_id TEXT NOT NULL REFERENCES trechos(id),
@@ -447,7 +451,26 @@ CREATE TABLE IF NOT EXISTS intervalos_execucao (
   sem_cadastro_campo INTEGER NOT NULL DEFAULT 0,   -- reaterro sobre trecho ainda sem cadastro de campo (alerta)
   verificado_em TEXT, verificado_por TEXT,
   registrado_em TEXT NOT NULL,
+  referencia TEXT,
+  anulado_por INTEGER REFERENCES retificacoes_intervalos(id),
+  retificacao_id INTEGER REFERENCES retificacoes_intervalos(id),
   CHECK (fim_m > ini_m)
+);
+
+-- Retificação de intervalos (v8): corrige a posição/extensão/data dos intervalos de UM apontamento ou de UMA
+-- conciliação do legado. Aplicação integral ou recusa: o conjunto resultante do trecho precisa continuar coerente
+-- (sem sobreposição; reaterro e cadastro de campo com assentamento até a data). Os originais ficam anulados, não
+-- apagados; o apontamento original fica substituído (fora das somas) e o novo traz as quantidades corrigidas.
+CREATE TABLE IF NOT EXISTS retificacoes_intervalos (
+  id INTEGER PRIMARY KEY,
+  trecho_id TEXT NOT NULL REFERENCES trechos(id),
+  ref_tipo TEXT NOT NULL CHECK (ref_tipo IN ('APONTAMENTO','CONCILIACAO')),
+  ref_id INTEGER NOT NULL,             -- apontamento ou conciliação retificados
+  novo_apontamento_id INTEGER REFERENCES apontamentos(id),
+  motivo TEXT NOT NULL,
+  responsavel TEXT NOT NULL,
+  detalhe TEXT NOT NULL,               -- JSON: intervalos e quantidades antes/depois
+  em TEXT NOT NULL
 );
 
 -- Conciliação do avanço legado (apontamentos em metros, sem posição, anteriores aos intervalos): a pessoa
@@ -544,6 +567,20 @@ CREATE TABLE IF NOT EXISTS cadastro (
   memorando_eset TEXT,
   medicao_id INTEGER REFERENCES medicoes(id),
   atualizado_em TEXT NOT NULL
+);
+
+-- Conferência interna Ankara do cadastro recebido da empresa, antes do protocolo no GDOC (v8). NÃO é aprovação da
+-- Caesb: serve para achar divergência com o levantamento de campo antes de protocolar. NAO_CONFORME impede o
+-- protocolo daquela revisão e permite devolver à empresa (nova revisão).
+CREATE TABLE IF NOT EXISTS revisoes_cadastro (
+  id INTEGER PRIMARY KEY,
+  trecho_id TEXT NOT NULL REFERENCES trechos(id),
+  revisao INTEGER NOT NULL,            -- Rev. N da esteira conferida
+  resultado TEXT NOT NULL CHECK (resultado IN ('CONFORME','NAO_CONFORME')),
+  checklist TEXT NOT NULL,             -- JSON {item: true|false}
+  revisor TEXT NOT NULL,
+  obs TEXT,
+  em TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS cadastro_historico (

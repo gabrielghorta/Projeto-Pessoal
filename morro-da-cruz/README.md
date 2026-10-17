@@ -11,7 +11,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Detalhes das etapas 0 e 1: `docs/ETAPAS_0_1_APROVACAO.md`.
   - Correções da auditoria do commit `b63b5db` (A01–A12): `docs/CORRECOES_AUDITORIA_b63b5db.md`.
   - Etapa 3, estoque (reserva, saldo com a equipe, empréstimo autorizado, estorno): `docs/ETAPA_3_ESTOQUE.md`.
-  - Etapa 4, campo (intervalos por etapa, cadastro de campo, soldas verificadas, foto original com hash): `docs/ETAPA_4_CAMPO.md`.
+  - Etapa 4, campo e cadastro (intervalos por etapa, retificação, conciliação do legado, levantamento de campo, conferência interna do cadastro, soldas verificadas, foto original com hash): `docs/ETAPA_4_CAMPO.md`.
 
 ## Como rodar (Windows)
 
@@ -88,15 +88,19 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - sobreposição e repetição são recusadas;
   - reaterro e cadastro só sobre assentamento registrado até a data do serviço;
   - reaterro sem cadastro de campo gera alerta;
-  - avanço antigo, só em metros, fica preservado como legado pendente até a conciliação da posição;
+  - avanço antigo, só em metros, fica preservado como legado pendente até a conciliação da posição (um ou mais intervalos por etapa, mesma soma);
+  - **retificação**: corrige os intervalos de um apontamento ou de uma conciliação (motivo, responsável, vínculo ao original). O trecho inteiro é conferido antes de gravar (tudo ou nada); nada é apagado; o apontamento retificado sai das somas e o substituto traz as quantidades corrigidas. Não vale depois do OK interno;
   - a estimativa de soldas ⌈L/6⌉ nunca vira quantidade confirmada;
   - soldas são informadas e verificadas por outra pessoa.
+- **Cadastro em quatro fases:** levantamento de campo (vala aberta, com registro de referência), preparação pela empresa, **conferência interna Ankara** (não é aprovação da Caesb; NÃO CONFORME impede protocolar e permite devolver à empresa) e entrega no GDOC (decisão da Caesb registrada a partir do documento dela).
+- **Visão integrada:** o detalhe do trecho reúne intervalos, lacunas, soldas, fotos (com validação), verificações, histórico e pendências (bloqueio, alerta, pendente).
 - **Pin do mapa:** mostra a programação do check-in, não a posição atual da equipe.
 
 ## Mapa
 
 O servidor abre `mapa/PLANTAS_..._REV02_EQUIPES.html` **sem alterá-lo** e injeta `web/mapa_iluminado.js`. A camada lê o mesmo `DADOS` da REV02 e faz o seguinte:
-- alterna Modo Projeto (cores de DE) e Mapa Iluminado (andamento);
+- alterna Modo Projeto (cores de DE) e Mapa Iluminado (andamento, a partir só dos registros efetivos);
+- marca com um miolo branco a execução **informada sem verificação**, parcialmente verificada ou legada sem posição (verificado = conferência interna Ankara);
 - desenha os pins de programação;
 - envia a seleção para o painel de Fiscalização.
 
@@ -106,7 +110,8 @@ O servidor abre `mapa/PLANTAS_..._REV02_EQUIPES.html` **sem alterá-lo** e injet
 - **Itens de BM a definir:** 14 serviços da 06.1, o MND e o critério da escavação em dois itens.
 - **Reajuste:** frações elegíveis e o pedido da contratada.
 - **Próximas etapas:**
-  - etapa 4: correção de intervalo, etapa de escavação, interligações e manobras, carimbo derivado para relatório;
+  - etapa 4: retificação depois do OK interno, etapa de escavação, interligações e manobras, carimbo derivado para relatório;
+  - etapa 5 (mapa): camada de pendências e teste das 13 frentes;
   - NF com pedido/compra e aceite parcial (complemento da etapa 3 — o fluxo integral de almoxarifado ainda não está concluído);
   - exportação no modelo oficial (`01ª MC`);
   - usuários, perfis e acesso de campo.

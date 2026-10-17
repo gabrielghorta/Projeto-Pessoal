@@ -49,6 +49,10 @@
           <h3>Bandeja — sem posição no projeto</h3>
           <div id="semPosicao"></div>
         </div>
+        <div class="painel" id="painelLegado" hidden>
+          <h3>Avanço anterior sem posição — conciliar</h3>
+          <div id="legadoLista"></div>
+        </div>
         <div class="painel" id="painelRetirados" hidden>
           <h3>Retirados da revisão vigente — com histórico</h3>
           <div id="retirados"></div>
@@ -61,6 +65,13 @@
             <div><i style="border-color:#D62828"></i>Concluído no mês (reaterrado + fotos) — aguardando validação</div>
             <div><i style="border-color:#0F9D58"></i>[✓] OK interno (Ankara) — não é aprovação Caesb</div>
             <div><i style="border-color:#E8B10A"></i>Medido em medições anteriores</div>
+          </div>
+          <h3 style="margin-top:12px">Informado × verificado (miolo da linha)</h3>
+          <div class="legenda">
+            <div><i class="verif" style="border-color:#5B6675"></i>Sem miolo: intervalos verificados — conferência interna Ankara, não é aprovação Caesb</div>
+            <div><i class="verif informado" style="border-color:#5B6675"></i>Miolo branco tracejado curto: informado pela equipe, sem verificação</div>
+            <div><i class="verif parcial" style="border-color:#5B6675"></i>Miolo tracejado longo: verificação parcial</div>
+            <div><i class="verif legado" style="border-color:#5B6675"></i>Miolo pontilhado: avanço legado sem posição (conciliar)</div>
           </div>
         </div>
       </div>
@@ -201,6 +212,7 @@
             <p class="vazio" style="margin:4px 0">Intervalos em metros a partir do início do trecho (sentido da 06.1). Sobreposição e repetição são recusadas; reaterro e cadastro de campo só sobre o assentado.</p>
             <div class="linha"><label>Assentado de (m)<input type="number" step="any" min="0" name="ass_ini"></label><label>até (m)<input type="number" step="any" min="0" name="ass_fim"></label></div>
             <div class="linha"><label>Cadastro de campo de (m)<input type="number" step="any" min="0" name="cad_ini"></label><label>até (m)<input type="number" step="any" min="0" name="cad_fim"></label></div>
+            <label>Registro do levantamento de campo (caderneta, croqui ou arquivo de pontos)<input name="cad_ref" placeholder="ex.: caderneta 12, p. 3"></label>
             <div class="linha"><label>Reaterrado de (m)<input type="number" step="any" min="0" name="rea_ini"></label><label>até (m)<input type="number" step="any" min="0" name="rea_fim"></label></div>
             <div class="linha"><label>Estaca inicial (NS, referência)<input name="estaca_ini"></label><label>Estaca final<input name="estaca_fim"></label></div>
           </div>

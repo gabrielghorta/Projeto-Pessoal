@@ -8,4 +8,5 @@ svg.mc-iluminado polyline.tr[data-mc="CONCLUIDO_MES"],
 svg.mc-iluminado polyline.tr[data-mc="OK_FISCAL"],
 svg.mc-iluminado polyline.tr[data-mc="MEDIDO_ANTERIOR"] { stroke-dasharray: none; }
 .mc-pin { pointer-events: none; }
+.mc-verif { pointer-events: none; fill: none; stroke-linecap: butt; }
 .mc-pin text { font: 700 9px system-ui, sans-serif; fill: #17202B; paint-order: stroke; stroke: #fff; stroke-width: 3px; }

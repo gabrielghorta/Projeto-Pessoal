@@ -7,7 +7,9 @@
   const T = DADOS.trechos, E = DADOS.els;
   const COR = { NAO_EXECUTADO: '#9AA3AE', EM_EXECUCAO: '#F08C00', CONCLUIDO_MES: '#D62828', OK_FISCAL: '#0F9D58', MEDIDO_ANTERIOR: '#E8B10A' };
   const PIOR = ['CONCLUIDO_MES', 'EM_EXECUCAO', 'OK_FISCAL', 'MEDIDO_ANTERIOR', 'NAO_EXECUTADO'];
-  let modo = 'iluminado', estado = { status: {}, pins: [] };
+  // miolo branco sobre a linha = execução ainda não verificada (conferência interna Ankara, não é aprovação Caesb)
+  const MIOLO = { INFORMADO: '2 3', PARCIAL: '7 3', LEGADO_SEM_POSICAO: '0.6 2.4' };
+  let modo = 'iluminado', estado = { status: {}, verificacao: {}, pins: [] };
   try { modo = localStorage.getItem('mc-modo') || 'iluminado'; } catch (_) { /* sem storage */ }
 
   // ---- controle de modo
@@ -44,7 +46,23 @@
       const st = statusElemento(+el.dataset.e);
       el.setAttribute('fill', modo === 'iluminado' && st !== 'NAO_EXECUTADO' ? COR[st] : el.dataset.mcCor);
     });
+    marcarVerificacao(svg);
     desenharPins(svg);
+  }
+
+  function marcarVerificacao(svg) {
+    svg.querySelectorAll('.mc-verif').forEach(p => p.remove());
+    if (modo !== 'iluminado') return;
+    svg.querySelectorAll('polyline.tr[data-pipe]').forEach(pl => {
+      const v = pl.dataset.active === 'false' ? null : (estado.verificacao || {})[T[+pl.dataset.pipe].R];
+      if (!v || !MIOLO[v]) return;
+      const o = pl.cloneNode(false), w = parseFloat(pl.getAttribute('stroke-width')) || 3;
+      ['data-pipe', 'data-mc', 'data-mc-cor', 'data-active', 'id'].forEach(a => o.removeAttribute(a));
+      o.setAttribute('class', 'mc-verif'); o.setAttribute('data-verif', v);
+      o.setAttribute('stroke', '#fff'); o.setAttribute('stroke-width', String(Math.max(w * 0.38, 0.8)));
+      o.setAttribute('stroke-dasharray', MIOLO[v]);
+      pl.after(o);
+    });
   }
 
   function desenharPins(svg) {

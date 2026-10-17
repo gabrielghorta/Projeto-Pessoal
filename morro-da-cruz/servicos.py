@@ -24,7 +24,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 7
+VERSAO_ESQUEMA = 8
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -56,7 +56,7 @@ def aplicar_esquema(conn):
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "campo: legado conciliado, cronologia, imagem validada"))
+                 (VERSAO_ESQUEMA, _agora(), "campo: retificação de intervalos, conferência interna do cadastro"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -364,7 +364,7 @@ def consumo_previsto_x_confirmado(conn):
         de = float(m["id"].rsplit("DE", 1)[1])
         prev = conn.execute(
             """SELECT COALESCE(SUM(ap.metros_executados),0) FROM apontamentos ap JOIN trechos t ON t.id=ap.alvo_id
-               WHERE ap.alvo_tipo='TRECHO' AND t.de_mm=?""", (de,)).fetchone()[0]
+               WHERE ap.alvo_tipo='TRECHO' AND ap.anulado_por IS NULL AND t.de_mm=?""", (de,)).fetchone()[0]
         conf = _soma(conn, m["id"], "APLICADO")
         out.append({"material_id": m["id"], "unidade": m["unidade"], "previsto_apontado": round(prev, 3),
                     "aplicado_confirmado": round(conf, 3), "diferenca": round(conf - prev, 3)})
@@ -727,8 +727,20 @@ def registrar_clima(conn, data, equipe_id, turno, condicao):
 
 
 # ------------------------------------------------------------------ intervalos de execução (etapa 4)
-def intervalos(conn, trecho_id, etapa=None, ate_data=None):
-    sql, args = "SELECT * FROM intervalos_execucao WHERE trecho_id=?", [trecho_id]
+# Intervalo e apontamento nunca são apagados: a retificação os ANULA (anulado_por) e grava os substitutos.
+EFETIVO = "anulado_por IS NULL"
+# Avanço anterior aos intervalos (só em metros, sem posição), ainda não conciliado nem retificado
+_SQL_LEGADO = """FROM apontamentos ap
+           WHERE ap.alvo_tipo='TRECHO' AND ap.anulado_por IS NULL
+             AND NOT EXISTS (SELECT 1 FROM intervalos_execucao i WHERE i.apontamento_id=ap.id)
+             AND ap.id NOT IN (SELECT apontamento_id FROM conciliacao_legado_apontamentos)
+             AND (COALESCE(ap.metros_executados,0) > 0 OR COALESCE(ap.metros_reaterrados,0) > 0)"""
+
+
+def intervalos(conn, trecho_id, etapa=None, ate_data=None, anulados=False):
+    """Intervalos EFETIVOS do trecho; com anulados=True, só os anulados por retificação (histórico)."""
+    sql = "SELECT * FROM intervalos_execucao WHERE trecho_id=? AND " + ("anulado_por IS NOT NULL" if anulados else EFETIVO)
+    args = [trecho_id]
     if etapa:
         sql, args = sql + " AND etapa=?", args + [etapa]
     if ate_data:
@@ -740,25 +752,59 @@ def _cobertura(conn, trecho_id, etapa, extra=(), ate_data=None):
     return R.unir_intervalos([(i["ini_m"], i["fim_m"]) for i in intervalos(conn, trecho_id, etapa, ate_data)] + list(extra))
 
 
+def _faixas(lst):
+    return ", ".join(f"{a:g}–{b:g} m" for a, b in lst)
+
+
+def _ref_intervalo(i):
+    if i.get("conciliacao_id"):
+        return f"conciliação #{i['conciliacao_id']}"
+    if i.get("apontamento_id"):
+        return f"apontamento #{i['apontamento_id']}"
+    return f"intervalo #{i.get('id')}"
+
+
+def _incoerencias(lista):
+    """{chave: faixas sem suporte}: reaterro/cadastro de campo sem assentamento (da mesma lista) com data ≤ a dele.
+    No mesmo dia a ordem não é conhecida: o assentamento do próprio dia conta."""
+    out = {}
+    for i in lista:
+        if i["etapa"] in ("REATERRADO", "CADASTRO_CAMPO"):
+            sup = [(x["ini_m"], x["fim_m"]) for x in lista if x["etapa"] == "ASSENTADO" and x["data"] <= i["data"]]
+            falta = R.fora_da_cobertura((i["ini_m"], i["fim_m"]), sup)
+            if falta:
+                out[i["chave"]] = falta
+    return out
+
+
+def _sem_cadastro(lista):
+    """Chaves dos reaterros sem cadastro de campo (da mesma lista) com data ≤ a do reaterro (alerta, não bloqueio)."""
+    out = set()
+    for r in lista:
+        if r["etapa"] == "REATERRADO":
+            cad = [(x["ini_m"], x["fim_m"]) for x in lista if x["etapa"] == "CADASTRO_CAMPO" and x["data"] <= r["data"]]
+            if R.fora_da_cobertura((r["ini_m"], r["fim_m"]), cad):
+                out.add(r["chave"])
+    return out
+
+
 def legado_pendente(conn, trecho):
     """Avanço registrado antes dos intervalos (apontamentos só em metros, sem posição) e ainda não conciliado.
     É preservado como está: o resumo de execução não é recalculado enquanto ele existir."""
     mnd = trecho.get("metodologia") == "MND"
     aps = _rows(conn.execute(
-        """SELECT ap.id, ap.data, COALESCE(ap.metros_executados,0) AS ass, COALESCE(ap.metros_reaterrados,0) AS rea
-           FROM apontamentos ap
-           WHERE ap.alvo_tipo='TRECHO' AND ap.alvo_id=?
-             AND NOT EXISTS (SELECT 1 FROM intervalos_execucao i WHERE i.apontamento_id=ap.id)
-             AND ap.id NOT IN (SELECT apontamento_id FROM conciliacao_legado_apontamentos)
-             AND (COALESCE(ap.metros_executados,0) > 0 OR COALESCE(ap.metros_reaterrados,0) > 0)
-           ORDER BY ap.data, ap.id""", (trecho["id"],)))
+        f"""SELECT ap.id, ap.data, COALESCE(ap.metros_executados,0) AS ass, COALESCE(ap.metros_reaterrados,0) AS rea
+           {_SQL_LEGADO} AND ap.alvo_id=? ORDER BY ap.data, ap.id""", (trecho["id"],)))
     if not aps:
         return None
     ass = round(sum(a["ass"] for a in aps), 6)
     rea = 0.0 if mnd else round(sum(a["rea"] for a in aps), 6)
-    return {"ASSENTADO": ass, "REATERRADO": rea, "apontamentos": aps,
-            "datas": {"ASSENTADO": sorted({a["data"] for a in aps if a["ass"] > 0}),
-                      "REATERRADO": sorted({a["data"] for a in aps if a["rea"] > 0 and not mnd})}}
+    return {"ASSENTADO": ass, "REATERRADO": rea, "apontamentos": aps, "datas": _datas_legado(aps, mnd)}
+
+
+def _datas_legado(aps, mnd):
+    return {"ASSENTADO": sorted({a["data"] for a in aps if a["ass"] > 0}),
+            "REATERRADO": sorted({a["data"] for a in aps if a["rea"] > 0 and not mnd})}
 
 
 def _exigir_sem_legado(conn, t, acao):
@@ -770,34 +816,47 @@ def _exigir_sem_legado(conn, t, acao):
             f"posição desses metros (conciliação do legado) antes de {acao}.")
 
 
-def _validar_intervalos(conn, t, novos):
-    """Recusa sobreposição (na mesma etapa, com o já registrado ou entre si), intervalo fora do trecho e reaterro/
-    cadastro de campo sem assentamento JÁ FEITO NA DATA do serviço (assentamento posterior não vale como
-    pré-requisito). No mesmo dia a ordem não é conhecida: assentamento do próprio dia conta. MND não tem vala."""
+def _validar_intervalos(conn, t, novos, excluir=()):
+    """Valida o CONJUNTO resultante do trecho: efetivos − `excluir` (anulados por uma retificação) + `novos`.
+
+    Recusa sobreposição na mesma etapa (com o registrado ou entre os novos), intervalo fora do trecho e reaterro/
+    cadastro de campo sem assentamento JÁ FEITO NA DATA do serviço — inclusive um reaterro/cadastro já registrado que
+    perderia o suporte por causa da correção. Incoerência anterior (gravada antes da correção F03) que não é agravada
+    não bloqueia: aparece como alerta para ser corrigida por retificação. MND não tem vala."""
     ext, mnd = float(t["extensao_m"]), t.get("metodologia") == "MND"
+    atuais = [dict(i, chave=i["id"]) for i in intervalos(conn, t["id"])]
+    restantes = [i for i in atuais if i["id"] not in set(excluir)]
     por_etapa = {e: [] for e in R.ETAPAS_INTERVALO}
-    for n in novos:
-        e, a, b = n["etapa"], float(n["ini_m"]), float(n["fim_m"])
+    hip = list(restantes)
+    for k, n in enumerate(novos):
+        e, a, b = n.get("etapa"), float(n["ini_m"]), float(n["fim_m"])
         if e not in R.ETAPAS_INTERVALO:
             raise RegraViolada(f"Etapa inválida: {e}.")
         if mnd and e == "REATERRADO":
             raise RegraViolada("Trecho MND não tem vala: registre só ASSENTADO e CADASTRO_CAMPO.")
         if not (0 <= a < b <= ext + R.TOL_M):
             raise RegraViolada(f"{e} {a:g}–{b:g} m fora do trecho (0–{ext:g} m) ou com início ≥ fim.")
-        existentes = [(i["ini_m"], i["fim_m"]) for i in intervalos(conn, t["id"], e)]
-        sob = R.sobreposicao((a, b), existentes + [(x, y) for x, y, _ in por_etapa[e]])
+        existentes = [(i["ini_m"], i["fim_m"]) for i in restantes if i["etapa"] == e]
+        sob = R.sobreposicao((a, b), existentes + por_etapa[e])
         if sob:
             raise RegraViolada(f"{e} {a:g}–{b:g} m sobrepõe intervalo já registrado ({sob[0]:g}–{sob[1]:g} m). "
                                "Intervalo repetido ou sobreposto não é aceito.")
-        por_etapa[e].append((a, b, n["data"]))
-    for e in ("REATERRADO", "CADASTRO_CAMPO"):
-        for a, b, d in por_etapa[e]:
-            suporte = _cobertura(conn, t["id"], "ASSENTADO", [(x, y) for x, y, dn in por_etapa["ASSENTADO"] if dn <= d], ate_data=d)
-            falta = R.fora_da_cobertura((a, b), suporte)
-            if falta:
-                raise RegraViolada(f"{e} {a:g}–{b:g} m em {d} inclui trecho sem assentamento registrado até essa data: "
-                                   + ", ".join(f"{x:g}–{y:g} m" for x, y in falta) + ".")
-    return {e: [(a, b) for a, b, _ in v] for e, v in por_etapa.items()}
+        por_etapa[e].append((a, b))
+        hip.append({"etapa": e, "ini_m": a, "fim_m": b, "data": n["data"], "chave": ("novo", k)})
+    antes, depois = _incoerencias(atuais), _incoerencias(hip)
+    por_id = {i["id"]: i for i in atuais}
+    for chave, falta in sorted(depois.items(), key=lambda x: isinstance(x[0], int)):
+        if chave in antes and R.comprimento(falta) <= R.comprimento(antes[chave]) + R.TOL_M:
+            continue
+        if not isinstance(chave, int):
+            n = novos[chave[1]]
+            raise RegraViolada(f"{n['etapa']} {float(n['ini_m']):g}–{float(n['fim_m']):g} m em {n['data']} inclui trecho "
+                               f"sem assentamento registrado até essa data: {_faixas(falta)}.")
+        i = por_id[chave]
+        raise RegraViolada(f"A correção deixaria {i['etapa']} {i['ini_m']:g}–{i['fim_m']:g} m de {i['data']} "
+                           f"({_ref_intervalo(i)}) sem assentamento registrado até essa data: {_faixas(falta)}. "
+                           "Retifique antes esse registro. Nada foi gravado.")
+    return por_etapa
 
 
 def _intervalos_completo(conn, t, data):
@@ -813,34 +872,56 @@ def _intervalos_completo(conn, t, data):
 
 def _recalcular_alertas(conn, trecho_id):
     """Reaterro sem cadastro de campo registrado ATÉ a data do reaterro (cadastro posterior não conta como anterior)."""
-    for r in intervalos(conn, trecho_id, "REATERRADO"):
-        cad = _cobertura(conn, trecho_id, "CADASTRO_CAMPO", ate_data=r["data"])
-        sem = 1 if R.fora_da_cobertura((r["ini_m"], r["fim_m"]), cad) else 0
-        if sem != r["sem_cadastro_campo"]:
-            conn.execute("UPDATE intervalos_execucao SET sem_cadastro_campo=? WHERE id=?", (sem, r["id"]))
+    efetivos = [dict(i, chave=i["id"]) for i in intervalos(conn, trecho_id)]
+    sem = _sem_cadastro(efetivos)
+    for r in efetivos:
+        if r["etapa"] == "REATERRADO" and int(r["id"] in sem) != r["sem_cadastro_campo"]:
+            conn.execute("UPDATE intervalos_execucao SET sem_cadastro_campo=? WHERE id=?", (int(r["id"] in sem), r["id"]))
 
 
-def _atualizar_execucao_trecho(conn, t):
-    """Resumo de execução a partir dos intervalos. Só é chamado sem legado pendente (ver _exigir_sem_legado)."""
+def _atualizar_execucao_trecho(conn, t, exato=False):
+    """Resumo de execução a partir dos intervalos efetivos. Só é chamado sem legado pendente (ver _exigir_sem_legado).
+    `exato` (retificação): 'concluído' acompanha a correção também para baixo (o trecho não tem OK interno)."""
     ext = float(t["extensao_m"])
     ass = R.comprimento(_cobertura(conn, t["id"], "ASSENTADO"))
     reat = ass if t.get("metodologia") == "MND" else R.comprimento(_cobertura(conn, t["id"], "REATERRADO"))
+    concl = "excluded.concluido" if exato else "MAX(concluido, excluded.concluido)"
     conn.execute(
-        """INSERT INTO execucao(alvo_tipo,alvo_id,metros_executados,metros_reaterrados,concluido) VALUES ('TRECHO',?,?,?,?)
+        f"""INSERT INTO execucao(alvo_tipo,alvo_id,metros_executados,metros_reaterrados,concluido) VALUES ('TRECHO',?,?,?,?)
            ON CONFLICT(alvo_tipo,alvo_id) DO UPDATE SET metros_executados=excluded.metros_executados,
-             metros_reaterrados=excluded.metros_reaterrados, concluido=MAX(concluido, excluded.concluido)""",
+             metros_reaterrados=excluded.metros_reaterrados, concluido={concl}""",
         (t["id"], ass, reat, 1 if reat >= ext - R.TOL_M else 0))
 
 
-def _gravar_intervalos(conn, t, novos, equipe_id, apontamento_id, informado_por, conciliacao_id=None):
+def _gravar_intervalos(conn, t, novos, equipe_id, apontamento_id, informado_por, conciliacao_id=None,
+                       retificacao_id=None, exato=False):
     for n in novos:
         conn.execute(
             """INSERT INTO intervalos_execucao(trecho_id,etapa,ini_m,fim_m,data,equipe_id,apontamento_id,origem,
-                 informado_por,conciliacao_id,registrado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                 informado_por,conciliacao_id,registrado_em,referencia,verificado_em,verificado_por,retificacao_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (t["id"], n["etapa"], float(n["ini_m"]), float(n["fim_m"]), n["data"], equipe_id, apontamento_id, n["origem"],
-             informado_por, conciliacao_id, _agora()))
+             informado_por, conciliacao_id, _agora(), (n.get("referencia") or "").strip() or None,
+             n.get("verificado_em"), n.get("verificado_por"), retificacao_id))
     _recalcular_alertas(conn, t["id"])
-    _atualizar_execucao_trecho(conn, t)
+    _atualizar_execucao_trecho(conn, t, exato)
+
+
+def _linhas_quantidades(prev, quantidades):
+    """[(serviço, unidade, previsto, confirmado)]: previsto confirmado como está, salvo o que vier em `quantidades`."""
+    confirmadas = {(q["servico"], q["unidade"]): q["confirmado"] for q in (quantidades or [])}
+    out = []
+    for q in prev:
+        out.append((q["servico"], q["unidade"], q["previsto"], float(confirmadas.pop((q["servico"], q["unidade"]), q["previsto"]))))
+    out += [(s, u, None, float(c)) for (s, u), c in confirmadas.items()]
+    return out
+
+
+def _recusar_solda(quantidades):
+    servico_solda = mapa_servicos()["solda"]["servico"]
+    if any(q["servico"] == servico_solda for q in (quantidades or [])):
+        raise RegraViolada("Soldas não são confirmadas no apontamento: registre-as no controle de soldas "
+                           "(informadas e verificadas).")
 
 
 def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_reaterrados=0,
@@ -848,10 +929,11 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
             informado_por=None):
     """Lança avanço de campo. `quantidades=None` equivale a [✅ OK, Confirmar Previsto].
 
-    Trecho: o avanço é registrado em INTERVALOS por etapa (`intervalos_novos`: [{etapa, ini_m, fim_m}], em metros
-    desde o início do trecho) ou com '100 % concluído' (preenche as lacunas). Apontamento só em metros não é mais
-    aceito para trecho (criaria posição presumida). Com avanço anterior sem posição, exige antes a conciliação.
-    Estimativas (soldas ⌈L/6⌉) nunca viram quantidade confirmada: soldas têm controle próprio.
+    Trecho: o avanço é registrado em INTERVALOS por etapa (`intervalos_novos`: [{etapa, ini_m, fim_m, referencia?}],
+    em metros desde o início do trecho; `referencia` = registro do levantamento de campo) ou com '100 % concluído'
+    (preenche as lacunas). Apontamento só em metros não é mais aceito para trecho (criaria posição presumida). Com
+    avanço anterior sem posição, exige antes a conciliação. Estimativas (soldas ⌈L/6⌉) nunca viram quantidade
+    confirmada: soldas têm controle próprio.
     """
     turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
     if turnos != {"MANHA", "TARDE"}:
@@ -861,10 +943,7 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     ex = execucao(conn, tipo, aid) or {"metros_executados": 0, "metros_reaterrados": 0, "concluido": 0}
     if ex.get("ok_fiscal_em"):
         raise RegraViolada("Alvo já validado pela fiscalização — não aceita novos apontamentos.")
-    servico_solda = mapa_servicos()["solda"]["servico"]
-    if any(q["servico"] == servico_solda for q in (quantidades or [])):
-        raise RegraViolada("Soldas não são confirmadas no apontamento: registre-as no controle de soldas "
-                           "(informadas e verificadas).")
+    _recusar_solda(quantidades)
     novos = []
     if tipo == "TRECHO":
         _exigir_sem_legado(conn, a, "registrar novos intervalos")
@@ -891,13 +970,8 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
                  estaca_fim,informado_por) VALUES (?,?,?,?,?,?,?,?,?)""",
             (data, equipe_id, tipo, aid, metros_executados, metros_reaterrados, estaca_ini, estaca_fim,
              informado_por)).lastrowid
-        confirmadas = {(q["servico"], q["unidade"]): q["confirmado"] for q in (quantidades or [])}
-        for q in prev:
-            conf = confirmadas.pop((q["servico"], q["unidade"]), q["previsto"])
-            conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,?,?)",
-                         (apid, q["servico"], q["unidade"], q["previsto"], float(conf)))
-        for (serv, un), conf in confirmadas.items():
-            conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,NULL,?)", (apid, serv, un, float(conf)))
+        for linha in _linhas_quantidades(prev, quantidades):
+            conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,?,?)", (apid, *linha))
         if tipo == "TRECHO":
             _gravar_intervalos(conn, a, novos, equipe_id, apid, informado_por)
         else:
@@ -906,6 +980,31 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
                    ON CONFLICT(alvo_tipo,alvo_id) DO UPDATE SET concluido=MAX(concluido, excluded.concluido)""",
                 (tipo, aid, concluido))
     return apid
+
+
+def _posicoes_legado(novos, datas, padrao=None):
+    """Intervalos de conciliação (só ASSENTADO/REATERRADO), cada um com data dentro do período do legado da etapa."""
+    out = []
+    for n in novos or []:
+        e = n.get("etapa")
+        if e not in ("ASSENTADO", "REATERRADO"):
+            raise RegraViolada("A conciliação posiciona só ASSENTADO e REATERRADO do legado.")
+        ds = datas[e]
+        if not ds:
+            raise RegraViolada(f"Não há {e} no avanço legado deste trecho.")
+        d = n.get("data") or (padrao or {}).get(e) or ds[-1]
+        if not (ds[0] <= d <= ds[-1]):
+            raise RegraViolada(f"Data {d} fora do período do legado de {e} ({ds[0]} a {ds[-1]}).")
+        out.append({"etapa": e, "ini_m": float(n["ini_m"]), "fim_m": float(n["fim_m"]), "data": d})
+    return out
+
+
+def _exigir_mesmos_metros(novos, ass, rea, origem):
+    for e, total in (("ASSENTADO", ass), ("REATERRADO", rea)):
+        soma = sum(n["fim_m"] - n["ini_m"] for n in novos if n["etapa"] == e)
+        if abs(soma - total) > 0.01:
+            raise RegraViolada(f"{e}: a conciliação posiciona {soma:g} m, mas {origem} tem {total:g} m. A conciliação "
+                               "distribui exatamente os metros antigos (nem mais, nem menos).")
 
 
 def conciliar_legado(conn, trecho_ref, intervalos_conc, motivo, responsavel):
@@ -922,23 +1021,8 @@ def conciliar_legado(conn, trecho_ref, intervalos_conc, motivo, responsavel):
         raise RegraViolada(f"{t['ponto']} não tem avanço anterior pendente de conciliação.")
     if not (motivo or "").strip() or not (responsavel or "").strip():
         raise RegraViolada("A conciliação exige motivo (como a posição foi confirmada) e responsável.")
-    novos = []
-    for n in intervalos_conc or []:
-        e = n.get("etapa")
-        if e not in ("ASSENTADO", "REATERRADO"):
-            raise RegraViolada("A conciliação posiciona só ASSENTADO e REATERRADO do legado.")
-        datas = pend["datas"][e]
-        if not datas:
-            raise RegraViolada(f"Não há {e} no avanço legado deste trecho.")
-        d = n.get("data") or datas[-1]
-        if not (datas[0] <= d <= datas[-1]):
-            raise RegraViolada(f"Data {d} fora do período do legado de {e} ({datas[0]} a {datas[-1]}).")
-        novos.append({"etapa": e, "ini_m": float(n["ini_m"]), "fim_m": float(n["fim_m"]), "data": d, "origem": "LEGADO"})
-    for e in ("ASSENTADO", "REATERRADO"):
-        soma = sum(n["fim_m"] - n["ini_m"] for n in novos if n["etapa"] == e)
-        if abs(soma - pend[e]) > 0.01:
-            raise RegraViolada(f"{e}: a conciliação posiciona {soma:g} m, mas o legado tem {pend[e]:g} m. A conciliação "
-                               "distribui exatamente os metros antigos (nem mais, nem menos).")
+    novos = [dict(n, origem="LEGADO") for n in _posicoes_legado(intervalos_conc, pend["datas"])]
+    _exigir_mesmos_metros(novos, pend["ASSENTADO"], pend["REATERRADO"], "o legado")
     _validar_intervalos(conn, t, novos)
     with transacao(conn):
         cid = conn.execute(
@@ -951,11 +1035,178 @@ def conciliar_legado(conn, trecho_ref, intervalos_conc, motivo, responsavel):
     return cid
 
 
+# ------------------------------------------------------------------ retificação de intervalos (v8)
+def _grupo_retificacao(conn, ref_tipo, ref_id):
+    """(trecho_id, intervalos efetivos do registro, registro): o que uma retificação substitui por inteiro."""
+    if ref_tipo == "APONTAMENTO":
+        ap = _one(conn, "SELECT * FROM apontamentos WHERE id=?", ref_id)
+        if not ap or ap["alvo_tipo"] != "TRECHO":
+            raise RegraViolada(f"Apontamento de trecho #{ref_id} não encontrado.")
+        if ap["anulado_por"]:
+            r = _one(conn, "SELECT novo_apontamento_id FROM retificacoes_intervalos WHERE id=?", ap["anulado_por"])
+            raise RegraViolada(f"O apontamento #{ref_id} já foi retificado (retificação #{ap['anulado_por']})"
+                               + (f": retifique o apontamento #{r['novo_apontamento_id']}, que o substituiu." if r and r["novo_apontamento_id"] else "."))
+        ivs = _rows(conn.execute(f"SELECT * FROM intervalos_execucao WHERE apontamento_id=? AND {EFETIVO} ORDER BY etapa, ini_m", (ref_id,)))
+        if not ivs:
+            c = _one(conn, "SELECT conciliacao_id FROM conciliacao_legado_apontamentos WHERE apontamento_id=?", ref_id)
+            if c:
+                raise RegraViolada(f"Os metros do apontamento #{ref_id} foram posicionados na conciliação "
+                                   f"#{c['conciliacao_id']}: retifique a conciliação.")
+            raise RegraViolada(f"O apontamento #{ref_id} não tem intervalos (avanço anterior sem posição): use a conciliação do legado.")
+        return ap["alvo_id"], ivs, ap
+    if ref_tipo == "CONCILIACAO":
+        c = _one(conn, "SELECT * FROM conciliacoes_legado WHERE id=?", ref_id)
+        if not c:
+            raise RegraViolada(f"Conciliação #{ref_id} não encontrada.")
+        ivs = _rows(conn.execute(f"SELECT * FROM intervalos_execucao WHERE conciliacao_id=? AND {EFETIVO} ORDER BY etapa, ini_m", (ref_id,)))
+        return c["trecho_id"], ivs, c
+    raise RegraViolada("Retificação: informe um apontamento ou uma conciliação do legado.")
+
+
+def _quantidades_retificadas(conn, t, ap, antes, metros, quantidades):
+    """Quantidades do apontamento substituto. Sem `quantidades` informadas:
+    * mesmo comprimento assentado → as mesmas quantidades (correção só de posição/data);
+    * comprimento diferente → previsto do novo comprimento, a regra do [✅ OK, Confirmar Previsto] (a mesma do
+      apontamento). Se o original tinha quantidade confirmada à mão (ou serviço fora do previsto), não há regra
+      para recalcular: a retificação pede as quantidades corrigidas (nada é presumido)."""
+    servico_solda = mapa_servicos()["solda"]["servico"]
+    antes = [q for q in antes if q[0] != servico_solda]          # estimativa antiga gravada como confirmada (F02)
+    prev = [q for q in previsto(conn, "TRECHO", t["id"], metros) if not q.get("estimativa")] if metros > 0 else []
+    if quantidades is not None:
+        return _linhas_quantidades(prev, quantidades)
+    if abs(metros - float(ap["metros_executados"] or 0)) <= R.TOL_M:
+        return list(antes)
+    editadas = [q[0] for q in antes if q[2] is None or abs(q[3] - q[2]) > 1e-9]
+    if editadas:
+        raise RegraViolada("O comprimento assentado muda e o apontamento original tem quantidade confirmada à mão ("
+                           + ", ".join(editadas) + "): informe as quantidades corrigidas na retificação.")
+    return _linhas_quantidades(prev, None)
+
+
+def retificar_intervalos(conn, ref_tipo, ref_id, novos, motivo, responsavel, data=None, quantidades=None,
+                         simular=False):
+    """Corrige os intervalos de UM apontamento ou de UMA conciliação do legado (posição, extensão, etapa, data).
+
+    `novos` = conjunto completo que substitui os intervalos efetivos do registro ([] anula o registro). Aplicação
+    integral ou recusa: o conjunto resultante do trecho é validado inteiro (sobreposição, limites, reaterro e cadastro
+    de campo com assentamento até a data — inclusive os de outros registros que dependiam do que muda) antes de
+    gravar qualquer coisa. Nada é apagado: os originais ficam anulados e ligados à retificação (motivo, responsável).
+
+    * APONTAMENTO: o original sai das somas (anulado_por) e um apontamento substituto, ligado à retificação, recebe
+      as quantidades corrigidas (ver _quantidades_retificadas): não há dupla contagem. Mesma equipe; a data pode
+      ser corrigida (exige o clima daquele dia, como o apontamento).
+    * CONCILIACAO: os metros por etapa continuam IGUAIS aos da conciliação (sem nova contagem) e sem quantidades.
+
+    Verificação: um intervalo que volta idêntico (etapa, posição e data) mantém a verificação; os demais voltam a
+    "informado". Recusada em trecho com OK interno e com avanço legado pendente. `simular=True` devolve o plano
+    (antes × depois) sem gravar.
+    """
+    trecho_id, originais, reg = _grupo_retificacao(conn, ref_tipo, int(ref_id))
+    t = alvo(conn, "TRECHO", trecho_id, operacao=True)
+    ex = execucao(conn, "TRECHO", t["id"]) or {}
+    if ex.get("ok_fiscal_em"):
+        raise RegraViolada(f"{t['ponto']} já tem OK interno ({ex['ok_fiscal_em']}): a proposta da medição de teste e a "
+                           "esteira de cadastro partiram desses metros. Retificação depois do OK não está implementada.")
+    _exigir_sem_legado(conn, t, "retificar intervalos")
+    if not simular and (not (motivo or "").strip() or not (responsavel or "").strip()):
+        raise RegraViolada("A retificação exige motivo (o que estava errado e como foi confirmado) e responsável.")
+    _recusar_solda(quantidades)
+    mnd = t.get("metodologia") == "MND"
+    if ref_tipo == "APONTAMENTO":
+        d = data or reg["data"]
+        if d != reg["data"]:
+            turnos = {r[0] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (d, reg["equipe_id"]))}
+            if turnos != {"MANHA", "TARDE"}:
+                raise RegraViolada(f"Nova data {d}: registre antes o clima da equipe {reg['equipe_id']} nos dois turnos.")
+        lista = [{"etapa": n.get("etapa"), "ini_m": float(n["ini_m"]), "fim_m": float(n["fim_m"]), "data": d,
+                  "referencia": (n.get("referencia") or "").strip() or None} for n in novos or []]
+    else:
+        if quantidades:
+            raise RegraViolada("A conciliação não tem quantidades: elas continuam nos apontamentos antigos.")
+        aps = _rows(conn.execute(
+            """SELECT ap.data, COALESCE(ap.metros_executados,0) ass, COALESCE(ap.metros_reaterrados,0) rea FROM apontamentos ap
+               JOIN conciliacao_legado_apontamentos c ON c.apontamento_id=ap.id WHERE c.conciliacao_id=?""", (reg["id"],)))
+        padrao = {}
+        for i in originais:
+            padrao.setdefault(i["etapa"], i["data"])
+        lista = _posicoes_legado(novos, _datas_legado(aps, mnd), padrao)
+        _exigir_mesmos_metros(lista, reg["metros_assentado"], reg["metros_reaterrado"], f"a conciliação #{reg['id']}")
+        d = None
+    chave = lambda i: (i["etapa"], round(float(i["ini_m"]), 6), round(float(i["fim_m"]), 6), i["data"])
+    excluir = {i["id"] for i in originais}
+    _validar_intervalos(conn, t, lista, excluir)
+    q_antes = [tuple(r) for r in conn.execute(
+        "SELECT servico, unidade, previsto, confirmado FROM apontamento_quantidades WHERE apontamento_id=? ORDER BY servico, unidade",
+        (reg["id"],))] if ref_tipo == "APONTAMENTO" else []
+    q_depois = None
+    if ref_tipo == "APONTAMENTO":
+        metros = sum(n["fim_m"] - n["ini_m"] for n in lista if n["etapa"] == "ASSENTADO")
+        q_depois = _quantidades_retificadas(conn, t, reg, q_antes, metros, quantidades)
+    for n in lista:
+        n["origem"] = "RETIFICACAO"
+        igual = next((i for i in originais if chave(i) == chave(n)), None)
+        if igual:
+            n.setdefault("verificado_em", igual["verificado_em"])
+            n.setdefault("verificado_por", igual["verificado_por"])
+            if not n.get("referencia"):
+                n["referencia"] = igual.get("referencia")
+    mesmos = sorted(map(chave, originais)) == sorted(map(chave, lista)) and \
+        sorted((i["etapa"], i.get("referencia") or None) for i in originais) == sorted((n["etapa"], n.get("referencia") or None) for n in lista)
+    if mesmos and (q_depois is None or sorted(q_depois, key=str) == sorted(q_antes, key=str)):
+        raise RegraViolada("A retificação não altera nada.")
+    restantes = [dict(i, chave=i["id"]) for i in intervalos(conn, t["id"]) if i["id"] not in excluir]
+    hip = restantes + [dict(n, chave=("novo", k)) for k, n in enumerate(lista)]
+    resumo = lambda lst: {e: R.comprimento([(i["ini_m"], i["fim_m"]) for i in lst if i["etapa"] == e]) for e in R.ETAPAS_INTERVALO
+                          if not (mnd and e == "REATERRADO")}
+    sem_cad = _sem_cadastro(hip)
+    campos_iv = ("id", "etapa", "ini_m", "fim_m", "data", "origem", "informado_por", "verificado_por", "referencia")
+    plano = {"trecho": t["ponto"], "ref_tipo": ref_tipo, "ref_id": int(ref_id),
+             "anulados": [{k: i.get(k) for k in campos_iv} for i in originais],
+             "novos": [{k: n.get(k) for k in campos_iv if k != "id"} for n in lista],
+             "data_antes": reg.get("data"), "data_depois": d,
+             "quantidades_antes": [dict(zip(("servico", "unidade", "previsto", "confirmado"), q)) for q in q_antes],
+             "quantidades_depois": None if q_depois is None else
+             [dict(zip(("servico", "unidade", "previsto", "confirmado"), q)) for q in q_depois],
+             "resumo_antes": resumo([dict(i) for i in intervalos(conn, t["id"])]), "resumo_depois": resumo(hip),
+             "alertas": [f"Reaterro {i['ini_m']:g}–{i['fim_m']:g} m ({i['data']}) ficará sem cadastro de campo até a data "
+                         "(alerta, não bloqueio)." for i in hip if i["chave"] in sem_cad]}
+    if simular:
+        return plano
+    with transacao(conn):
+        rid = conn.execute(
+            "INSERT INTO retificacoes_intervalos(trecho_id,ref_tipo,ref_id,motivo,responsavel,detalhe,em) VALUES (?,?,?,?,?,?,?)",
+            (t["id"], ref_tipo, int(ref_id), motivo.strip(), responsavel.strip(), json.dumps(plano, ensure_ascii=False),
+             _agora())).lastrowid
+        conn.execute(f"UPDATE intervalos_execucao SET anulado_por=? WHERE id IN ({','.join('?' * len(excluir))})",
+                     (rid, *sorted(excluir)))
+        if ref_tipo == "APONTAMENTO":
+            conn.execute("UPDATE apontamentos SET anulado_por=? WHERE id=?", (rid, reg["id"]))
+            novo_ap = None
+            if lista or q_depois:
+                novo_ap = conn.execute(
+                    """INSERT INTO apontamentos(data,equipe_id,alvo_tipo,alvo_id,metros_executados,metros_reaterrados,
+                         estaca_ini,estaca_fim,informado_por,retificacao_id) VALUES (?,?,'TRECHO',?,?,?,?,?,?,?)""",
+                    (d, reg["equipe_id"], t["id"], sum(n["fim_m"] - n["ini_m"] for n in lista if n["etapa"] == "ASSENTADO"),
+                     sum(n["fim_m"] - n["ini_m"] for n in lista if n["etapa"] == "REATERRADO"), reg["estaca_ini"],
+                     reg["estaca_fim"], responsavel.strip(), rid)).lastrowid
+                for linha in q_depois:
+                    conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,?,?)", (novo_ap, *linha))
+                conn.execute("UPDATE retificacoes_intervalos SET novo_apontamento_id=? WHERE id=?", (novo_ap, rid))
+            _gravar_intervalos(conn, t, lista, reg["equipe_id"], novo_ap, responsavel.strip(), retificacao_id=rid, exato=True)
+        else:
+            _gravar_intervalos(conn, t, lista, None, None, responsavel.strip(), conciliacao_id=reg["id"],
+                               retificacao_id=rid, exato=True)
+    plano["id"] = rid
+    return plano
+
+
 def verificar_intervalo(conn, intervalo_id, verificado_por):
-    """Fiscal confere em campo um intervalo informado (quem informou não verifica)."""
+    """Fiscal confere em campo um intervalo informado (quem informou não verifica). Conferência interna Ankara."""
     i = _one(conn, "SELECT * FROM intervalos_execucao WHERE id=?", intervalo_id)
     if not i:
         raise RegraViolada("Intervalo não encontrado.")
+    if i["anulado_por"]:
+        raise RegraViolada(f"Intervalo anulado pela retificação #{i['anulado_por']}: verifique o que o substituiu.")
     if i["verificado_em"]:
         raise RegraViolada("Intervalo já verificado.")
     if not (verificado_por or "").strip():
@@ -965,22 +1216,54 @@ def verificar_intervalo(conn, intervalo_id, verificado_por):
     conn.execute("UPDATE intervalos_execucao SET verificado_em=?, verificado_por=? WHERE id=?", (_agora(), verificado_por.strip(), intervalo_id))
 
 
+def estado_verificacao(n_intervalos, n_verificados, legado):
+    """Execução INFORMADA × VERIFICADA (conferência interna Ankara; não é aprovação da Caesb)."""
+    if legado:
+        return "LEGADO_SEM_POSICAO"
+    if not n_intervalos:
+        return None
+    return "VERIFICADO" if n_verificados >= n_intervalos else "PARCIAL" if n_verificados else "INFORMADO"
+
+
 def situacao_intervalos(conn, trecho_id):
     t = alvo(conn, "TRECHO", trecho_id)
     ext = float(t["extensao_m"])
     out = {"extensao_m": ext, "etapas": {}, "alertas": [], "execucao_registrada": execucao(conn, "TRECHO", t["id"])}
+    out["intervalos"] = intervalos(conn, t["id"])
     for e in R.ETAPAS_INTERVALO:
         if e == "REATERRADO" and t.get("metodologia") == "MND":
             continue
         cob = _cobertura(conn, t["id"], e)
-        out["etapas"][e] = {"metros": R.comprimento(cob), "cobertura": cob, "lacunas": R.lacunas(cob, ext)}
-    out["intervalos"] = intervalos(conn, t["id"])
+        ver = R.unir_intervalos([(i["ini_m"], i["fim_m"]) for i in out["intervalos"] if i["etapa"] == e and i["verificado_em"]])
+        out["etapas"][e] = {"metros": R.comprimento(cob), "cobertura": cob, "lacunas": R.lacunas(cob, ext),
+                            "verificado_m": R.comprimento(ver), "verificado": ver}
     out["legado"] = legado_pendente(conn, t)
+    out["anulados"] = intervalos(conn, t["id"], anulados=True)
+    out["retificacoes"] = _rows(conn.execute(
+        "SELECT id, ref_tipo, ref_id, novo_apontamento_id, motivo, responsavel, em FROM retificacoes_intervalos "
+        "WHERE trecho_id=? ORDER BY id", (t["id"],)))
+    out["conciliacoes"] = _rows(conn.execute("SELECT * FROM conciliacoes_legado WHERE trecho_id=? ORDER BY id", (t["id"],)))
+    grupos = {}
+    for i in out["intervalos"]:
+        k = ("CONCILIACAO", i["conciliacao_id"]) if i["conciliacao_id"] else ("APONTAMENTO", i["apontamento_id"]) if i["apontamento_id"] else None
+        if k:
+            g = grupos.setdefault(k, {"ref_tipo": k[0], "ref_id": k[1], "intervalos": []})
+            g["intervalos"].append(i)
+    out["registros"] = sorted(grupos.values(), key=lambda g: (min(i["data"] for i in g["intervalos"]), g["ref_tipo"], g["ref_id"]))
+    out["verificacao"] = estado_verificacao(len(out["intervalos"]), sum(1 for i in out["intervalos"] if i["verificado_em"]),
+                                            out["legado"])
     if out["legado"]:
         lg = out["legado"]
         out["alertas"].append(f"Avanço anterior SEM POSIÇÃO: {lg['ASSENTADO']:g} m assentados e {lg['REATERRADO']:g} m "
                               "reaterrados (preservados no resumo de execução). As lacunas acima não incluem esses metros. "
                               "Concilie a posição antes de novos intervalos, do 100 % e do OK interno.")
+    inc = _incoerencias([dict(i, chave=i["id"]) for i in out["intervalos"]])
+    if inc:
+        por_id = {i["id"]: i for i in out["intervalos"]}
+        out["alertas"].append("Cronologia incoerente em registro anterior (reaterro/cadastro antes do assentamento): " + "; ".join(
+            f"{por_id[k]['etapa']} {por_id[k]['ini_m']:g}–{por_id[k]['fim_m']:g} m de {por_id[k]['data']} ({_ref_intervalo(por_id[k])}) "
+            f"sem assentamento até a data em {_faixas(f)}" for k, f in inc.items()) + ". Corrija por retificação.")
+    out["incoerencias"] = sorted(inc)
     sem_cad = [i for i in out["intervalos"] if i["sem_cadastro_campo"]]
     if sem_cad:
         out["alertas"].append("Reaterro sem cadastro de campo registrado até a data do reaterro: " +
@@ -1241,11 +1524,13 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
     with transacao(conn):
         conn.execute("UPDATE execucao SET ok_fiscal_em=?, ok_fiscal_por=?, medicao_id=? WHERE alvo_tipo=? AND alvo_id=?",
                      (data, usuario, med["id"], tipo, aid))
-        # SOLDA de apontamentos antigos (estimativa ⌈L/6⌉ gravada como confirmada) é ignorada: vale o controle de soldas
+        # SOLDA de apontamentos antigos (estimativa ⌈L/6⌉ gravada como confirmada) é ignorada: vale o controle de soldas.
+        # Apontamento retificado (anulado_por) fica fora: vale o substituto, sem dupla contagem.
         servs = _rows(conn.execute(
             """SELECT q.servico, q.unidade, SUM(q.confirmado) qtd FROM apontamento_quantidades q
                JOIN apontamentos ap ON ap.id=q.apontamento_id
-               WHERE ap.alvo_tipo=? AND ap.alvo_id=? AND q.servico<>? GROUP BY q.servico, q.unidade""",
+               WHERE ap.alvo_tipo=? AND ap.alvo_id=? AND ap.anulado_por IS NULL AND q.servico<>?
+               GROUP BY q.servico, q.unidade""",
             (tipo, aid, servico_solda)))
         aprov = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM soldas WHERE alvo_tipo=? AND alvo_id=? "
                              "AND resultado='APROVADA'", (tipo, aid)).fetchone()[0]
@@ -1306,6 +1591,30 @@ def recomposicao_ok(conn, alvo_tipo, ref, tipo, quantidade, data=None):
 
 
 # ------------------------------------------------------------------ esteira de cadastro
+def ultima_conferencia(conn, trecho_id, revisao):
+    """Última conferência interna Ankara registrada para a revisão do cadastro (ou None)."""
+    r = _one(conn, "SELECT * FROM revisoes_cadastro WHERE trecho_id=? AND revisao=? ORDER BY id DESC LIMIT 1", trecho_id, revisao)
+    if r:
+        r["checklist"] = json.loads(r["checklist"])
+    return r
+
+
+def registrar_conferencia_cadastro(conn, trecho_ref, resultado, checklist, revisor, obs=None):
+    """Conferência interna Ankara do cadastro recebido da empresa (etapa 3), antes do protocolo no GDOC.
+
+    Finalidade: achar divergência entre o desenho e o executado/levantamento de campo antes de protocolar, para
+    evitar negativa no GDOC. NÃO é aprovação da Caesb nem libera medição. NAO_CONFORME impede protocolar aquela
+    revisão e permite devolver o cadastro à empresa (nova revisão)."""
+    t = alvo(conn, "TRECHO", trecho_ref, operacao=True)
+    c = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", t["id"])
+    if not c or c["etapa"] != "3_RECEBIDO":
+        raise RegraViolada("A conferência interna é feita sobre o cadastro recebido da empresa (etapa 3).")
+    itens = R.validar_conferencia(resultado, checklist, revisor, obs)
+    return conn.execute(
+        "INSERT INTO revisoes_cadastro(trecho_id,revisao,resultado,checklist,revisor,obs,em) VALUES (?,?,?,?,?,?,?)",
+        (t["id"], c["revisao"], resultado, json.dumps(itens), revisor.strip(), (obs or "").strip() or None, _agora())).lastrowid
+
+
 def avancar_cadastro(conn, trecho_ref, destino, dados=None, data=None):
     dados = dados or {}
     t = alvo(conn, "TRECHO", trecho_ref, operacao=True)
@@ -1313,9 +1622,17 @@ def avancar_cadastro(conn, trecho_ref, destino, dados=None, data=None):
     if not c:
         raise RegraViolada("Trecho não está na esteira (exige OK Fiscalização).")
     R.validar_transicao(c["etapa"], destino, dados)
+    conf = ultima_conferencia(conn, t["id"], c["revisao"]) if c["etapa"] == "3_RECEBIDO" else None
+    if c["etapa"] == "3_RECEBIDO" and destino == "4_GDOC_ANALISE" and conf and conf["resultado"] == "NAO_CONFORME":
+        raise RegraViolada(f"A conferência interna da Rev. {c['revisao']} foi NÃO CONFORME ({conf['obs']}): devolva o "
+                           "cadastro à empresa antes de protocolar no GDOC.")
+    if c["etapa"] == "3_RECEBIDO" and destino == "2_ENVIADO":
+        if not conf or conf["resultado"] != "NAO_CONFORME":
+            raise RegraViolada("Devolver à empresa exige conferência interna NÃO CONFORME registrada para esta revisão.")
+        dados = dict(dados, conferencia_id=conf["id"], motivo_devolucao=conf["obs"])
     campos = {"etapa": destino, "atualizado_em": _agora()}
     if destino == "2_ENVIADO":
-        if c["etapa"] == "5A_NEGADO":
+        if c["etapa"] in ("5A_NEGADO", "3_RECEBIDO"):
             campos.update(revisao=c["revisao"] + 1, protocolo_gdoc=None, arquivos=None)
         else:
             campos.update(empresa=dados["empresa"], data_envio=dados["data_envio"])
@@ -1347,6 +1664,146 @@ def esteira(conn):
     for c in out:
         c["rotulo"] = R.rotulo_etapa(c["etapa"], c["revisao"])
         c["proximas"] = list(R.TRANSICOES.get(c["etapa"], {}).keys())
+        c["conferencia"] = ultima_conferencia(conn, c["trecho_id"], c["revisao"])
+        cad = R.comprimento(_cobertura(conn, c["trecho_id"], "CADASTRO_CAMPO"))
+        c["levantamento_m"] = cad
+        c["levantamento_completo"] = cad >= float(c["extensao_m"]) - R.TOL_M
+    return out
+
+
+ROTULO_CONFERENCIA = "Conferência interna Ankara — não é aprovação da Caesb"
+
+
+def fases_cadastro(conn, t, sit=None):
+    """Do levantamento em campo (antes de fechar a vala) à entrega do cadastro final, com evidências e pendências.
+
+    1. LEVANTAMENTO_CAMPO — o que a equipe levanta com a vala aberta (intervalos CADASTRO_CAMPO, com registro de
+       referência: caderneta, croqui ou arquivo de pontos). Depois do reaterro não dá mais para levantar.
+    2. PREPARACAO — a empresa de cadastro produz o desenho a partir do levantamento (esteira 1 → 3).
+    3. CONFERENCIA_INTERNA — a Ankara confere o desenho com o executado antes de protocolar (não é aprovação Caesb).
+    4. ENTREGA_GDOC — protocolo no GDOC e decisão da Caesb, registrada a partir do documento dela (ESET/negativa).
+    """
+    sit = sit or situacao_intervalos(conn, t["id"])
+    ext = float(t["extensao_m"])
+    fmt = lambda i: f"{i['ini_m']:g}–{i['fim_m']:g} m ({i['data']})"
+    cads = [i for i in sit["intervalos"] if i["etapa"] == "CADASTRO_CAMPO"]
+    cob_cad = sit["etapas"]["CADASTRO_CAMPO"]["cobertura"]
+    falta_lev = [f for a, b in sit["etapas"]["ASSENTADO"]["cobertura"] for f in R.fora_da_cobertura((a, b), cob_cad)]
+    lev = {"fase": "LEVANTAMENTO_CAMPO", "nome": "1. Levantamento de campo (vala aberta, antes do reaterro)",
+           "evidencias": [f"{fmt(i)} · {i['informado_por'] or 'sem informante'} · "
+                          + (f"registro: {i['referencia']}" if i["referencia"] else "sem registro de referência")
+                          + (f" · verificado por {i['verificado_por']}" if i["verificado_em"] else " · sem verificação")
+                          for i in cads], "pendencias": []}
+    m_cad = sit["etapas"]["CADASTRO_CAMPO"]["metros"]
+    lev["status"] = "NAO_INICIADO" if not cads else "COMPLETO" if m_cad >= ext - R.TOL_M else "PARCIAL"
+    if sit["legado"]:
+        lev["pendencias"].append("Avanço anterior sem posição: conciliar antes de conferir o levantamento.")
+    if falta_lev:
+        lev["pendencias"].append("Assentado sem levantamento de campo: " + _faixas(falta_lev))
+    sem = [(i, R.fora_da_cobertura((i["ini_m"], i["fim_m"]), [(x["ini_m"], x["fim_m"]) for x in cads if x["data"] <= i["data"]]))
+           for i in sit["intervalos"] if i["sem_cadastro_campo"]]
+    if sem:
+        lev["pendencias"].append("Reaterrado antes do levantamento (alerta): "
+                                 + "; ".join(f"{_faixas(f)} (reaterro de {i['data']})" for i, f in sem))
+    if [i for i in cads if not i["referencia"]]:
+        lev["pendencias"].append("Levantamento sem registro de referência (caderneta, croqui ou arquivo): "
+                                 + ", ".join(fmt(i) for i in cads if not i["referencia"]))
+    if [i for i in cads if not i["verificado_em"]]:
+        lev["pendencias"].append(f"{sum(1 for i in cads if not i['verificado_em'])} intervalo(s) de levantamento sem verificação interna.")
+    c = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", t["id"])
+    etapa = c["etapa"] if c else None
+    ordem = list(R.ETAPAS)
+    pos = ordem.index(etapa) if etapa else -1
+    prep = {"fase": "PREPARACAO", "nome": "2. Preparação do cadastro final (empresa de cadastro)", "evidencias": [], "pendencias": []}
+    if not c:
+        prep["status"] = "AGUARDA_OK_INTERNO"
+        prep["pendencias"].append("Entra na esteira com o OK interno (trecho 100 % reaterrado e fotos).")
+    else:
+        prep["status"] = {"1_PRONTO": "PRONTO_PARA_ENVIO", "2_ENVIADO": "EM_PRODUCAO"}.get(etapa, "RECEBIDO")
+        if c["empresa"]:
+            prep["evidencias"].append(f"Enviado a {c['empresa']} em {c['data_envio']}" + (f" (Rev. {c['revisao']})" if c["revisao"] else ""))
+        if c["arquivos"]:
+            prep["evidencias"].append("Arquivos recebidos: " + ", ".join(json.loads(c["arquivos"]) if c["arquivos"].startswith("[") else [c["arquivos"]]))
+        if etapa == "1_PRONTO":
+            prep["pendencias"].append("Enviar os dados do levantamento à empresa de cadastro.")
+        if etapa == "2_ENVIADO":
+            prep["pendencias"].append("Aguardando os arquivos da empresa.")
+        if etapa in ("1_PRONTO", "2_ENVIADO") and lev["status"] != "COMPLETO":
+            prep["pendencias"].append("Levantamento de campo incompleto: a empresa trabalharia com dados parciais (alerta).")
+    conf = {"fase": "CONFERENCIA_INTERNA", "nome": "3. " + ROTULO_CONFERENCIA, "evidencias": [], "pendencias": []}
+    revs = _rows(conn.execute("SELECT * FROM revisoes_cadastro WHERE trecho_id=? ORDER BY id", (t["id"],)))
+    for r in revs:
+        nao = [R.CHECKLIST_CONFERENCIA_CADASTRO[k] for k, v in json.loads(r["checklist"]).items() if not v]
+        conf["evidencias"].append(f"Rev. {r['revisao']}: {r['resultado']} por {r['revisor']} em {r['em'][:10]}"
+                                  + (f" — {r['obs']}" if r["obs"] else "") + (f" (não conferido: {'; '.join(nao)})" if nao else ""))
+    ult = ultima_conferencia(conn, t["id"], c["revisao"]) if c else None
+    if pos < ordem.index("3_RECEBIDO"):
+        conf["status"] = "AGUARDA_ARQUIVOS"
+    elif etapa == "3_RECEBIDO":
+        conf["status"] = ult["resultado"] if ult else "SEM_CONFERENCIA"
+        if not ult:
+            conf["pendencias"].append(f"Conferir o cadastro recebido (Rev. {c['revisao']}) antes de protocolar no GDOC.")
+        elif ult["resultado"] == "NAO_CONFORME":
+            conf["pendencias"].append(f"Não conforme: {ult['obs']} — devolver à empresa.")
+    else:
+        conf["status"] = ult["resultado"] if ult else "PROTOCOLADO_SEM_CONFERENCIA"
+    gd = {"fase": "ENTREGA_GDOC", "nome": "4. Entrega à Caesb (GDOC)", "evidencias": [], "pendencias": []}
+    gd["status"] = {"4_GDOC_ANALISE": "EM_ANALISE_CAESB", "5A_NEGADO": "NEGADO_CAESB", "6_APROVADO": "APROVACAO_CAESB_REGISTRADA"}.get(etapa, "NAO_PROTOCOLADO")
+    for h in _rows(conn.execute("SELECT * FROM cadastro_historico WHERE trecho_id=? AND para_etapa IN ('4_GDOC_ANALISE','5A_NEGADO','6_APROVADO') ORDER BY id", (t["id"],))):
+        dd = json.loads(h["dados"] or "{}")
+        gd["evidencias"].append(f"{R.ETAPAS[h['para_etapa']]} em {h['em'][:10]}: "
+                                + (dd.get("protocolo_gdoc") or dd.get("motivo_negativa") or dd.get("memorando_eset") or ""))
+    if etapa == "4_GDOC_ANALISE":
+        gd["pendencias"].append(f"Aguardando a análise da Caesb (protocolo {c['protocolo_gdoc']}).")
+    elif etapa == "5A_NEGADO":
+        gd["pendencias"].append(f"Negado pela Caesb: {c['motivo_negativa']} — reenviar à empresa para ajuste.")
+    elif etapa == "6_APROVADO":
+        gd["evidencias"].append(f"Registrado a partir do memorando ESET {c['memorando_eset']} (documento da Caesb; o sistema não aprova).")
+    return [lev, prep, conf, gd]
+
+
+def pendencias_alvo(conn, d):
+    """Pendências consolidadas do detalhe (visão integrada): BLOQUEIO impede uma ação; ALERTA pede correção ou decisão;
+    PENDENTE é o que falta fazer. Nada aqui é aprovação da Caesb."""
+    out = []
+    add = lambda nivel, area, texto: out.append({"nivel": nivel, "area": area, "texto": texto})
+    if d.get("perfil_bloqueado"):
+        add("BLOQUEIO", "Cálculo", f"{d['perfil_bloqueado']} (quantidades previstas bloqueadas).")
+    iv = d.get("intervalos")
+    if iv:
+        if iv["legado"]:
+            add("BLOQUEIO", "Execução", f"Avanço anterior sem posição ({iv['legado']['ASSENTADO']:g} m assentados, "
+                f"{iv['legado']['REATERRADO']:g} m reaterrados): conciliar antes de novos intervalos, 100 % e OK interno.")
+        ex = d.get("execucao") or {}
+        if not iv["legado"] and (ex.get("metros_executados") or 0) > 0:
+            for e, v in iv["etapas"].items():
+                if e != "CADASTRO_CAMPO" and v["lacunas"]:
+                    add("PENDENTE", "Execução", f"{e}: falta {_faixas(v['lacunas'])}.")
+        if iv["incoerencias"]:
+            add("ALERTA", "Execução", "Cronologia incoerente em registro anterior: corrigir por retificação.")
+        seq = [i for i in iv["intervalos"] if i["origem"] == "SEQUENCIAL"]
+        if seq:
+            add("ALERTA", "Execução", f"{len(seq)} intervalo(s) com posição presumida: confirmar por retificação.")
+        nv = [i for i in iv["intervalos"] if not i["verificado_em"]]
+        if nv:
+            add("PENDENTE", "Verificação interna", f"{len(nv)} intervalo(s) informados sem verificação.")
+    s_ = d.get("soldas") or {}
+    if s_.get("sem_verificacao"):
+        add("PENDENTE", "Soldas", f"{s_['sem_verificacao']} solda(s) sem verificação.")
+    if s_.get("reprovadas"):
+        add("ALERTA", "Soldas", f"{s_['reprovadas']} solda(s) reprovada(s): refazer e registrar de novo.")
+    if s_.get("estimativa_barras_6m") and not s_.get("informadas") and (d.get("execucao") or {}).get("metros_executados"):
+        add("PENDENTE", "Soldas", f"Nenhuma solda registrada (estimativa ⌈L/6⌉ = {s_['estimativa_barras_6m']}, só referência).")
+    if d.get("fotos_faltando"):
+        add("PENDENTE", "Fotos", "Faltam: " + ", ".join(d["fotos_faltando"]) + " (exigidas no OK interno).")
+    ruins = [f for f in d.get("fotos", []) if f.get("validacao") in (None, "INVALIDA", "ARQUIVO_AUSENTE")]
+    if ruins:
+        add("ALERTA", "Fotos", f"{len(ruins)} foto(s) que não contam como evidência (" +
+            ", ".join(f"{f['categoria']}: {f.get('validacao') or 'não validada'}" for f in ruins) + ").")
+    for f in d.get("fases_cadastro") or []:
+        for p in f["pendencias"]:
+            add("ALERTA" if "(alerta)" in p or p.startswith("Não conforme") or p.startswith("Negado") else "PENDENTE",
+                f["nome"].split(" (")[0], p)
     return out
 
 
@@ -1579,6 +2036,7 @@ def detalhe(conn, alvo_tipo, ref):
         d["perfil_bloqueado"] = R.bloqueio_perfil(a)       # mesma regra do cálculo (MND não tem vala)
         d["mnd"] = a.get("metodologia") == "MND"
         d["intervalos"] = situacao_intervalos(conn, aid)
+        d["fases_cadastro"] = fases_cadastro(conn, a, d["intervalos"])
     else:
         d.update(totais_atividade(conn, aid))
         d["itens"] = itens_atividade(conn, aid)
@@ -1588,6 +2046,7 @@ def detalhe(conn, alvo_tipo, ref):
             (a["elemento_id"], aid)))
         d.update(avisos_e_decisoes(conn, aid))
     d["soldas"] = resumo_soldas(conn, tipo, aid)
+    d["pendencias"] = pendencias_alvo(conn, d)
     return d
 
 
@@ -1596,12 +2055,14 @@ def detalhe(conn, alvo_tipo, ref):
 HISTORICO_POR_ALVO = ["checkins", "apontamentos", "fotos", "execucao", "movimentos", "medicao_lancamentos", "soldas",
                       "reservas"]
 HISTORICO_POR_TRECHO = [("cadastro", "trecho_id"), ("ligacoes_prediais", "trecho_id"), ("intervalos_execucao", "trecho_id"),
-                        ("conciliacoes_legado", "trecho_id")]
+                        ("conciliacoes_legado", "trecho_id"), ("retificacoes_intervalos", "trecho_id"),
+                        ("revisoes_cadastro", "trecho_id")]
 NOMES_HISTORICO = {"checkins": "check-in", "apontamentos": "apontamento", "fotos": "foto", "execucao": "execução",
                    "movimentos": "movimento de material", "medicao_lancamentos": "lançamento de medição (teste)",
                    "soldas": "soldas", "reservas": "reserva de material", "cadastro": "esteira de cadastro",
                    "ligacoes_prediais": "ligação predial", "intervalos_execucao": "intervalos executados",
-                   "conciliacoes_legado": "conciliação do legado"}
+                   "conciliacoes_legado": "conciliação do legado", "retificacoes_intervalos": "retificação de intervalos",
+                   "revisoes_cadastro": "conferência interna do cadastro"}
 
 
 def historico_alvos(conn, alvo_tipo):
@@ -1641,6 +2102,17 @@ def estado_mapa(conn, medicao_atual_id=None, data=None):
             her = _sinalizacao_herdada(conn, tipo, aid) if tipo == "ATIVIDADE" else False
             falt = R.fotos_pendentes(tipo, fotos.get((tipo, aid), []), her)
             status[vig[(tipo, aid)]] = R.status_mapa(e, falt, medicao_atual_id)
+    # informado × verificado (conferência interna Ankara) e avanço legado sem posição, só de registros efetivos
+    legado = {r[0]: (r[1], r[2]) for r in conn.execute(
+        f"SELECT ap.alvo_id, SUM(COALESCE(ap.metros_executados,0)), SUM(COALESCE(ap.metros_reaterrados,0)) {_SQL_LEGADO} GROUP BY ap.alvo_id")}
+    contagem = {r[0]: (r[1], r[2]) for r in conn.execute(
+        f"SELECT trecho_id, COUNT(*), SUM(verificado_em IS NOT NULL) FROM intervalos_execucao WHERE {EFETIVO} GROUP BY trecho_id")}
+    verificacao = {}
+    for (tipo, aid), nome in vig.items():
+        if tipo == "TRECHO":
+            v = estado_verificacao(*contagem.get(aid, (0, 0)), aid in legado)
+            if v:
+                verificacao[nome] = v
     retirados = {}
     for tipo in ("TRECHO", "ATIVIDADE"):
         for aid, tabs in historico_alvos(conn, tipo).items():
@@ -1667,6 +2139,10 @@ def estado_mapa(conn, medicao_atual_id=None, data=None):
                      "data": c["data"], "origem": "programação do check-in"})
     return {
         "status": status,
+        "verificacao": verificacao,
+        "legado_sem_posicao": [{"alvo_id": aid, "nome": vig[("TRECHO", aid)], "assentado_m": m[0], "reaterrado_m": m[1]}
+                               for aid, m in sorted(legado.items(), key=lambda x: str(vig.get(("TRECHO", x[0]))))
+                               if ("TRECHO", aid) in vig],
         "pins": pins,
         "retirados_com_historico": sorted(retirados.values(), key=lambda r: (r["alvo_tipo"], str(r["nome"]))),
         "sem_posicao": _rows(conn.execute(

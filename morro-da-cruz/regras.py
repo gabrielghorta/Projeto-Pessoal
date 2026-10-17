@@ -212,11 +212,41 @@ ETAPAS = OrderedDict([
 TRANSICOES = {
     "1_PRONTO": {"2_ENVIADO": ("empresa", "data_envio")},
     "2_ENVIADO": {"3_RECEBIDO": ("arquivos",)},
-    "3_RECEBIDO": {"4_GDOC_ANALISE": ("protocolo_gdoc",)},
+    # 3 → 2: devolver à empresa depois de conferência interna NÃO CONFORME (nova revisão)
+    "3_RECEBIDO": {"4_GDOC_ANALISE": ("protocolo_gdoc",), "2_ENVIADO": ()},
     "4_GDOC_ANALISE": {"6_APROVADO": ("memorando_eset",), "5A_NEGADO": ("motivo_negativa",)},
     "5A_NEGADO": {"2_ENVIADO": ()},   # [Reenviar p/ Empresa Ajustar] -> Em Produção (Rev. N)
     "6_APROVADO": {},
 }
+
+
+# Conferência interna Ankara do cadastro recebido da empresa, antes do protocolo no GDOC. Roteiro PROPOSTO para
+# achar divergência com o executado e com o levantamento de campo; não é critério nem aprovação da Caesb.
+CHECKLIST_CONFERENCIA_CADASTRO = OrderedDict([
+    ("EXTENSAO", "Extensão desenhada confere com o assentado registrado (intervalos)"),
+    ("TRACADO", "Traçado e posição conferem com o levantamento de campo"),
+    ("PROFUNDIDADE", "Profundidade e cotas conferem com o levantamento de campo"),
+    ("MATERIAL_DE", "Material e diâmetro conferem com o executado"),
+    ("PECAS_NOS", "Peças, conexões e nós conferem com o executado"),
+    ("ARQUIVOS", "Arquivos completos (DWG/PDF) e nomenclatura do trecho conforme"),
+])
+
+
+def validar_conferencia(resultado, checklist, revisor, obs):
+    """CONFORME exige todos os itens conferidos; NAO_CONFORME exige a descrição da divergência."""
+    if resultado not in ("CONFORME", "NAO_CONFORME"):
+        raise RegraViolada("Resultado da conferência: CONFORME ou NAO_CONFORME.")
+    if not str(revisor or "").strip():
+        raise RegraViolada("Informe quem conferiu.")
+    itens = {k: bool((checklist or {}).get(k)) for k in CHECKLIST_CONFERENCIA_CADASTRO}
+    if set(checklist or {}) - set(itens):
+        raise RegraViolada("Item de conferência desconhecido: " + ", ".join(sorted(set(checklist) - set(itens))))
+    if resultado == "CONFORME" and not all(itens.values()):
+        raise RegraViolada("CONFORME exige todos os itens conferidos. Pendentes: "
+                           + ", ".join(CHECKLIST_CONFERENCIA_CADASTRO[k] for k, v in itens.items() if not v))
+    if resultado == "NAO_CONFORME" and not str(obs or "").strip():
+        raise RegraViolada("Descreva a divergência encontrada (vai para a empresa de cadastro).")
+    return itens
 
 
 def validar_transicao(etapa_atual, destino, dados):

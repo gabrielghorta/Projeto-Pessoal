@@ -90,6 +90,23 @@ td input { width: 100%; padding: 4px 6px; }
 .mapa-quadro iframe { border: 0; width: 100%; height: 100%; }
 .legenda { display: grid; gap: 6px; font-size: 12px; }
 .legenda i { display: inline-block; width: 28px; height: 0; border-top: 4px solid; vertical-align: middle; margin-right: 6px; }
+.legenda i.verif { border-top-width: 6px; position: relative; }
+.legenda i.verif::after { content: ""; position: absolute; left: 0; right: 0; top: -4px; border-top: 2px dashed transparent; }
+.legenda i.informado::after { border-top: 2px dashed #fff; }
+.legenda i.parcial::after { border-top: 2px dashed #fff; left: 6px; right: 6px; }
+.legenda i.legado::after { border-top: 2px dotted #fff; }
+
+/* ---------- visão integrada / retificação */
+.registro { border: 1px solid var(--borda); border-radius: 6px; padding: 6px 8px; margin: 6px 0; background: #fff; }
+.registro > div:first-child { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.pend { margin: 4px 0; padding-left: 0; list-style: none; font-size: 13px; }
+.pend li { margin: 3px 0; }
+.fase { border-left: 4px solid var(--borda); padding: 4px 8px; margin: 6px 0; font-size: 13px; }
+.fase ul { margin: 2px 0 2px 16px; padding: 0; }
+.fase .pendencias li { color: var(--vermelho); }
+.editor .lin-iv { grid-template-columns: 1.3fr 1fr 1fr 1.4fr auto; align-items: end; }
+.caixa-retif { border: 1px dashed var(--laranja); border-radius: 6px; padding: 8px; margin: 8px 0; background: #FFF8F3; }
+details > summary { cursor: pointer; font-size: 13px; color: var(--suave); margin: 6px 0; }
 
 /* ---------- esteira */
 .kanban { display: grid; grid-template-columns: repeat(6, minmax(210px, 1fr)); gap: 10px; overflow-x: auto; }

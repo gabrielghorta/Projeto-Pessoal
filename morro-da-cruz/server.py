@@ -55,6 +55,7 @@ def r_resumo(q, c):
         "clima": R.CONDICOES_CLIMA,
         "contingencias": R.CONTINGENCIAS,
         "etapas": R.ETAPAS,
+        "checklist_conferencia": R.CHECKLIST_CONFERENCIA_CADASTRO,
     }
 
 
@@ -188,6 +189,12 @@ def p_legado_conciliar(b, c):
     return {"id": S.conciliar_legado(c, b["trecho_id"], b.get("intervalos") or [], b.get("motivo"), b.get("responsavel"))}
 
 
+def p_intervalos_retificar(b, c):
+    """Retificação de intervalos; com "simular": true devolve a prévia (antes × depois) sem gravar."""
+    return S.retificar_intervalos(c, b.get("ref_tipo"), int(b["ref_id"]), b.get("intervalos") or [], b.get("motivo"),
+                                  b.get("responsavel"), b.get("data") or None, b.get("quantidades"), bool(b.get("simular")))
+
+
 def p_intervalo_verificar(b, c):
     S.verificar_intervalo(c, int(b["intervalo_id"]), b.get("verificado_por"))
     return {"ok": True}
@@ -228,6 +235,11 @@ def p_cadastro(b, c):
     return {"ok": True}
 
 
+def p_cadastro_conferencia(b, c):
+    return {"id": S.registrar_conferencia_cadastro(c, b["trecho_id"], b.get("resultado"), b.get("checklist") or {},
+                                                   b.get("revisor"), b.get("obs"))}
+
+
 def r_medicoes(q, c):
     return [dict(r) for r in c.execute("SELECT * FROM medicoes ORDER BY numero")]
 
@@ -255,7 +267,8 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
         "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar,
-        "/api/intervalo/verificar": p_intervalo_verificar, "/api/legado/conciliar": p_legado_conciliar, "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
+        "/api/intervalo/verificar": p_intervalo_verificar, "/api/legado/conciliar": p_legado_conciliar,
+        "/api/intervalos/retificar": p_intervalos_retificar, "/api/cadastro/conferencia": p_cadastro_conferencia, "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
         "/api/reserva/cancelar": p_reserva_cancelar}
 
 
