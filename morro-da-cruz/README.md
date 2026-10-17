@@ -17,6 +17,15 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Etapa 4, campo e cadastro (intervalos por etapa, retificação, conciliação do legado, levantamento de campo, conferência interna do cadastro, soldas verificadas, foto original com hash): `docs/ETAPA_4_CAMPO.md`.
   - Módulos do plano: acesso e auditoria `docs/MODULO_A_ACESSO.md`; campo `docs/MODULO_B_CAMPO.md`; compras e recebimento `docs/MODULO_C_COMPRAS.md`; planejamento e mapa `docs/MODULO_D_PLANEJAMENTO.md`; medição (parcela única, elegibilidade, conferência antes do fechamento, regras bloqueadas) `docs/MODULO_E_MEDICAO.md`; relatórios e operação `docs/MODULO_F_RELATORIOS.md`.
 
+## Testar no seu computador (demonstração, sem tocar no banco oficial)
+
+1. Instale o Python 3.11+ (no Windows, marque "Add python.exe to PATH") e rode `pip install openpyxl pillow`.
+2. Baixe esta branch (`claude/powerbi-modifications-wqxekj`) e entre na pasta `morro-da-cruz`.
+3. Copie as 5 planilhas oficiais para `planilhas/` e o HTML do mapa REV02 para `mapa/` (nomes em `planilhas/LEIA-ME.md` e `mapa/LEIA-ME.md`).
+4. Rode `python demo.py` e abra **http://127.0.0.1:8765**. Entre com `eng.demo` e a senha `demo-morro-123` (outros perfis: o comando lista).
+   - O banco de demonstração fica em `dados_demo/`, separado de `dados/`. Ele é importado com o perfil de controles TESTE; a aprovação real (D-01) continua pendente.
+   - Para fechar: Ctrl+C. Para começar do zero: `python demo.py --recriar`.
+
 ## Como rodar (Windows)
 
 1. Instale o Python 3.11+ e rode `pip install openpyxl`. Recomendado: `pip install pillow`, para decodificar por completo as fotos enviadas. Sem o Pillow, PNG continua sendo decodificado e JPEG passa só pela verificação estrutural; o método fica registrado em cada foto.

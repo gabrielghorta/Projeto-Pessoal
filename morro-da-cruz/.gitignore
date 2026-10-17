@@ -4,5 +4,6 @@ planilhas/*
 mapa/*
 !mapa/LEIA-ME.md
 dados/
+dados_demo/
 __pycache__/
 *.pyc

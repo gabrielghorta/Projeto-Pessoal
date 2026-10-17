@@ -42,6 +42,13 @@ morro-da-cruz/
 
 As pastas `planilhas/`, `mapa/` e `dados/` ficam **fora do Git** (`.gitignore`). Os dados da obra não vão para o repositório.
 
+## 2.1 Demonstração antes da implantação
+
+`python demo.py` cria `dados_demo/obra.db` a partir das planilhas, com o perfil TESTE e usuários de demonstração (senha `demo-morro-123`), e abre o sistema em http://127.0.0.1:8765.
+- Não usa nem altera `dados/`.
+- Não preenche a aprovação real.
+- `python demo.py --recriar` apaga só `dados_demo/` e recria.
+
 ## 3. Primeira instalação
 
 1. Copie o código (ou faça `git clone`) para a pasta da obra.
