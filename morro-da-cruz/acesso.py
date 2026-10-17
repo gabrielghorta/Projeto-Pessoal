@@ -211,7 +211,7 @@ def _alvo(corpo):
                         ("SOLDA", "solda_id"), ("NF", "nf_id"), ("CHECKIN", "checkin_id"), ("RESERVA", "reserva_id"),
                         ("OCORRENCIA", "ocorrencia_id"), ("ETAPA_COMPLEMENTAR", "registro_id"),
                         ("SOLICITACAO", "solicitacao_id"), ("PEDIDO", "pedido_id"), ("RECEBIMENTO_ITEM", "recebimento_item_id"),
-                        ("NF_ITEM", "nf_item_id"), ("INVENTARIO", "inventario_id")):
+                        ("NF_ITEM", "nf_item_id"), ("INVENTARIO", "inventario_id"), ("PROGRAMACAO", "programacao_id")):
         if corpo.get(chave) not in (None, ""):
             return (tipo or corpo.get("alvo_tipo")), str(corpo[chave])
     if corpo.get("ref_tipo") and corpo.get("ref_id"):

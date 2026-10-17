@@ -29,6 +29,7 @@
   </div>
   <nav class="abas" role="tablist">
     <button role="tab" data-aba="mapa" aria-selected="true">🗺️ 1. Mapa Iluminado &amp; Fiscalização</button>
+    <button role="tab" data-aba="prog">🗓️ 1.1 Programação</button>
     <button role="tab" data-aba="almox">📦 2. Almoxarifado &amp; Equipes</button>
     <button role="tab" data-aba="compras">🧾 2.1 Compras &amp; Recebimento</button>
     <button role="tab" data-aba="campo">📲 3. Lançamento de Campo &amp; Fotos</button>
@@ -41,6 +42,9 @@
 <main>
   <!-- ======================================================= 1. MAPA -->
   <section class="aba ativa" id="aba-mapa">
+    <div class="acoes" style="margin-bottom:8px"><label class="check" style="font-weight:600">Frente
+      <select id="selFrente"><option value="">Obra inteira (11 zonas, Adutora e CH)</option></select></label>
+      <small class="vazio" style="padding:0">Os números abaixo seguem a frente; no mapa, use o seletor de camadas (Andamento, Planejado, Material, Verificação, Cadastro, Pendências).</small></div>
     <div class="kpis" id="kpis"></div>
     <div class="grade-2">
       <div class="mapa-quadro"><iframe id="mapaFrame" title="Plantas REV02 — Mapa Iluminado" src="about:blank"></iframe></div>
@@ -83,6 +87,34 @@
             <div><i class="verif legado" style="border-color:#5B6675"></i>Miolo pontilhado: avanço legado sem posição (conciliar)</div>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= 1.1 PROGRAMAÇÃO -->
+  <section class="aba" id="aba-prog">
+    <div class="grade-2">
+      <div class="painel">
+        <h3>Programação das equipes (planejado)</h3>
+        <div class="linha"><label>De<input type="date" id="pgIni"></label><label>Até<input type="date" id="pgFim"></label>
+          <label>Frente<select id="pgFrente"><option value="">todas</option></select></label><label>Equipe<select id="pgEquipe" class="selEquipe"></select></label></div>
+        <div id="pgResumo" style="margin:8px 0"></div>
+        <div class="tabela" id="pgLista"></div>
+        <h3 style="margin-top:14px">Materiais previstos × disponíveis (faltantes)</h3>
+        <div class="tabela" id="pgFaltantes"></div>
+      </div>
+      <div class="painel">
+        <h3>Programar</h3>
+        <form id="fProg" data-perm="planejar">
+          <div class="linha"><label>Data<input type="date" name="data" required></label><label>Equipe<select name="equipe_id" class="selEquipe" required></select></label></div>
+          <label>Trecho / nó / caixa<div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8…" autocomplete="off" required><ul hidden></ul></div></label>
+          <div class="linha"><label>Serviço<select name="servico" id="selServProg" required></select></label><label>De (m)<input name="ini_m" type="number" step="any" min="0"></label><label>Até (m)<input name="fim_m" type="number" step="any" min="0"></label></div>
+          <div class="editor-itens" data-itens="prog"></div>
+          <button type="button" class="btn" data-mais-item="prog">+ material previsto</button>
+          <label>Observação<input name="obs"></label>
+          <p class="vazio" style="margin:0">Programação não é presença nem execução: o check-in da equipe naquele dia e alvo a marca como realizada.</p>
+          <div class="acoes"><button class="btn prim">Programar</button></div>
+        </form>
       </div>
     </div>
   </section>

@@ -664,6 +664,31 @@ CREATE TABLE IF NOT EXISTS medicao_lancamentos (
   item_congelado TEXT
 );
 
+-- ---------------------------------------------------------------- planejamento (v12, módulo D)
+-- Programação das equipes: o PLANEJADO (equipe, dia, trecho/nó, serviço e materiais previstos). Não é presença nem
+-- execução: o check-in da equipe naquele dia e alvo a marca como REALIZADA; o que não aconteceu é encerrado com motivo.
+CREATE TABLE IF NOT EXISTS programacoes (
+  id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  equipe_id TEXT NOT NULL REFERENCES equipes(id),
+  alvo_tipo TEXT NOT NULL, alvo_id TEXT NOT NULL,
+  servico TEXT NOT NULL,
+  ini_m REAL, fim_m REAL,              -- trecho: intervalo previsto (opcional)
+  obs TEXT,
+  status TEXT NOT NULL DEFAULT 'PLANEJADA' CHECK (status IN ('PLANEJADA','REALIZADA','NAO_REALIZADA','CANCELADA')),
+  checkin_id INTEGER REFERENCES checkins(id),
+  motivo TEXT,
+  criada_por TEXT NOT NULL, criada_em TEXT NOT NULL,
+  encerrada_por TEXT, encerrada_em TEXT
+);
+CREATE TABLE IF NOT EXISTS programacao_materiais (
+  id INTEGER PRIMARY KEY,
+  programacao_id INTEGER NOT NULL REFERENCES programacoes(id),
+  material_id TEXT NOT NULL REFERENCES materiais(id),
+  quantidade REAL NOT NULL CHECK (quantidade > 0)
+);
+CREATE INDEX IF NOT EXISTS ix_programacoes ON programacoes(data, equipe_id);
+
 -- ---------------------------------------------------------------- compras e recebimento (v11, módulo C)
 CREATE TABLE IF NOT EXISTS fornecedores (
   id INTEGER PRIMARY KEY,

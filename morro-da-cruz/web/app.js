@@ -124,7 +124,7 @@ function abrirAba(id) {
   $$('nav.abas button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.aba === id)));
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
   try { localStorage.setItem('aba', id); } catch (_) { /* sem storage */ }
-  ({ mapa: carregarMapa, almox: carregarAlmox, compras: carregarCompras, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin })[id]();
+  ({ mapa: carregarMapa, prog: carregarProg, almox: carregarAlmox, compras: carregarCompras, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin })[id]();
 }
 
 /* ---------------------------------------------------------------- busca de trecho/nó */
@@ -147,7 +147,10 @@ function ligarBusca(input, aoEscolher) {
 
 /* ---------------------------------------------------------------- 1. mapa & fiscalização */
 async function carregarMapa() {
-  const r = RESUMO = await api('/api/resumo');
+  const frente = $('#selFrente').value;
+  const r = await api('/api/resumo' + (frente ? '?frente=' + encodeURIComponent(frente) : ''));
+  if (!frente) RESUMO = { ...RESUMO, ...r };
+  if ($('#selFrente').options.length < 2) $('#selFrente').innerHTML += r.frentes.map(f => `<option>${esc(f)}</option>`).join('');
   $('#obraContrato').textContent = r.contrato;
   $('#kpis').innerHTML = [
     ['Rede de projeto', nf(r.extensao_m) + ' m'], ['Rede reaterrada', nf(r.executado_m) + ' m'],
@@ -173,13 +176,18 @@ document.addEventListener('click', ev => {
   const [t, id] = b.dataset.fisc.split('|'); mostrarFiscal(t, id);
 });
 ligarBusca($('#fiscBusca'), r => mostrarFiscal(r.tipo, r.id));
+$('#selFrente').addEventListener('change', carregarMapa);
+let FISCAL_ATUAL = null;
 window.addEventListener('message', ev => {   // seleção vinda do mapa REV02 (camada mapa_iluminado.js)
   if (ev.origin !== location.origin || !ev.data || ev.data.tipo !== 'mc-selecao') return;
+  const a = FISCAL_ATUAL;                   // eco da própria seleção (painel → mapa → painel): não redesenha
+  if (a && [a.nome, a.id].includes(ev.data.alvo_id) && Date.now() - a.t < 4000) return;
   mostrarFiscal(ev.data.alvo_tipo, ev.data.alvo_id);
 });
 
 async function mostrarFiscal(tipo, id) {
   const d = await acao(() => api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(id)}`));
+  FISCAL_ATUAL = { id: d.id, nome: d.nome, t: Date.now() };
   const ex = d.execucao, st = d.fotos_faltando;
   const linhas = tipo === 'TRECHO' ? [
     ['Frente / equipe', `${esc(d.frente_id)} · ${esc(d.equipe)}`], ['Extensão', nf(d.extensao_m) + ' m'], ['DE', `${d.de_mm} mm · ${esc(d.material)} · ${esc(d.metodologia)}`],
@@ -198,7 +206,7 @@ async function mostrarFiscal(tipo, id) {
     + (d.avisos && d.avisos.length ? '<p class="vazio" style="margin:4px 0">Avisos = texto de origem da 06.2 (AA/AB/AW). Em verde, só decisões com vínculo explícito a este aviso (não reabertas pela reimportação). "Revisar" = semelhança de texto, sem decisão aplicada.</p>' : '')
     + ((d.decisoes || []).filter(x => !(d.avisos || []).some(a => a.decisoes.includes(x.id))).map(x => `<div class="aviso info"><span class="chip verde">${esc(x.id)} · ${esc(x.status)}</span> ${esc(x.assunto)} — <small>${esc(x.decisao)}</small></div>`).join(''));
   const bloqueio = d.perfil_bloqueado ? `<div class="aviso problema"><b>E06:</b> ${esc(d.perfil_bloqueado)} — cálculo bloqueado.</div>` : '';
-  const pode = ex && ex.concluido && !st.length && !ex.ok_fiscal_em;
+  const podeOk = ex && ex.concluido && !st.length && !ex.ok_fiscal_em;
   $('#fiscDetalhe').className = '';
   $('#fiscDetalhe').innerHTML = `<h2 style="word-break:break-all">${esc(curto(d.nome))}</h2>
     ${d.retirado ? '<div class="aviso problema"><b>Retirado da revisão vigente do projeto.</b> Consulta do histórico; novos lançamentos bloqueados.</div>' : ''}
@@ -214,12 +222,20 @@ async function mostrarFiscal(tipo, id) {
     ${tipo === 'TRECHO' ? `<h4 style="margin:12px 0 4px">Liberação topográfica e escavação</h4>${htmlComplementar(d.complementar, false)}` : ''}
     <h4 style="margin:12px 0 4px">Ocorrências (impedimentos e não conformidades)</h4>${htmlOcorrencias(d.ocorrencias, false)}
     ${tipo === 'TRECHO' ? `<h4 style="margin:12px 0 4px">Cadastro — do levantamento de campo à entrega</h4>${htmlFases(d.fases_cadastro)}` : ''}
-    <label class="check" style="margin:8px 0"><input type="checkbox" id="okFiscal" ${ex && ex.ok_fiscal_em ? 'checked disabled' : pode ? '' : 'disabled'}>
+    <h4 style="margin:12px 0 4px">Programação</h4>${(d.programacoes || []).map(p => `<div><small>${esc(p.data)} · ${esc(p.equipe_id)} · ${esc((RESUMO.servicos_programacao || {})[p.servico] || p.servico)}${p.ini_m != null ? ` ${nf(p.ini_m)}–${nf(p.fim_m)} m` : ''}</small> <span class="chip ${p.status === 'REALIZADA' ? 'azul' : p.status === 'PLANEJADA' ? 'amarelo' : ''}">${esc(p.status.toLowerCase())}</span>${p.motivo ? ` <small>${esc(p.motivo)}</small>` : ''}</div>`).join('') || '<div class="vazio">Sem programação.</div>'}
+    <details id="histObj"><summary>Histórico de alterações (quem fez o quê)</summary><div class="vazio">carregando…</div></details>
+    <label class="check" style="margin:8px 0"><input type="checkbox" id="okFiscal" ${ex && ex.ok_fiscal_em ? 'checked disabled' : podeOk ? '' : 'disabled'}>
       <b>[✓] OK Fiscalização — Pronto p/ Medir</b></label>
-    ${!pode && !(ex && ex.ok_fiscal_em) ? '<div class="vazio">Exige 100 % reaterrado e as fotos obrigatórias.</div>' : ''}
+    ${!podeOk && !(ex && ex.ok_fiscal_em) ? '<div class="vazio">Exige 100 % reaterrado e as fotos obrigatórias.</div>' : ''}
     ${ex && ex.ok_fiscal_em && !ex.recomposicao_ok ? `<div class="form" style="margin-top:10px"><b>Recomposição (equipe de pavimento)</b>
       <div class="linha"><select id="recTipo"><option>CALÇADA</option><option>ASFALTO</option></select><input id="recQtd" type="number" step="any" placeholder="quantidade"></div>
       <button class="btn" id="recBtn">Lançar recomposição</button></div>` : ''}`;
+  $('#histObj').addEventListener('toggle', async ev => {
+    if (!ev.target.open || ev.target.dataset.ok) return;
+    const ls = await api(`/api/auditoria?alvo_tipo=${tipo}&alvo_id=${encodeURIComponent(d.id)}&limite=60`).catch(() => []);
+    ev.target.dataset.ok = '1';
+    ev.target.innerHTML = '<summary>Histórico de alterações (quem fez o quê)</summary>' + (ls.map(a => `<div><small>${esc(a.em.replace('T', ' '))} · ${esc(a.login || '—')} · ${esc(a.rota.replace('/api/', ''))} · ${a.status === 200 ? 'aceito' : 'recusado ' + a.status}${a.status !== 200 && a.resultado ? ': ' + esc(a.resultado.slice(0, 120)) : ''}</small></div>`).join('') || '<div class="vazio">Nada registrado.</div>');
+  });
   const ok = $('#okFiscal');
   if (ok && !ok.disabled) ok.addEventListener('change', async () => {
     if (!ok.checked) return;
@@ -373,6 +389,50 @@ async function carregarHistograma() {
 $('#hIni').addEventListener('change', carregarHistograma);
 $('#hFim').addEventListener('change', carregarHistograma);
 
+/* ---------------------------------------------------------------- 1.1 programação */
+const fProg = $('#fProg');
+ligarBusca($('input[name=alvo_txt]', fProg));
+const maisDias = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+async function carregarProg() {
+  if (!MATERIAIS.length) MATERIAIS = await api('/api/estoque');
+  if (!carregarProg.feito) { carregarProg.feito = true; $('#pgIni').value = hoje(); $('#pgFim').value = maisDias(hoje(), 7); fProg.data.value = maisDias(hoje(), 1); }
+  if ($('#pgFrente').options.length < 2) $('#pgFrente').innerHTML += (RESUMO.frentes || []).map(f => `<option>${esc(f)}</option>`).join('');
+  if (!$('#selServProg').options.length) $('#selServProg').innerHTML = Object.entries(RESUMO.servicos_programacao || {}).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+  const e = $('.editor-itens[data-itens=prog]'); if (!e.children.length) e.innerHTML = LINHA_ITEM.prog();
+  const q = new URLSearchParams({ ini: $('#pgIni').value, fim: $('#pgFim').value });
+  if ($('#pgFrente').value) q.set('frente', $('#pgFrente').value);
+  if ($('#pgEquipe').value) q.set('equipe', $('#pgEquipe').value);
+  const r = await api('/api/programacoes?' + q);
+  const c = r.resumo.contagem;
+  $('#pgResumo').innerHTML = `<span class="chip amarelo">planejadas ${c.PLANEJADA}</span> <span class="chip azul">realizadas ${c.REALIZADA}</span> <span class="chip vermelho">não realizadas ${c.NAO_REALIZADA}</span> <span class="chip">canceladas ${c.CANCELADA}</span>
+    ${r.resumo.programadas_no_passado ? ` · programado × realizado (dias passados): <b>${r.resumo.realizadas_no_passado}/${r.resumo.programadas_no_passado}</b>` : ''}`;
+  $('#pgLista').innerHTML = r.programacoes.length ? `<table><thead><tr><th>Data</th><th>Equipe</th><th>Alvo</th><th>Serviço</th><th>Materiais previstos</th><th>Situação</th></tr></thead><tbody>${r.programacoes.map(p => `<tr>
+    <td>${esc(p.data)}</td><td>${esc(p.equipe_id)}</td><td><button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(curto(p.alvo_nome))}</button></td>
+    <td>${esc(p.servico_nome)}${p.ini_m != null ? `<br><small>${nf(p.ini_m)}–${nf(p.fim_m)} m</small>` : ''}</td>
+    <td>${p.materiais.map(m => `${esc(m.material_id)}: ${nf(m.quantidade, 3)}`).join('<br>') || '—'}</td>
+    <td><span class="chip ${p.status === 'REALIZADA' ? 'azul' : p.status === 'PLANEJADA' ? 'amarelo' : p.status === 'NAO_REALIZADA' ? 'vermelho' : ''}">${esc(p.status.toLowerCase().replace('_', ' '))}</span>
+      ${p.motivo ? `<br><small>${esc(p.motivo)}</small>` : ''}${p.status === 'PLANEJADA' && pode('planejar') ? `<br><button type="button" class="btn" data-prog-enc="${p.id}" data-st="NAO_REALIZADA">Não realizada</button> <button type="button" class="btn" data-prog-enc="${p.id}" data-st="CANCELADA">Cancelar</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="vazio" style="padding:8px">Nada programado no período.</div>';
+  $('#pgFaltantes').innerHTML = r.faltantes.length ? `<table><thead><tr><th>Material</th><th class="n">Previsto</th><th class="n">Reservado p/ a programação</th><th class="n">Disponível</th><th class="n">A receber (pedidos)</th><th class="n">Faltante</th></tr></thead><tbody>${r.faltantes.map(f => `<tr>
+    <td>${esc(f.material_id)}<br><small>${esc(f.descricao.slice(0, 60))} (${esc(f.unidade)})</small></td><td class="n">${nf(f.previsto, 3)}</td><td class="n">${nf(f.reservado, 3)}</td><td class="n">${nf(f.disponivel, 3)}</td><td class="n">${nf(f.a_receber, 3)}</td>
+    <td class="n">${f.faltante > 0 ? `<span class="chip vermelho">${nf(f.faltante, 3)}</span>` : '<span class="chip azul">0</span>'}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="vazio" style="padding:8px">Nenhum material previsto nas programações do período.</div>';
+}
+['#pgIni', '#pgFim', '#pgFrente', '#pgEquipe'].forEach(x => $(x).addEventListener('change', carregarProg));
+fProg.addEventListener('submit', async ev => {
+  ev.preventDefault(); const o = formObj(fProg), alvo = $('input[name=alvo_txt]', fProg);
+  if (!alvo.dataset.id) return toast('Escolha o trecho/nó na lista da busca.', 'erro');
+  const r = await acao(() => api('/api/programacao', { data: o.data, equipe_id: o.equipe_id, alvo_tipo: alvo.dataset.tipo, alvo_id: alvo.dataset.id, servico: o.servico,
+    ini_m: o.ini_m, fim_m: o.fim_m, obs: o.obs, materiais: lerItens(fProg, 'prog') }), 'Programação registrada.').catch(() => null);
+  if (r) { alvo.value = ''; alvo.dataset.id = ''; $('.editor-itens[data-itens=prog]').innerHTML = ''; carregarProg(); recarregarCamadaMapa(); }
+});
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-prog-enc]'); if (!b) return;
+  const motivo = prompt(b.dataset.st === 'CANCELADA' ? 'Motivo do cancelamento:' : 'Por que não foi realizada?'); if (!motivo) return;
+  const r = await acao(() => api('/api/programacao/encerrar', { programacao_id: b.dataset.progEnc, status: b.dataset.st, motivo }), 'Programação encerrada.').catch(() => null);
+  if (r) carregarProg();
+});
+
 /* ---------------------------------------------------------------- 2.1 compras & recebimento */
 let COMPRAS = null;
 const opMat = f => MATERIAIS.filter(f).map(m => `<option value="${esc(m.id)}">${esc(m.id)} — ${esc(m.descricao.slice(0, 48))} (${esc(m.unidade)})</option>`).join('');
@@ -380,6 +440,7 @@ const LINHA_ITEM = {
   solic: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(m => m.propriedade !== 'CAESB')}</select><input data-k="quantidade" type="number" step="any" min="0" placeholder="quantidade"><button type="button" class="btn" data-remover-linha>×</button></div>`,
   nfdig: () => `<div class="linha lin-iv lin-item"><input data-k="descricao" placeholder="descrição na nota"><input data-k="unidade" placeholder="unid." style="max-width:80px"><input data-k="quantidade" type="number" step="any" min="0" placeholder="qtd."><input data-k="valor_unitario" type="number" step="any" min="0" placeholder="valor unit."><button type="button" class="btn" data-remover-linha>×</button></div>`,
   inv: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(() => true)}</select><input data-k="contado" type="number" step="any" min="0" placeholder="contado"><button type="button" class="btn" data-remover-linha>×</button></div>`,
+  prog: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(m => m.propriedade !== 'CONSUMO')}</select><input data-k="quantidade" type="number" step="any" min="0" placeholder="quantidade prevista"><button type="button" class="btn" data-remover-linha>×</button></div>`,
 };
 const lerItens = (raiz, tipo) => $$(`.editor-itens[data-itens=${tipo}] .lin-item`, raiz).map(l => Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value])))
   .filter(o => Object.values(o).some(v => v !== '') && (o.quantidade !== '' || o.contado !== ''));

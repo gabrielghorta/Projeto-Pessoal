@@ -9,8 +9,28 @@
   const PIOR = ['CONCLUIDO_MES', 'EM_EXECUCAO', 'OK_FISCAL', 'MEDIDO_ANTERIOR', 'NAO_EXECUTADO'];
   // miolo branco sobre a linha = execução ainda não verificada (conferência interna Ankara, não é aprovação Caesb)
   const MIOLO = { INFORMADO: '2 3', PARCIAL: '7 3', LEGADO_SEM_POSICAO: '0.6 2.4' };
-  let modo = 'iluminado', estado = { status: {}, verificacao: {}, pins: [] };
-  try { modo = localStorage.getItem('mc-modo') || 'iluminado'; } catch (_) { /* sem storage */ }
+  let modo = 'iluminado', camada = 'andamento', estado = { status: {}, verificacao: {}, pins: [], camadas: {} };
+  try { modo = localStorage.getItem('mc-modo') || 'iluminado'; camada = localStorage.getItem('mc-camada') || 'andamento'; } catch (_) { /* sem storage */ }
+  const CINZA = '#9AA3AE';
+  const cam = k => (estado.camadas || {})[k] || {};
+  // camadas operacionais: cada uma calculada no servidor só a partir dos registros efetivos; "verificado" e
+  // "conforme" são conferência interna Ankara; verde só para decisão da Caesb registrada (memorando ESET)
+  const CAMADAS = {
+    andamento: { nome: 'Andamento', legenda: [['#9AA3AE', 'não executado'], ['#F08C00', 'em execução'], ['#D62828', 'concluído — aguarda OK interno'],
+      ['#0F9D58', 'OK interno Ankara (não é aprovação Caesb)'], ['#E8B10A', 'medido antes'], ['', 'miolo branco: informado sem verificação']] },
+    planejado: { nome: 'Planejado (7 dias)', cor: n => { const p = cam('planejado')[n]; return p && (p.hoje ? '#7C3AED' : '#2F6FD6'); },
+      legenda: [['#7C3AED', 'programado para hoje'], ['#2F6FD6', 'programado nos próximos 7 dias'], [CINZA, 'sem programação']] },
+    material: { nome: 'Material', cor: n => ({ COM_EQUIPE: '#F08C00', RESERVADO: '#E8B10A' })[cam('material')[n]],
+      legenda: [['#F08C00', 'material com a equipe'], ['#E8B10A', 'material reservado'], [CINZA, 'sem material disponibilizado']] },
+    verificacao: { nome: 'Informado × verificado', cor: n => ({ VERIFICADO: '#2F6FD6', PARCIAL: '#8EB8FF', INFORMADO: '#F08C00', LEGADO_SEM_POSICAO: '#D62828' })[(estado.verificacao || {})[n]],
+      legenda: [['#2F6FD6', 'verificado (conferência interna)'], ['#8EB8FF', 'verificação parcial'], ['#F08C00', 'informado, sem verificação'], ['#D62828', 'legado sem posição'], [CINZA, 'sem execução']] },
+    cadastro: { nome: 'Cadastro', cor: n => ({ LEVANTAMENTO_PARCIAL: '#E8B10A', LEVANTAMENTO_COMPLETO: '#8EB8FF', '1_PRONTO': '#B794F4', '2_ENVIADO': '#9F7AEA',
+      '3_RECEBIDO': '#805AD5', '4_GDOC_ANALISE': '#2F6FD6', '5A_NEGADO': '#D62828', '6_APROVADO': '#0F9D58' })[cam('cadastro')[n]],
+      legenda: [['#E8B10A', 'levantamento de campo parcial'], ['#8EB8FF', 'levantamento completo'], ['#B794F4', 'esteira: pronto / em produção / recebido'],
+        ['#2F6FD6', 'protocolado no GDOC (em análise)'], ['#D62828', 'negado pela Caesb'], ['#0F9D58', 'aprovação Caesb registrada (ESET)'], [CINZA, 'sem levantamento']] },
+    pendencias: { nome: 'Pendências', cor: n => { const k = cam('pendencias')[n]; return k ? (k >= 3 ? '#D62828' : '#F08C00') : null; },
+      legenda: [['#D62828', '3 ou mais pendências'], ['#F08C00', '1 ou 2 pendências (ocorrência, reaterro sem cadastro, legado)'], [CINZA, 'nenhuma registrada']] },
+  };
   // tema da tela principal (escuro por padrão), pelo mecanismo da própria REV02 (data-theme); o arquivo não muda
   const tema = t => document.documentElement.setAttribute('data-theme', t === 'claro' ? 'light' : 'dark');
   try { tema(localStorage.getItem('mc-tema') || 'escuro'); } catch (_) { tema('escuro'); }
@@ -18,8 +38,15 @@
   // ---- controle de modo
   const box = document.createElement('div');
   box.className = 'mc-modo';
-  box.innerHTML = '<button data-m="projeto">Modo Projeto (cores DE)</button><button data-m="iluminado">Modo Mapa Iluminado</button>';
+  box.innerHTML = '<button data-m="projeto">Modo Projeto (cores DE)</button><button data-m="iluminado">Modo Mapa Iluminado</button>'
+    + `<select class="mc-camada" title="Camada do Mapa Iluminado">${Object.entries(CAMADAS).map(([k, c]) => `<option value="${k}">${c.nome}</option>`).join('')}</select>`;
   document.body.appendChild(box);
+  const sel = box.querySelector('.mc-camada');
+  sel.value = CAMADAS[camada] ? camada : 'andamento';
+  sel.addEventListener('change', () => { camada = sel.value; try { localStorage.setItem('mc-camada', camada); } catch (_) { /* sem storage */ } aplicar(); });
+  const leg = document.createElement('div');
+  leg.className = 'mc-legenda';
+  document.body.appendChild(leg);
   box.addEventListener('click', ev => {
     const b = ev.target.closest('button[data-m]'); if (!b) return;
     modo = b.dataset.m; try { localStorage.setItem('mc-modo', modo); } catch (_) { /* sem storage */ }
@@ -36,20 +63,33 @@
     box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.m === modo));
     const svg = document.querySelector('#stage svg'); if (!svg) return;
     svg.classList.toggle('mc-iluminado', modo === 'iluminado');
+    const c = CAMADAS[camada] || CAMADAS.andamento;
     svg.querySelectorAll('polyline.tr[data-pipe]').forEach(pl => {
       if (!pl.dataset.mcCor) pl.dataset.mcCor = pl.getAttribute('stroke');
       if (modo === 'projeto' || pl.dataset.active === 'false') {
         pl.setAttribute('stroke', pl.dataset.mcCor); pl.removeAttribute('data-mc'); return;
+      }
+      if (c.cor) {
+        const cor = c.cor(T[+pl.dataset.pipe].R);
+        pl.setAttribute('stroke', cor || CINZA); pl.setAttribute('data-mc', cor ? 'C_SIM' : 'C_NAO'); return;
       }
       const st = statusTrecho(+pl.dataset.pipe);
       pl.setAttribute('stroke', COR[st]); pl.setAttribute('data-mc', st);
     });
     svg.querySelectorAll('.el[data-e]').forEach(el => {
       if (!el.dataset.mcCor) el.dataset.mcCor = el.getAttribute('fill');
+      if (modo !== 'iluminado') { el.setAttribute('fill', el.dataset.mcCor); return; }
+      if (c.cor) {
+        const cor = (E[+el.dataset.e].noms || []).map(n => c.cor(n)).find(Boolean);
+        el.setAttribute('fill', cor || el.dataset.mcCor); return;
+      }
       const st = statusElemento(+el.dataset.e);
-      el.setAttribute('fill', modo === 'iluminado' && st !== 'NAO_EXECUTADO' ? COR[st] : el.dataset.mcCor);
+      el.setAttribute('fill', st !== 'NAO_EXECUTADO' ? COR[st] : el.dataset.mcCor);
     });
-    marcarVerificacao(svg);
+    sel.style.display = modo === 'iluminado' ? '' : 'none';
+    leg.style.display = modo === 'iluminado' ? '' : 'none';
+    leg.innerHTML = `<b>${c.nome}</b>` + c.legenda.map(([cor, txt]) => `<div><i style="${cor ? 'background:' + cor : 'background:#5B6675;outline:2px dashed #fff;outline-offset:-3px'}"></i>${txt}</div>`).join('');
+    if (camada === 'andamento') marcarVerificacao(svg); else svg.querySelectorAll('.mc-verif').forEach(p => p.remove());
     desenharPins(svg);
   }
 

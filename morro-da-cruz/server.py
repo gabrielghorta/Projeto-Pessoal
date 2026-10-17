@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 import acesso as A
 import backup
 import compras as C
+import planejamento as P
 import exportar
 import regras as R
 import servicos as S
@@ -43,20 +44,31 @@ def _cfg():
 
 # ------------------------------------------------------------------ rotas
 def r_resumo(q, c):
-    one = lambda sql: c.execute(sql).fetchone()[0]
+    """Totais da obra ou de uma frente (?frente=Zona01 … ADUTORA, CH)."""
+    fr = q.get("frente") or None
+    one = lambda sql, *a: c.execute(sql, a).fetchone()[0]
+    ft = " AND frente_id=?" if fr else ""
+    fa = (fr,) if fr else ()
     ultima = c.execute("SELECT id, concluida_em, status FROM importacoes WHERE modo='APLICACAO' ORDER BY id DESC LIMIT 1").fetchone()
     return {
         "contrato": S.contrato(c),
         "obra": _cfg()["obra"],
+        "frente": fr,
+        "frentes": R.FRENTES,
         "valor_contrato": float(S.parametro(c, "valor_contrato", 0)),
         "p0_bm": float(S.parametro(c, "p0_bm", 0)),
-        "trechos": one("SELECT COUNT(*) FROM trechos WHERE vigente=1"),
-        "extensao_m": one("SELECT ROUND(SUM(extensao_m),2) FROM trechos WHERE vigente=1"),
-        "elementos": one("SELECT COUNT(*) FROM elementos WHERE vigente=1"),
-        "atividades": one("SELECT COUNT(*) FROM atividades WHERE vigente=1"),
-        "itens_pendentes": one("SELECT COUNT(*) FROM itens_projeto WHERE vigente=1 AND (quantidade IS NULL OR unidade IS NULL)"),
-        "executado_m": one("SELECT ROUND(COALESCE(SUM(metros_reaterrados),0),2) FROM execucao WHERE alvo_tipo='TRECHO'"),
-        "ok_fiscal": one("SELECT COUNT(*) FROM execucao WHERE ok_fiscal_em IS NOT NULL"),
+        "trechos": one("SELECT COUNT(*) FROM trechos WHERE vigente=1" + ft, *fa),
+        "extensao_m": one("SELECT ROUND(COALESCE(SUM(extensao_m),0),2) FROM trechos WHERE vigente=1" + ft, *fa),
+        "elementos": one("SELECT COUNT(DISTINCT elemento_id) FROM atividades WHERE vigente=1" + ft, *fa) if fr
+        else one("SELECT COUNT(*) FROM elementos WHERE vigente=1"),
+        "atividades": one("SELECT COUNT(*) FROM atividades WHERE vigente=1" + ft, *fa),
+        "itens_pendentes": one("""SELECT COUNT(*) FROM itens_projeto i JOIN atividades a ON a.id=i.atividade_id
+                                  WHERE i.vigente=1 AND (i.quantidade IS NULL OR i.unidade IS NULL)""" + (" AND a.frente_id=?" if fr else ""), *fa),
+        "executado_m": one("""SELECT ROUND(COALESCE(SUM(e.metros_reaterrados),0),2) FROM execucao e JOIN trechos t ON t.id=e.alvo_id
+                              WHERE e.alvo_tipo='TRECHO' AND t.vigente=1""" + (" AND t.frente_id=?" if fr else ""), *fa),
+        "ok_fiscal": one("""SELECT COUNT(*) FROM execucao e LEFT JOIN trechos t ON e.alvo_tipo='TRECHO' AND t.id=e.alvo_id
+                            LEFT JOIN atividades a ON e.alvo_tipo='ATIVIDADE' AND a.id=e.alvo_id
+                            WHERE e.ok_fiscal_em IS NOT NULL""" + (" AND COALESCE(t.frente_id, a.frente_id)=?" if fr else ""), *fa),
         "medicao_oficial_liberada": S.medicao_oficial_liberada(c),
         "ultima_importacao": dict(ultima) if ultima else None,
         "mapa_disponivel": os.path.exists(_mapa_path()),
@@ -67,6 +79,7 @@ def r_resumo(q, c):
         "checklist_conferencia": R.CHECKLIST_CONFERENCIA_CADASTRO,
         "categorias_ocorrencia": S.CATEGORIAS_OCORRENCIA,
         "perfis": {k: {"nome": v["nome"]} for k, v in A.carregar_perfis()["perfis"].items()},
+        "servicos_programacao": P.SERVICOS,
     }
 
 
@@ -75,7 +88,10 @@ def r_buscar(q, c):
 
 
 def r_detalhe(q, c):
-    return S.detalhe(c, q["tipo"], q["id"])
+    d = S.detalhe(c, q["tipo"], q["id"])
+    d["programacoes"] = [dict(r) for r in c.execute(
+        "SELECT * FROM programacoes WHERE alvo_tipo=? AND alvo_id=? ORDER BY data DESC, id DESC LIMIT 15", (d["alvo_tipo"], d["id"]))]
+    return d
 
 
 def r_previsto(q, c):
@@ -84,7 +100,27 @@ def r_previsto(q, c):
 
 def r_mapa_estado(q, c):
     med = q.get("medicao")
-    return S.estado_mapa(c, int(med) if med else None, q.get("data"))
+    out = S.estado_mapa(c, int(med) if med else None, q.get("data"))
+    out["camadas"] = P.camadas_mapa(c, q.get("data"))
+    return out
+
+
+# ------------------------------------------------------------------ planejamento (módulo D)
+def r_programacoes(q, c):
+    ini, fim = q.get("ini") or date.today().isoformat(), q.get("fim") or date.today().isoformat()
+    return {"programacoes": P.programacoes(c, ini, fim, q.get("frente"), q.get("equipe")),
+            "resumo": P.resumo(c, ini, fim, q.get("frente"), q.get("equipe")),
+            "faltantes": P.faltantes(c, ini, fim, q.get("frente"))}
+
+
+def p_programacao(b, c):
+    return {"id": P.programar(c, b.get("data"), b.get("equipe_id"), b.get("alvo_tipo"), b.get("alvo_id"), b.get("servico"), b["por"],
+                              b.get("ini_m"), b.get("fim_m"), b.get("materiais") or [], b.get("obs"))}
+
+
+def p_programacao_encerrar(b, c):
+    P.encerrar(c, int(b["programacao_id"]), b.get("status"), b.get("motivo"), b["por"])
+    return {"ok": True}
 
 
 def r_equipe(q, c):
@@ -384,7 +420,7 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
        "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
-       "/api/reservas-vencidas": r_reservas_vencidas}
+       "/api/reservas-vencidas": r_reservas_vencidas, "/api/programacoes": r_programacoes}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
@@ -399,6 +435,7 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/escavacao": _etapa("ESCAVADO"), "/api/etapa-complementar/anular": p_etapa_anular,
         "/api/ocorrencia": p_ocorrencia, "/api/ocorrencia/resolver": p_ocorrencia_resolver}
 POST.update({rota: fn for rota, (_, _, fn) in ROTAS_COMPRAS.items()})
+POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
 PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
@@ -420,6 +457,8 @@ AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "
          "/api/liberacao": ("registrado_por",), "/api/escavacao": ("registrado_por",), "/api/etapa-complementar/anular": ("por",),
          "/api/ocorrencia": ("aberta_por",), "/api/ocorrencia/resolver": ("por",)}
 PERMISSAO.update({rota: perm for rota, (perm, _, _) in ROTAS_COMPRAS.items()})
+PERMISSAO.update({"/api/programacao": "planejar", "/api/programacao/encerrar": "planejar"})
+AUTOR.update({"/api/programacao": ("por",), "/api/programacao/encerrar": ("por",)})
 AUTOR.update({rota: campos for rota, (_, campos, _) in ROTAS_COMPRAS.items()})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}

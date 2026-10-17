@@ -24,7 +24,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 11
+VERSAO_ESQUEMA = 12
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -56,7 +56,7 @@ def aplicar_esquema(conn):
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "compras: pedido, NF-e, entregas parciais, inspeção, devolução, transferência, inventário"))
+                 (VERSAO_ESQUEMA, _agora(), "planejamento: programação das equipes e camadas do mapa"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -639,6 +639,10 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
     with transacao(conn):
         cid = conn.execute("INSERT INTO checkins(data,equipe_id,alvo_tipo,alvo_id,contingencia) VALUES (?,?,?,?,?)",
                            (data, equipe_id, tipo, ref, contingencia)).lastrowid
+        if ref:                                    # o planejado daquele dia e alvo passa a realizado (módulo D)
+            conn.execute("""UPDATE programacoes SET status='REALIZADA', checkin_id=?, encerrada_em=?
+                            WHERE equipe_id=? AND data=? AND alvo_tipo=? AND alvo_id=? AND status='PLANEJADA'""",
+                         (cid, _agora(), equipe_id, data, tipo, ref))
         for f in funcionarios:
             conn.execute("INSERT INTO checkin_presencas VALUES (?, 'FUNCIONARIO', ?)", (cid, f))
         for m in maquinas:
@@ -2187,7 +2191,7 @@ def detalhe(conn, alvo_tipo, ref):
 # Tabelas com registro operacional ligado a um alvo. A importação não retira um alvo com histórico sem
 # conciliação, e o mapa lista os retirados que têm histórico. Uma definição só, usada pelos dois.
 HISTORICO_POR_ALVO = ["checkins", "apontamentos", "fotos", "execucao", "movimentos", "medicao_lancamentos", "soldas",
-                      "reservas", "ocorrencias"]
+                      "reservas", "ocorrencias", "programacoes"]
 HISTORICO_POR_TRECHO = [("cadastro", "trecho_id"), ("ligacoes_prediais", "trecho_id"), ("intervalos_execucao", "trecho_id"),
                         ("conciliacoes_legado", "trecho_id"), ("retificacoes_intervalos", "trecho_id"),
                         ("revisoes_cadastro", "trecho_id"), ("etapas_complementares", "trecho_id")]
@@ -2196,7 +2200,7 @@ NOMES_HISTORICO = {"checkins": "check-in", "apontamentos": "apontamento", "fotos
                    "soldas": "soldas", "reservas": "reserva de material", "cadastro": "esteira de cadastro",
                    "ligacoes_prediais": "ligação predial", "intervalos_execucao": "intervalos executados",
                    "conciliacoes_legado": "conciliação do legado", "retificacoes_intervalos": "retificação de intervalos",
-                   "revisoes_cadastro": "conferência interna do cadastro", "ocorrencias": "ocorrência de campo",
+                   "revisoes_cadastro": "conferência interna do cadastro", "ocorrencias": "ocorrência de campo", "programacoes": "programação de equipe",
                    "etapas_complementares": "liberação topográfica / escavação"}
 
 
