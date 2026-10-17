@@ -208,7 +208,8 @@ def _alvo(corpo):
     if not isinstance(corpo, dict):
         return None, None
     for tipo, chave in (("TRECHO", "trecho_id"), (None, "alvo_id"), ("MOVIMENTO", "movimento_id"), ("INTERVALO", "intervalo_id"),
-                        ("SOLDA", "solda_id"), ("NF", "nf_id"), ("CHECKIN", "checkin_id"), ("RESERVA", "reserva_id")):
+                        ("SOLDA", "solda_id"), ("NF", "nf_id"), ("CHECKIN", "checkin_id"), ("RESERVA", "reserva_id"),
+                        ("OCORRENCIA", "ocorrencia_id"), ("ETAPA_COMPLEMENTAR", "registro_id")):
         if corpo.get(chave) not in (None, ""):
             return (tipo or corpo.get("alvo_tipo")), str(corpo[chave])
     if corpo.get("ref_tipo") and corpo.get("ref_id"):
@@ -218,6 +219,13 @@ def _alvo(corpo):
 
 def auditar(conn, usuario, metodo, rota, status, corpo=None, resultado=None, idem=None, login=None):
     tipo, aid = _alvo(corpo)
+    if tipo in ("TRECHO", "ATIVIDADE", "CONJUNTO", "ELEMENTO") and aid:   # nome visível → identidade estável
+        import servicos as S
+        try:
+            a = S.alvo(conn, tipo, aid)
+            tipo, aid = a["alvo_tipo"], a["id"]
+        except R.RegraViolada:
+            pass
     conn.execute(
         """INSERT INTO auditoria(em,usuario_id,login,perfil,metodo,rota,alvo_tipo,alvo_id,status,resultado,corpo,idem)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",

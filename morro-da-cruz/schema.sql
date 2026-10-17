@@ -627,6 +627,41 @@ CREATE TABLE IF NOT EXISTS medicao_lancamentos (
   item_congelado TEXT
 );
 
+-- ---------------------------------------------------------------- campo complementar (v10, módulo B)
+-- Etapas que não geram quantidade nem entram no resumo de execução (por isso ficam fora de intervalos_execucao):
+--   LIBERACAO_TOPOGRAFICA: locação conferida pela topografia (referência da nota de serviço) — onde a vala pode abrir;
+--   ESCAVADO: vala aberta (informativo; não é pré-requisito do assentamento sem a decisão D-21).
+-- Nunca apagadas: anulação com motivo e responsável.
+CREATE TABLE IF NOT EXISTS etapas_complementares (
+  id INTEGER PRIMARY KEY,
+  trecho_id TEXT NOT NULL REFERENCES trechos(id),
+  etapa TEXT NOT NULL CHECK (etapa IN ('LIBERACAO_TOPOGRAFICA','ESCAVADO')),
+  ini_m REAL NOT NULL CHECK (ini_m >= 0),
+  fim_m REAL NOT NULL,
+  data TEXT NOT NULL,
+  registrado_por TEXT NOT NULL,
+  referencia TEXT,                     -- nota de serviço / locação / caderneta
+  obs TEXT,
+  registrado_em TEXT NOT NULL,
+  anulado_em TEXT, anulado_por TEXT, anulado_motivo TEXT,
+  CHECK (fim_m > ini_m)
+);
+-- Ocorrências de campo: IMPEDIMENTO (o que impede o avanço) e NAO_CONFORMIDADE (o que precisa ser corrigido).
+-- Abertas com descrição; resolvidas com a resolução/correção, por quem e quando. Nunca apagadas.
+CREATE TABLE IF NOT EXISTS ocorrencias (
+  id INTEGER PRIMARY KEY,
+  alvo_tipo TEXT NOT NULL, alvo_id TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('IMPEDIMENTO','NAO_CONFORMIDADE')),
+  categoria TEXT NOT NULL,
+  descricao TEXT NOT NULL,
+  data TEXT NOT NULL,
+  equipe_id TEXT REFERENCES equipes(id),
+  aberta_por TEXT NOT NULL, aberta_em TEXT NOT NULL,
+  resolvida_em TEXT, resolvida_por TEXT, resolucao TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_ocorrencias_alvo ON ocorrencias(alvo_tipo, alvo_id);
+CREATE INDEX IF NOT EXISTS ix_etapas_compl ON etapas_complementares(trecho_id, etapa);
+
 -- ---------------------------------------------------------------- acesso e auditoria (v9, módulo A)
 -- Usuários do sistema: senha só como hash PBKDF2. Perfis e permissões em config/perfis.json (provisório, D-10).
 CREATE TABLE IF NOT EXISTS usuarios (

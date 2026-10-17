@@ -63,6 +63,7 @@ def r_resumo(q, c):
         "contingencias": R.CONTINGENCIAS,
         "etapas": R.ETAPAS,
         "checklist_conferencia": R.CHECKLIST_CONFERENCIA_CADASTRO,
+        "categorias_ocorrencia": S.CATEGORIAS_OCORRENCIA,
         "perfis": {k: {"nome": v["nome"]} for k, v in A.carregar_perfis()["perfis"].items()},
     }
 
@@ -265,6 +266,34 @@ def p_medicao_fechar(b, c):
     return {"ok": True}
 
 
+# ------------------------------------------------------------------ campo complementar (módulo B)
+def _etapa(etapa):
+    def f(b, c):
+        return {"id": S.registrar_etapa_complementar(c, b["trecho_id"], etapa, b.get("ini_m"), b.get("fim_m"), b.get("data"),
+                                                     b.get("registrado_por"), b.get("referencia"), b.get("obs"))}
+    return f
+
+
+def p_etapa_anular(b, c):
+    S.anular_etapa_complementar(c, int(b["registro_id"]), b.get("motivo"), b.get("por"))
+    return {"ok": True}
+
+
+def p_ocorrencia(b, c):
+    return {"id": S.abrir_ocorrencia(c, b["alvo_tipo"], b["alvo_id"], b.get("tipo"), b.get("categoria"), b.get("descricao"),
+                                     b.get("data"), b.get("aberta_por"), b.get("equipe_id"))}
+
+
+def p_ocorrencia_resolver(b, c):
+    S.resolver_ocorrencia(c, int(b["ocorrencia_id"]), b.get("resolucao"), b.get("por"))
+    return {"ok": True}
+
+
+def r_ocorrencias(q, c):
+    ab = q.get("abertas")
+    return S.ocorrencias(c, q.get("tipo"), q.get("id"), None if ab is None else ab == "1")
+
+
 # ------------------------------------------------------------------ acesso (módulo A)
 def r_usuarios(q, c):
     return [A.publico(dict(r)) for r in c.execute("SELECT * FROM usuarios ORDER BY login")]
@@ -299,7 +328,8 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/mapa/estado": r_mapa_estado, "/api/equipe": r_equipe, "/api/estoque": r_estoque,
        "/api/compat-caesb": r_compat, "/api/nfs": r_nfs, "/api/checkins": r_checkins, "/api/histograma": r_histograma,
        "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
-       "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo}
+       "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
+       "/api/ocorrencias": r_ocorrencias}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento, "/api/nf": p_nf,
@@ -310,7 +340,9 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/intervalo/verificar": p_intervalo_verificar, "/api/legado/conciliar": p_legado_conciliar,
         "/api/intervalos/retificar": p_intervalos_retificar, "/api/cadastro/conferencia": p_cadastro_conferencia,
         "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
-        "/api/reserva/cancelar": p_reserva_cancelar}
+        "/api/reserva/cancelar": p_reserva_cancelar, "/api/liberacao": _etapa("LIBERACAO_TOPOGRAFICA"),
+        "/api/escavacao": _etapa("ESCAVADO"), "/api/etapa-complementar/anular": p_etapa_anular,
+        "/api/ocorrencia": p_ocorrencia, "/api/ocorrencia/resolver": p_ocorrencia_resolver}
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
 PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox", "/api/nf": "almox",
@@ -320,13 +352,17 @@ PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/mov
              "/api/retificar": "almox", "/api/intervalo/verificar": "verificar", "/api/legado/conciliar": "retificar_campo",
              "/api/intervalos/retificar": "retificar_campo", "/api/cadastro/conferencia": "conferir_cadastro",
              "/api/solda": "campo", "/api/solda/verificar": "verificar", "/api/reserva": "almox",
-             "/api/reserva/cancelar": "almox", "/api/usuarios": "usuarios", "/api/senha": None}
+             "/api/reserva/cancelar": "almox", "/api/usuarios": "usuarios", "/api/senha": None,
+             "/api/liberacao": "topografia", "/api/escavacao": "campo", "/api/etapa-complementar/anular": "retificar_campo",
+             "/api/ocorrencia": "campo", "/api/ocorrencia/resolver": "verificar"}
 # campos de autoria: o servidor grava o usuário da sessão, nunca o nome digitado no navegador
 AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "/api/retificar": ("responsavel",),
          "/api/reserva": ("responsavel",), "/api/apontamento": ("informado_por",), "/api/solda": ("informado_por",),
          "/api/intervalo/verificar": ("verificado_por",), "/api/solda/verificar": ("verificado_por",),
          "/api/legado/conciliar": ("responsavel",), "/api/intervalos/retificar": ("responsavel",),
-         "/api/cadastro/conferencia": ("revisor",), "/api/ok-fiscal": ("usuario",)}
+         "/api/cadastro/conferencia": ("revisor",), "/api/ok-fiscal": ("usuario",),
+         "/api/liberacao": ("registrado_por",), "/api/escavacao": ("registrado_por",), "/api/etapa-complementar/anular": ("por",),
+         "/api/ocorrencia": ("aberta_por",), "/api/ocorrencia/resolver": ("por",)}
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
 

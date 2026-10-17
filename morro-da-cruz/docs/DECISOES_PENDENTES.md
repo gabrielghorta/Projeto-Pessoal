@@ -37,6 +37,7 @@ Cada decisão traz as opções, o impacto, a recomendação e **o que fica bloqu
 | D-17 | Roteiro da conferência interna do cadastro (6 itens) | aprovar / ajustar | — | Ajustar aos critérios da Ankara. | **PROVISÓRIA**: 6 itens propostos. |
 | D-18 | Verificação dos intervalos e soldas exigida antes do OK interno | não (hoje) / sim | — | Sim. | **PROVISÓRIA**: não exigida. |
 | D-20 | Liberação topográfica antes do assentamento | alerta / bloqueio | Evita vala fora da locação. | Alerta no início; bloqueio depois do treinamento. | **PROVISÓRIA**: alerta (módulo B). |
+| D-22 | Não conformidade aberta impede o OK interno do trecho/nó? | não (hoje) / sim | Evita validar internamente o que tem correção pendente. | Sim. | **PROVISÓRIA**: só alerta nas pendências. |
 | D-21 | Etapas executivas obrigatórias e sua ordem (locação, escavação, assentamento, cadastro, reaterro, recomposição, teste de estanqueidade) | quais e em que ordem | Pré-requisitos de campo. | Locação → assentamento → cadastro → reaterro obrigatórios; escavação informativa. | **PROVISÓRIA**: só assentamento como pré-requisito de cadastro e reaterro. |
 
 ## 4. Compras e almoxarifado

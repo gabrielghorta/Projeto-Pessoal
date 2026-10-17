@@ -24,7 +24,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 9
+VERSAO_ESQUEMA = 10
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -56,7 +56,7 @@ def aplicar_esquema(conn):
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "acesso: usuários, sessões, auditoria e reenvio idempotente"))
+                 (VERSAO_ESQUEMA, _agora(), "campo: liberação topográfica, escavação e ocorrências"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -1290,6 +1290,114 @@ def situacao_intervalos(conn, trecho_id):
     return out
 
 
+# ------------------------------------------------------------------ liberação topográfica, escavação e ocorrências (v10)
+ETAPAS_COMPLEMENTARES = ("LIBERACAO_TOPOGRAFICA", "ESCAVADO")
+CATEGORIAS_OCORRENCIA = {
+    "IMPEDIMENTO": ("INTERFERENCIA", "FALTA_MATERIAL", "CHUVA", "LIBERACAO", "PROJETO", "SEGURANCA", "ACESSO", "OUTRO"),
+    "NAO_CONFORMIDADE": ("EXECUCAO", "MATERIAL", "SOLDA", "SEGURANCA", "CADASTRO", "DOCUMENTO", "OUTRO"),
+}
+
+
+def etapas_complementares(conn, trecho_id, etapa=None, anuladas=False):
+    sql = "SELECT * FROM etapas_complementares WHERE trecho_id=? AND anulado_em IS " + ("NOT NULL" if anuladas else "NULL")
+    args = [trecho_id]
+    if etapa:
+        sql, args = sql + " AND etapa=?", args + [etapa]
+    return _rows(conn.execute(sql + " ORDER BY etapa, ini_m", args))
+
+
+def registrar_etapa_complementar(conn, trecho_ref, etapa, ini_m, fim_m, data, registrado_por, referencia=None, obs=None):
+    """Liberação topográfica (exige a referência da nota de serviço/locação) ou escavação, por intervalo do trecho.
+    Não gera quantidade nem altera o resumo de execução. Repetição/sobreposição na mesma etapa é recusada."""
+    t = alvo(conn, "TRECHO", trecho_ref, operacao=True)
+    if etapa not in ETAPAS_COMPLEMENTARES:
+        raise RegraViolada("Etapa inválida (LIBERACAO_TOPOGRAFICA ou ESCAVADO).")
+    if etapa == "ESCAVADO" and t.get("metodologia") == "MND":
+        raise RegraViolada("Trecho MND não tem vala aberta.")
+    if not str(registrado_por or "").strip():
+        raise RegraViolada("Informe quem registra.")
+    if etapa == "LIBERACAO_TOPOGRAFICA" and not str(referencia or "").strip():
+        raise RegraViolada("A liberação topográfica exige a referência da locação (nota de serviço, caderneta ou arquivo).")
+    if not data:
+        raise RegraViolada("Informe a data.")
+    a, b, ext = float(ini_m), float(fim_m), float(t["extensao_m"])
+    if not (0 <= a < b <= ext + R.TOL_M):
+        raise RegraViolada(f"{etapa} {a:g}–{b:g} m fora do trecho (0–{ext:g} m) ou com início ≥ fim.")
+    sob = R.sobreposicao((a, b), [(e["ini_m"], e["fim_m"]) for e in etapas_complementares(conn, t["id"], etapa)])
+    if sob:
+        raise RegraViolada(f"{etapa} {a:g}–{b:g} m sobrepõe registro existente ({sob[0]:g}–{sob[1]:g} m).")
+    return conn.execute(
+        """INSERT INTO etapas_complementares(trecho_id,etapa,ini_m,fim_m,data,registrado_por,referencia,obs,registrado_em)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (t["id"], etapa, a, b, data, registrado_por.strip(), (referencia or "").strip() or None, obs, _agora())).lastrowid
+
+
+def anular_etapa_complementar(conn, registro_id, motivo, por):
+    e = _one(conn, "SELECT * FROM etapas_complementares WHERE id=?", registro_id)
+    if not e:
+        raise RegraViolada("Registro não encontrado.")
+    if e["anulado_em"]:
+        raise RegraViolada("Registro já anulado.")
+    if not str(motivo or "").strip():
+        raise RegraViolada("A anulação exige o motivo.")
+    conn.execute("UPDATE etapas_complementares SET anulado_em=?, anulado_por=?, anulado_motivo=? WHERE id=?",
+                 (_agora(), por, motivo.strip(), registro_id))
+
+
+def situacao_complementar(conn, t, sit):
+    """Liberação e escavação do trecho, com o que foi assentado ou escavado sem liberação ATÉ a data (alerta, D-20)."""
+    regs = etapas_complementares(conn, t["id"])
+    cob = lambda e, ate=None: R.unir_intervalos([(r["ini_m"], r["fim_m"]) for r in regs if r["etapa"] == e and (ate is None or r["data"] <= ate)])
+    out = {e: {"cobertura": cob(e), "metros": R.comprimento(cob(e)), "registros": [r for r in regs if r["etapa"] == e]}
+           for e in ETAPAS_COMPLEMENTARES}
+    out["anulados"] = etapas_complementares(conn, t["id"], anuladas=True)
+    out["alertas"] = []
+    for etapa, nome in (("ASSENTADO", "Assentado"), ("ESCAVADO", "Escavado")):
+        lst = [i for i in sit["intervalos"] if i["etapa"] == etapa] if etapa == "ASSENTADO" else out["ESCAVADO"]["registros"]
+        faltas = [(i, R.fora_da_cobertura((i["ini_m"], i["fim_m"]), cob("LIBERACAO_TOPOGRAFICA", i["data"]))) for i in lst]
+        faltas = [(i, f) for i, f in faltas if f]
+        if faltas:
+            out["alertas"].append(f"{nome} sem liberação topográfica até a data (alerta): "
+                                  + "; ".join(f"{_faixas(f)} ({i['data']})" for i, f in faltas))
+    return out
+
+
+def abrir_ocorrencia(conn, alvo_tipo, ref, tipo, categoria, descricao, data, aberta_por, equipe_id=None):
+    a = alvo(conn, alvo_tipo, ref)
+    if tipo not in CATEGORIAS_OCORRENCIA:
+        raise RegraViolada("Tipo de ocorrência: IMPEDIMENTO ou NAO_CONFORMIDADE.")
+    if categoria not in CATEGORIAS_OCORRENCIA[tipo]:
+        raise RegraViolada(f"Categoria inválida para {tipo}: {', '.join(CATEGORIAS_OCORRENCIA[tipo])}.")
+    if not str(descricao or "").strip() or not data or not str(aberta_por or "").strip():
+        raise RegraViolada("A ocorrência exige descrição, data e quem abre.")
+    return conn.execute(
+        """INSERT INTO ocorrencias(alvo_tipo,alvo_id,tipo,categoria,descricao,data,equipe_id,aberta_por,aberta_em)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (a["alvo_tipo"], a["id"], tipo, categoria, descricao.strip(), data, equipe_id or None, aberta_por.strip(), _agora())).lastrowid
+
+
+def resolver_ocorrencia(conn, ocorrencia_id, resolucao, por):
+    o = _one(conn, "SELECT * FROM ocorrencias WHERE id=?", ocorrencia_id)
+    if not o:
+        raise RegraViolada("Ocorrência não encontrada.")
+    if o["resolvida_em"]:
+        raise RegraViolada("Ocorrência já resolvida.")
+    if not str(resolucao or "").strip():
+        raise RegraViolada("Descreva a resolução" + (" e a correção feita." if o["tipo"] == "NAO_CONFORMIDADE" else "."))
+    conn.execute("UPDATE ocorrencias SET resolvida_em=?, resolvida_por=?, resolucao=? WHERE id=?",
+                 (_agora(), por, resolucao.strip(), ocorrencia_id))
+
+
+def ocorrencias(conn, alvo_tipo=None, ref=None, abertas=None):
+    sql, args = "SELECT * FROM ocorrencias WHERE 1=1", []
+    if ref:
+        a = alvo(conn, alvo_tipo, ref)
+        sql, args = sql + " AND alvo_tipo=? AND alvo_id=?", args + [a["alvo_tipo"], a["id"]]
+    if abertas is not None:
+        sql += " AND resolvida_em IS NULL" if abertas else " AND resolvida_em IS NOT NULL"
+    return _rows(conn.execute(sql + " ORDER BY resolvida_em IS NOT NULL, data DESC, id DESC", args))
+
+
 # ------------------------------------------------------------------ soldas (informadas × verificadas)
 def registrar_soldas(conn, data, equipe_id, alvo_tipo, ref, tipo, quantidade, soldador, informado_por,
                      posicao_m=None, maquina=None, obs=None):
@@ -1799,6 +1907,12 @@ def pendencias_alvo(conn, d):
         nv = [i for i in iv["intervalos"] if not i["verificado_em"]]
         if nv:
             add("PENDENTE", "Verificação interna", f"{len(nv)} intervalo(s) informados sem verificação.")
+    for txt in (d.get("complementar") or {}).get("alertas", []):
+        add("ALERTA", "Topografia", txt)
+    for o in d.get("ocorrencias") or []:
+        if not o["resolvida_em"]:
+            add("ALERTA", "Ocorrências", f"{'Impedimento' if o['tipo'] == 'IMPEDIMENTO' else 'Não conformidade'} aberto(a) desde "
+                f"{o['data']} ({o['categoria']}): {o['descricao']}")
     s_ = d.get("soldas") or {}
     if s_.get("sem_verificacao"):
         add("PENDENTE", "Soldas", f"{s_['sem_verificacao']} solda(s) sem verificação.")
@@ -2048,6 +2162,7 @@ def detalhe(conn, alvo_tipo, ref):
         d["perfil_bloqueado"] = R.bloqueio_perfil(a)       # mesma regra do cálculo (MND não tem vala)
         d["mnd"] = a.get("metodologia") == "MND"
         d["intervalos"] = situacao_intervalos(conn, aid)
+        d["complementar"] = situacao_complementar(conn, a, d["intervalos"])
         d["fases_cadastro"] = fases_cadastro(conn, a, d["intervalos"])
     else:
         d.update(totais_atividade(conn, aid))
@@ -2058,6 +2173,7 @@ def detalhe(conn, alvo_tipo, ref):
             (a["elemento_id"], aid)))
         d.update(avisos_e_decisoes(conn, aid))
     d["soldas"] = resumo_soldas(conn, tipo, aid)
+    d["ocorrencias"] = ocorrencias(conn, tipo, aid)
     d["pendencias"] = pendencias_alvo(conn, d)
     return d
 
@@ -2065,16 +2181,17 @@ def detalhe(conn, alvo_tipo, ref):
 # Tabelas com registro operacional ligado a um alvo. A importação não retira um alvo com histórico sem
 # conciliação, e o mapa lista os retirados que têm histórico. Uma definição só, usada pelos dois.
 HISTORICO_POR_ALVO = ["checkins", "apontamentos", "fotos", "execucao", "movimentos", "medicao_lancamentos", "soldas",
-                      "reservas"]
+                      "reservas", "ocorrencias"]
 HISTORICO_POR_TRECHO = [("cadastro", "trecho_id"), ("ligacoes_prediais", "trecho_id"), ("intervalos_execucao", "trecho_id"),
                         ("conciliacoes_legado", "trecho_id"), ("retificacoes_intervalos", "trecho_id"),
-                        ("revisoes_cadastro", "trecho_id")]
+                        ("revisoes_cadastro", "trecho_id"), ("etapas_complementares", "trecho_id")]
 NOMES_HISTORICO = {"checkins": "check-in", "apontamentos": "apontamento", "fotos": "foto", "execucao": "execução",
                    "movimentos": "movimento de material", "medicao_lancamentos": "lançamento de medição (teste)",
                    "soldas": "soldas", "reservas": "reserva de material", "cadastro": "esteira de cadastro",
                    "ligacoes_prediais": "ligação predial", "intervalos_execucao": "intervalos executados",
                    "conciliacoes_legado": "conciliação do legado", "retificacoes_intervalos": "retificação de intervalos",
-                   "revisoes_cadastro": "conferência interna do cadastro"}
+                   "revisoes_cadastro": "conferência interna do cadastro", "ocorrencias": "ocorrência de campo",
+                   "etapas_complementares": "liberação topográfica / escavação"}
 
 
 def historico_alvos(conn, alvo_tipo):

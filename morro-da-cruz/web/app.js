@@ -53,6 +53,22 @@ const htmlFases = fs => (fs || []).map(f => `<div class="fase"><b>${esc(f.nome)}
     ${f.evidencias.length ? `<ul>${f.evidencias.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
     ${f.pendencias.length ? `<ul class="pendencias">${f.pendencias.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}</div>`).join('');
 const FOTO_OK = v => v && !['INVALIDA', 'ARQUIVO_AUSENTE'].includes(v);
+const ROT_ETAPA = { LIBERACAO_TOPOGRAFICA: 'Liberação topográfica', ESCAVADO: 'Escavado (vala aberta)' };
+function htmlComplementar(c, editavel) {
+  if (!c) return '';
+  return `<table style="margin-top:4px"><thead><tr><th>Etapa</th><th class="n">Metros</th><th>Feito (m)</th></tr></thead><tbody>
+    ${Object.keys(ROT_ETAPA).map(e => `<tr><td>${ROT_ETAPA[e]}</td><td class="n">${nf(c[e].metros)}</td><td>${faixa(c[e].cobertura)}</td></tr>`).join('')}</tbody></table>
+    ${Object.keys(ROT_ETAPA).flatMap(e => c[e].registros).map(r => `<div><small>${esc(ROT_ETAPA[r.etapa])} ${nf(r.ini_m)}–${nf(r.fim_m)} m · ${esc(r.data)} · ${esc(r.registrado_por)}${r.referencia ? ' · ' + esc(r.referencia) : ''}</small>
+      ${editavel ? `<button type="button" class="btn" data-anular-etapa="${r.id}">Anular</button>` : ''}</div>`).join('')}
+    ${c.anulados.length ? `<details><summary>${c.anulados.length} registro(s) anulado(s)</summary>${c.anulados.map(r => `<div style="opacity:.6;text-decoration:line-through"><small>${esc(ROT_ETAPA[r.etapa])} ${nf(r.ini_m)}–${nf(r.fim_m)} m · ${esc(r.data)} — ${esc(r.anulado_motivo)} (${esc(r.anulado_por)})</small></div>`).join('')}</details>` : ''}`;
+}
+function htmlOcorrencias(os_, editavel) {
+  return (os_ || []).map(o => `<div class="registro"><div><b>${o.tipo === 'IMPEDIMENTO' ? 'Impedimento' : 'Não conformidade'} #${o.id} · ${esc(o.categoria)}</b>
+      ${o.resolvida_em ? '<span class="chip azul">resolvida</span>' : `<span class="chip amarelo">aberta</span>${editavel ? ` <button type="button" class="btn" data-resolver-ocorrencia="${o.id}">Resolver</button>` : ''}`}</div>
+    <small>${esc(o.data)} · ${esc(o.aberta_por)}${o.equipe_id ? ' · ' + esc(o.equipe_id) : ''} — ${esc(o.descricao)}</small>
+    ${o.resolvida_em ? `<div><small>Resolução (${esc(o.resolvida_por)}, ${esc(o.resolvida_em.slice(0, 10))}): ${esc(o.resolucao)}</small></div>` : ''}</div>`).join('')
+    || '<div class="vazio">Nenhuma ocorrência.</div>';
+}
 
 let USUARIO = null;
 const EM_CURSO = new Map();
@@ -195,6 +211,8 @@ async function mostrarFiscal(tipo, id) {
     <p>Fotos: ${st.length ? st.map(c => `<span class="chip vermelho">falta ${c}</span>`).join(' ') : '<span class="chip verde">completas</span>'}
        ${d.fotos.map(f => `<span class="chip ${FOTO_OK(f.validacao) ? '' : 'vermelho'}" title="${esc(f.validacao || 'não validada')}">${esc(f.categoria)}${FOTO_OK(f.validacao) ? '' : ' · não conta: ' + esc(f.validacao || 'não validada')}</span>`).join(' ')}
        ${ex && ex.ok_fiscal_em ? `<span class="chip verde">OK em ${esc(ex.ok_fiscal_em)} por ${esc(ex.ok_fiscal_por)}</span>` : ''}</p>
+    ${tipo === 'TRECHO' ? `<h4 style="margin:12px 0 4px">Liberação topográfica e escavação</h4>${htmlComplementar(d.complementar, false)}` : ''}
+    <h4 style="margin:12px 0 4px">Ocorrências (impedimentos e não conformidades)</h4>${htmlOcorrencias(d.ocorrencias, false)}
     ${tipo === 'TRECHO' ? `<h4 style="margin:12px 0 4px">Cadastro — do levantamento de campo à entrega</h4>${htmlFases(d.fases_cadastro)}` : ''}
     <label class="check" style="margin:8px 0"><input type="checkbox" id="okFiscal" ${ex && ex.ok_fiscal_em ? 'checked disabled' : pode ? '' : 'disabled'}>
       <b>[✓] OK Fiscalização — Pronto p/ Medir</b></label>
@@ -385,8 +403,30 @@ async function selecionarCampo(tipo, id) {
       <h4 style="margin:10px 0 4px">Intervalos por registro</h4>
       ${htmlRegistros(iv, editavel)}
       ${editavel ? '<p class="vazio" style="margin:2px 0">Retificar substitui os intervalos daquele registro. O trecho inteiro é conferido antes de gravar (tudo ou nada); o original fica no histórico.</p>' : ''}
-      <div id="retifBox"></div>${htmlHistorico(iv)}`
+      <div id="retifBox"></div>${htmlHistorico(iv)}
+      <h4 style="margin:10px 0 4px">Liberação topográfica e escavação <small>(não geram quantidade)</small></h4>
+      ${htmlComplementar(d.complementar, pode('retificar_campo'))}${(d.complementar.alertas || []).map(a => `<div class="aviso info">${esc(a)}</div>`).join('')}
+      ${editavel ? `<div class="linha lin-compl" id="fCompl" style="margin-top:6px"><select data-c="etapa">${Object.entries(ROT_ETAPA).filter(([e]) => !(d.mnd && e === 'ESCAVADO')).map(([e, r]) => `<option value="${e}">${r}</option>`).join('')}</select>
+        <input data-c="ini_m" type="number" step="any" min="0" placeholder="de (m)"><input data-c="fim_m" type="number" step="any" min="0" placeholder="até (m)">
+        <input data-c="referencia" placeholder="nota de serviço / locação"><button type="button" class="btn" id="complBtn">Registrar</button></div>` : ''}`
     : `<div class="aviso info">${esc(curto(d.nome))}: ${esc(d.texto)}</div>`;
+  $('#apAlvo').insertAdjacentHTML('beforeend', `<h4 style="margin:10px 0 4px">Ocorrências</h4>${htmlOcorrencias(d.ocorrencias, pode('verificar'))}
+    <div class="linha" id="fOcor" style="margin-top:6px"><select data-o="tipo"><option value="IMPEDIMENTO">Impedimento</option><option value="NAO_CONFORMIDADE">Não conformidade</option></select>
+      <select data-o="categoria"></select><input data-o="descricao" placeholder="o que aconteceu"><button type="button" class="btn" id="ocorBtn">Abrir ocorrência</button></div>`);
+  const cats = () => { $('#fOcor [data-o=categoria]').innerHTML = (RESUMO.categorias_ocorrencia[$('#fOcor [data-o=tipo]').value] || []).map(c => `<option>${c}</option>`).join(''); };
+  cats(); $('#fOcor [data-o=tipo]').addEventListener('change', cats);
+  $('#ocorBtn').addEventListener('click', async () => {
+    const o = Object.fromEntries($$('#fOcor [data-o]').map(i => [i.dataset.o, i.value])), f = formObj(fAp);
+    const ok = await acao(() => api('/api/ocorrencia', { alvo_tipo: tipo, alvo_id: id, ...o, data: f.data || hoje(), equipe_id: f.equipe_id || null }), 'Ocorrência aberta.').catch(() => null);
+    if (ok) selecionarCampo(tipo, id);
+  });
+  const cb = $('#complBtn');
+  if (cb) cb.addEventListener('click', async () => {
+    const o = Object.fromEntries($$('#fCompl [data-c]').map(i => [i.dataset.c, i.value])), f = formObj(fAp);
+    const rota = o.etapa === 'ESCAVADO' ? '/api/escavacao' : '/api/liberacao';
+    const ok = await acao(() => api(rota, { trecho_id: id, ini_m: o.ini_m, fim_m: o.fim_m, referencia: o.referencia, data: f.data || hoje() }), 'Registrado.').catch(() => null);
+    if (ok) selecionarCampo(tipo, id);
+  });
   renderSoldas();
   $('#apQuant').innerHTML = '';
   renderFotos();
@@ -415,6 +455,15 @@ document.addEventListener('click', ev => {
   }
   const rm = ev.target.closest('[data-remover-linha]');
   if (rm) rm.closest('.lin-iv').remove();
+});
+document.addEventListener('click', async ev => {
+  const a = ev.target.closest('[data-anular-etapa]'), r = ev.target.closest('[data-resolver-ocorrencia]');
+  if (a) { const motivo = prompt('Motivo da anulação (o registro fica no histórico):'); if (!motivo) return;
+    const ok = await acao(() => api('/api/etapa-complementar/anular', { registro_id: a.dataset.anularEtapa, motivo }), 'Registro anulado.').catch(() => null);
+    if (ok && CAMPO) selecionarCampo(CAMPO.tipo, CAMPO.id); }
+  if (r) { const resolucao = prompt('Resolução / correção feita:'); if (!resolucao) return;
+    const ok = await acao(() => api('/api/ocorrencia/resolver', { ocorrencia_id: r.dataset.resolverOcorrencia, resolucao }), 'Ocorrência resolvida.').catch(() => null);
+    if (ok && CAMPO) selecionarCampo(CAMPO.tipo, CAMPO.id); }
 });
 // retificação de intervalos (aba Campo)
 document.addEventListener('click', async ev => {

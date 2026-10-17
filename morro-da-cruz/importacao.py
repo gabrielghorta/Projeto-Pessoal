@@ -981,6 +981,11 @@ def preparar_v9(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v10(conn):
+    """Esquema v9 → v10: etapas complementares (liberação topográfica, escavação) e ocorrências. Só acréscimos."""
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""
