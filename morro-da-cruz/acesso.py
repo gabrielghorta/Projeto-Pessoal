@@ -18,9 +18,10 @@ import re
 import secrets
 from datetime import datetime, timedelta
 
+import caminhos
 import regras as R
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = caminhos.PASTA
 ITERACOES = 200_000
 VALIDADE_SESSAO = timedelta(hours=12)
 MAX_FALHAS, JANELA_FALHAS = 5, timedelta(minutes=15)

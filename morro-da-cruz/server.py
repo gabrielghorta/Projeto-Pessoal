@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import acesso as A
+import caminhos
 import backup
 import compras as C
 import medicao as M
@@ -27,11 +28,12 @@ import exportar
 import regras as R
 import servicos as S
 
-BASE = os.path.dirname(os.path.abspath(__file__))
-WEB = os.path.join(BASE, "web")
+BASE = caminhos.PASTA
+WEB = os.path.join(caminhos.RECURSOS, "web")
 LOCK = threading.Lock()
 CONN = None
 DB_PATH = S.DB_PADRAO
+DEMONSTRACAO = False                  # banco de demonstração (dados_demo/): a interface mostra a faixa de aviso
 DIR_FOTOS = S.DIR_FOTOS                 # sempre <pasta do banco>/fotos (é o que o backup copia e confere)
 COOKIE = "mc_sessao"
 COOKIE_SEGURO = False                   # True só atrás de HTTPS (decisão D-60); em 127.0.0.1 é HTTP
@@ -554,6 +556,10 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if u.path in PUBLICOS:
+            if u.path in ("/", "/index.html") and DEMONSTRACAO:          # demonstração: mostra os usuários no login
+                with open(os.path.join(WEB, "index.html"), "rb") as f:
+                    return self._send(200, f.read().replace(b'id="dicaDemo" class="aviso info" hidden', b'id="dicaDemo" class="aviso info"'),
+                                      "text/html; charset=utf-8")
             return self._static(WEB, "index.html" if u.path in ("/", "/index.html") else u.path.lstrip("/"))
         with LOCK:
             sem = not A.ha_usuarios(CONN)
@@ -561,7 +567,8 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/sessao":
             if sem:
                 return self._send(401, self._sem_usuarios())
-            return self._send(200, {"usuario": usuario}) if usuario else self._send(401, {"erro": "Entre com seu usuário."})
+            return (self._send(200, {"usuario": usuario, "demonstracao": DEMONSTRACAO}) if usuario
+                    else self._send(401, {"erro": "Entre com seu usuário."}))
         if usuario is None:                            # API, fotos e mapa só com sessão
             if u.path.startswith("/api/"):
                 return self._send(401, self._sem_usuarios() if sem else {"erro": "Sessão encerrada: entre de novo."})
@@ -642,7 +649,7 @@ class Handler(BaseHTTPRequestHandler):
             A.auditar(CONN, usuario, "POST", "/api/login", 200, body)
             self._login = usuario["login"]
         cookie = f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict" + ("; Secure" if COOKIE_SEGURO else "")
-        return self._send(200, {"usuario": usuario}, extra={"Set-Cookie": cookie})
+        return self._send(200, {"usuario": usuario, "demonstracao": DEMONSTRACAO}, extra={"Set-Cookie": cookie})
 
     def _gravar(self, rota, body):
         """Uma requisição = uma transação: permissão, autoria, reenvio, a operação e a auditoria do aceite.
@@ -706,13 +713,15 @@ def configurar_log(pasta_db):
 
 
 def main():
-    global CONN, DB_PATH, DIR_FOTOS
+    global CONN, DB_PATH, DIR_FOTOS, DEMONSTRACAO
     backup.utf8_console()
     ap = argparse.ArgumentParser()
     ap.add_argument("--porta", type=int, default=8765)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--db", default=S.DB_PADRAO)
+    ap.add_argument("--demonstracao", action="store_true", help="mostra a faixa DEMONSTRAÇÃO na interface")
     a = ap.parse_args()
+    DEMONSTRACAO = a.demonstracao
     if not os.path.exists(a.db):
         raise SystemExit(f"Banco {a.db} não existe — rode antes: python importar.py --aplicar")
     DB_PATH = a.db

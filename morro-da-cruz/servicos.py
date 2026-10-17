@@ -17,11 +17,12 @@ import re
 import sqlite3
 from datetime import date, datetime
 
+import caminhos
 import imagens
 import regras as R
 from regras import RegraViolada
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
 VERSAO_ESQUEMA = 13
@@ -57,7 +58,7 @@ def versao_banco(conn):
 
 
 def aplicar_esquema(conn):
-    with open(os.path.join(BASE, "schema.sql"), encoding="utf-8") as f:
+    with open(os.path.join(caminhos.RECURSOS, "schema.sql"), encoding="utf-8") as f:
         for cmd in comandos_sql(f.read()):
             conn.execute(cmd)
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:

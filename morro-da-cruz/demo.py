@@ -18,13 +18,14 @@ from datetime import date
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, AQUI)
+import caminhos  # noqa: E402
 import acesso as A  # noqa: E402
 import backup  # noqa: E402
 import importacao as I  # noqa: E402
 import importar  # noqa: E402
 import servicos as S  # noqa: E402
 
-PASTA = os.path.join(AQUI, "dados_demo")
+PASTA = os.path.join(caminhos.PASTA, "dados_demo")
 DB = os.path.join(PASTA, "obra.db")
 SENHA = "demo-morro-123"
 USUARIOS = (("admin.demo", "Administração (demo)", "ADMINISTRACAO", None),
@@ -86,7 +87,7 @@ def main():
     print(" Para começar do zero: python demo.py --recriar")
     print("=" * 72 + "\n")
     import server
-    sys.argv = ["server.py", "--db", DB, "--porta", str(a.porta)]
+    sys.argv = ["server.py", "--db", DB, "--porta", str(a.porta), "--demonstracao"]
     server.main()
 
 

@@ -27,11 +27,12 @@ import openpyxl
 from openpyxl.utils import column_index_from_string as col
 from openpyxl.utils import get_column_letter
 
+import caminhos
 import regras as R
 import servicos as S
 from backup import sha256
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = caminhos.PASTA
 DIR_PLANILHAS = os.path.join(BASE, "planilhas")
 
 COLUNAS_SERVICO = ["AL", "AM", "AN", "AO", "AP", "AQ", "AR", "AS", "AT", "AU", "AV", "AW", "AX", "AY", "AZ",
@@ -987,7 +988,7 @@ def preparar_v10(conn):
 
 
 def _ddl_atual(tabela):
-    with open(os.path.join(S.BASE, "schema.sql"), encoding="utf-8") as f:
+    with open(os.path.join(caminhos.RECURSOS, "schema.sql"), encoding="utf-8") as f:
         texto = f.read()
     m = re.search(rf"CREATE TABLE IF NOT EXISTS {tabela} \(.*?\n\);", texto, re.S)
     if not m:

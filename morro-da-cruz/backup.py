@@ -27,7 +27,9 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+import caminhos
+
+BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
 DESTINO_PADRAO = os.path.join(BASE, "dados", "backups")

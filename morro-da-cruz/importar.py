@@ -25,11 +25,12 @@ import tempfile
 import traceback
 from datetime import datetime
 
+import caminhos
 import backup
 import importacao as I
 import servicos as S
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+BASE = caminhos.PASTA
 DIR_RELATORIOS = os.path.join(BASE, "dados", "relatorios")
 OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontamentos", "apontamento_quantidades", "fotos",
                 "execucao", "cadastro", "cadastro_historico", "ligacoes_prediais", "notas_fiscais", "nf_itens",

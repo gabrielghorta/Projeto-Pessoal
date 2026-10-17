@@ -42,6 +42,23 @@ morro-da-cruz/
 
 As pastas `planilhas/`, `mapa/` e `dados/` ficam **fora do Git** (`.gitignore`). Os dados da obra não vão para o repositório.
 
+## 2.0 Programa de dois cliques (MorroDaCruz.exe)
+
+O pacote `MorroDaCruz-Windows.zip` (Releases do repositório, gerado pelo GitHub Actions) traz um único executável, sem precisar instalar o Python.
+
+O que ele faz ao abrir:
+- Se já houver um sistema aberto, só abre o navegador nele.
+- Com `dados/morro_da_cruz.db` na pasta, abre o banco oficial. Sem ele, abre a demonstração (`dados_demo/`), com a faixa amarela DEMONSTRAÇÃO.
+- Na primeira vez, o navegador pede as planilhas e o mapa. Cada arquivo é reconhecido pelo SHA-256 do CTRL-01 e guardado com o nome certo; um arquivo existente com outro conteúdo não é substituído.
+- Abre o navegador sozinho. Fechar a janela fecha o sistema.
+
+A manutenção usa o mesmo executável:
+- `MorroDaCruz.exe importar` (simulação) e `MorroDaCruz.exe importar --aplicar`;
+- `MorroDaCruz.exe usuarios criar --login ...`;
+- `MorroDaCruz.exe backup criar | verificar | restaurar`.
+
+Para atualizar, substitua só o `.exe`; as pastas de dados continuam.
+
 ## 2.1 Demonstração antes da implantação
 
 `python demo.py` cria `dados_demo/obra.db` a partir das planilhas, com o perfil TESTE e usuários de demonstração (senha `demo-morro-123`), e abre o sistema em http://127.0.0.1:8765.

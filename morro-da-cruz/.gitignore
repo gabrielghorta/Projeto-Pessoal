@@ -7,3 +7,5 @@ dados/
 dados_demo/
 __pycache__/
 *.pyc
+build/
+dist/

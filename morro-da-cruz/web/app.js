@@ -70,7 +70,7 @@ function htmlOcorrencias(os_, editavel) {
     || '<div class="vazio">Nenhuma ocorrência.</div>';
 }
 
-let USUARIO = null;
+let USUARIO = null, DEMONSTRACAO = false;
 const EM_CURSO = new Map();
 async function tratar(r) {
   const j = await r.json().catch(() => ({}));
@@ -1036,7 +1036,7 @@ function mostrarLogin(msg) {
 }
 $('#fLogin').addEventListener('submit', async ev => {
   ev.preventDefault();
-  try { const r = await api('/api/login', formObj(ev.target)); USUARIO = r.usuario; ev.target.reset(); $('#login').hidden = true; iniciar(); }
+  try { const r = await api('/api/login', formObj(ev.target)); USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; ev.target.reset(); $('#login').hidden = true; iniciar(); }
   catch (e) { const m = $('#loginMsg'); m.hidden = false; m.textContent = e.message; }
 });
 $('#sairBtn').addEventListener('click', async () => { await api('/api/logout', {}).catch(() => null); location.reload(); });
@@ -1048,6 +1048,7 @@ $('#senhaBtn').addEventListener('click', async () => {
 function aplicarPermissoes() {
   $('#quem').innerHTML = `<b>${esc(USUARIO.nome)}</b><br>${esc(USUARIO.login)} · ${esc(USUARIO.perfil_nome)}${USUARIO.equipe_id ? ' · ' + esc(USUARIO.equipe_id) : ''}`;
   $('#sairBtn').hidden = $('#senhaBtn').hidden = false;
+  $('#faixaDemo').hidden = !DEMONSTRACAO;
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
 }
@@ -1055,7 +1056,7 @@ function aplicarPermissoes() {
 let INICIADO = false;
 async function iniciar() {
   if (!USUARIO) {
-    try { USUARIO = (await api('/api/sessao')).usuario; } catch (_) { return; }   // sem sessão: tela de login
+    try { const r = await api('/api/sessao'); USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; } catch (_) { return; }   // sem sessão: tela de login
   }
   aplicarPermissoes();
   if (INICIADO) return;

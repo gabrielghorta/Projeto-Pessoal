@@ -1,0 +1,84 @@
+name: Morro da Cruz — programa para Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/powerbi-modifications-wqxekj]
+    paths: ["morro-da-cruz/**", ".github/workflows/morro-da-cruz-windows.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  testes-windows:
+    name: Suíte de testes no Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: morro-da-cruz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install openpyxl pillow
+      - name: Testes (as planilhas reais não vão para o GitHub; os testes com elas são pulados)
+        run: python -m unittest discover -s tests
+
+  executavel:
+    name: MorroDaCruz.exe
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: morro-da-cruz
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyinstaller==6.22.3 openpyxl pillow
+      - run: python -m PyInstaller MorroDaCruz.spec --noconfirm
+      - name: Teste do executável (abre a primeira abertura numa pasta vazia)
+        run: |
+          $d = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\teste_exe"
+          Copy-Item dist\MorroDaCruz.exe $d
+          $p = Start-Process -FilePath "$d\MorroDaCruz.exe" -WorkingDirectory $d -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 90; $i++) {
+            Start-Sleep 1
+            try { $r = Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing -TimeoutSec 2
+                  if ($r.Content -match 'primeira abertura') { $ok = $true; break } } catch {}
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "O executável não abriu a tela de primeira abertura." }
+          if (-not (Test-Path "$d\config\perfis.json")) { throw "A configuração padrão não foi copiada para a pasta do programa." }
+      - name: Montar o pacote
+        run: |
+          New-Item -ItemType Directory -Force pacote\MorroDaCruz\planilhas, pacote\MorroDaCruz\mapa | Out-Null
+          Copy-Item dist\MorroDaCruz.exe pacote\MorroDaCruz\
+          Copy-Item planilhas\LEIA-ME.md pacote\MorroDaCruz\planilhas\
+          Copy-Item mapa\LEIA-ME.md pacote\MorroDaCruz\mapa\
+          Copy-Item LEIA-ME-WINDOWS.txt pacote\MorroDaCruz\LEIA-ME.txt
+          Compress-Archive -Path pacote\MorroDaCruz -DestinationPath MorroDaCruz-Windows.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MorroDaCruz-Windows
+          path: morro-da-cruz/MorroDaCruz-Windows.zip
+
+  publicar:
+    name: Publicar em Releases
+    needs: [testes-windows, executavel]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: MorroDaCruz-Windows
+      - name: Criar a versão
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "morro-da-cruz-v${{ github.run_number }}" MorroDaCruz-Windows.zip \
+            --title "Morro da Cruz — versão de teste ${{ github.run_number }}" \
+            --notes-file morro-da-cruz/LEIA-ME-WINDOWS.txt --target "${{ github.sha }}"
