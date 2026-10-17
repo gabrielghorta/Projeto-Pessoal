@@ -48,7 +48,11 @@ A etapa 2 (regras financeiras) continua **parada**, à espera das 5 decisões da
 
 O servidor recusa banco em esquema anterior até a migração.
 
-## Pendências desta frente — o fluxo integral de almoxarifado **não** está concluído
+## Pendências desta frente — atualizado em 17/10 (módulo C)
+
+Pedido e compra, entregas e aceites parciais, devolução, XML da NF-e, transferência entre equipes, reservas vencidas e inventário foram implementados no módulo C (`docs/MODULO_C_COMPRAS.md`). A lista abaixo é o registro original de 16/10.
+
+### Registro original
 
 - **NF (C5):** pedido/compra, entrega e aceite parciais, devolução e leitura do XML da NF-e. Sem isso, o ciclo de compra do material Ankara não está completo.
 - **Transferência entre equipes:** hoje só por sobra devolvida + nova retirada.

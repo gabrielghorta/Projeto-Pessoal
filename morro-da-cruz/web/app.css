@@ -168,3 +168,9 @@ details > summary { cursor: pointer; font-size: 13px; color: var(--suave); margi
 [data-sem-permissao] { opacity: .45; }
 .lin-compl { grid-template-columns: 1.4fr .8fr .8fr 1.4fr auto; align-items: end; }
 #fOcor { grid-template-columns: 1fr 1fr 2fr auto; align-items: end; }
+.lin-item { grid-template-columns: 2fr 1fr auto; align-items: end; margin-bottom: 4px; }
+.editor-itens[data-itens=nfdig] .lin-item { grid-template-columns: 2fr .6fr .8fr .8fr auto; }
+.lin-ped { grid-template-columns: 2fr 1fr 1fr; align-items: center; margin-bottom: 4px; }
+.lin-insp { grid-template-columns: 1.6fr .7fr .7fr 1fr 1.2fr auto; align-items: center; margin: 4px 0; }
+.conf-nf table select, .conf-nf table input { width: 100%; }
+.kanban, .grade { min-width: 0; }

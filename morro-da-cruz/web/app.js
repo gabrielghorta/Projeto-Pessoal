@@ -124,7 +124,7 @@ function abrirAba(id) {
   $$('nav.abas button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.aba === id)));
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
   try { localStorage.setItem('aba', id); } catch (_) { /* sem storage */ }
-  ({ mapa: carregarMapa, almox: carregarAlmox, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin })[id]();
+  ({ mapa: carregarMapa, almox: carregarAlmox, compras: carregarCompras, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin })[id]();
 }
 
 /* ---------------------------------------------------------------- busca de trecho/nó */
@@ -317,12 +317,6 @@ document.addEventListener('click', async ev => {
     carregarAlmox();
   }
 });
-$('#fNF').addEventListener('submit', async ev => {
-  ev.preventDefault(); const o = formObj(ev.target);
-  await acao(() => api('/api/nf', { numero: o.numero, data_entrega: o.data_entrega, fornecedor: o.fornecedor, chave_nfe: o.chave_nfe,
-    faturamento_etapas: !!o.faturamento_etapas, itens: [{ material_id: o.material_id, quantidade: +o.quantidade, valor_unitario: +o.valor_unitario || 0 }] }), 'NF registrada (quarentena).');
-  ev.target.reset(); carregarAlmox();
-});
 $('#fRecurso').addEventListener('submit', async ev => {
   ev.preventDefault(); const o = formObj(ev.target);
   if (o.nome) await acao(() => api('/api/funcionario', o));
@@ -378,6 +372,156 @@ async function carregarHistograma() {
 }
 $('#hIni').addEventListener('change', carregarHistograma);
 $('#hFim').addEventListener('change', carregarHistograma);
+
+/* ---------------------------------------------------------------- 2.1 compras & recebimento */
+let COMPRAS = null;
+const opMat = f => MATERIAIS.filter(f).map(m => `<option value="${esc(m.id)}">${esc(m.id)} — ${esc(m.descricao.slice(0, 48))} (${esc(m.unidade)})</option>`).join('');
+const LINHA_ITEM = {
+  solic: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(m => m.propriedade !== 'CAESB')}</select><input data-k="quantidade" type="number" step="any" min="0" placeholder="quantidade"><button type="button" class="btn" data-remover-linha>×</button></div>`,
+  nfdig: () => `<div class="linha lin-iv lin-item"><input data-k="descricao" placeholder="descrição na nota"><input data-k="unidade" placeholder="unid." style="max-width:80px"><input data-k="quantidade" type="number" step="any" min="0" placeholder="qtd."><input data-k="valor_unitario" type="number" step="any" min="0" placeholder="valor unit."><button type="button" class="btn" data-remover-linha>×</button></div>`,
+  inv: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(() => true)}</select><input data-k="contado" type="number" step="any" min="0" placeholder="contado"><button type="button" class="btn" data-remover-linha>×</button></div>`,
+};
+const lerItens = (raiz, tipo) => $$(`.editor-itens[data-itens=${tipo}] .lin-item`, raiz).map(l => Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value])))
+  .filter(o => Object.values(o).some(v => v !== '') && (o.quantidade !== '' || o.contado !== ''));
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-mais-item]'); if (!b) return;
+  $(`.editor-itens[data-itens=${b.dataset.maisItem}]`).insertAdjacentHTML('beforeend', LINHA_ITEM[b.dataset.maisItem]());
+});
+const STATUS_NF = { A_CONFERIR: ['a conferir', 'amarelo'], CONFERIDA: ['conferida — recebendo', 'azul'], ENCERRADA: ['encerrada', ''], CANCELADA: ['cancelada', 'vermelho'], QUARENTENA: ['quarentena (registro direto)', 'amarelo'], ACEITO: ['aceita (registro direto)', ''] };
+async function carregarCompras() {
+  MATERIAIS = await api('/api/estoque');
+  COMPRAS = await api('/api/compras');
+  const fs = COMPRAS.fornecedores.map(f => `<option value="${f.id}">${esc(f.nome)} · ${esc(f.cnpj)}</option>`).join('');
+  $('#selForn').innerHTML = fs; $$('.selForn').forEach(x => x.innerHTML = fs);
+  $$('.selMaterialTodos').forEach(x => x.innerHTML = opMat(() => true));
+  ['solic', 'nfdig', 'inv'].forEach(t => { const e = $(`.editor-itens[data-itens=${t}]`); if (!e.children.length) e.innerHTML = LINHA_ITEM[t](); });
+  const aprov = COMPRAS.solicitacoes.filter(x => x.status === 'APROVADA');
+  $('#selSolicAprov').innerHTML = '<option value="">—</option>' + aprov.map(x => `<option value="${x.id}">#${x.id} · ${esc(x.motivo.slice(0, 40))}</option>`).join('');
+  renderItensPedido();
+  $('#solicLista').innerHTML = COMPRAS.solicitacoes.length ? `<table><thead><tr><th>#</th><th>Solicitante</th><th>Itens</th><th>Situação</th></tr></thead><tbody>${COMPRAS.solicitacoes.map(x => `<tr>
+    <td>${x.id}<br><small>${esc(x.data)}</small></td><td>${esc(x.solicitante)}<br><small>${esc(x.motivo)}</small></td><td>${x.itens.map(i => `${esc(i.material_id)}: ${nf(i.quantidade, 3)}`).join('<br>')}</td>
+    <td><span class="chip ${x.status === 'APROVADA' ? 'azul' : x.status === 'ABERTA' ? 'amarelo' : x.status === 'RECUSADA' ? 'vermelho' : ''}">${esc(x.status.toLowerCase())}</span>${x.decidida_por ? `<br><small>${esc(x.decidida_por)}${x.decisao_motivo ? ': ' + esc(x.decisao_motivo) : ''}</small>` : ''}
+      ${x.status === 'ABERTA' && pode('compras_aprovar') && x.solicitante !== USUARIO.login ? `<br><button type="button" class="btn" data-solic="${x.id}" data-ap="1">Aprovar</button> <button type="button" class="btn" data-solic="${x.id}" data-ap="0">Recusar</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio">Nenhuma solicitação.</div>';
+  $('#pedidosLista').innerHTML = COMPRAS.pedidos.length ? `<table><thead><tr><th>Pedido</th><th>Material</th><th class="n">Pedido</th><th class="n">Faturado</th><th class="n">Entregue</th><th class="n">Quarentena</th><th class="n">Aceito</th><th class="n">Recusado</th><th class="n">Devolvido</th><th class="n">Pendente</th></tr></thead><tbody>
+    ${COMPRAS.pedidos.flatMap(p => p.itens.map((i, k) => `<tr>${k ? '<td></td>' : `<td rowspan="1"><b>${esc(p.numero)}</b> · ${esc(p.fornecedor)}<br><span class="chip ${p.status === 'EMITIDO' ? (p.atendido ? '' : 'azul') : ''}">${esc(p.status.toLowerCase())}${p.status === 'EMITIDO' && p.atendido ? ' · atendido' : ''}</span>
+      ${p.status === 'EMITIDO' && pode('compras_pedir') ? ` <button type="button" class="btn" data-pedido-enc="${p.id}">Encerrar saldo</button>` : ''}</td>`}
+      <td>${esc(i.material_id)}</td><td class="n">${nf(i.quantidade, 3)}</td><td class="n">${nf(i.faturado, 3)}</td><td class="n">${nf(i.entregue, 3)}</td><td class="n">${nf(i.quarentena, 3)}</td><td class="n">${nf(i.aceito, 3)}</td><td class="n">${nf(i.recusado, 3)}</td><td class="n">${nf(i.devolvido, 3)}</td><td class="n"><b>${nf(i.pendente_entrega, 3)}</b></td></tr>`)).join('')}</tbody></table>` : '<div class="vazio" style="padding:8px">Nenhum pedido.</div>';
+  renderNotas();
+  const invs = await api('/api/inventarios');
+  $('#invLista').innerHTML = invs.map(v => `<div class="registro"><div><b>Inventário #${v.id} · ${esc(v.data)} · ${esc(v.contado_por)}</b> <span class="chip ${v.status === 'AJUSTADO' ? 'azul' : v.status === 'CONTADO' ? 'amarelo' : ''}">${esc(v.status.toLowerCase())}</span></div>
+    ${v.itens.map(i => `<div><small>${esc(i.material_id)}: sistema ${nf(i.saldo_sistema, 3)} · contado ${nf(i.contado, 3)} · diferença <b>${nf(i.diferenca, 3)}</b></small></div>`).join('')}
+    ${v.status === 'CONTADO' && pode('inventario_ajustar') && v.contado_por !== USUARIO.login ? `<button type="button" class="btn" data-inv="${v.id}" data-ap="1">Aprovar ajuste</button> <button type="button" class="btn" data-inv="${v.id}" data-ap="0">Descartar</button>` : ''}
+    ${v.decidido_por ? `<div><small>${esc(v.decidido_por)}: ${esc(v.decisao_motivo || '')}</small></div>` : ''}</div>`).join('');
+  const venc = await api('/api/reservas-vencidas?hoje=' + hoje());
+  $('#vencidasLista').innerHTML = venc.length ? `${venc.map(r => `<label class="check"><input type="checkbox" data-venc="${r.id}" checked> #${r.id} · ${esc(r.data)} · ${esc(r.equipe_id)} · ${esc(r.material_id)} ${nf(r.quantidade, 3)}</label>`).join('')}
+    <div class="linha"><input id="vencMotivo" placeholder="motivo (ex.: equipe não compareceu)"><button type="button" class="btn" id="vencBtn">Liberar selecionadas</button></div>` : '<div class="vazio">Nenhuma reserva vencida.</div>';
+}
+function renderItensPedido() {
+  const sid = +$('#selSolicAprov').value, so = COMPRAS && COMPRAS.solicitacoes.find(x => x.id === sid);
+  if (!so) { $('#pedidoItens').innerHTML = '<div class="vazio">Escolha a solicitação aprovada.</div>'; return; }
+  const ja = {}; COMPRAS.pedidos.filter(p => p.solicitacao_id === sid && p.status !== 'CANCELADO').forEach(p => p.itens.forEach(i => ja[i.material_id] = (ja[i.material_id] || 0) + i.quantidade));
+  $('#pedidoItens').innerHTML = so.itens.map(i => `<div class="linha lin-ped" data-m="${esc(i.material_id)}"><span>${esc(i.material_id)}<br><small>aprovado ${nf(i.quantidade, 3)} · já pedido ${nf(ja[i.material_id] || 0, 3)}</small></span>
+    <input data-k="quantidade" type="number" step="any" min="0" value="${Math.max(0, i.quantidade - (ja[i.material_id] || 0))}"><input data-k="valor_unitario" type="number" step="any" min="0" placeholder="valor unit."></div>`).join('');
+}
+$('#selSolicAprov').addEventListener('change', renderItensPedido);
+function renderNotas() {
+  const pedidosDe = f => COMPRAS.pedidos.filter(p => p.status === 'EMITIDO' && p.fornecedor_id === f);
+  $('#notasLista').innerHTML = COMPRAS.notas.filter(n => n.origem !== 'DIRETA').map(n => {
+    const st = STATUS_NF[n.status] || [n.status, ''];
+    let corpo = '';
+    if (n.status === 'A_CONFERIR' && pode('receber')) {
+      const ps = pedidosDe(n.fornecedor_id);
+      corpo = `<div class="conf-nf" data-nf="${n.id}"><label>Pedido<select data-c="pedido">${ps.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('') || '<option value="">nenhum pedido emitido deste fornecedor</option>'}</select></label>
+        <table><thead><tr><th>Linha da nota</th><th>Material</th><th>Fator</th><th>Item do pedido</th></tr></thead><tbody>${n.linhas.map(l => `<tr data-l="${l.id}">
+          <td>${l.n_item}. ${esc(l.descricao)}<br><small>${nf(l.quantidade, 4)} ${esc(l.unidade)} × ${nf(l.valor_unitario, 4)}</small></td>
+          <td><select data-k="material_id"><option value="__fora">— fora do estoque (frete, serviço)</option>${opMat(m => m.propriedade !== 'CAESB')}</select></td>
+          <td><input data-k="fator" type="number" step="any" min="0" placeholder="1" style="width:80px" title="quantidade no material = quantidade da nota × fator"></td>
+          <td><select data-k="pedido_item_id"></select></td></tr>`).join('')}</tbody></table>
+        <div class="acoes"><button type="button" class="btn prim" data-conferir-nf="${n.id}">Conferir nota</button>${n.origem === 'DIGITADA' && n.registrada_por === USUARIO.login ? ' <small>(você digitou esta nota: outra pessoa confere)</small>' : ''}</div></div>`;
+    } else if (n.status !== 'A_CONFERIR') {
+      corpo = `<table><thead><tr><th>Material</th><th class="n">Na nota</th><th class="n">Entregue</th><th class="n">Aceito</th><th class="n">Devolvido</th><th></th></tr></thead><tbody>${n.itens.map(i => `<tr data-ni="${i.id}">
+        <td>${esc(i.material_id)}</td><td class="n">${nf(i.quantidade, 3)}</td><td class="n">${nf(i.recebido, 3)}</td><td class="n">${nf(i.aceito, 3)}</td><td class="n">${nf(i.devolvido, 3)}</td>
+        <td>${n.status === 'CONFERIDA' && pode('receber') && i.quantidade - i.recebido > 1e-9 ? `<input data-entrega type="number" step="any" min="0" value="${+(i.quantidade - i.recebido).toFixed(6)}" style="width:90px">` : ''}
+          ${pode('receber') && i.aceito - i.devolvido > 1e-9 ? `<button type="button" class="btn" data-devolver="${i.id}">Devolver</button>` : ''}</td></tr>`).join('')}</tbody></table>
+        ${n.status === 'CONFERIDA' && pode('receber') && n.itens.some(i => i.quantidade - i.recebido > 1e-9) ? `<div class="linha"><input data-doc-entrega placeholder="canhoto / romaneio"><button type="button" class="btn prim" data-receber="${n.id}">Registrar entrega (entra em quarentena)</button></div>` : ''}
+        ${n.a_inspecionar.length ? `<b>Em quarentena — inspeção</b>${n.a_inspecionar.map(r => `<div class="linha lin-insp" data-ri="${r.id}"><span>${esc(r.material_id)} · ${nf(r.quantidade, 3)} · entregue ${esc(r.data)}</span>
+          <input data-k="aceito" type="number" step="any" min="0" value="${r.quantidade}" title="aceito"><input data-k="recusado" type="number" step="any" min="0" value="0" title="recusado">
+          <input data-k="laudo" placeholder="laudo / inspeção"><input data-k="motivo_recusa" placeholder="motivo da recusa">${pode('receber') ? `<button type="button" class="btn" data-inspecionar="${r.id}">Inspecionar</button>` : ''}</div>`).join('')}` : ''}`;
+    }
+    return `<div class="registro"><div><b>NF ${esc(n.numero)}${n.serie ? '/' + esc(n.serie) : ''} · ${esc(n.fornecedor || '')}</b>
+      <span><span class="chip ${st[1]}">${esc(st[0])}</span> <small>${esc(n.origem)} · emissão ${esc(n.data_emissao || '')} · ${brl(n.valor_total)} · reg. ${esc(n.registrada_por || '')}${n.conferida_por ? ' · conf. ' + esc(n.conferida_por) : ''}</small>
+      ${['A_CONFERIR', 'CONFERIDA'].includes(n.status) && pode('receber') && !n.itens.some(i => i.recebido > 0) ? ` <button type="button" class="btn" data-cancelar-nf="${n.id}">Cancelar</button>` : ''}</span></div>${corpo}</div>`;
+  }).join('') || '<div class="vazio">Nenhuma nota no fluxo novo.</div>';
+  $$('.conf-nf').forEach(box => {
+    const sel = $('[data-c=pedido]', box);
+    const atual = () => { const p = COMPRAS.pedidos.find(x => x.id === +sel.value);
+      $$('tr[data-l]', box).forEach(tr => { const m = $('[data-k=material_id]', tr).value;
+        $('[data-k=pedido_item_id]', tr).innerHTML = (p ? p.itens.filter(i => i.material_id === m) : []).map(i => `<option value="${i.id}">${esc(i.material_id)} · a faturar ${nf(i.a_faturar, 3)}</option>`).join('') || '<option value="">—</option>'; }); };
+    sel.addEventListener('change', atual); $$('[data-k=material_id]', box).forEach(x => x.addEventListener('change', atual)); atual();
+  });
+}
+const recarregarCompras = r => { if (r) carregarCompras(); };
+$('#fSolic').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = await acao(() => api('/api/solicitacao', { data: hoje(), motivo: ev.target.motivo.value, itens: lerItens(ev.target, 'solic') }), 'Solicitação aberta (aguarda aprovação de outra pessoa).').catch(() => null);
+  if (r) { ev.target.reset(); $('.editor-itens[data-itens=solic]').innerHTML = ''; carregarCompras(); }
+});
+$('#fForn').addEventListener('submit', async ev => {
+  ev.preventDefault(); recarregarCompras(await acao(() => api('/api/fornecedor', formObj(ev.target)), 'Fornecedor cadastrado.').catch(() => null));
+});
+$('#fPedido').addEventListener('submit', async ev => {
+  ev.preventDefault(); const o = formObj(ev.target);
+  const itens = $$('#pedidoItens .lin-ped').map(l => ({ material_id: l.dataset.m, quantidade: +$('[data-k=quantidade]', l).value, valor_unitario: +$('[data-k=valor_unitario]', l).value || 0 })).filter(i => i.quantidade > 0);
+  const r = await acao(() => api('/api/pedido', { ...o, faturamento_etapas: !!o.faturamento_etapas, itens }), 'Pedido emitido (não altera o estoque).').catch(() => null);
+  if (r) { ev.target.reset(); carregarCompras(); }
+});
+$('#fXml').addEventListener('submit', async ev => {
+  ev.preventDefault(); const arq = ev.target.arquivo.files[0];
+  const r = await acao(async () => api('/api/nf/importar-xml', { conteudo_b64: await lerOriginal(arq), nome: arq.name }), 'NF-e importada: confira as linhas antes de receber.').catch(() => null);
+  if (r) { ev.target.reset(); carregarCompras(); }
+});
+$('#fNfDig').addEventListener('submit', async ev => {
+  ev.preventDefault(); const o = formObj(ev.target), arq = ev.target.arquivo.files[0];
+  const r = await acao(async () => api('/api/nf/digitar', { numero: o.numero, data_emissao: o.data_emissao, fornecedor_id: o.fornecedor_id, chave: o.chave,
+    linhas: lerItens(ev.target, 'nfdig'), documento_b64: await lerOriginal(arq), documento_tipo: arq.type === 'application/pdf' ? 'NF_PDF' : 'NF_IMAGEM', documento_nome: arq.name }), 'Nota registrada: outra pessoa confere contra o anexo.').catch(() => null);
+  if (r) { ev.target.reset(); $('.editor-itens[data-itens=nfdig]').innerHTML = ''; carregarCompras(); }
+});
+$('#fTransf').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = await acao(() => api('/api/transferencia', { ...formObj(ev.target), data: hoje() }), 'Transferência registrada (custódia da equipe de origem para a de destino).').catch(() => null);
+  if (r) ev.target.reset();
+});
+$('#fInv').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  recarregarCompras(await acao(() => api('/api/inventario/contagem', { data: hoje(), itens: lerItens(ev.target, 'inv') }), 'Contagem registrada (o ajuste precisa da aprovação de outra pessoa).').catch(() => null));
+});
+document.addEventListener('click', async ev => {
+  const t = ev.target, q = s => t.closest(s);
+  let r = null;
+  if (q('[data-solic]')) { const b = q('[data-solic]'), ap = b.dataset.ap === '1', motivo = ap ? null : prompt('Motivo da recusa:'); if (!ap && !motivo) return;
+    r = await acao(() => api('/api/solicitacao/decidir', { solicitacao_id: b.dataset.solic, aprovar: ap, motivo }), ap ? 'Solicitação aprovada.' : 'Solicitação recusada.').catch(() => null); }
+  else if (q('[data-pedido-enc]')) { const motivo = prompt('Motivo do encerramento do saldo (o já recebido continua valendo):'); if (!motivo) return;
+    r = await acao(() => api('/api/pedido/encerrar', { pedido_id: q('[data-pedido-enc]').dataset.pedidoEnc, motivo }), 'Pedido encerrado.').catch(() => null); }
+  else if (q('[data-conferir-nf]')) { const box = q('.conf-nf');
+    const linhas = $$('tr[data-l]', box).map(tr => { const m = $('[data-k=material_id]', tr).value; return m === '__fora' ? { linha_id: tr.dataset.l, fora_do_estoque: true }
+      : { linha_id: tr.dataset.l, material_id: m, fator: $('[data-k=fator]', tr).value || null, pedido_item_id: $('[data-k=pedido_item_id]', tr).value }; });
+    r = await acao(() => api('/api/nf/conferir', { nf_id: box.dataset.nf, pedido_id: $('[data-c=pedido]', box).value, linhas }), 'Nota conferida: pode receber as entregas.').catch(() => null); }
+  else if (q('[data-receber]')) { const card = q('.registro');
+    const itens = $$('tr[data-ni]', card).map(tr => ({ nf_item_id: tr.dataset.ni, quantidade: +($('[data-entrega]', tr) || { value: 0 }).value })).filter(i => i.quantidade > 0);
+    r = await acao(() => api('/api/recebimento', { nf_id: q('[data-receber]').dataset.receber, data: hoje(), itens, documento: $('[data-doc-entrega]', card).value }), 'Entrega registrada em quarentena.').catch(() => null); }
+  else if (q('[data-inspecionar]')) { const l = q('.lin-insp'), o = Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value]));
+    r = await acao(() => api('/api/inspecao', { recebimento_item_id: l.dataset.ri, ...o, data: hoje() }), 'Inspeção registrada: o aceito entrou no estoque.').catch(() => null); }
+  else if (q('[data-devolver]')) { const qt = prompt('Quantidade a devolver ao fornecedor:'); if (!qt) return; const motivo = prompt('Motivo:'); if (!motivo) return; const doc = prompt('Documento (NF de devolução):') || null;
+    r = await acao(() => api('/api/devolucao-fornecedor', { nf_item_id: q('[data-devolver]').dataset.devolver, data: hoje(), quantidade: qt, motivo, documento: doc }), 'Devolução registrada (saiu do estoque).').catch(() => null); }
+  else if (q('[data-cancelar-nf]')) { const motivo = prompt('Motivo do cancelamento da nota:'); if (!motivo) return;
+    r = await acao(() => api('/api/nf/cancelar', { nf_id: q('[data-cancelar-nf]').dataset.cancelarNf, motivo }), 'Nota cancelada.').catch(() => null); }
+  else if (q('[data-inv]')) { const b = q('[data-inv]'), motivo = prompt(b.dataset.ap === '1' ? 'Motivo do ajuste:' : 'Motivo do descarte:'); if (!motivo) return;
+    r = await acao(() => api('/api/inventario/decidir', { inventario_id: b.dataset.inv, aprovar: b.dataset.ap === '1', motivo }), 'Inventário decidido.').catch(() => null); }
+  else if (t.id === 'vencBtn') { const ids = $$('[data-venc]:checked').map(i => +i.dataset.venc);
+    r = await acao(() => api('/api/reservas/liberar-vencidas', { ids, motivo: $('#vencMotivo').value, hoje: hoje() }), 'Reservas vencidas liberadas.').catch(() => null); }
+  else return;
+  recarregarCompras(r);
+});
 
 /* ---------------------------------------------------------------- 3. lançamento de campo & fotos */
 const fAp = $('#fApont');

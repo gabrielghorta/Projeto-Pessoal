@@ -13,11 +13,13 @@ import signal
 import sys
 import threading
 from http.cookies import SimpleCookie
+from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import acesso as A
 import backup
+import compras as C
 import exportar
 import regras as R
 import servicos as S
@@ -147,15 +149,11 @@ def r_consumo(q, c):
 
 
 def r_nfs(q, c):
-    out = [dict(r) for r in c.execute("SELECT * FROM notas_fiscais ORDER BY id DESC")]
+    """Notas registradas diretamente antes da v11 (o fluxo novo está em /api/compras)."""
+    out = [dict(r) for r in c.execute("SELECT * FROM notas_fiscais WHERE origem='DIRETA' ORDER BY id DESC")]
     for n in out:
         n["itens"] = [dict(r) for r in c.execute("SELECT * FROM nf_itens WHERE nf_id=?", (n["id"],))]
     return out
-
-
-def p_nf(b, c):
-    return {"id": S.registrar_nf(c, b["numero"], b.get("fornecedor"), b["data_entrega"], b["itens"],
-                                 bool(b.get("faturamento_etapas")), b.get("chave_nfe"), b.get("arquivo"))}
 
 
 def p_nf_aceitar(b, c):
@@ -294,6 +292,62 @@ def r_ocorrencias(q, c):
     return S.ocorrencias(c, q.get("tipo"), q.get("id"), None if ab is None else ab == "1")
 
 
+# ------------------------------------------------------------------ compras e recebimento (módulo C)
+def _c(fn):
+    return lambda b, c: {"id": fn(b, c)}
+
+
+def r_compras(q, c):
+    return C.painel(c)
+
+
+def r_inventarios(q, c):
+    return C.inventarios(c)
+
+
+def r_reservas_vencidas(q, c):
+    return C.reservas_vencidas(c, q.get("hoje") or date.today().isoformat())
+
+
+ROTAS_COMPRAS = {
+    "/api/fornecedor": ("compras_pedir", ("por",), _c(lambda b, c: C.cadastrar_fornecedor(c, b.get("cnpj"), b.get("nome"), b["por"], b.get("contato")))),
+    "/api/solicitacao": ("compras_solicitar", ("solicitante",), _c(lambda b, c: C.abrir_solicitacao(
+        c, b.get("data"), b.get("itens") or [], b.get("motivo"), b["solicitante"], b.get("alvo_tipo"), b.get("alvo_id")))),
+    "/api/solicitacao/decidir": ("compras_aprovar", ("por",), lambda b, c: (C.decidir_solicitacao(
+        c, int(b["solicitacao_id"]), bool(b.get("aprovar")), b.get("motivo"), b["por"]), {"ok": True})[1]),
+    "/api/solicitacao/cancelar": ("compras_solicitar", ("por",), lambda b, c: (C.cancelar_solicitacao(
+        c, int(b["solicitacao_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
+    "/api/pedido": ("compras_pedir", ("por",), _c(lambda b, c: C.emitir_pedido(
+        c, b.get("numero"), b.get("data"), int(b["fornecedor_id"]), int(b["solicitacao_id"]), b.get("itens") or [], b["por"],
+        b.get("prazo"), bool(b.get("faturamento_etapas"))))),
+    "/api/pedido/cancelar": ("compras_pedir", ("por",), lambda b, c: (C.cancelar_pedido(c, int(b["pedido_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
+    "/api/pedido/encerrar": ("compras_pedir", ("por",), lambda b, c: (C.encerrar_pedido(c, int(b["pedido_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
+    "/api/nf/importar-xml": ("receber", ("por",), lambda b, c: C.importar_nfe_xml(c, b.get("conteudo_b64"), b.get("nome"), b["por"])),
+    "/api/nf/digitar": ("receber", ("por",), _c(lambda b, c: C.registrar_nf_digitada(
+        c, b.get("numero"), int(b.get("fornecedor_id") or 0), b.get("data_emissao"), b.get("linhas") or [], b["por"],
+        b.get("documento_b64"), b.get("documento_tipo"), b.get("documento_nome"), b.get("serie"), b.get("chave"), b.get("valor_total")))),
+    "/api/nf/conferir": ("receber", ("por",), lambda b, c: (C.conferir_nf(c, int(b["nf_id"]), int(b.get("pedido_id") or 0),
+                                                                           b.get("linhas") or [], b["por"]), {"ok": True})[1]),
+    "/api/nf/cancelar": ("receber", ("por",), lambda b, c: (C.cancelar_nf(c, int(b["nf_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
+    "/api/recebimento": ("receber", ("por",), _c(lambda b, c: C.receber(c, int(b["nf_id"]), b.get("data"), b.get("itens") or [], b["por"],
+                                                                       b.get("documento")))),
+    "/api/inspecao": ("receber", ("por",), _c(lambda b, c: C.inspecionar(
+        c, int(b["recebimento_item_id"]), b.get("aceito"), b.get("recusado"), b.get("laudo"), b["por"], b.get("data"),
+        b.get("motivo_recusa"), b.get("documento_b64"), b.get("documento_nome")))),
+    "/api/devolucao-fornecedor": ("receber", ("por",), _c(lambda b, c: C.devolver_ao_fornecedor(
+        c, int(b["nf_item_id"]), b.get("data"), b.get("quantidade"), b.get("motivo"), b["por"], b.get("documento")))),
+    "/api/transferencia": ("almox", ("por",), _c(lambda b, c: C.transferir(
+        c, b.get("data"), b.get("material_id"), b.get("quantidade"), b.get("de_equipe"), b.get("para_equipe"), b.get("autorizacao"),
+        b["por"], b.get("motivo")))),
+    "/api/inventario/contagem": ("inventario_contar", ("por",), _c(lambda b, c: C.registrar_contagem(
+        c, b.get("data"), b.get("itens") or [], b["por"], b.get("obs")))),
+    "/api/inventario/decidir": ("inventario_ajustar", ("por",), lambda b, c: (C.decidir_inventario(
+        c, int(b["inventario_id"]), bool(b.get("aprovar")), b.get("motivo"), b["por"]), {"ok": True})[1]),
+    "/api/reservas/liberar-vencidas": ("almox", ("por",), lambda b, c: {"liberadas": C.liberar_reservas_vencidas(
+        c, [int(x) for x in b.get("ids") or []], b.get("motivo"), b["por"], b.get("hoje") or date.today().isoformat())}),
+}
+
+
 # ------------------------------------------------------------------ acesso (módulo A)
 def r_usuarios(q, c):
     return [A.publico(dict(r)) for r in c.execute("SELECT * FROM usuarios ORDER BY login")]
@@ -329,10 +383,11 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/compat-caesb": r_compat, "/api/nfs": r_nfs, "/api/checkins": r_checkins, "/api/histograma": r_histograma,
        "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
-       "/api/ocorrencias": r_ocorrencias}
+       "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
+       "/api/reservas-vencidas": r_reservas_vencidas}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
-POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento, "/api/nf": p_nf,
+POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
@@ -343,9 +398,10 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/reserva/cancelar": p_reserva_cancelar, "/api/liberacao": _etapa("LIBERACAO_TOPOGRAFICA"),
         "/api/escavacao": _etapa("ESCAVADO"), "/api/etapa-complementar/anular": p_etapa_anular,
         "/api/ocorrencia": p_ocorrencia, "/api/ocorrencia/resolver": p_ocorrencia_resolver}
+POST.update({rota: fn for rota, (_, _, fn) in ROTAS_COMPRAS.items()})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
-PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox", "/api/nf": "almox",
+PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
              "/api/nf/aceitar": "receber", "/api/checkin": "almox", "/api/checkout": "almox", "/api/clima": "campo",
              "/api/apontamento": "campo", "/api/foto": "campo", "/api/ok-fiscal": "ok_interno", "/api/recomposicao": "ok_interno",
              "/api/cadastro": "cadastro", "/api/medicao": "medicao", "/api/medicao/fechar": "medicao", "/api/estorno": "almox",
@@ -363,6 +419,8 @@ AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "
          "/api/cadastro/conferencia": ("revisor",), "/api/ok-fiscal": ("usuario",),
          "/api/liberacao": ("registrado_por",), "/api/escavacao": ("registrado_por",), "/api/etapa-complementar/anular": ("por",),
          "/api/ocorrencia": ("aberta_por",), "/api/ocorrencia/resolver": ("por",)}
+PERMISSAO.update({rota: perm for rota, (perm, _, _) in ROTAS_COMPRAS.items()})
+AUTOR.update({rota: campos for rota, (_, campos, _) in ROTAS_COMPRAS.items()})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
 

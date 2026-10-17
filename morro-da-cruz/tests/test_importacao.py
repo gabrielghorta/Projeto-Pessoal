@@ -157,7 +157,7 @@ class TestA03BackupCompletude(Base):
         self.assertFalse(ok)
         self.assertIn("foto_ausente.jpg", erros[0])
         det = backup.verificar_detalhado(pasta)
-        self.assertEqual((det["integro"], det["completo"], det["ausentes"]), (True, False, ["foto_ausente.jpg"]))
+        self.assertEqual((det["integro"], det["completo"], det["ausentes"]), (True, False, ["fotos/foto_ausente.jpg"]))
         with open(os.path.join(pasta, "manifesto.json"), encoding="utf-8") as f:
             self.assertEqual(json.load(f)["situacao"], "INCOMPLETO")
 
@@ -219,7 +219,7 @@ class TestA04Restauracao(Base):
 
         # 1) o estado substituído foi guardado pela API do SQLite (WAL incluído), com as fotos existentes
         det = backup.verificar_detalhado(seguranca)
-        self.assertEqual((det["integro"], det["ausentes"]), (True, [f1]))   # f1 já tinha sumido: marcado INCOMPLETO
+        self.assertEqual((det["integro"], det["ausentes"]), (True, ["fotos/" + f1]))   # f1 já tinha sumido: marcado INCOMPLETO
         g = sqlite3.connect(os.path.join(seguranca, "obra.db"))
         try:
             self.assertEqual([r[0] for r in g.execute("SELECT x FROM marca ORDER BY rowid")], ["antes", "posterior"])

@@ -24,7 +24,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 10
+VERSAO_ESQUEMA = 11
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -56,7 +56,7 @@ def aplicar_esquema(conn):
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "campo: liberação topográfica, escavação e ocorrências"))
+                 (VERSAO_ESQUEMA, _agora(), "compras: pedido, NF-e, entregas parciais, inspeção, devolução, transferência, inventário"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -278,8 +278,11 @@ def fotos_faltando(conn, alvo_tipo, ref):
 # Saldo físico do almoxarifado = entradas − saídas físicas, sem movimentos estornados.
 # BAIXA_TEORICA (MVP antigo) não é saída física: estimativa geométrica não baixa estoque.
 # Disponível = físico − reservas ATIVAS. Custódia é da EQUIPE (o que fica com ela passa para o dia seguinte).
-ENTRA_ALMOX = ("ROMANEIO_CAESB", "ENTRADA_NF", "ENTRADA_CONSUMO", "SOBRA")
-SAI_ALMOX = ("EMPRESTIMO_OUTRA_OBRA", "CUSTODIA")
+ENTRA_ALMOX = ("ROMANEIO_CAESB", "ENTRADA_NF", "ENTRADA_CONSUMO", "SOBRA", "AJUSTE_INVENTARIO_ENTRADA")
+SAI_ALMOX = ("EMPRESTIMO_OUTRA_OBRA", "CUSTODIA", "DEVOLUCAO_FORNECEDOR", "AJUSTE_INVENTARIO_SAIDA")
+# custódia da equipe: retirada e transferência recebida entram; aplicado, sobra, perda e transferência enviada saem
+CUSTODIA_SQL = """COALESCE(SUM(CASE WHEN tipo IN ('CUSTODIA','TRANSF_ENTRADA') THEN quantidade
+                                   WHEN tipo IN ('APLICADO','SOBRA','PERDA','TRANSF_SAIDA') THEN -quantidade END),0)"""
 VALIDO = "id NOT IN (SELECT movimento_id FROM estornos)"
 
 
@@ -319,8 +322,7 @@ def custodia_equipe(conn, equipe_id, material_id, ate_checkin=None):
     ck = _one(conn, "SELECT * FROM checkins WHERE id=?", ate_checkin) if ate_checkin else None
     filtro, args = _ate_sessao(ck)
     return conn.execute(
-        f"""SELECT COALESCE(SUM(CASE WHEN tipo='CUSTODIA' THEN quantidade
-                                    WHEN tipo IN ('APLICADO','SOBRA','PERDA') THEN -quantidade END),0)
+        f"""SELECT {CUSTODIA_SQL}
             FROM movimentos WHERE equipe_id=? AND material_id=? AND checkin_id IS NOT NULL AND {VALIDO}{filtro}""",
         (equipe_id, material_id, *args)).fetchone()[0]
 
@@ -342,8 +344,7 @@ def estoque(conn):
         saldo, quar = saldo_almox(conn, m["id"])
         res = reservado(conn, m["id"])
         cust = conn.execute(
-            f"""SELECT COALESCE(SUM(CASE WHEN tipo='CUSTODIA' THEN quantidade
-                                        WHEN tipo IN ('APLICADO','SOBRA','PERDA') THEN -quantidade END),0)
+            f"""SELECT {CUSTODIA_SQL}
                 FROM movimentos WHERE material_id=? AND checkin_id IS NOT NULL AND {VALIDO}""", (m["id"],)).fetchone()[0]
         out.append({**m, "saldo_almox": round(saldo, 3), "quarentena": round(quar, 3), "reservado": round(res, 3),
                     "disponivel": round(saldo - res, 3), "custodia": round(cust, 3),
@@ -575,8 +576,8 @@ def registrar_nf(conn, numero, fornecedor, data_entrega, itens, faturamento_etap
     """NF entra em quarentena. `faturamento_etapas` só registra a intenção: nenhum regime é aplicado."""
     with transacao(conn):
         nf_id = conn.execute(
-            """INSERT INTO notas_fiscais(numero,chave_nfe,fornecedor,data_entrega,arquivo,faturamento_etapas,status)
-               VALUES (?,?,?,?,?,?, 'QUARENTENA')""",
+            """INSERT INTO notas_fiscais(numero,chave_nfe,fornecedor,data_entrega,arquivo,faturamento_etapas,status,origem)
+               VALUES (?,?,?,?,?,?, 'QUARENTENA', 'DIRETA')""",
             (numero, chave_nfe, fornecedor, data_entrega, arquivo, 1 if faturamento_etapas else 0)).lastrowid
         for it in itens:
             m = _one(conn, "SELECT * FROM materiais WHERE id=?", it["material_id"])
@@ -602,6 +603,8 @@ def aceitar_nf(conn, nf_id, laudo_arquivo):
         raise RegraViolada("Nota fiscal não encontrada.")
     if nf["status"] == "ACEITO":
         raise RegraViolada("Nota fiscal já aceita.")
+    if nf["status"] != "QUARENTENA":
+        raise RegraViolada("Esta nota segue o fluxo de conferência, entrega e inspeção por item (compras).")
     if not laudo_arquivo:
         raise RegraViolada("Anexe o laudo de inspeção.")
     with transacao(conn):
@@ -714,9 +717,12 @@ def checkins_abertos(conn, data=None):
         hoje = {r[0]: r[1] for r in conn.execute(
             f"SELECT material_id, SUM(quantidade) FROM movimentos WHERE checkin_id=? AND tipo='CUSTODIA' AND {VALIDO} "
             "GROUP BY material_id", (c["id"],))}
+        transf = {r[0]: r[1] for r in conn.execute(
+            f"""SELECT material_id, SUM(CASE WHEN tipo='TRANSF_ENTRADA' THEN quantidade ELSE -quantidade END) FROM movimentos
+                WHERE checkin_id=? AND tipo IN ('TRANSF_ENTRADA','TRANSF_SAIDA') AND {VALIDO} GROUP BY material_id""", (c["id"],))}
         c["materiais"] = [{"material_id": m, "quantidade": custodia_equipe(conn, c["equipe_id"], m, c["id"]),
-                           "retirado_hoje": hoje.get(m, 0.0),
-                           "trazido": round(custodia_equipe(conn, c["equipe_id"], m, c["id"]) - hoje.get(m, 0.0), 6)}
+                           "retirado_hoje": hoje.get(m, 0.0), "transferido": transf.get(m, 0.0),
+                           "trazido": round(custodia_equipe(conn, c["equipe_id"], m, c["id"]) - hoje.get(m, 0.0) - transf.get(m, 0.0), 6)}
                           for m in _materiais_com_equipe(conn, c["equipe_id"], c["id"])]
     return out
 

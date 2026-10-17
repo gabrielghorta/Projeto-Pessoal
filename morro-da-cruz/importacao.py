@@ -986,6 +986,53 @@ def preparar_v10(conn):
     S.aplicar_esquema(conn)
 
 
+def _ddl_atual(tabela):
+    with open(os.path.join(S.BASE, "schema.sql"), encoding="utf-8") as f:
+        texto = f.read()
+    m = re.search(rf"CREATE TABLE IF NOT EXISTS {tabela} \(.*?\n\);", texto, re.S)
+    if not m:
+        raise RuntimeError(f"Tabela {tabela} não está no schema.sql.")
+    return m.group(0)
+
+
+def _recriar_tabela(conn, tabela, marcador):
+    """Recria a tabela com o CHECK/colunas do esquema atual (SQLite não altera CHECK por ALTER), sem perda:
+    cria a nova com outro nome, copia TODAS as linhas (mesmos ids), confere a contagem, descarta a antiga e dá à nova o
+    nome original. A tabela antiga NÃO é renomeada: assim as chaves estrangeiras das tabelas-filhas continuam
+    apontando para o nome original (agora a nova). Roda com as chaves estrangeiras desligadas (importar.executar) e a
+    integridade é conferida por foreign_key_check antes do COMMIT."""
+    sql = (conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (tabela,)).fetchone() or [""])[0]
+    if not sql or marcador in sql:
+        return 0
+    nova = f"{tabela}__nova"
+    antes = conn.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0]
+    conn.execute(_ddl_atual(tabela).replace(f"CREATE TABLE IF NOT EXISTS {tabela} (", f"CREATE TABLE {nova} (", 1))
+    novas = {r[1] for r in conn.execute(f"PRAGMA table_info({nova})")}
+    cols = ", ".join(c for c in (r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")) if c in novas)
+    conn.execute(f"INSERT INTO {nova}({cols}) SELECT {cols} FROM {tabela}")
+    depois = conn.execute(f"SELECT COUNT(*) FROM {nova}").fetchone()[0]
+    if depois != antes:
+        raise RuntimeError(f"Migração: {tabela} copiada com {depois} ≠ {antes} linhas; nada foi alterado.")
+    conn.execute(f"DROP TABLE {tabela}")
+    conn.execute(f"ALTER TABLE {nova} RENAME TO {tabela}")
+    S.aplicar_esquema(conn)                          # índices da tabela
+    return antes
+
+
+def preparar_v11(conn):
+    """Esquema v10 → v11 (compras e recebimento), sem perda:
+    * notas_fiscais e movimentos são recriadas para aceitar os novos estados/tipos (cópia conferida, mesmos ids);
+      notas já existentes ficam com origem DIRETA (registro anterior à conferência por item);
+    * nf_itens ganha o vínculo com o item do pedido e a linha da nota; tabelas de compras, recebimento e inventário."""
+    S.aplicar_esquema(conn)                          # cria fornecedores/pedidos/documentos (referenciados pelas novas)
+    _recriar_tabela(conn, "notas_fiscais", "A_CONFERIR")
+    _recriar_tabela(conn, "movimentos", "TRANSF_SAIDA")
+    for coluna, tipo in (("pedido_item_id", "INTEGER REFERENCES pedido_itens(id)"), ("linha_id", "INTEGER REFERENCES nf_linhas(id)")):
+        _add_coluna(conn, "nf_itens", coluna, tipo)
+    conn.execute("UPDATE notas_fiscais SET origem='DIRETA' WHERE origem IS NULL")
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

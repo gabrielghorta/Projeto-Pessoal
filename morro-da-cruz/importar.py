@@ -36,7 +36,10 @@ OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontam
                 "funcionarios", "maquinas", "medicoes", "medicao_lancamentos", "reservas", "estornos", "custodia_declarada",
                 "retificacoes", "reserva_ajustes", "intervalos_execucao", "soldas",
                 "conciliacoes_legado", "conciliacao_legado_apontamentos", "retificacoes_intervalos", "revisoes_cadastro",
-                "usuarios", "auditoria", "etapas_complementares", "ocorrencias"]
+                "usuarios", "auditoria", "etapas_complementares", "ocorrencias",
+                "fornecedores", "documentos", "solicitacoes_compra", "solicitacao_itens", "pedidos_compra", "pedido_itens",
+                "nf_linhas", "recebimentos", "recebimento_itens", "inspecoes", "devolucoes_fornecedor", "transferencias",
+                "inventarios", "inventario_itens"]
 
 
 class ImportacaoReprovada(RuntimeError):
@@ -77,7 +80,10 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
     conn.row_factory = sqlite3.Row
     versao = S.versao_banco(conn)
     antes = contar_operacionais(conn)
-    conn.execute("PRAGMA foreign_keys = OFF" if versao == 1 else "PRAGMA foreign_keys = ON")
+    # Migração que recria tabelas (v1, e < v11 para notas_fiscais/movimentos) roda com as chaves estrangeiras desligadas,
+    # como manda o procedimento do SQLite; a integridade é conferida por PRAGMA foreign_key_check antes do COMMIT e
+    # qualquer violação reprova a importação inteira.
+    conn.execute("PRAGMA foreign_keys = OFF" if 0 < versao < 11 else "PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA legacy_alter_table = ON")
     base_rel = {"modo": modo, "esquema_antes": versao, "esquema_depois": S.VERSAO_ESQUEMA, "backup": backup_dir,
                 "banco": os.path.abspath(caminho_db), "planilhas": os.path.abspath(pasta_planilhas)}
@@ -102,6 +108,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v9(conn)
         if 0 < versao < 10:
             I.preparar_v10(conn)
+        if 0 < versao < 11:
+            I.preparar_v11(conn)
         S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar

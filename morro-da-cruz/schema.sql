@@ -291,24 +291,57 @@ CREATE TABLE IF NOT EXISTS materiais (
   estoque_caesb REAL
 );
 
+-- Nota fiscal. Fluxo v11: A_CONFERIR (XML importado ou dados digitados do PDF/imagem) → CONFERIDA (de-para dos itens
+-- conferido; só então aceita entregas) → ENCERRADA. QUARENTENA/ACEITO = registro direto anterior à v11 (NF inteira).
+-- NF nunca vira lançamento de medição: estoque ≠ faturável (matriz de regimes pendente).
 CREATE TABLE IF NOT EXISTS notas_fiscais (
   id INTEGER PRIMARY KEY,
   numero TEXT NOT NULL,
   chave_nfe TEXT,
   fornecedor TEXT,
-  data_entrega TEXT NOT NULL,
+  data_entrega TEXT,
   arquivo TEXT,
   faturamento_etapas INTEGER NOT NULL DEFAULT 0,   -- só registro da intenção; regime não aplicado (matriz pendente)
   laudo_arquivo TEXT,
-  status TEXT NOT NULL DEFAULT 'QUARENTENA' CHECK (status IN ('ACEITO','QUARENTENA'))
+  status TEXT NOT NULL DEFAULT 'QUARENTENA'
+    CHECK (status IN ('A_CONFERIR','CONFERIDA','QUARENTENA','ACEITO','ENCERRADA','CANCELADA')),
+  serie TEXT,
+  fornecedor_id INTEGER REFERENCES fornecedores(id),
+  pedido_id INTEGER REFERENCES pedidos_compra(id),
+  data_emissao TEXT,
+  valor_total REAL,
+  origem TEXT,                         -- XML · DIGITADA (de PDF/imagem) · DIRETA (anterior à v11)
+  documento_id INTEGER REFERENCES documentos(id),
+  registrada_por TEXT, registrada_em TEXT,
+  conferida_por TEXT, conferida_em TEXT,
+  cancelada_motivo TEXT
 );
 
 CREATE TABLE IF NOT EXISTS nf_itens (
   id INTEGER PRIMARY KEY,
   nf_id INTEGER NOT NULL REFERENCES notas_fiscais(id),
   material_id TEXT NOT NULL REFERENCES materiais(id),
-  quantidade REAL NOT NULL,
-  valor_unitario REAL NOT NULL
+  quantidade REAL NOT NULL,            -- na unidade do material (já convertida na conferência)
+  valor_unitario REAL NOT NULL,
+  pedido_item_id INTEGER REFERENCES pedido_itens(id),
+  linha_id INTEGER REFERENCES nf_linhas(id)
+);
+-- Linhas da NF como vieram (XML) ou como foram digitadas (PDF/imagem): nunca geram movimento. A conferência liga cada
+-- linha a um material (com o fator de conversão de unidade declarado) ou a marca como fora do estoque.
+CREATE TABLE IF NOT EXISTS nf_linhas (
+  id INTEGER PRIMARY KEY,
+  nf_id INTEGER NOT NULL REFERENCES notas_fiscais(id),
+  n_item INTEGER NOT NULL,
+  codigo TEXT, descricao TEXT NOT NULL, ncm TEXT, cfop TEXT,
+  unidade TEXT NOT NULL,
+  quantidade REAL NOT NULL CHECK (quantidade > 0),
+  valor_unitario REAL NOT NULL,
+  valor_total REAL NOT NULL,
+  material_id TEXT REFERENCES materiais(id),
+  fator REAL,                          -- quantidade no material = quantidade da NF × fator
+  pedido_item_id INTEGER REFERENCES pedido_itens(id),
+  fora_do_estoque INTEGER NOT NULL DEFAULT 0,   -- frete, serviço etc. (conferido)
+  UNIQUE (nf_id, n_item)
 );
 
 CREATE TABLE IF NOT EXISTS movimentos (
@@ -317,7 +350,8 @@ CREATE TABLE IF NOT EXISTS movimentos (
   material_id TEXT NOT NULL REFERENCES materiais(id),
   tipo TEXT NOT NULL CHECK (tipo IN (
     'ROMANEIO_CAESB','EMPRESTIMO_OUTRA_OBRA','ENTRADA_NF','ENTRADA_CONSUMO',
-    'CUSTODIA','APLICADO','SOBRA','PERDA','BAIXA_TEORICA')),
+    'CUSTODIA','APLICADO','SOBRA','PERDA','BAIXA_TEORICA',
+    'DEVOLUCAO_FORNECEDOR','AJUSTE_INVENTARIO_ENTRADA','AJUSTE_INVENTARIO_SAIDA','TRANSF_SAIDA','TRANSF_ENTRADA')),
   quantidade REAL NOT NULL CHECK (quantidade >= 0),
   equipe_id TEXT REFERENCES equipes(id),
   alvo_tipo TEXT, alvo_id TEXT,
@@ -328,8 +362,11 @@ CREATE TABLE IF NOT EXISTS movimentos (
   nf_id INTEGER REFERENCES notas_fiscais(id),
   responsavel TEXT,                    -- quem registrou/autorizou (obrigatório no empréstimo)
   autorizacao TEXT,                    -- documento/pessoa que autorizou (empréstimo para outra obra)
-  retificacao_id INTEGER REFERENCES retificacoes(id)   -- lançamento criado por retificação de fechamento
+  retificacao_id INTEGER REFERENCES retificacoes(id),  -- lançamento criado por retificação de fechamento
+  ref_tipo TEXT, ref_id INTEGER        -- v11: origem (INSPECAO, DEVOLUCAO, TRANSFERENCIA, INVENTARIO, RECEBIMENTO)
 );
+-- ENTRADA_NF: QUARENTENA (entregue, aguardando inspeção) → INSPECIONADO (fica como registro; o aceito entra como novo
+-- ENTRADA_NF ACEITO ligado à inspeção; o recusado não entra). ACEITO direto = registro anterior à v11.
 
 -- Retificação de um check-out encerrado: estorna o aplicado/sobra/perda original e redistribui a mesma
 -- quantidade na mesma sessão. O check-in não é reaberto.
@@ -626,6 +663,135 @@ CREATE TABLE IF NOT EXISTS medicao_lancamentos (
   classificacao_congelada TEXT,
   item_congelado TEXT
 );
+
+-- ---------------------------------------------------------------- compras e recebimento (v11, módulo C)
+CREATE TABLE IF NOT EXISTS fornecedores (
+  id INTEGER PRIMARY KEY,
+  cnpj TEXT UNIQUE,                    -- só dígitos (14)
+  nome TEXT NOT NULL,
+  contato TEXT,
+  criado_por TEXT NOT NULL, criado_em TEXT NOT NULL
+);
+-- Documento anexo (XML da NF-e, PDF/imagem da NF, laudo, romaneio) guardado byte a byte em <pasta do banco>/documentos,
+-- nomeado pelo SHA-256 e conferido no backup.
+CREATE TABLE IF NOT EXISTS documentos (
+  id INTEGER PRIMARY KEY,
+  tipo TEXT NOT NULL CHECK (tipo IN ('NFE_XML','NF_PDF','NF_IMAGEM','LAUDO','ROMANEIO','OUTRO')),
+  arquivo TEXT NOT NULL,
+  nome_original TEXT,
+  sha256 TEXT NOT NULL UNIQUE,
+  bytes INTEGER NOT NULL,
+  mime TEXT,
+  enviado_por TEXT NOT NULL, enviado_em TEXT NOT NULL
+);
+-- Solicitação → aprovação (outra pessoa) → pedido. Pedido nunca vira estoque.
+CREATE TABLE IF NOT EXISTS solicitacoes_compra (
+  id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  solicitante TEXT NOT NULL,
+  motivo TEXT NOT NULL,
+  alvo_tipo TEXT, alvo_id TEXT,        -- frente/trecho/nó que precisa do material (opcional)
+  status TEXT NOT NULL DEFAULT 'ABERTA' CHECK (status IN ('ABERTA','APROVADA','RECUSADA','CANCELADA')),
+  decidida_por TEXT, decidida_em TEXT, decisao_motivo TEXT,
+  criada_em TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS solicitacao_itens (
+  id INTEGER PRIMARY KEY,
+  solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes_compra(id),
+  material_id TEXT NOT NULL REFERENCES materiais(id),
+  quantidade REAL NOT NULL CHECK (quantidade > 0)
+);
+CREATE TABLE IF NOT EXISTS pedidos_compra (
+  id INTEGER PRIMARY KEY,
+  numero TEXT NOT NULL UNIQUE,
+  data TEXT NOT NULL,
+  fornecedor_id INTEGER NOT NULL REFERENCES fornecedores(id),
+  solicitacao_id INTEGER REFERENCES solicitacoes_compra(id),
+  prazo TEXT,
+  status TEXT NOT NULL DEFAULT 'EMITIDO' CHECK (status IN ('EMITIDO','CANCELADO','ENCERRADO')),
+  faturamento_etapas INTEGER NOT NULL DEFAULT 0,   -- intenção registrada; regime não aplicado (matriz pendente)
+  emitido_por TEXT NOT NULL, emitido_em TEXT NOT NULL,
+  encerrado_motivo TEXT
+);
+CREATE TABLE IF NOT EXISTS pedido_itens (
+  id INTEGER PRIMARY KEY,
+  pedido_id INTEGER NOT NULL REFERENCES pedidos_compra(id),
+  material_id TEXT NOT NULL REFERENCES materiais(id),
+  quantidade REAL NOT NULL CHECK (quantidade > 0),
+  valor_unitario REAL NOT NULL CHECK (valor_unitario >= 0)
+);
+-- Entrega (parcial ou total) de uma NF conferida: entra em QUARENTENA, nunca direto no estoque.
+CREATE TABLE IF NOT EXISTS recebimentos (
+  id INTEGER PRIMARY KEY,
+  nf_id INTEGER NOT NULL REFERENCES notas_fiscais(id),
+  data TEXT NOT NULL,
+  documento TEXT,                      -- canhoto / romaneio de entrega
+  recebido_por TEXT NOT NULL, registrado_em TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS recebimento_itens (
+  id INTEGER PRIMARY KEY,
+  recebimento_id INTEGER NOT NULL REFERENCES recebimentos(id),
+  nf_item_id INTEGER NOT NULL REFERENCES nf_itens(id),
+  quantidade REAL NOT NULL CHECK (quantidade > 0),
+  movimento_id INTEGER NOT NULL REFERENCES movimentos(id)
+);
+-- Inspeção de cada item entregue: aceito entra no estoque; recusado volta ao fornecedor na própria entrega.
+CREATE TABLE IF NOT EXISTS inspecoes (
+  id INTEGER PRIMARY KEY,
+  recebimento_item_id INTEGER NOT NULL UNIQUE REFERENCES recebimento_itens(id),
+  aceito REAL NOT NULL CHECK (aceito >= 0),
+  recusado REAL NOT NULL CHECK (recusado >= 0),
+  laudo TEXT NOT NULL,                 -- referência do laudo/inspeção
+  documento_id INTEGER REFERENCES documentos(id),
+  motivo_recusa TEXT,
+  inspecionado_por TEXT NOT NULL, inspecionado_em TEXT NOT NULL,
+  movimento_aceito_id INTEGER REFERENCES movimentos(id)
+);
+-- Devolução ao fornecedor de material JÁ aceito (defeito descoberto depois): sai do disponível.
+CREATE TABLE IF NOT EXISTS devolucoes_fornecedor (
+  id INTEGER PRIMARY KEY,
+  nf_id INTEGER NOT NULL REFERENCES notas_fiscais(id),
+  nf_item_id INTEGER NOT NULL REFERENCES nf_itens(id),
+  data TEXT NOT NULL,
+  quantidade REAL NOT NULL CHECK (quantidade > 0),
+  motivo TEXT NOT NULL,
+  documento TEXT,                      -- NF de devolução / documento de saída
+  responsavel TEXT NOT NULL, registrado_em TEXT NOT NULL,
+  movimento_id INTEGER NOT NULL REFERENCES movimentos(id)
+);
+-- Transferência de material entre equipes em campo, sem passar pelo almoxarifado (sessões abertas das duas).
+CREATE TABLE IF NOT EXISTS transferencias (
+  id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  material_id TEXT NOT NULL REFERENCES materiais(id),
+  quantidade REAL NOT NULL CHECK (quantidade > 0),
+  de_equipe TEXT NOT NULL REFERENCES equipes(id),
+  para_equipe TEXT NOT NULL REFERENCES equipes(id),
+  de_checkin INTEGER NOT NULL REFERENCES checkins(id),
+  para_checkin INTEGER NOT NULL REFERENCES checkins(id),
+  autorizacao TEXT NOT NULL,
+  motivo TEXT,
+  responsavel TEXT NOT NULL, registrado_em TEXT NOT NULL
+);
+-- Inventário do almoxarifado: contagem por uma pessoa, ajuste aprovado por outra (permissão inventario_ajustar).
+CREATE TABLE IF NOT EXISTS inventarios (
+  id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  contado_por TEXT NOT NULL, contado_em TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'CONTADO' CHECK (status IN ('CONTADO','AJUSTADO','DESCARTADO')),
+  decidido_por TEXT, decidido_em TEXT, decisao_motivo TEXT,
+  obs TEXT
+);
+CREATE TABLE IF NOT EXISTS inventario_itens (
+  id INTEGER PRIMARY KEY,
+  inventario_id INTEGER NOT NULL REFERENCES inventarios(id),
+  material_id TEXT NOT NULL REFERENCES materiais(id),
+  saldo_sistema REAL NOT NULL,         -- saldo físico do sistema no momento da contagem
+  contado REAL NOT NULL CHECK (contado >= 0),
+  movimento_id INTEGER REFERENCES movimentos(id)
+);
+CREATE INDEX IF NOT EXISTS ix_nf_linhas ON nf_linhas(nf_id);
+CREATE INDEX IF NOT EXISTS ix_receb_itens ON recebimento_itens(nf_item_id);
 
 -- ---------------------------------------------------------------- campo complementar (v10, módulo B)
 -- Etapas que não geram quantidade nem entram no resumo de execução (por isso ficam fora de intervalos_execucao):

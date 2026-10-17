@@ -1,4 +1,4 @@
-"""Backup verificável do banco e dos anexos (fotos).
+"""Backup verificável do banco e dos anexos (fotos e documentos).
 
 Uso:
   python backup.py criar      [--db dados/morro_da_cruz.db] [--destino dados/backups] [--permitir-incompleto]
@@ -159,24 +159,35 @@ def conteudo(caminho_db):
         c.close()
 
 
+# Anexos gravados em disco pelo sistema: pasta (ao lado do banco) → tabela com a coluna `arquivo` (e `sha256`)
+ANEXOS = (("fotos", "fotos"), ("documentos", "documentos"))
+
+
+def _pastas_anexos(dir_fotos):
+    """{subpasta: caminho} — fotos em dir_fotos; documentos na pasta irmã (<pasta do banco>/documentos)."""
+    return {"fotos": dir_fotos, "documentos": os.path.join(os.path.dirname(os.path.abspath(dir_fotos)), "documentos")}
+
+
 def anexos_referenciados(caminho_db):
-    """Arquivos de foto citados na tabela `fotos` (únicos anexos gravados em disco pelo sistema)."""
+    """Anexos citados no banco, como 'fotos/<arquivo>' e 'documentos/<arquivo>'."""
     c = _ler(caminho_db)
     try:
-        if not c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fotos'").fetchone():
-            return []
-        return sorted({r[0] for r in c.execute("SELECT arquivo FROM fotos WHERE arquivo IS NOT NULL")})
+        tabelas = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        return sorted({f"{pasta}/{r[0]}" for pasta, tab in ANEXOS if tab in tabelas
+                       for r in c.execute(f"SELECT arquivo FROM {tab} WHERE arquivo IS NOT NULL")})
     finally:
         c.close()
 
 
 def hashes_registrados(caminho_db):
-    """{arquivo: sha256} das fotos originais registradas no banco (fotos legadas não têm hash)."""
+    """{'fotos/<arquivo>': sha256, 'documentos/<arquivo>': sha256} dos anexos com hash registrado no banco."""
     c = _ler(caminho_db)
     try:
-        if "sha256" not in {r[1] for r in c.execute("PRAGMA table_info(fotos)")}:
-            return {}
-        return {r[0]: r[1] for r in c.execute("SELECT arquivo, sha256 FROM fotos WHERE sha256 IS NOT NULL")}
+        out = {}
+        for pasta, tab in ANEXOS:
+            if "sha256" in {r[1] for r in c.execute(f"PRAGMA table_info({tab})")}:
+                out.update({f"{pasta}/{r[0]}": r[1] for r in c.execute(f"SELECT arquivo, sha256 FROM {tab} WHERE sha256 IS NOT NULL")})
+        return out
     finally:
         c.close()
 
@@ -220,22 +231,24 @@ def criar(db=DB_PADRAO, destino=DESTINO_PADRAO, dir_fotos=DIR_FOTOS, rotulo=None
     copiar_banco(db, alvo_db)                                     # 1º o banco (instantâneo consistente)
     referenciados = anexos_referenciados(alvo_db)
     copiados = []
-    if os.path.isdir(dir_fotos):                                  # 2º os arquivos (todos, inclusive não referenciados)
-        for raiz, _, nomes in os.walk(dir_fotos):
+    for sub, origem_dir in _pastas_anexos(dir_fotos).items():     # 2º os arquivos (todos, inclusive não referenciados)
+        if not os.path.isdir(origem_dir):
+            continue
+        for raiz, _, nomes in os.walk(origem_dir):
             for n in sorted(nomes):
                 orig = os.path.join(raiz, n)
-                rel = os.path.relpath(orig, dir_fotos)
-                dest = os.path.join(pasta, "fotos", rel)
+                rel = sub + "/" + os.path.relpath(orig, origem_dir).replace(os.sep, "/")
+                dest = os.path.join(pasta, *rel.split("/"))
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 shutil.copy2(orig, dest)
                 if sha256(orig) != sha256(dest):
-                    raise RuntimeError(f"Foto {rel} divergiu durante a cópia.")
-                copiados.append(rel.replace(os.sep, "/"))
+                    raise RuntimeError(f"Anexo {rel} divergiu durante a cópia.")
+                copiados.append(rel)
     ausentes = sorted(set(referenciados) - set(copiados))
     integridade, linhas = contagens(alvo_db)
     if integridade != "ok":
         raise RuntimeError(f"Cópia do banco falhou no integrity_check: {integridade}")
-    arquivos = [os.path.basename(db)] + ["fotos/" + a for a in copiados]
+    arquivos = [os.path.basename(db)] + copiados
     manifesto = {
         "criado_em": datetime.now().isoformat(timespec="seconds"),
         "banco_origem": os.path.abspath(db),
@@ -287,13 +300,14 @@ def verificar_detalhado(pasta):
         elif conteudo(db) != m["conteudo_por_tabela"]:
             erros.append("conteúdo de tabela diverge do manifesto")
         # completude: recalculada a partir do banco copiado, não só do manifesto
-        copiados = {a[len("fotos/"):] for a in m["arquivos"] if a.startswith("fotos/")}
+        copiados = {a for a in m["arquivos"] if a.split("/", 1)[0] in dict(ANEXOS)}
         ausentes = sorted(set(anexos_referenciados(db)) - copiados)
-        # foto original: o arquivo copiado precisa ter o hash registrado no banco (cadeia de evidência)
+        # foto/documento original: o arquivo copiado precisa ter o hash registrado no banco (cadeia de evidência)
         for arq, h in hashes_registrados(db).items():
-            info = m["arquivos"].get("fotos/" + arq)
+            info = m["arquivos"].get(arq)
             if info and info["sha256"] != h:
-                erros.append(f"foto {arq}: hash do arquivo difere do registrado no banco")
+                erros.append(f"{'foto' if arq.startswith('fotos/') else 'documento'} {arq.split('/', 1)[1]}: hash do arquivo "
+                             "difere do registrado no banco")
     return {"integro": not erros, "completo": not ausentes and not erros, "erros_integridade": erros, "ausentes": ausentes}
 
 
@@ -342,14 +356,15 @@ def restaurar(pasta, db=DB_PADRAO, dir_fotos=DIR_FOTOS, destino_seguranca=None, 
                 o.close()
         finally:
             d.close()
-        fotos_bkp = os.path.join(pasta, "fotos")
+        destinos = _pastas_anexos(dir_fotos)
         for a, info in m["arquivos"].items():
-            if not a.startswith("fotos/"):
+            sub = a.split("/", 1)[0]
+            if sub not in destinos or "/" not in a:
                 continue
-            alvo = os.path.join(dir_fotos, *a[len("fotos/"):].split("/"))
+            alvo = os.path.join(destinos[sub], *a.split("/")[1:])
             if not os.path.exists(alvo) or sha256(alvo) != info["sha256"]:
                 os.makedirs(os.path.dirname(alvo), exist_ok=True)
-                shutil.copy2(os.path.join(fotos_bkp, *a[len("fotos/"):].split("/")), alvo)
+                shutil.copy2(os.path.join(pasta, *a.split("/")), alvo)
         erros = []
         integridade, _ = contagens(db)
         if integridade != "ok":
@@ -357,10 +372,10 @@ def restaurar(pasta, db=DB_PADRAO, dir_fotos=DIR_FOTOS, destino_seguranca=None, 
         if conteudo(db) != m["conteudo_por_tabela"]:
             erros.append("conteúdo restaurado diverge do manifesto")
         for a in anexos_referenciados(db):
-            info = m["arquivos"].get("fotos/" + a)
-            p = os.path.join(dir_fotos, *a.split("/"))
+            info = m["arquivos"].get(a)
+            p = os.path.join(destinos[a.split("/", 1)[0]], *a.split("/")[1:])
             if info and (not os.path.exists(p) or sha256(p) != info["sha256"]):
-                erros.append(f"foto {a} não restaurada")
+                erros.append(f"anexo {a} não restaurado")
         if erros:
             raise RuntimeError("Restauração não conferiu: " + "; ".join(erros) +
                                (f". O estado anterior está em {seguranca}" if seguranca else ""))
