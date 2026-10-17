@@ -14,6 +14,25 @@ from test_campo import MND, TR, BaseCampo, D  # noqa: E402
 D2 = "2026-10-16"
 
 
+class TestDataFutura(BaseCampo):
+    def test_execucao_estoque_e_ok_nao_aceitam_data_futura(self):
+        F = "2099-01-01"
+        casos = [lambda: S.registrar_clima(self.c, F, "Zona01", "MANHA", "SOL"),
+                 lambda: S.apontar(self.c, F, "Zona01", "TRECHO", TR, intervalos_novos=[{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 5}]),
+                 lambda: S.checkin(self.c, F, "Zona01", "TRECHO", TR),
+                 lambda: S.entrada_material(self.c, F, "CAESB-PEAD-DE63", 10, "ROMANEIO_CAESB", "ROM", "almox1"),
+                 lambda: S.registrar_soldas(self.c, F, "Zona01", "TRECHO", TR, "ELETROFUSAO", 1, "S", "enc"),
+                 lambda: S.registrar_etapa_complementar(self.c, TR, "LIBERACAO_TOPOGRAFICA", 0, 10, F, "topo", "NS-1"),
+                 lambda: S.abrir_ocorrencia(self.c, "TRECHO", TR, "IMPEDIMENTO", "CHUVA", "x", F, "enc"),
+                 lambda: S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng", F)]
+        antes = {t: self.q(f"SELECT COUNT(*) FROM {t}")[0][0] for t in ("clima", "apontamentos", "checkins", "movimentos", "soldas",
+                                                                        "etapas_complementares", "ocorrencias")}
+        for caso in casos:
+            with self.assertRaisesRegex(S.RegraViolada, "data futura"):
+                caso()
+        self.assertEqual({t: self.q(f"SELECT COUNT(*) FROM {t}")[0][0] for t in antes}, antes)   # nada gravado
+
+
 class TestLiberacaoEEscavacao(BaseCampo):
     def lib(self, a, b, data=D, ref="NS-012", etapa="LIBERACAO_TOPOGRAFICA", alvo=TR):
         return S.registrar_etapa_complementar(self.c, alvo, etapa, a, b, data, "topo1", ref)

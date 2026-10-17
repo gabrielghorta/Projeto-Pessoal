@@ -44,9 +44,9 @@ Cada decisão traz as opções, o impacto, a recomendação e **o que fica bloqu
 
 | ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
 |---|---|---|---|---|---|
-| D-40 | Quem aprova a solicitação de compra e emite o pedido | engenharia / administração / alçada por valor | Controle de gastos. | Engenharia aprova; administração emite. | **PROVISÓRIA**: permissões `aprovar_solicitacao` (engenharia) e `emitir_pedido` (administração). |
+| D-40 | Quem aprova a solicitação de compra e emite o pedido | engenharia / administração / alçada por valor | Controle de gastos. | Engenharia aprova; administração emite. | **PROVISÓRIA**: permissões `compras_aprovar` (engenharia, pessoa diferente de quem solicitou) e `compras_pedir` (administração). |
 | D-41 | Quem faz a inspeção de recebimento (aceite/recusa) e quais documentos exige | almoxarifado / engenharia / laudo do fabricante | Material entra em estoque só depois do aceite. | Almoxarifado com laudo; engenharia em material hidráulico. | **PROVISÓRIA**: almoxarifado, com referência do laudo obrigatória. |
-| D-42 | Quem aprova ajuste de inventário | almoxarifado / engenharia | — | Engenharia. | **PROVISÓRIA**: permissão `ajustar_inventario` (engenharia). |
+| D-42 | Quem aprova ajuste de inventário | almoxarifado / engenharia | — | Engenharia. | **PROVISÓRIA**: permissão `inventario_ajustar` (engenharia). |
 | D-44 | Compra de emergência sem solicitação aprovada | proibida (hoje) / permitida com aprovação posterior | Hoje todo pedido nasce de solicitação aprovada por outra pessoa. | Manter; emergência com aprovação no mesmo dia. | **PROVISÓRIA**: proibida. |
 | D-43 | Reserva vencida (data passada) | liberar manualmente (hoje) / expirar automaticamente após N dias | Saldo preso. | Aviso + liberação manual em lote. | **PROVISÓRIA**: manual. |
 

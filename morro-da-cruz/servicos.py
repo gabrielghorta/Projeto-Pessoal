@@ -33,6 +33,13 @@ class EsquemaAntigo(RuntimeError):
     """Banco em esquema anterior: precisa de migração (importar.py) antes de ser usado."""
 
 
+def exigir_data_ocorrida(data, o_que):
+    """Execução, clima, estoque e OK registram o que já aconteceu: data posterior a hoje é recusada (a programação,
+    a reserva e o período da medição podem ser futuros)."""
+    if data and str(data)[:10] > date.today().isoformat():
+        raise RegraViolada(f"{o_que} com data futura ({data}): só se registra o que já aconteceu.")
+
+
 # ------------------------------------------------------------------ conexão e esquema
 def comandos_sql(texto):
     """Divide um script SQL em comandos (sem comentários) para executar dentro de uma transação."""
@@ -397,6 +404,7 @@ def movimentos(conn, limite=100, material_id=None):
 
 
 def entrada_material(conn, data, material_id, quantidade, tipo, documento=None, responsavel=None, autorizacao=None):
+    exigir_data_ocorrida(data, "Movimento de material")
     if tipo == "BAIXA_TEORICA":
         raise RegraViolada("Baixa teórica não altera o estoque físico: o consumo é confirmado no check-out "
                            "(aplicado / sobra / perda). Para corrigir um lançamento, use o estorno.")
@@ -619,6 +627,7 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
             materiais=(), contingencia=None):
     """Presença + retirada do dia. A retirada consome primeiro a reserva da própria equipe para o dia;
     o restante precisa caber no disponível (saldo físico − reservas de outras equipes)."""
+    exigir_data_ocorrida(data, "Check-in")
     if equipe_id not in [r[0] for r in conn.execute("SELECT id FROM equipes")]:
         raise RegraViolada(f"Equipe '{equipe_id}' não cadastrada.")
     tipo = ref = None
@@ -745,6 +754,7 @@ def histograma(conn, data_ini, data_fim):
 
 # ------------------------------------------------------------------ campo
 def registrar_clima(conn, data, equipe_id, turno, condicao):
+    exigir_data_ocorrida(data, "Clima")
     if condicao not in R.CONDICOES_CLIMA:
         raise RegraViolada("Condição de clima inválida.")
     conn.execute("INSERT OR REPLACE INTO clima VALUES (?,?,?,?)", (data, equipe_id, turno, condicao))
@@ -959,6 +969,7 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     avanço anterior sem posição, exige antes a conciliação. Estimativas (soldas ⌈L/6⌉) nunca viram quantidade
     confirmada: soldas têm controle próprio.
     """
+    exigir_data_ocorrida(data, "Apontamento")
     turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
     if turnos != {"MANHA", "TARDE"}:
         raise RegraViolada("Clima do dia obrigatório nos dois turnos (manhã e tarde) antes do apontamento.")
@@ -1321,6 +1332,7 @@ def etapas_complementares(conn, trecho_id, etapa=None, anuladas=False):
 def registrar_etapa_complementar(conn, trecho_ref, etapa, ini_m, fim_m, data, registrado_por, referencia=None, obs=None):
     """Liberação topográfica (exige a referência da nota de serviço/locação) ou escavação, por intervalo do trecho.
     Não gera quantidade nem altera o resumo de execução. Repetição/sobreposição na mesma etapa é recusada."""
+    exigir_data_ocorrida(data, "Liberação/escavação")
     t = alvo(conn, "TRECHO", trecho_ref, operacao=True)
     if etapa not in ETAPAS_COMPLEMENTARES:
         raise RegraViolada("Etapa inválida (LIBERACAO_TOPOGRAFICA ou ESCAVADO).")
@@ -1375,6 +1387,7 @@ def situacao_complementar(conn, t, sit):
 
 
 def abrir_ocorrencia(conn, alvo_tipo, ref, tipo, categoria, descricao, data, aberta_por, equipe_id=None):
+    exigir_data_ocorrida(data, "Ocorrência")
     a = alvo(conn, alvo_tipo, ref)
     if tipo not in CATEGORIAS_OCORRENCIA:
         raise RegraViolada("Tipo de ocorrência: IMPEDIMENTO ou NAO_CONFORMIDADE.")
@@ -1413,6 +1426,7 @@ def ocorrencias(conn, alvo_tipo=None, ref=None, abertas=None):
 # ------------------------------------------------------------------ soldas (informadas × verificadas)
 def registrar_soldas(conn, data, equipe_id, alvo_tipo, ref, tipo, quantidade, soldador, informado_por,
                      posicao_m=None, maquina=None, obs=None):
+    exigir_data_ocorrida(data, "Solda")
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     if tipo not in ("ELETROFUSAO", "TOPO"):
         raise RegraViolada("Tipo de solda inválido (ELETROFUSAO ou TOPO).")
@@ -1663,6 +1677,7 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
     """[✓] OK Fiscalização (interno Ankara). Gera PROPOSTA de lançamentos na medição de teste e
     envia o trecho à Esteira de Cadastro. Não aprova nada pela Caesb e não aplica regime de material."""
     data = data or date.today().isoformat()
+    exigir_data_ocorrida(data, "OK interno")
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     tipo, aid = a["alvo_tipo"], a["id"]
     if tipo == "TRECHO":
@@ -1720,6 +1735,7 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
 def recomposicao_ok(conn, alvo_tipo, ref, tipo, quantidade, data=None):
     """Checkbox separado: calçada/asfalto entra só quando a equipe de pavimento executar (gaveta 4)."""
     data = data or date.today().isoformat()
+    exigir_data_ocorrida(data, "Recomposição")
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     ex = execucao(conn, a["alvo_tipo"], a["id"])
     if not ex or not ex.get("ok_fiscal_em"):

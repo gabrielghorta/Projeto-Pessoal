@@ -30,8 +30,6 @@ class BaseMedicao(BaseCampo):
         super().setUp()
         self.m1 = S.criar_medicao(self.c, 1, "2026-10-01", "2026-10-31")
         self.m2 = S.criar_medicao(self.c, 2, "2026-11-01", "2026-11-30")
-        for t in ("MANHA", "TARDE"):
-            S.registrar_clima(self.c, "2026-11-05", "Zona01", t, "SOL")
 
     def concluir(self, alvo=TR, data=D, fotos=True):
         S.apontar(self.c, data, "Zona01", "TRECHO", alvo, concluido_100=True)
@@ -60,7 +58,7 @@ class TestParcelaUnica(BaseMedicao):
             with S.transacao(self.c):
                 S._lancar(self.c, self.m2, 1, "ASSENTAMENTO", outro, "M", 76.55, "TRECHO", tid)
         with self.assertRaisesRegex(S.RegraViolada, "já marcado com OK"):
-            S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng1", "2026-11-05")  # clique repetido / outro mês
+            S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng1", D)              # clique repetido
         ch = self.q("SELECT chave FROM medicao_lancamentos WHERE servico='ASSENTAMENTO'")[0][0]
         with self.assertRaises(sqlite3.IntegrityError):                # trava no banco, além da regra
             self.c.execute("INSERT INTO medicao_lancamentos(medicao_id,gaveta,servico,unidade,quantidade,chave) "

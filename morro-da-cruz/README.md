@@ -6,6 +6,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 - Tecnologia: Python (biblioteca padrão + `openpyxl`), banco SQLite e interface HTML/JS sem dependências externas.
 - Roda só no computador da obra (`127.0.0.1`), com login, perfis e permissões checadas no servidor. O layout funciona em tela de celular (360 px), mas o acesso pelo celular depende da hospedagem (D-60).
 - **Implantação, backup e recuperação:** `docs/IMPLANTACAO.md`.
+- **Entrega para revisão** (situação, matriz, testes, decisões): `docs/ENTREGA_FINAL.md`. Ciclo completo da Zona01: `docs/EVIDENCIAS_CICLO_ZONA01.md`.
 - **Estado atual: piloto de TESTE.**
   - Medição oficial bloqueada.
   - Regras financeiras de material pendentes: veja `docs/MATRIZ_REGIMES_FATURAMENTO.md`.

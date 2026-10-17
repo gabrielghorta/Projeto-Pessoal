@@ -422,6 +422,7 @@ def _recebido(conn, nf_item_id):
 
 def receber(conn, nf_id, data, itens, por, documento=None):
     """Entrega (parcial ou total): cada item entra em QUARENTENA, nunca direto no estoque."""
+    S.exigir_data_ocorrida(data, "Recebimento")
     nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
     if not nf or nf["status"] != "CONFERIDA":
         raise RegraViolada("Só nota CONFERIDA recebe entregas (confira a nota antes).")
@@ -468,6 +469,7 @@ def _encerrar_se_completa(conn, nf_id):
 def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, motivo_recusa=None, documento_b64=None,
                 documento_nome=None):
     """Aceito + recusado = entregue. O aceito entra no estoque (novo ENTRADA_NF ACEITO); o recusado não entra."""
+    S.exigir_data_ocorrida(data, "Inspeção")
     ri = _one(conn, """SELECT ri.*, r.data data_entrega, r.nf_id, ni.material_id FROM recebimento_itens ri
                        JOIN recebimentos r ON r.id=ri.recebimento_id JOIN nf_itens ni ON ni.id=ri.nf_item_id WHERE ri.id=?""",
               recebimento_item_id)
@@ -505,6 +507,7 @@ def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, m
 def devolver_ao_fornecedor(conn, nf_item_id, data, quantidade, motivo, por, documento=None):
     """Devolução de material JÁ aceito (defeito descoberto depois). Sai do disponível: material reservado ou com as
     equipes não pode ser devolvido sem antes voltar ao almoxarifado/liberar a reserva."""
+    S.exigir_data_ocorrida(data, "Devolução ao fornecedor")
     ni = _one(conn, "SELECT ni.*, nf.numero FROM nf_itens ni JOIN notas_fiscais nf ON nf.id=ni.nf_id WHERE ni.id=?", nf_item_id)
     if not ni:
         raise RegraViolada("Item da nota não encontrado.")
@@ -535,6 +538,7 @@ def devolver_ao_fornecedor(conn, nf_item_id, data, quantidade, motivo, por, docu
 # ------------------------------------------------------------------ transferência, inventário e reservas vencidas
 def transferir(conn, data, material_id, quantidade, de_equipe, para_equipe, autorizacao, por, motivo=None):
     """Transferência entre equipes em campo (sessões abertas das duas), sem passar pelo almoxarifado."""
+    S.exigir_data_ocorrida(data, "Transferência")
     if de_equipe == para_equipe:
         raise RegraViolada("Escolha equipes diferentes.")
     if not str(autorizacao or "").strip():

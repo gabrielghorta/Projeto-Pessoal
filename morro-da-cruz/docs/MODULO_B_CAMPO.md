@@ -56,3 +56,13 @@ Nada disso é aprovação da Caesb. Anulações e resoluções guardam motivo, q
 - D-20: liberação obrigatória antes do assentamento?
 - D-21: quais etapas são obrigatórias e em que ordem?
 - **D-22 (nova):** não conformidade aberta deve impedir o OK interno?
+
+## Data futura (etapa Z)
+
+Execução, clima, soldas, liberação e escavação, ocorrência, movimentos de estoque, OK interno e recomposição registram o que já aconteceu. Data posterior a hoje é recusada com a mensagem "… com data futura (…): só se registra o que já aconteceu.", e nada é gravado.
+
+Valem para (servicos e compras):
+- check-in e entrada de material;
+- recebimento, inspeção, devolução ao fornecedor e transferência.
+
+Programação, reserva e período de medição continuam podendo ser futuros. Teste: `tests/test_campo_b.py::TestDataFutura`. A falta dessa recusa apareceu no ciclo da Zona01.
