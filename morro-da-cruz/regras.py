@@ -232,20 +232,33 @@ CHECKLIST_CONFERENCIA_CADASTRO = OrderedDict([
 ])
 
 
-def validar_conferencia(resultado, checklist, revisor, obs):
+# Conferência interna da medição de TESTE pela engenharia, antes do fechamento (PROVISÓRIO, D-59). Confere a proposta
+# contra os registros e as evidências; não é aprovação da Caesb nem libera medição oficial.
+CHECKLIST_CONFERENCIA_MEDICAO = OrderedDict([
+    ("EXECUTADO", "Lançamentos conferidos com o executado e verificado nos registros de campo"),
+    ("EVIDENCIAS", "Evidências conferidas (fotos válidas, soldas, memorando ESET do cadastro)"),
+    ("PENDENTES", "Lançamentos PENDENTES identificados e mantidos fora do valor"),
+    ("DUPLICIDADE", "Sem parcela já medida em medição anterior"),
+    ("HIPOTESES", "Hipóteses e regras bloqueadas da simulação revisadas"),
+])
+
+
+def validar_conferencia(resultado, checklist, revisor, obs, roteiro=None,
+                        exige_obs="Descreva a divergência encontrada (vai para a empresa de cadastro)."):
     """CONFORME exige todos os itens conferidos; NAO_CONFORME exige a descrição da divergência."""
+    roteiro = roteiro or CHECKLIST_CONFERENCIA_CADASTRO
     if resultado not in ("CONFORME", "NAO_CONFORME"):
         raise RegraViolada("Resultado da conferência: CONFORME ou NAO_CONFORME.")
     if not str(revisor or "").strip():
         raise RegraViolada("Informe quem conferiu.")
-    itens = {k: bool((checklist or {}).get(k)) for k in CHECKLIST_CONFERENCIA_CADASTRO}
+    itens = {k: bool((checklist or {}).get(k)) for k in roteiro}
     if set(checklist or {}) - set(itens):
         raise RegraViolada("Item de conferência desconhecido: " + ", ".join(sorted(set(checklist) - set(itens))))
     if resultado == "CONFORME" and not all(itens.values()):
         raise RegraViolada("CONFORME exige todos os itens conferidos. Pendentes: "
-                           + ", ".join(CHECKLIST_CONFERENCIA_CADASTRO[k] for k, v in itens.items() if not v))
+                           + ", ".join(roteiro[k] for k, v in itens.items() if not v))
     if resultado == "NAO_CONFORME" and not str(obs or "").strip():
-        raise RegraViolada("Descreva a divergência encontrada (vai para a empresa de cadastro).")
+        raise RegraViolada(exige_obs)
     return itens
 
 

@@ -101,6 +101,8 @@ td input { width: 100%; padding: 4px 6px; }
 .aviso.problema { border-color: var(--vermelho); background: var(--vermelho-claro); }
 .aviso.sugestao { border-color: var(--azul); background: var(--azul-claro); }
 .aviso.info { border-color: var(--amarelo); background: var(--info-claro); }
+.aviso.ok { border-color: var(--verde); background: var(--verde-claro); }
+.chip.cinza { background: var(--chip); color: var(--suave); }
 .vazio { color: var(--suave); font-style: italic; padding: 8px 0; }
 
 /* ---------- mapa */

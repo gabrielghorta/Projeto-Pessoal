@@ -13,6 +13,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Etapa 3, estoque (reserva, saldo com a equipe, empréstimo autorizado, estorno): `docs/ETAPA_3_ESTOQUE.md`.
   - **Plano de entrega completa** (requisitos, situação, aceitação): `docs/PLANO_ENTREGA_COMPLETA.md`. **Decisões pendentes** (documento único): `docs/DECISOES_PENDENTES.md`.
   - Etapa 4, campo e cadastro (intervalos por etapa, retificação, conciliação do legado, levantamento de campo, conferência interna do cadastro, soldas verificadas, foto original com hash): `docs/ETAPA_4_CAMPO.md`.
+  - Módulos do plano: acesso e auditoria `docs/MODULO_A_ACESSO.md`; campo `docs/MODULO_B_CAMPO.md`; compras e recebimento `docs/MODULO_C_COMPRAS.md`; planejamento e mapa `docs/MODULO_D_PLANEJAMENTO.md`; medição (parcela única, elegibilidade, conferência antes do fechamento, regras bloqueadas) `docs/MODULO_E_MEDICAO.md`.
 
 ## Como rodar (Windows)
 

@@ -65,6 +65,7 @@ Cada decisão traz as opções, o impacto, a recomendação e **o que fica bloqu
 | D-56 | Liberação da medição oficial e do modelo `01ª MC` | — | Só depois de D-30…D-55 e da validação do acesso. | — | **BLOQUEADA** (`medicao_oficial_liberada = NAO`). |
 | D-57 | Teto por subgrupo: regra contratual ou controle interno? | — | Hoje desconta o excedente na simulação. | — | Hipótese listada. |
 | D-58 | Critério da medição do cadastro (2.2_5.2.1) e se o memorando ESET é exigido | — | — | — | **PROVISÓRIA**: mede na etapa 6 da esteira, na medição de TESTE. |
+| D-59 | Conferência interna da medição pela engenharia antes do fechamento: obrigatória? roteiro? pessoa diferente de quem deu o OK interno? | obrigatória com roteiro de 5 itens (hoje) / opcional / obrigatória e por outra pessoa | Evita fechar com duplicidade ou evidência perdida; a conferência deixa de valer se um lançamento mudar. | Obrigatória; roteiro ajustado pela Ankara; outra pessoa quando houver dois engenheiros. | **PROVISÓRIA**: obrigatória (CONFORME e vigente), roteiro de 5 itens, sem exigir outra pessoa. A CONFORME é recusada com duplicidade ou foto obrigatória ausente. |
 
 ## 6. Implantação
 

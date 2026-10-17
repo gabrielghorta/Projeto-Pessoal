@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 import acesso as A
 import backup
 import compras as C
+import medicao as M
 import planejamento as P
 import exportar
 import regras as R
@@ -292,12 +293,21 @@ def p_medicao(b, c):
 
 
 def r_medicao(q, c):
-    return S.resumo_medicao(c, int(q["id"]))
+    mid = int(q["id"])
+    return {**S.resumo_medicao(c, mid), **M.complementos(c, mid)}
+
+
+def r_medicao_elegibilidade(q, c):
+    return M.elegibilidade(c, int(q["id"]))
 
 
 def p_medicao_fechar(b, c):
-    S.fechar_medicao(c, int(b["id"]))
+    S.fechar_medicao(c, int(b.get("medicao_id") or b["id"]), b.get("por"))
     return {"ok": True}
+
+
+def p_medicao_conferir(b, c):
+    return {"id": M.conferir(c, int(b["medicao_id"]), b.get("resultado"), b.get("checklist") or {}, b.get("por"), b.get("obs"))}
 
 
 # ------------------------------------------------------------------ campo complementar (módulo B)
@@ -420,7 +430,8 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
        "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
-       "/api/reservas-vencidas": r_reservas_vencidas, "/api/programacoes": r_programacoes}
+       "/api/reservas-vencidas": r_reservas_vencidas, "/api/programacoes": r_programacoes,
+       "/api/medicao/elegibilidade": r_medicao_elegibilidade}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
@@ -435,7 +446,8 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/escavacao": _etapa("ESCAVADO"), "/api/etapa-complementar/anular": p_etapa_anular,
         "/api/ocorrencia": p_ocorrencia, "/api/ocorrencia/resolver": p_ocorrencia_resolver}
 POST.update({rota: fn for rota, (_, _, fn) in ROTAS_COMPRAS.items()})
-POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar})
+POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar,
+             "/api/medicao/conferir": p_medicao_conferir})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
 PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
@@ -457,8 +469,9 @@ AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "
          "/api/liberacao": ("registrado_por",), "/api/escavacao": ("registrado_por",), "/api/etapa-complementar/anular": ("por",),
          "/api/ocorrencia": ("aberta_por",), "/api/ocorrencia/resolver": ("por",)}
 PERMISSAO.update({rota: perm for rota, (perm, _, _) in ROTAS_COMPRAS.items()})
-PERMISSAO.update({"/api/programacao": "planejar", "/api/programacao/encerrar": "planejar"})
-AUTOR.update({"/api/programacao": ("por",), "/api/programacao/encerrar": ("por",)})
+PERMISSAO.update({"/api/programacao": "planejar", "/api/programacao/encerrar": "planejar", "/api/medicao/conferir": "medicao"})
+AUTOR.update({"/api/programacao": ("por",), "/api/programacao/encerrar": ("por",), "/api/medicao/conferir": ("por",),
+              "/api/medicao/fechar": ("por",)})
 AUTOR.update({rota: campos for rota, (_, campos, _) in ROTAS_COMPRAS.items()})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}

@@ -1038,6 +1038,28 @@ def preparar_v12(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v13(conn):
+    """Esquema v12 → v13 (medição): chave da parcela em cada lançamento, quem fechou a medição e a conferência interna.
+    Lançamentos existentes recebem a chave na ordem em que foram gravados; se a mesma parcela já aparecer antes (dupla
+    medição antiga), o lançamento repetido fica sem chave — nada é apagado — e aparece no relatório de duplicidades."""
+    for coluna in ("fechada_por TEXT", "fechada_em TEXT", "conferencia_id INTEGER"):
+        _add_coluna(conn, "medicoes", *coluna.split(" ", 1))
+    _add_coluna(conn, "medicao_lancamentos", "chave", "TEXT")
+    vistas = {r[0] for r in conn.execute("SELECT chave FROM medicao_lancamentos WHERE chave IS NOT NULL")}
+    sem_chave = 0
+    for l in conn.execute("""SELECT l.id, m.tipo, l.gaveta, l.servico, l.alvo_tipo, l.alvo_id, b.item, l.unidade, l.nf_id,
+                                    l.material_id FROM medicao_lancamentos l JOIN medicoes m ON m.id=l.medicao_id
+                             LEFT JOIN bm_itens b ON b.id=l.bm_item_id WHERE l.chave IS NULL ORDER BY l.id""").fetchall():
+        ch = S.chave_parcela(*tuple(l)[1:])
+        if ch in vistas:
+            sem_chave += 1
+            continue
+        vistas.add(ch)
+        conn.execute("UPDATE medicao_lancamentos SET chave=? WHERE id=?", (ch, l[0]))
+    S.aplicar_esquema(conn)
+    return sem_chave
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

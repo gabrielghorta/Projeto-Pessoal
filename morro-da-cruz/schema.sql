@@ -640,6 +640,8 @@ CREATE TABLE IF NOT EXISTS medicoes (
   status TEXT NOT NULL DEFAULT 'ABERTA' CHECK (status IN ('ABERTA','FECHADA')),
   congelada_em TEXT,                   -- fechamento: preços, fatores e totais congelados
   resumo_congelado TEXT,               -- JSON do resumo no fechamento (revisão cadastral posterior não recalcula)
+  fechada_por TEXT, fechada_em TEXT,   -- v13: quem fechou (usuário da sessão) e quando
+  conferencia_id INTEGER,              -- v13: conferência interna CONFORME que liberou o fechamento
   UNIQUE (tipo, numero)
 );
 
@@ -661,7 +663,23 @@ CREATE TABLE IF NOT EXISTS medicao_lancamentos (
   observacao TEXT,
   preco_congelado REAL,                -- preço sem BDI do item no fechamento da medição
   classificacao_congelada TEXT,
-  item_congelado TEXT
+  item_congelado TEXT,
+  chave TEXT                           -- v13: parcela (tipo da medição|gaveta|serviço|alvo|item|unid.): única entre medições
+);
+
+-- v13: conferência interna da medição de TESTE pela engenharia (Ankara), antes do fechamento. Guarda o retrato das
+-- evidências e pendências de cada lançamento e a assinatura dos lançamentos conferidos: se um lançamento mudar depois,
+-- a conferência deixa de valer. Não é aprovação da Caesb nem libera medição oficial.
+CREATE TABLE IF NOT EXISTS conferencias_medicao (
+  id INTEGER PRIMARY KEY,
+  medicao_id INTEGER NOT NULL REFERENCES medicoes(id),
+  resultado TEXT NOT NULL CHECK (resultado IN ('CONFORME','NAO_CONFORME')),
+  checklist TEXT NOT NULL,
+  assinatura TEXT NOT NULL,
+  retrato TEXT NOT NULL,
+  obs TEXT,
+  por TEXT NOT NULL,
+  em TEXT NOT NULL
 );
 
 -- ---------------------------------------------------------------- planejamento (v12, módulo D)

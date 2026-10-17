@@ -372,8 +372,25 @@
           <div class="acoes"><a class="btn azul" id="medExport" data-perm="medicao" href="#">⬇ Exportar .xlsx</a><button class="btn" id="medFechar" data-perm="medicao">Fechar medição</button></div>
         </div>
         <div id="medResumo" class="vazio">Crie a medição do mês ao lado.</div>
+        <h3 style="margin-top:16px">Elegibilidade do período</h3>
+        <div id="medEleg" class="vazio">—</div>
+        <h3 style="margin-top:16px">Parcelas medidas por item do BM</h3>
+        <div id="medParcelas" class="vazio">—</div>
       </div>
-      <div style="display:grid;gap:16px">
+      <div style="display:grid;gap:16px;align-content:start">
+        <div class="painel">
+          <h3>Conferência interna (engenharia Ankara)</h3>
+          <p class="vazio" style="margin:0 0 8px">Confere a proposta contra os registros e as evidências antes de fechar. Não é aprovação da Caesb nem libera medição oficial.</p>
+          <div id="medConfEstado"></div>
+          <form id="fMedConf" data-perm="medicao">
+            <div id="medConfItens"></div>
+            <label>Resultado<select name="resultado"><option value="CONFORME">CONFORME</option><option value="NAO_CONFORME">NÃO CONFORME</option></select></label>
+            <label>Observação<input name="obs" placeholder="obrigatória se NÃO CONFORME"></label>
+            <div class="acoes"><button class="btn prim">Registrar conferência</button></div>
+          </form>
+          <div id="medConfHist"></div>
+        </div>
+        <div class="painel"><h3>Regras da medição</h3><div id="medRegras" class="vazio">—</div></div>
         <div class="painel">
           <h3>Nova medição de TESTE</h3>
           <p class="vazio" style="margin:0 0 8px">Medição oficial bloqueada até validar regras financeiras, controle de acesso e exportação no modelo oficial.</p>

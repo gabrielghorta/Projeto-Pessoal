@@ -11,6 +11,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+import medicao as M
 import regras as R
 import servicos as S
 
@@ -123,7 +124,83 @@ def planilha_medicao(conn, medicao_id):
                 if l["status"] == "PENDENTE":
                     ws.cell(row=ws.max_row, column=7).font = Font(bold=True, color="C92A2A")
 
+    _abas_conferencia(wb, conn, medicao_id, sub, teste)
+
     buf = io.BytesIO()
     wb.save(buf)
     prefixo = "TESTE_" if teste else ""
     return f"{prefixo}MEDICAO_{med['numero']:02d}_MORRO_DA_CRUZ.xlsx", buf.getvalue()
+
+
+def _abas_conferencia(wb, conn, medicao_id, sub, teste):
+    """Conferência interna (retrato gravado; ou o retrato atual, se ainda não conferida), regras, elegibilidade e parcelas."""
+    conf = S.conferencia_vigente(conn, medicao_id)
+    ret = conf["retrato"] if conf else M.retrato(conn, medicao_id)
+    ws = wb.create_sheet("CONFERÊNCIA")
+    _cabecalho(ws, "Conferência interna da medição (Ankara — não é aprovação da Caesb)", sub,
+               ["Trecho / atividade", "OK interno em", "OK interno por", "Fotos válidas", "Fotos faltando", "Verificação",
+                "Soldas aprovadas / informadas", "Ocorrências abertas", "Cadastro (etapa · GDOC · ESET)"],
+               [36, 14, 16, 12, 28, 16, 18, 12, 46], teste)
+    if conf:
+        cab = (f"Conferência #{conf['id']}: {conf['resultado']} por {conf['por']} em {conf['em']}"
+               + ("" if conf["vale"] else " — NÃO VALE MAIS: os lançamentos mudaram depois dela"))
+    else:
+        cab = "SEM CONFERÊNCIA INTERNA registrada: abaixo, o retrato atual (o fechamento exige conferência CONFORME)."
+    ws.append([cab])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color=LARANJA if conf and conf["vale"] else "C92A2A")
+    if conf:
+        for k, v in conf["checklist"].items():
+            ws.append([f"  [{'x' if v else ' '}] {R.CHECKLIST_CONFERENCIA_MEDICAO.get(k, k)}"])
+        if conf.get("obs"):
+            ws.append([f"  Observação: {conf['obs']}"])
+    for a in ret["alvos"]:
+        cad = a.get("cadastro") or {}
+        ws.append([a["nome"], a["ok_interno_em"], a["ok_interno_por"], a["fotos_validas"], ", ".join(a["fotos_faltando"]) or "—",
+                   a.get("verificacao") or "—", f"{a['soldas_aprovadas']:g} / {a['soldas_informadas']:g}", a["ocorrencias_abertas"],
+                   " · ".join(str(x) for x in (cad.get("etapa"), cad.get("protocolo_gdoc"), cad.get("memorando_eset")) if x) or "—"])
+        _fmt(ws, ws.max_row, {})
+    for t in ret["impeditivos"]:
+        ws.append([f"IMPEDITIVO: {t}"])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="C92A2A")
+    for t in ret["alertas"]:
+        ws.append([f"Alerta: {t}"])
+        ws.cell(row=ws.max_row, column=1).font = Font(color="9A5B00")
+
+    ws = wb.create_sheet("REGRAS")
+    _cabecalho(ws, "Regras da medição — confirmadas, provisórias e bloqueadas", sub,
+               ["Regra", "Situação", "Efeito no cálculo", "Fonte", "Decisão"], [70, 20, 70, 40, 14], teste)
+    for r in M.regras(conn):
+        ws.append([r["regra"], r["situacao"], r["efeito"], r["fonte"] or "—", r["decisao"] or "—"])
+        _fmt(ws, ws.max_row, {})
+        if r["situacao"] != "CONFIRMADA":
+            ws.cell(row=ws.max_row, column=2).font = Font(bold=True, color="C92A2A")
+
+    el = M.elegibilidade(conn, medicao_id)
+    ws = wb.create_sheet("ELEGIBILIDADE")
+    _cabecalho(ws, "Elegibilidade do período", f"{sub} · {el['regra']}",
+               ["Situação", "Trecho / atividade", "Frente", "Extensão (m)", "Assentado no período (m)", "Verificado no período (m)",
+                "Assentado total (m)", "OK interno", "Impedimentos", "Alertas"],
+               [22, 36, 10, 12, 14, 14, 14, 12, 60, 50], teste)
+    for l in el["linhas"]:
+        ws.append([l["situacao"], l["nome"], l["frente_id"], l["extensao_m"], l["assentado_periodo_m"], l["verificado_periodo_m"],
+                   l.get("assentado_total_m"), l["ok_interno_em"] or "—", "; ".join(l["impedimentos"]) or "—", "; ".join(l["alertas"]) or "—"])
+        _fmt(ws, ws.max_row, {4: QTD, 5: QTD, 6: QTD, 7: QTD})
+    ws.append([])
+    ws.append(["Material no período (por propriedade) — BLOQUEADO: regime não aprovado (D-53 · D-54); recebido não é faturável"])
+    ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="C92A2A")
+    ws.append(["Material", "Descrição", "Propriedade", "Unid.", "Recebido/aceito", "Aplicado", "Situação"])
+    for m in el["materiais"]:
+        ws.append([m["material_id"], m["descricao"], m["propriedade"], m["unidade"], m["recebido"], m["aplicado"], m["situacao"]])
+        _fmt(ws, ws.max_row, {5: QTD, 6: QTD})
+
+    ws = wb.create_sheet("PARCELAS")
+    _cabecalho(ws, "Parcelas medidas por item do BM (medições do mesmo tipo)", sub,
+               ["Item", "Descrição", "Unid.", "Quant. contrato", "Anterior", "Nesta", "Acumulado", "Saldo", "Acima do contrato"],
+               [13, 60, 8, 15, 14, 14, 14, 14, 12], teste)
+    for i in M.acumulado_itens(conn, medicao_id):
+        ws.append([i["item"], i["descricao"], i["unidade"], i["contrato"], i["anterior"], i["nesta"], i["acumulado"], i["saldo"],
+                   "SIM" if i["excede_contrato"] else ""])
+        _fmt(ws, ws.max_row, {4: QTD, 5: QTD, 6: QTD, 7: QTD, 8: QTD})
+    for d in M.duplicidades(conn, medicao_id):
+        ws.append([f"DUPLICIDADE: {d['servico']} de {d['alvo_nome']} nas medições {d['medicoes']}"])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True, color="C92A2A")

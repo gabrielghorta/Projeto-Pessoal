@@ -24,7 +24,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 12
+VERSAO_ESQUEMA = 13
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -55,8 +55,10 @@ def aplicar_esquema(conn):
             conn.execute(cmd)
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
+    if "chave" in {r[1] for r in conn.execute("PRAGMA table_info(medicao_lancamentos)")}:
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_lanc_chave ON medicao_lancamentos(chave) WHERE chave IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "planejamento: programação das equipes e camadas do mapa"))
+                 (VERSAO_ESQUEMA, _agora(), "medição: parcela única, conferência interna e elegibilidade por período"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -1610,10 +1612,16 @@ def _itens_servico(conn, servico, trecho):
     if not cfg or cfg["status"] != "CONFIRMADO" or not cfg["itens"]:
         return []
     itens = [_bm_item(conn, k.format(codigo_bm=trecho.get("codigo_bm"))) for k in cfg["itens"]]
-    itens = [i for i in itens if i]
-    if not itens:
+    if not all(itens):                   # vínculo incompleto no BM vigente: não rateia tudo no item que sobrou
         return []
     return R.ratear(1.0, [(i, i["quantidade"] or 0) for i in itens])
+
+
+def chave_parcela(tipo_medicao, gaveta, servico, alvo_tipo, alvo_id, item, unidade, nf_id=None, material_id=None):
+    """Identidade da parcela medida: a mesma parcela (alvo × serviço × item) não entra em duas medições do mesmo tipo.
+    O item vai pelo código (e não pelo id interno), para valer também depois de uma revisão do BM."""
+    return "|".join(str(x if x is not None else "") for x in
+                    (tipo_medicao, gaveta, servico, alvo_tipo, alvo_id, item, unidade, nf_id, material_id))
 
 
 def _lancar(conn, medicao_id, gaveta, servico, bm, unidade, quantidade, alvo_tipo=None, alvo_id=None,
@@ -1621,11 +1629,23 @@ def _lancar(conn, medicao_id, gaveta, servico, bm, unidade, quantidade, alvo_tip
     status = "PROPOSTO" if bm is not None and not motivo else "PENDENTE"
     if status == "PENDENTE" and not motivo:
         motivo = "sem item de BM com fonte"
+    med = _one(conn, "SELECT numero, tipo, status FROM medicoes WHERE id=?", medicao_id)
+    if med["status"] != "ABERTA":
+        raise RegraViolada(f"A {med['numero']}ª medição já está fechada.")
+    chave = chave_parcela(med["tipo"], gaveta, servico, alvo_tipo, alvo_id, bm["item"] if bm else None, unidade, nf_id, material_id)
+    # a mesma parcela em outra medição (ou repetida nesta), inclusive pelo alvo × serviço quando o item mudou de id
+    ja = _one(conn, """SELECT m.numero FROM medicao_lancamentos l JOIN medicoes m ON m.id=l.medicao_id
+                        WHERE l.chave=? OR (m.tipo=? AND l.gaveta=? AND l.servico=? AND l.alvo_tipo IS ? AND l.alvo_id IS ?
+                                            AND l.alvo_id IS NOT NULL AND l.medicao_id<>?)""",
+              chave, med["tipo"], gaveta, servico, alvo_tipo, alvo_id, medicao_id)
+    if ja:
+        raise RegraViolada(f"Parcela já medida: {servico} de {nome_alvo(conn, alvo_tipo, alvo_id) if alvo_id else 'NF/material'} "
+                           f"já está na {ja['numero']}ª medição ({med['tipo']}). Nada foi lançado.")
     conn.execute(
         """INSERT INTO medicao_lancamentos(medicao_id,gaveta,servico,bm_item_id,alvo_tipo,alvo_id,nf_id,material_id,
-             unidade,quantidade,status,motivo,observacao) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+             unidade,quantidade,status,motivo,observacao,chave) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (medicao_id, gaveta, servico, bm["id"] if bm else None, alvo_tipo, alvo_id, nf_id, material_id, unidade,
-         round(quantidade, 4), status, motivo, obs))
+         round(quantidade, 4), status, motivo, obs, chave))
 
 
 def _vertical_por_codigo(conn, codigo_bm):
@@ -1975,17 +1995,44 @@ def medicao_para(conn, data):
     raise RegraViolada(f"Nenhuma medição de teste cobrindo {data}. Abra a medição na aba 5.")
 
 
-def fechar_medicao(conn, medicao_id):
+def assinatura_medicao(conn, medicao_id):
+    """Hash dos lançamentos da medição (id, gaveta, serviço, alvo, item, quantidade, status): muda se qualquer um mudar."""
+    linhas = conn.execute("""SELECT id, gaveta, servico, alvo_tipo, alvo_id, bm_item_id, quantidade, status FROM medicao_lancamentos
+                             WHERE medicao_id=? ORDER BY id""", (medicao_id,)).fetchall()
+    return hashlib.sha256(json.dumps([list(r) for r in linhas], default=str).encode()).hexdigest()
+
+
+def conferencia_vigente(conn, medicao_id):
+    """Última conferência interna da medição e se ela ainda vale (mesmos lançamentos conferidos)."""
+    c = _one(conn, "SELECT * FROM conferencias_medicao WHERE medicao_id=? ORDER BY id DESC LIMIT 1", medicao_id)
+    if not c:
+        return None
+    c["checklist"], c["retrato"] = json.loads(c["checklist"]), json.loads(c["retrato"])
+    c["vale"] = c["assinatura"] == assinatura_medicao(conn, medicao_id)
+    return c
+
+
+def fechar_medicao(conn, medicao_id, por=None):
     """Fecha e CONGELA a medição. O preço, a classificação e o item de cada lançamento, os fatores
-    (BDI, K) e o resumo ficam gravados. Uma revisão posterior do BM não recalcula o valor dela."""
+    (BDI, K) e o resumo ficam gravados. Uma revisão posterior do BM não recalcula o valor dela.
+
+    Exige a conferência interna CONFORME da engenharia sobre os lançamentos atuais (D-59, provisório)."""
     med = _one(conn, "SELECT * FROM medicoes WHERE id=?", medicao_id)
     if not med:
         raise RegraViolada("Medição não encontrada.")
     if med["status"] != "ABERTA":
         raise RegraViolada(f"A {med['numero']}ª medição ({med['tipo']}) já está fechada.")
+    conf = conferencia_vigente(conn, medicao_id)
+    if not conf:
+        raise RegraViolada("Fechar exige a conferência interna da medição (aba 5 — Conferência).")
+    if conf["resultado"] != "CONFORME":
+        raise RegraViolada(f"A última conferência interna foi NÃO CONFORME ({conf['obs']}): corrija e confira de novo.")
+    if not conf["vale"]:
+        raise RegraViolada("Os lançamentos mudaram depois da conferência interna: confira de novo antes de fechar.")
     with transacao(conn):
         congelar_medicao(conn, medicao_id, "fechamento")
-        conn.execute("UPDATE medicoes SET status='FECHADA' WHERE id=?", (medicao_id,))
+        conn.execute("UPDATE medicoes SET status='FECHADA', fechada_por=?, fechada_em=?, conferencia_id=? WHERE id=?",
+                     (por, _agora(), conf["id"], medicao_id))
 
 
 def congelar_medicao(conn, medicao_id, origem):

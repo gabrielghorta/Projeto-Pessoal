@@ -861,7 +861,6 @@ async function carregarMedicao() {
   MEDICAO_ATUAL = +id;
   const r = await api('/api/medicao?id=' + id);
   $('#medExport').href = '/api/medicao/exportar?id=' + id;
-  $('#medFechar').disabled = r.medicao.status !== 'ABERTA';
   $('#medResumo').className = '';
   $('#medResumo').innerHTML = (r.teste ? `<div class="aviso problema"><b>MEDIÇÃO DE TESTE — NÃO OFICIAL.</b> Regras financeiras, controle de acesso e exportação no modelo oficial (01ª MC) ainda não validados.</div>` : '')
     + ((r.hipoteses || []).length ? `<div class="aviso info"><b>Simulação com hipóteses não validadas:</b><ul style="margin:4px 0 0 18px">${r.hipoteses.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : '')
@@ -878,16 +877,71 @@ async function carregarMedicao() {
     ${Object.entries(r.gavetas).flatMap(([g, d]) => d.lancamentos.map(l => `<tr><td>${g}</td><td>${esc(curto(l.alvo_nome || ('NF ' + (l.nf_id || ''))))}</td><td>${esc(l.servico)}</td>
       <td>${l.item ? esc(l.item) : '<span class="chip vermelho">sem item</span>'}</td><td class="n">${nf(l.quantidade, 3)}</td><td>${esc(l.unidade)}</td><td>${l.status === 'PENDENTE' ? `<span class="chip vermelho" title="${esc(l.motivo || '')}">pendente</span> <small>${esc(l.motivo || '')}</small>` : '<span class="chip verde">proposto</span>'}</td></tr>`)).join('') || '<tr><td colspan="7" class="vazio">Nada lançado nesta medição.</td></tr>'}
     </tbody></table></div>`;
+  renderMedComplementos(r);
+  carregarElegibilidade(id);
   $('#medTetos').className = r.tetos.length ? '' : 'vazio';
   $('#medTetos').innerHTML = r.tetos.length ? `<table><thead><tr><th>Subgrupo</th><th class="n">Teto</th><th class="n">Anterior</th><th class="n">Atual</th><th class="n">Excedente</th></tr></thead><tbody>
     ${r.tetos.map(t => `<tr><td>${esc(t.subgrupo)} ${esc(t.nome || '')}</td><td class="n">${brl(t.teto)}</td><td class="n">${brl(t.anterior)}</td><td class="n">${brl(t.atual)}</td><td class="n">${t.excedente ? `<span class="chip vermelho">${brl(t.excedente)}</span>` : '—'}</td></tr>`).join('')}</tbody></table>` : 'Sem lançamentos com item de BM.';
 }
+const SIT_REGRA = { 'CONFIRMADA': 'verde', 'PROVISÓRIA': 'amarelo', 'HIPÓTESE': 'amarelo', 'BLOQUEADA': 'vermelho', 'VÍNCULO INCOMPLETO': 'vermelho' };
+const SIT_ELEG = { PROPOSTO_NESTA: ['verde', 'proposto nesta'], APTO_SEM_OK: ['amarelo', 'completo, sem OK interno'],
+  PARCIAL_NAO_ELEGIVEL: ['cinza', 'parcial — não elegível (D-30)'], MEDIDO_ANTES: ['azul', 'medido antes'] };
+function renderMedComplementos(r) {
+  const aberta = r.medicao.status === 'ABERTA', c = r.conferencia;
+  $('#medConfItens').innerHTML = Object.entries(r.roteiro_conferencia).map(([k, t]) =>
+    `<label class="check"><input type="checkbox" name="ck_${k}"> ${esc(t)}</label>`).join('');
+  $('#fMedConf').hidden = !aberta || !pode('medicao');
+  $('#medConfEstado').innerHTML = !c ? `<div class="aviso info">Sem conferência interna: o fechamento exige uma conferência <b>CONFORME</b> sobre os lançamentos atuais (D-59, provisório).</div>`
+    : `<div class="aviso ${c.resultado === 'CONFORME' && c.vale ? 'ok' : 'problema'}"><b>Conferência #${c.id}: ${c.resultado === 'CONFORME' ? 'CONFORME' : 'NÃO CONFORME'}</b> por ${esc(c.por)} em ${esc(c.em)}.
+       ${c.vale ? '' : ' <b>Não vale mais:</b> os lançamentos mudaram depois dela — confira de novo.'}${c.obs ? ' ' + esc(c.obs) : ''}</div>`;
+  $('#medFechar').disabled = !aberta || !(c && c.vale && c.resultado === 'CONFORME');
+  $('#medFechar').title = $('#medFechar').disabled && aberta ? 'Exige conferência interna CONFORME e vigente' : '';
+  $('#medConfHist').innerHTML = r.conferencias.length > 1 ? `<details><summary>Histórico (${r.conferencias.length})</summary><ul>${r.conferencias.map(x =>
+    `<li>#${x.id} ${x.resultado} — ${esc(x.por)}, ${esc(x.em)}${x.obs ? ': ' + esc(x.obs) : ''}</li>`).join('')}</ul></details>` : '';
+  $('#medRegras').className = '';
+  $('#medRegras').innerHTML = `<table><tbody>${r.regras.map(g => `<tr><td><span class="chip ${SIT_REGRA[g.situacao] || ''}">${esc(g.situacao.toLowerCase())}</span></td>
+    <td>${esc(g.regra)}<br><small>${esc(g.efeito)}${g.decisao ? ' · <b>' + esc(g.decisao) + '</b>' : ''}</small></td></tr>`).join('')}</tbody></table>`;
+  const dup = r.duplicidades.length ? `<div class="aviso problema"><b>Parcela em mais de uma medição:</b> ${r.duplicidades.map(d => `${esc(d.servico)} de ${esc(d.alvo_nome)} (medições ${d.medicoes.join(', ')})`).join('; ')}</div>` : '';
+  $('#medParcelas').className = r.acumulado.length || dup ? '' : 'vazio';
+  $('#medParcelas').innerHTML = dup + (r.acumulado.length ? `<div class="tabela"><table><thead><tr><th>Item</th><th>Unid.</th><th class="n">Contrato</th><th class="n">Anterior</th><th class="n">Nesta</th><th class="n">Acumulado</th><th class="n">Saldo</th></tr></thead><tbody>
+    ${r.acumulado.map(i => `<tr><td title="${esc(i.descricao || '')}">${esc(i.item)}</td><td>${esc(i.unidade || '')}</td><td class="n">${nf(i.contrato, 3)}</td><td class="n">${nf(i.anterior, 3)}</td>
+      <td class="n">${nf(i.nesta, 3)}</td><td class="n">${i.excede_contrato ? `<span class="chip vermelho">${nf(i.acumulado, 3)}</span>` : nf(i.acumulado, 3)}</td><td class="n">${nf(i.saldo, 3)}</td></tr>`).join('')}</tbody></table></div>` : 'Nenhuma parcela com item de BM proposta.');
+}
+async function carregarElegibilidade(id) {
+  const el = await api('/api/medicao/elegibilidade?id=' + id);
+  if (String(id) !== $('#medSel').value) return;
+  const cont = Object.entries(SIT_ELEG).map(([k, [cor, rot]]) => `<span class="chip ${cor}">${el.contagem[k]} ${rot}</span>`).join(' ');
+  $('#medEleg').className = '';
+  $('#medEleg').innerHTML = `<p style="margin:0 0 6px">${cont}</p>
+    <p class="vazio" style="margin:0 0 8px">${esc(el.regra)} No período: ${nf(el.resumo.assentado_periodo_m, 2)} m assentados (informado), ${nf(el.resumo.verificado_periodo_m, 2)} m verificados; ${nf(el.resumo.proposto_nesta_m, 2)} m de trechos propostos nesta medição.
+      Cadastros medidos nesta: ${el.cadastro.medidos_nesta}. Recomposições ainda não lançadas: ${el.recomposicao_nao_lancada}.</p>
+    ${el.linhas.length ? `<div class="tabela"><table><thead><tr><th>Situação</th><th>Trecho / nó</th><th class="n">Assent. período</th><th class="n">Verif. período</th><th>Impedimentos / alertas</th></tr></thead><tbody>
+    ${el.linhas.map(l => `<tr><td><span class="chip ${SIT_ELEG[l.situacao][0]}">${SIT_ELEG[l.situacao][1]}${l.medido_na ? ' (' + l.medido_na + 'ª)' : ''}</span></td>
+      <td><a href="#" data-abrir="${l.alvo_tipo}|${esc(l.alvo_id)}">${esc(curto(l.nome))}</a></td><td class="n">${l.assentado_periodo_m != null ? nf(l.assentado_periodo_m, 2) : '—'}</td>
+      <td class="n">${l.verificado_periodo_m != null ? nf(l.verificado_periodo_m, 2) : '—'}</td><td><small>${esc([...l.impedimentos, ...l.alertas].join(' · ') || '—')}</small></td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${el.materiais.length ? `<div class="aviso info" style="margin-top:8px"><b>Material no período — bloqueado (D-53 · D-54):</b> regime de faturamento não aprovado; recebido não é faturável.
+      <ul style="margin:4px 0 0 18px">${el.materiais.map(m => `<li>${esc(m.material_id)} (${esc(m.propriedade)}): recebido ${nf(m.recebido, 2)} · aplicado ${nf(m.aplicado, 2)} ${esc(m.unidade)}</li>`).join('')}</ul></div>` : ''}`;
+}
+$('#medEleg').addEventListener('click', ev => {
+  const a = ev.target.closest('[data-abrir]'); if (!a) return;
+  ev.preventDefault(); const [tipo, id] = a.dataset.abrir.split('|');
+  abrirAba('mapa'); mostrarFiscal(tipo, id);
+});
+$('#fMedConf').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const f = ev.target, checklist = {};
+  f.querySelectorAll('input[type=checkbox]').forEach(i => { checklist[i.name.slice(3)] = i.checked; });
+  const ok = await acao(() => api('/api/medicao/conferir', { medicao_id: +$('#medSel').value, resultado: f.resultado.value, obs: f.obs.value, checklist }),
+    'Conferência registrada.').catch(() => null);
+  if (ok) { f.reset(); carregarMedicao(); }
+});
 $('#fMed').addEventListener('submit', async ev => {
   ev.preventDefault(); await acao(() => api('/api/medicao', formObj(ev.target)), 'Medição aberta.'); carregarMedicoes();
 });
 $('#medFechar').addEventListener('click', async () => {
   if (!confirm('Fechar a medição? Nenhum lançamento novo poderá entrar nela.')) return;
-  await acao(() => api('/api/medicao/fechar', { id: $('#medSel').value }), 'Medição fechada.'); carregarMedicoes();
+  const ok = await acao(() => api('/api/medicao/fechar', { medicao_id: +$('#medSel').value }), 'Medição fechada.').catch(() => null);
+  if (ok) carregarMedicoes();
 });
 
 /* ---------------------------------------------------------------- 6. usuários e histórico */

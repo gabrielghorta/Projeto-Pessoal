@@ -25,7 +25,9 @@ sys.path.insert(0, AQUI)
 import backup  # noqa: E402
 import importacao as I  # noqa: E402
 import importar  # noqa: E402
+import medicao as M  # noqa: E402
 import planilhas_sinteticas as PS  # noqa: E402
+import regras as R  # noqa: E402
 import servicos as S  # noqa: E402
 from fotos_teste import jpeg  # noqa: E402
 
@@ -667,7 +669,8 @@ class TestA09MedicaoCongelada(Base):
         self.aplicar()
         c = self.conectar()
         m1 = self._medicao(c, 1, "2026-10-01", "2026-10-31")
-        S.fechar_medicao(c, m1)
+        M.conferir(c, m1, "CONFORME", dict.fromkeys(R.CHECKLIST_CONFERENCIA_MEDICAO, True), "eng1")
+        S.fechar_medicao(c, m1, "eng1")
         m2 = self._medicao(c, 2, "2026-11-01", "2026-11-30")              # aberta
         v1, v2 = S.resumo_medicao(c, m1)["valor_pi"], S.resumo_medicao(c, m2)["valor_pi"]
         self.regerar(precos={"5.2.1": 2.61 * 2})                           # BM coerente, preço dobrado
