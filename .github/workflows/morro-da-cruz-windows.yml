@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [claude/powerbi-modifications-wqxekj]
-    paths: ["morro-da-cruz/**", ".github/workflows/morro-da-cruz-windows.yml"]
+    paths: ["morro-da-cruz/**", "!morro-da-cruz/docs/**", "!morro-da-cruz/README.md", ".github/workflows/morro-da-cruz-windows.yml"]
 
 permissions:
   contents: write

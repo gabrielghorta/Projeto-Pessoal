@@ -58,7 +58,9 @@ Nenhum requisito foi dado como concluído só por existir tela ou função. Cada
 
 ## 4. Como iniciar e testar
 
-**Instalação e operação:** `docs/IMPLANTACAO.md`. Em resumo:
+**Mais fácil:** baixe `MorroDaCruz-Windows.zip` em Releases, descompacte e dê dois cliques em `MorroDaCruz.exe`. O navegador abre sozinho e, na primeira vez, pede as planilhas.
+
+**Instalação e operação pelo código:** `docs/IMPLANTACAO.md`. Em resumo:
 ```
 pip install openpyxl pillow
 python importar.py                       # simulação (exige as planilhas em planilhas/)
@@ -109,7 +111,10 @@ A demonstração também apontou três comportamentos, registrados no documento:
 
 ## 7. Limitações
 
-- **Windows não ensaiado.** Os comandos são os mesmos; confira o primeiro backup e a primeira restauração na máquina da obra.
+- **Windows: ensaio parcial.**
+  - Pelo GitHub Actions (17/10), a suíte passou no Windows: 219 testes OK, com 27 pulados (os que exigem as planilhas reais, que não vão para o GitHub).
+  - O `MorroDaCruz.exe` foi gerado e abriu a primeira abertura no Windows.
+  - Ainda não ensaiados no Windows: a montagem com as planilhas reais e o uso completo. Confira o primeiro backup e a primeira restauração na máquina da obra.
 - **Servidor de um processo:** as gravações são serializadas. A concorrência é segura, mas o servidor é dimensionado para o porte da obra, não para muitos acessos simultâneos.
 - **Só 127.0.0.1** até a D-60; o login está pronto para quando houver hospedagem com HTTPS.
 - **Medição de TESTE:** valores com hipóteses (teto por subgrupo, reajuste sem frações elegíveis, rateio da escavação) e pendências fora do valor. Nada é oficial.
