@@ -738,7 +738,7 @@ class TestA10ObjetoRetirado(Base):
         ck = S.checkin(c, D, "Zona01", "TRECHO", TR002)
         S.registrar_clima(c, D, "Zona01", "MANHA", "SOL")
         S.registrar_clima(c, D, "Zona01", "TARDE", "SOL")
-        S.apontar(c, D, "Zona01", "TRECHO", TR002, metros_executados=10)
+        S.apontar(c, D, "Zona01", "TRECHO", TR002, intervalos_novos=[{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}])
         self.regerar(trechos=[PS.TRECHOS[0], PS.TRECHOS[2]])
         self.reprovar("TRECHO_COM_HISTORICO_SEM_CORRESPONDENCIA")         # retirada com histórico exige confirmação
         self.cfg["conciliacoes"] = [{"tipo": "TRECHO", "retirar_id": tid, "responsavel": "Eng. teste", "data": "2026-10-16",
@@ -747,7 +747,10 @@ class TestA10ObjetoRetirado(Base):
         est = S.estado_mapa(c, data=D)
         self.assertNotIn(TR002, est["status"])                             # fora do estado corrente do mapa
         self.assertEqual(est["pins"], [])
-        self.assertEqual(sorted(r["alvo_id"] for r in est["retirados_com_historico"]), [tid, tid])
+        (ret,) = est["retirados_com_historico"]                            # um registro por objeto, com as situações
+        self.assertEqual(ret["alvo_id"], tid)
+        self.assertEqual(len(ret["situacoes"]), 2)                          # execução sem OK + check-in aberto
+        self.assertIn("check-in", ret["historico"])
         S.checkout(c, ck, [])                                              # movimento antigo pode ser encerrado
         self.assertEqual(self.q("SELECT COUNT(*) FROM apontamentos WHERE alvo_id=?", tid), [(1,)])   # nada apagado
 

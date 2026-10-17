@@ -15,7 +15,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 
 ## Como rodar (Windows)
 
-1. Instale o Python 3.11+ e rode `pip install openpyxl`.
+1. Instale o Python 3.11+ e rode `pip install openpyxl`. Recomendado: `pip install pillow`, para decodificar por completo as fotos enviadas. Sem o Pillow, PNG continua sendo decodificado e JPEG passa só pela verificação estrutural; o método fica registrado em cada foto.
 2. Coloque as planilhas oficiais em `planilhas/` e o HTML REV02 em `mapa/`. Os nomes exatos estão em `config/fontes.json`.
 3. Faça a importação. Ela nunca apaga o banco nem movimentos.
    ```
@@ -83,10 +83,13 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 - **Simulação explícita:** a medição de TESTE lista as hipóteses não validadas (teto que desconta excedente, reajuste sem fração elegível, rateio da escavação, soldas ⌈L/6⌉).
 - **OK interno:** o "[✓] OK" é da Ankara e só gera proposta numa medição de **TESTE**. Também envia o trecho para a esteira GDOC.
 - **Fotos e clima:** controles operacionais propostos (3 fotos por trecho, 2 por nó com sinalização herdada; clima por turno).
-- **Foto original:** guardada sem alteração, com SHA-256 conferido no backup. Data e GPS vêm do EXIF, depois do aparelho, sem nunca inventar; a origem fica registrada. A mesma imagem não pode ser reutilizada. O carimbo é exibido, não gravado.
+- **Foto original:** só é aceita depois de validada como imagem íntegra. É guardada sem alteração, com SHA-256 conferido no backup. Data e GPS vêm do EXIF, depois do aparelho, sem nunca inventar; a origem fica registrada. A mesma imagem não pode ser reutilizada. O carimbo é exibido, não gravado.
 - **Intervalos por etapa no trecho** (assentado, cadastro de campo, reaterrado):
   - sobreposição e repetição são recusadas;
+  - reaterro e cadastro só sobre assentamento registrado até a data do serviço;
   - reaterro sem cadastro de campo gera alerta;
+  - avanço antigo, só em metros, fica preservado como legado pendente até a conciliação da posição;
+  - a estimativa de soldas ⌈L/6⌉ nunca vira quantidade confirmada;
   - soldas são informadas e verificadas por outra pessoa.
 - **Pin do mapa:** mostra a programação do check-in, não a posição atual da equipe.
 

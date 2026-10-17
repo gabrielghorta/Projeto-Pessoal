@@ -51,8 +51,6 @@ CAB_CONEXOES = {
 
 # Identidade técnica de um item de projeto (o resto — quantidade, código BM, BA/BB/BC, AG/AH — é atributo mutável)
 CAMPOS_ASSINATURA = ("descricao", "diametro", "pressao", "resina", "tipo_conexao", "solda", "material")
-# Tabelas com movimentos de campo/medição ligados a um alvo (TRECHO / ATIVIDADE)
-TABELAS_ALVO = ["checkins", "apontamentos", "fotos", "execucao", "movimentos", "medicao_lancamentos"]
 TOL_POSICAO_M = 0.01
 
 
@@ -243,17 +241,9 @@ class Importador:
             self._alteracao("parametro", chave, "valor", atual, str(valor))
 
     def historico(self, alvo_tipo):
-        """IDs (TRECHO / ATIVIDADE) que têm movimento de campo, foto, execução, medição ou cadastro."""
-        tabelas = {r[0] for r in self.c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        out = set()
-        for t in TABELAS_ALVO:
-            if t in tabelas:
-                out |= {r[0] for r in self.c.execute(f"SELECT DISTINCT alvo_id FROM {t} WHERE alvo_tipo=?", (alvo_tipo,))}
-        if alvo_tipo == "TRECHO":
-            for t in ("cadastro", "ligacoes_prediais"):
-                if t in tabelas:
-                    out |= {r[0] for r in self.c.execute(f"SELECT DISTINCT trecho_id FROM {t}")}
-        return out
+        """IDs (TRECHO / ATIVIDADE) com qualquer registro operacional: movimento, check-in, foto, execução, medição,
+        soldas, reserva, intervalos, conciliação, cadastro (definição única em servicos.historico_alvos)."""
+        return set(S.historico_alvos(self.c, alvo_tipo))
 
     # -------------------------------------------------------------- conciliações explícitas (de-para)
     def _validar_conciliacoes(self, lista):
@@ -943,6 +933,32 @@ def preparar_v6(conn):
         _add_coluna(conn, "fotos", c, t)
     conn.execute("UPDATE fotos SET origem_data='LEGADO' WHERE origem_data IS NULL")
     _add_coluna(conn, "apontamentos", "informado_por", "TEXT")
+    S.aplicar_esquema(conn)
+
+
+def preparar_v7(conn):
+    """Esquema v6 → v7, sem perda:
+    * intervalos_execucao ganha as origens LEGADO/RETIFICACAO e o vínculo com a conciliação do legado. O CHECK de
+      uma tabela SQLite não muda por ALTER: a tabela é recriada e TODAS as linhas copiadas (conferido) antes de
+      descartar a cópia antiga;
+    * fotos ganha `validacao` (preenchida depois por servicos.revalidar_fotos);
+    * tabelas de conciliação do legado.
+    Apontamentos antigos sem intervalo continuam como estão: viram "avanço legado sem posição", preservado no
+    resumo de execução até a conciliação explícita."""
+    _add_coluna(conn, "fotos", "validacao", "TEXT")
+    sql = (conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='intervalos_execucao'").fetchone() or [""])[0]
+    if sql and "LEGADO" not in sql:
+        antes = conn.execute("SELECT COUNT(*) FROM intervalos_execucao").fetchone()[0]
+        conn.execute("ALTER TABLE intervalos_execucao RENAME TO intervalos_execucao_v6")
+        conn.execute("DROP INDEX IF EXISTS ix_intervalos")
+        S.aplicar_esquema(conn)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(intervalos_execucao_v6)")]
+        lista = ", ".join(cols)
+        conn.execute(f"INSERT INTO intervalos_execucao({lista}) SELECT {lista} FROM intervalos_execucao_v6")
+        depois = conn.execute("SELECT COUNT(*) FROM intervalos_execucao").fetchone()[0]
+        if depois != antes:
+            raise RuntimeError(f"Migração v7: intervalos copiados {depois} ≠ {antes}; nada foi alterado.")
+        conn.execute("DROP TABLE intervalos_execucao_v6")
     S.aplicar_esquema(conn)
 
 

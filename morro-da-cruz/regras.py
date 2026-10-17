@@ -126,7 +126,9 @@ def quantidades_previstas_trecho(trecho, quantidades_totais, metros, mapa):
         out.append({"servico": s["servico"], "unidade": s["unidade"], "previsto": round(q, 3)})
     if str(trecho.get("material") or "").upper() == "PEAD" and trecho.get("metodologia") != "MND":
         sol = mapa["solda"]
-        out.append({"servico": sol["servico"], "unidade": "UN", "previsto": qtd_soldas(L, sol["comprimento_barra_m"])})
+        # ⌈L/6⌉ é só ESTIMATIVA de referência: nunca vira quantidade confirmada (soldas têm controle próprio)
+        out.append({"servico": sol["servico"], "unidade": "UN", "previsto": qtd_soldas(L, sol["comprimento_barra_m"]),
+                    "estimativa": True})
     return out
 
 

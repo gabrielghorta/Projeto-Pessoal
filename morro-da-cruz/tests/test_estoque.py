@@ -131,7 +131,7 @@ class TestEmprestimoEBaixaTeorica(BaseEstoque):
         ck = S.checkin(self.c, D1, "Zona01", "TRECHO", TR001, materiais=[{"material_id": TUBO, "quantidade": 12}])
         for t in ("MANHA", "TARDE"):
             S.registrar_clima(self.c, D1, "Zona01", t, "SOL")
-        S.apontar(self.c, D1, "Zona01", "TRECHO", TR001, metros_executados=10)
+        S.apontar(self.c, D1, "Zona01", "TRECHO", TR001, intervalos_novos=[{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}])
         self.assertEqual(self.saldo(), 28)                                       # apontamento não baixa estoque
         S.checkout(self.c, ck, [{"material_id": TUBO, "aplicado": 8, "sobra": 4}])
         c = next(x for x in S.consumo_previsto_x_confirmado(self.c) if x["material_id"] == TUBO)

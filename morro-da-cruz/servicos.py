@@ -17,13 +17,14 @@ import re
 import sqlite3
 from datetime import date, datetime
 
+import imagens
 import regras as R
 from regras import RegraViolada
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 6
+VERSAO_ESQUEMA = 7
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -55,7 +56,7 @@ def aplicar_esquema(conn):
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "campo: intervalos por etapa, soldas verificadas, foto original com hash"))
+                 (VERSAO_ESQUEMA, _agora(), "campo: legado conciliado, cronologia, imagem validada"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -239,6 +240,10 @@ def trechos_da_atividade(conn, atividade_id):
                                           sorted(pontos))]
 
 
+# Só foto com imagem validada conta como evidência (INVALIDA / ARQUIVO_AUSENTE / não validada não contam)
+FOTO_VALIDA = "validacao IS NOT NULL AND validacao NOT IN ('INVALIDA','ARQUIVO_AUSENTE')"
+
+
 def _sinalizacao_herdada(conn, alvo_tipo, alvo_id):
     if alvo_tipo == "TRECHO":
         return False
@@ -246,13 +251,14 @@ def _sinalizacao_herdada(conn, alvo_tipo, alvo_id):
     if not ids:
         return False
     ph = ",".join("?" * len(ids))
-    return conn.execute(f"SELECT 1 FROM fotos WHERE alvo_tipo='TRECHO' AND categoria='SINALIZACAO' AND alvo_id IN ({ph}) LIMIT 1",
-                        ids).fetchone() is not None
+    return conn.execute(f"SELECT 1 FROM fotos WHERE alvo_tipo='TRECHO' AND categoria='SINALIZACAO' AND {FOTO_VALIDA} "
+                        f"AND alvo_id IN ({ph}) LIMIT 1", ids).fetchone() is not None
 
 
 def fotos_faltando(conn, alvo_tipo, ref):
     a = alvo(conn, alvo_tipo, ref)
-    cats = [r[0] for r in conn.execute("SELECT categoria FROM fotos WHERE alvo_tipo=? AND alvo_id=?", (a["alvo_tipo"], a["id"]))]
+    cats = [r[0] for r in conn.execute(f"SELECT categoria FROM fotos WHERE alvo_tipo=? AND alvo_id=? AND {FOTO_VALIDA}",
+                                       (a["alvo_tipo"], a["id"]))]
     return R.fotos_pendentes(a["alvo_tipo"], cats, _sinalizacao_herdada(conn, a["alvo_tipo"], a["id"]))
 
 
@@ -721,20 +727,53 @@ def registrar_clima(conn, data, equipe_id, turno, condicao):
 
 
 # ------------------------------------------------------------------ intervalos de execução (etapa 4)
-def intervalos(conn, trecho_id, etapa=None):
+def intervalos(conn, trecho_id, etapa=None, ate_data=None):
     sql, args = "SELECT * FROM intervalos_execucao WHERE trecho_id=?", [trecho_id]
     if etapa:
         sql, args = sql + " AND etapa=?", args + [etapa]
+    if ate_data:
+        sql, args = sql + " AND data<=?", args + [ate_data]
     return _rows(conn.execute(sql + " ORDER BY etapa, ini_m", args))
 
 
-def _cobertura(conn, trecho_id, etapa, extra=()):
-    return R.unir_intervalos([(i["ini_m"], i["fim_m"]) for i in intervalos(conn, trecho_id, etapa)] + list(extra))
+def _cobertura(conn, trecho_id, etapa, extra=(), ate_data=None):
+    return R.unir_intervalos([(i["ini_m"], i["fim_m"]) for i in intervalos(conn, trecho_id, etapa, ate_data)] + list(extra))
+
+
+def legado_pendente(conn, trecho):
+    """Avanço registrado antes dos intervalos (apontamentos só em metros, sem posição) e ainda não conciliado.
+    É preservado como está: o resumo de execução não é recalculado enquanto ele existir."""
+    mnd = trecho.get("metodologia") == "MND"
+    aps = _rows(conn.execute(
+        """SELECT ap.id, ap.data, COALESCE(ap.metros_executados,0) AS ass, COALESCE(ap.metros_reaterrados,0) AS rea
+           FROM apontamentos ap
+           WHERE ap.alvo_tipo='TRECHO' AND ap.alvo_id=?
+             AND NOT EXISTS (SELECT 1 FROM intervalos_execucao i WHERE i.apontamento_id=ap.id)
+             AND ap.id NOT IN (SELECT apontamento_id FROM conciliacao_legado_apontamentos)
+             AND (COALESCE(ap.metros_executados,0) > 0 OR COALESCE(ap.metros_reaterrados,0) > 0)
+           ORDER BY ap.data, ap.id""", (trecho["id"],)))
+    if not aps:
+        return None
+    ass = round(sum(a["ass"] for a in aps), 6)
+    rea = 0.0 if mnd else round(sum(a["rea"] for a in aps), 6)
+    return {"ASSENTADO": ass, "REATERRADO": rea, "apontamentos": aps,
+            "datas": {"ASSENTADO": sorted({a["data"] for a in aps if a["ass"] > 0}),
+                      "REATERRADO": sorted({a["data"] for a in aps if a["rea"] > 0 and not mnd})}}
+
+
+def _exigir_sem_legado(conn, t, acao):
+    pend = legado_pendente(conn, t)
+    if pend:
+        raise RegraViolada(
+            f"{t['ponto']} tem avanço anterior sem posição ({pend['ASSENTADO']:g} m assentados, {pend['REATERRADO']:g} m "
+            f"reaterrados; apontamentos de {', '.join(sorted({a['data'] for a in pend['apontamentos']}))}). Concilie a "
+            f"posição desses metros (conciliação do legado) antes de {acao}.")
 
 
 def _validar_intervalos(conn, t, novos):
     """Recusa sobreposição (na mesma etapa, com o já registrado ou entre si), intervalo fora do trecho e reaterro/
-    cadastro de campo sobre o que não foi assentado. MND não tem vala: só ASSENTADO e CADASTRO_CAMPO."""
+    cadastro de campo sem assentamento JÁ FEITO NA DATA do serviço (assentamento posterior não vale como
+    pré-requisito). No mesmo dia a ordem não é conhecida: assentamento do próprio dia conta. MND não tem vala."""
     ext, mnd = float(t["extensao_m"]), t.get("metodologia") == "MND"
     por_etapa = {e: [] for e in R.ETAPAS_INTERVALO}
     for n in novos:
@@ -746,54 +785,43 @@ def _validar_intervalos(conn, t, novos):
         if not (0 <= a < b <= ext + R.TOL_M):
             raise RegraViolada(f"{e} {a:g}–{b:g} m fora do trecho (0–{ext:g} m) ou com início ≥ fim.")
         existentes = [(i["ini_m"], i["fim_m"]) for i in intervalos(conn, t["id"], e)]
-        sob = R.sobreposicao((a, b), existentes + por_etapa[e])
+        sob = R.sobreposicao((a, b), existentes + [(x, y) for x, y, _ in por_etapa[e]])
         if sob:
             raise RegraViolada(f"{e} {a:g}–{b:g} m sobrepõe intervalo já registrado ({sob[0]:g}–{sob[1]:g} m). "
                                "Intervalo repetido ou sobreposto não é aceito.")
-        por_etapa[e].append((a, b))
-    assentado = _cobertura(conn, t["id"], "ASSENTADO", por_etapa["ASSENTADO"])
+        por_etapa[e].append((a, b, n["data"]))
     for e in ("REATERRADO", "CADASTRO_CAMPO"):
-        for a, b in por_etapa[e]:
-            falta = R.fora_da_cobertura((a, b), assentado)
+        for a, b, d in por_etapa[e]:
+            suporte = _cobertura(conn, t["id"], "ASSENTADO", [(x, y) for x, y, dn in por_etapa["ASSENTADO"] if dn <= d], ate_data=d)
+            falta = R.fora_da_cobertura((a, b), suporte)
             if falta:
-                raise RegraViolada(f"{e} {a:g}–{b:g} m inclui trecho não assentado: "
+                raise RegraViolada(f"{e} {a:g}–{b:g} m em {d} inclui trecho sem assentamento registrado até essa data: "
                                    + ", ".join(f"{x:g}–{y:g} m" for x, y in falta) + ".")
-    return por_etapa
+    return {e: [(a, b) for a, b, _ in v] for e, v in por_etapa.items()}
 
 
-def _intervalos_por_metros(conn, t, metros_exec, metros_reat, completo):
-    """Compatibilidade com apontamento só em metros: ocupa as lacunas em sequência a partir do início
-    (origem SEQUENCIAL, sinalizada). '100 % concluído' preenche todas as lacunas (origem COMPLETO)."""
+def _intervalos_completo(conn, t, data):
+    """'100 % concluído': preenche exatamente as lacunas de assentado e, em VCA, de reaterro (origem COMPLETO)."""
     ext, mnd = float(t["extensao_m"]), t.get("metodologia") == "MND"
-    if mnd and metros_reat and not completo:
-        raise RegraViolada("Trecho MND não tem vala: não há metros reaterrados.")
-    novos = []
-
-    def ocupar(etapa, metros, cobertura, limite, origem):
-        resto = metros
-        for a, b in R.fora_da_cobertura((0.0, ext), cobertura):
-            for c, d in ([(a, b)] if limite is None else
-                         [(max(a, x), min(b, y)) for x, y in limite if min(b, y) - max(a, x) > R.TOL_M]):
-                if resto is not None and resto <= R.TOL_M:
-                    return
-                fim = d if resto is None else min(d, c + resto)
-                novos.append({"etapa": etapa, "ini_m": round(c, 6), "fim_m": round(fim, 6), "origem": origem})
-                if resto is not None:
-                    resto -= fim - c
-        if resto is not None and resto > R.TOL_M:
-            raise RegraViolada(f"{etapa}: {metros:g} m não cabem nas lacunas do trecho ({ext:g} m).")
-
-    origem = "COMPLETO" if completo else "SEQUENCIAL"
-    if completo or metros_exec:
-        ocupar("ASSENTADO", None if completo else metros_exec, _cobertura(conn, t["id"], "ASSENTADO"), None, origem)
-    if not mnd and (completo or metros_reat):
-        assent = R.unir_intervalos([(i["ini_m"], i["fim_m"]) for i in intervalos(conn, t["id"], "ASSENTADO")]
-                                   + [(n["ini_m"], n["fim_m"]) for n in novos if n["etapa"] == "ASSENTADO"])
-        ocupar("REATERRADO", None if completo else metros_reat, _cobertura(conn, t["id"], "REATERRADO"), assent, origem)
+    novos = [{"etapa": "ASSENTADO", "ini_m": round(a, 6), "fim_m": round(b, 6), "origem": "COMPLETO", "data": data}
+             for a, b in R.lacunas(_cobertura(conn, t["id"], "ASSENTADO"), ext)]
+    if not mnd:
+        novos += [{"etapa": "REATERRADO", "ini_m": round(a, 6), "fim_m": round(b, 6), "origem": "COMPLETO", "data": data}
+                  for a, b in R.lacunas(_cobertura(conn, t["id"], "REATERRADO"), ext)]
     return novos
 
 
+def _recalcular_alertas(conn, trecho_id):
+    """Reaterro sem cadastro de campo registrado ATÉ a data do reaterro (cadastro posterior não conta como anterior)."""
+    for r in intervalos(conn, trecho_id, "REATERRADO"):
+        cad = _cobertura(conn, trecho_id, "CADASTRO_CAMPO", ate_data=r["data"])
+        sem = 1 if R.fora_da_cobertura((r["ini_m"], r["fim_m"]), cad) else 0
+        if sem != r["sem_cadastro_campo"]:
+            conn.execute("UPDATE intervalos_execucao SET sem_cadastro_campo=? WHERE id=?", (sem, r["id"]))
+
+
 def _atualizar_execucao_trecho(conn, t):
+    """Resumo de execução a partir dos intervalos. Só é chamado sem legado pendente (ver _exigir_sem_legado)."""
     ext = float(t["extensao_m"])
     ass = R.comprimento(_cobertura(conn, t["id"], "ASSENTADO"))
     reat = ass if t.get("metodologia") == "MND" else R.comprimento(_cobertura(conn, t["id"], "REATERRADO"))
@@ -804,14 +832,26 @@ def _atualizar_execucao_trecho(conn, t):
         (t["id"], ass, reat, 1 if reat >= ext - R.TOL_M else 0))
 
 
+def _gravar_intervalos(conn, t, novos, equipe_id, apontamento_id, informado_por, conciliacao_id=None):
+    for n in novos:
+        conn.execute(
+            """INSERT INTO intervalos_execucao(trecho_id,etapa,ini_m,fim_m,data,equipe_id,apontamento_id,origem,
+                 informado_por,conciliacao_id,registrado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (t["id"], n["etapa"], float(n["ini_m"]), float(n["fim_m"]), n["data"], equipe_id, apontamento_id, n["origem"],
+             informado_por, conciliacao_id, _agora()))
+    _recalcular_alertas(conn, t["id"])
+    _atualizar_execucao_trecho(conn, t)
+
+
 def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_reaterrados=0,
             concluido_100=False, estaca_ini=None, estaca_fim=None, quantidades=None, intervalos_novos=None,
             informado_por=None):
     """Lança avanço de campo. `quantidades=None` equivale a [✅ OK, Confirmar Previsto].
 
     Trecho: o avanço é registrado em INTERVALOS por etapa (`intervalos_novos`: [{etapa, ini_m, fim_m}], em metros
-    desde o início do trecho). Sem intervalos, os metros ocupam as lacunas em sequência (origem SEQUENCIAL,
-    sinalizada) e '100 % concluído' preenche todas as lacunas. Reaterro sem cadastro de campo gera alerta.
+    desde o início do trecho) ou com '100 % concluído' (preenche as lacunas). Apontamento só em metros não é mais
+    aceito para trecho (criaria posição presumida). Com avanço anterior sem posição, exige antes a conciliação.
+    Estimativas (soldas ⌈L/6⌉) nunca viram quantidade confirmada: soldas têm controle próprio.
     """
     turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
     if turnos != {"MANHA", "TARDE"}:
@@ -821,13 +861,20 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     ex = execucao(conn, tipo, aid) or {"metros_executados": 0, "metros_reaterrados": 0, "concluido": 0}
     if ex.get("ok_fiscal_em"):
         raise RegraViolada("Alvo já validado pela fiscalização — não aceita novos apontamentos.")
+    servico_solda = mapa_servicos()["solda"]["servico"]
+    if any(q["servico"] == servico_solda for q in (quantidades or [])):
+        raise RegraViolada("Soldas não são confirmadas no apontamento: registre-as no controle de soldas "
+                           "(informadas e verificadas).")
     novos = []
     if tipo == "TRECHO":
+        _exigir_sem_legado(conn, a, "registrar novos intervalos")
         if intervalos_novos:
-            novos = [dict(n, origem="INFORMADO") for n in intervalos_novos]
-        else:
-            novos = _intervalos_por_metros(conn, a, float(metros_executados or 0), float(metros_reaterrados or 0),
-                                           concluido_100)
+            novos = [dict(n, origem="INFORMADO", data=data) for n in intervalos_novos]
+        elif concluido_100:
+            novos = _intervalos_completo(conn, a, data)
+        elif metros_executados or metros_reaterrados:
+            raise RegraViolada("Informe o intervalo executado (de/até, em metros desde o início do trecho): apontamento "
+                               "só em metros não indica a posição.")
         if not novos:
             raise RegraViolada("Informe o intervalo executado (de/até, em metros) ou marque 100 % concluído.")
         por_etapa = _validar_intervalos(conn, a, novos)
@@ -837,6 +884,7 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     else:
         concluido = 1 if concluido_100 else 0
         prev = previsto(conn, tipo, aid, 0) if concluido else []
+    prev = [q for q in prev if not q.get("estimativa")]          # estimativa é referência, não confirmação
     with transacao(conn):
         apid = conn.execute(
             """INSERT INTO apontamentos(data,equipe_id,alvo_tipo,alvo_id,metros_executados,metros_reaterrados,estaca_ini,
@@ -851,22 +899,56 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
         for (serv, un), conf in confirmadas.items():
             conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,NULL,?)", (apid, serv, un, float(conf)))
         if tipo == "TRECHO":
-            cad = _cobertura(conn, aid, "CADASTRO_CAMPO", [(float(n["ini_m"]), float(n["fim_m"])) for n in novos
-                                                           if n["etapa"] == "CADASTRO_CAMPO"])
-            for n in novos:
-                sem_cad = n["etapa"] == "REATERRADO" and bool(R.fora_da_cobertura((float(n["ini_m"]), float(n["fim_m"])), cad))
-                conn.execute(
-                    """INSERT INTO intervalos_execucao(trecho_id,etapa,ini_m,fim_m,data,equipe_id,apontamento_id,origem,
-                         informado_por,sem_cadastro_campo,registrado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                    (aid, n["etapa"], float(n["ini_m"]), float(n["fim_m"]), data, equipe_id, apid, n["origem"],
-                     informado_por, 1 if sem_cad else 0, _agora()))
-            _atualizar_execucao_trecho(conn, a)
+            _gravar_intervalos(conn, a, novos, equipe_id, apid, informado_por)
         else:
             conn.execute(
                 """INSERT INTO execucao(alvo_tipo,alvo_id,metros_executados,metros_reaterrados,concluido) VALUES (?,?,0,0,?)
                    ON CONFLICT(alvo_tipo,alvo_id) DO UPDATE SET concluido=MAX(concluido, excluded.concluido)""",
                 (tipo, aid, concluido))
     return apid
+
+
+def conciliar_legado(conn, trecho_ref, intervalos_conc, motivo, responsavel):
+    """Associa o avanço anterior sem posição a posições confirmadas em campo.
+
+    A soma por etapa precisa ser IGUAL ao legado pendente (ASSENTADO = metros executados; REATERRADO = metros
+    reaterrados; MND sem reaterro). Os intervalos ficam com origem LEGADO, ligados à conciliação e aos apontamentos
+    antigos; NÃO geram quantidades de serviço (já registradas no apontamento original). Data de cada intervalo:
+    informada (entre a primeira e a última data do legado daquela etapa) ou, por padrão, a última.
+    """
+    t = alvo(conn, "TRECHO", trecho_ref, operacao=True)
+    pend = legado_pendente(conn, t)
+    if not pend:
+        raise RegraViolada(f"{t['ponto']} não tem avanço anterior pendente de conciliação.")
+    if not (motivo or "").strip() or not (responsavel or "").strip():
+        raise RegraViolada("A conciliação exige motivo (como a posição foi confirmada) e responsável.")
+    novos = []
+    for n in intervalos_conc or []:
+        e = n.get("etapa")
+        if e not in ("ASSENTADO", "REATERRADO"):
+            raise RegraViolada("A conciliação posiciona só ASSENTADO e REATERRADO do legado.")
+        datas = pend["datas"][e]
+        if not datas:
+            raise RegraViolada(f"Não há {e} no avanço legado deste trecho.")
+        d = n.get("data") or datas[-1]
+        if not (datas[0] <= d <= datas[-1]):
+            raise RegraViolada(f"Data {d} fora do período do legado de {e} ({datas[0]} a {datas[-1]}).")
+        novos.append({"etapa": e, "ini_m": float(n["ini_m"]), "fim_m": float(n["fim_m"]), "data": d, "origem": "LEGADO"})
+    for e in ("ASSENTADO", "REATERRADO"):
+        soma = sum(n["fim_m"] - n["ini_m"] for n in novos if n["etapa"] == e)
+        if abs(soma - pend[e]) > 0.01:
+            raise RegraViolada(f"{e}: a conciliação posiciona {soma:g} m, mas o legado tem {pend[e]:g} m. A conciliação "
+                               "distribui exatamente os metros antigos (nem mais, nem menos).")
+    _validar_intervalos(conn, t, novos)
+    with transacao(conn):
+        cid = conn.execute(
+            "INSERT INTO conciliacoes_legado(trecho_id,metros_assentado,metros_reaterrado,motivo,responsavel,em) "
+            "VALUES (?,?,?,?,?,?)", (t["id"], pend["ASSENTADO"], pend["REATERRADO"], motivo.strip(), responsavel.strip(),
+                                     _agora())).lastrowid
+        for ap in pend["apontamentos"]:
+            conn.execute("INSERT INTO conciliacao_legado_apontamentos VALUES (?,?)", (ap["id"], cid))
+        _gravar_intervalos(conn, t, novos, None, None, responsavel.strip(), conciliacao_id=cid)
+    return cid
 
 
 def verificar_intervalo(conn, intervalo_id, verificado_por):
@@ -886,21 +968,27 @@ def verificar_intervalo(conn, intervalo_id, verificado_por):
 def situacao_intervalos(conn, trecho_id):
     t = alvo(conn, "TRECHO", trecho_id)
     ext = float(t["extensao_m"])
-    out = {"extensao_m": ext, "etapas": {}, "alertas": []}
+    out = {"extensao_m": ext, "etapas": {}, "alertas": [], "execucao_registrada": execucao(conn, "TRECHO", t["id"])}
     for e in R.ETAPAS_INTERVALO:
         if e == "REATERRADO" and t.get("metodologia") == "MND":
             continue
         cob = _cobertura(conn, t["id"], e)
         out["etapas"][e] = {"metros": R.comprimento(cob), "cobertura": cob, "lacunas": R.lacunas(cob, ext)}
     out["intervalos"] = intervalos(conn, t["id"])
+    out["legado"] = legado_pendente(conn, t)
+    if out["legado"]:
+        lg = out["legado"]
+        out["alertas"].append(f"Avanço anterior SEM POSIÇÃO: {lg['ASSENTADO']:g} m assentados e {lg['REATERRADO']:g} m "
+                              "reaterrados (preservados no resumo de execução). As lacunas acima não incluem esses metros. "
+                              "Concilie a posição antes de novos intervalos, do 100 % e do OK interno.")
     sem_cad = [i for i in out["intervalos"] if i["sem_cadastro_campo"]]
     if sem_cad:
-        out["alertas"].append("Reaterro sem cadastro de campo registrado antes: " +
+        out["alertas"].append("Reaterro sem cadastro de campo registrado até a data do reaterro: " +
                               ", ".join(f"{i['ini_m']:g}–{i['fim_m']:g} m ({i['data']})" for i in sem_cad))
     seq = [i for i in out["intervalos"] if i["origem"] == "SEQUENCIAL"]
     if seq:
-        out["alertas"].append(f"{len(seq)} intervalo(s) com posição presumida (apontamento só em metros): confirme a "
-                              "posição em campo.")
+        out["alertas"].append(f"{len(seq)} intervalo(s) com posição presumida (apontamento só em metros, versão anterior): "
+                              "confirme a posição em campo e corrija por retificação.")
     pend = [i for i in out["intervalos"] if not i["verificado_em"]]
     if pend:
         out["alertas"].append(f"{len(pend)} intervalo(s) informados ainda sem verificação.")
@@ -964,16 +1052,6 @@ def resumo_soldas(conn, alvo_tipo, ref):
 LIMITE_FOTO = 20 * 1024 * 1024
 
 
-def _tipo_imagem(dados):
-    if dados[:3] == b"\xff\xd8\xff":
-        return "jpg", "image/jpeg"
-    if dados[:8] == b"\x89PNG\r\n\x1a\n":
-        return "png", "image/png"
-    if dados[4:8] == b"ftyp" and dados[8:12] in (b"heic", b"heix", b"mif1", b"heim", b"heis"):
-        return "heic", "image/heic"
-    return None, None
-
-
 def exif_jpeg(dados):
     """Data/hora de captura (DateTimeOriginal) e GPS do EXIF de um JPEG. {} se não houver ou estiver ilegível."""
     try:
@@ -1033,7 +1111,9 @@ def _ler_tiff(t):
 
 def registrar_foto(conn, alvo_tipo, ref, categoria, conteudo_b64, extensao=None, data_hora=None, lat=None, lon=None,
                    dir_fotos=DIR_FOTOS):
-    """Guarda o ARQUIVO ORIGINAL (sem recompressão nem carimbo), com SHA-256, tipo e tamanho.
+    """Guarda o ARQUIVO ORIGINAL (sem recompressão nem carimbo), com SHA-256, tipo e tamanho — depois de
+    validar que é uma imagem íntegra (imagens.validar: decodificação com Pillow quando instalado; sem Pillow, PNG
+    decodificado e JPEG verificado na estrutura). O método de validação fica registrado em `validacao`.
 
     Data de captura: EXIF (DateTimeOriginal) > informada pelo aparelho (`data_hora`) > hora do envio; a origem fica
     registrada. GPS: EXIF > navegador (`lat`/`lon`) > indisponível (nunca inventado). O carimbo é texto exibido sobre
@@ -1048,9 +1128,10 @@ def registrar_foto(conn, alvo_tipo, ref, categoria, conteudo_b64, extensao=None,
         raise RegraViolada("Conteúdo da foto inválido.") from None
     if not dados or len(dados) > LIMITE_FOTO:
         raise RegraViolada(f"Foto vazia ou maior que {LIMITE_FOTO // (1024 * 1024)} MB.")
-    ext, mime = _tipo_imagem(dados)
-    if not ext:
-        raise RegraViolada("Arquivo não é uma imagem JPEG, PNG ou HEIC.")
+    try:
+        ext, mime, metodo = imagens.validar(dados)
+    except imagens.ImagemInvalida as e:
+        raise RegraViolada(f"Foto recusada: {e}") from None
     h = hashlib.sha256(dados).hexdigest()
     dup = _one(conn, "SELECT alvo_tipo, alvo_id, categoria, data_hora FROM fotos WHERE sha256=?", h)
     if dup:
@@ -1079,10 +1160,30 @@ def registrar_foto(conn, alvo_tipo, ref, categoria, conteudo_b64, extensao=None,
             f.write(dados)
     conn.execute(
         """INSERT INTO fotos(alvo_tipo,alvo_id,area,categoria,arquivo,data_hora,lat,lon,carimbo,sha256,bytes,mime,origem_data,
-             origem_gps,enviada_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+             origem_gps,enviada_em,validacao) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (a["alvo_tipo"], a["id"], a.get("area"), categoria, nome, quando, lat, lon, carimbo, h, len(dados), mime,
-         origem_data, origem_gps, agora))
-    return {"arquivo": nome, "carimbo": carimbo, "sha256": h, "origem_data": origem_data, "origem_gps": origem_gps}
+         origem_data, origem_gps, agora, metodo))
+    return {"arquivo": nome, "carimbo": carimbo, "sha256": h, "origem_data": origem_data, "origem_gps": origem_gps,
+            "validacao": metodo}
+
+
+def revalidar_fotos(conn, dir_fotos):
+    """Valida as fotos ainda sem validação (gravadas antes do esquema v7, inclusive as LEGADO carimbadas).
+    Não altera arquivos: só registra o resultado. Foto INVALIDA ou ARQUIVO_AUSENTE deixa de contar como evidência."""
+    out = {}
+    for f in _rows(conn.execute("SELECT id, arquivo FROM fotos WHERE validacao IS NULL")):
+        p = os.path.join(dir_fotos, f["arquivo"])
+        if not os.path.exists(p):
+            res = "ARQUIVO_AUSENTE"
+        else:
+            with open(p, "rb") as fh:
+                try:
+                    res = imagens.validar(fh.read())[2]
+                except imagens.ImagemInvalida:
+                    res = "INVALIDA"
+        conn.execute("UPDATE fotos SET validacao=? WHERE id=?", (res, f["id"]))
+        out[res] = out.get(res, 0) + 1
+    return out
 
 
 # ------------------------------------------------------------------ lançamentos (sem regime financeiro aplicado)
@@ -1131,16 +1232,27 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
     data = data or date.today().isoformat()
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     tipo, aid = a["alvo_tipo"], a["id"]
+    if tipo == "TRECHO":
+        _exigir_sem_legado(conn, a, "o OK interno")
     ex = execucao(conn, tipo, aid)
     R.validar_ok_fiscal(ex, fotos_faltando(conn, tipo, aid))
+    servico_solda = mapa_servicos()["solda"]["servico"]
     med = medicao_para(conn, data)
     with transacao(conn):
         conn.execute("UPDATE execucao SET ok_fiscal_em=?, ok_fiscal_por=?, medicao_id=? WHERE alvo_tipo=? AND alvo_id=?",
                      (data, usuario, med["id"], tipo, aid))
+        # SOLDA de apontamentos antigos (estimativa ⌈L/6⌉ gravada como confirmada) é ignorada: vale o controle de soldas
         servs = _rows(conn.execute(
             """SELECT q.servico, q.unidade, SUM(q.confirmado) qtd FROM apontamento_quantidades q
                JOIN apontamentos ap ON ap.id=q.apontamento_id
-               WHERE ap.alvo_tipo=? AND ap.alvo_id=? GROUP BY q.servico, q.unidade""", (tipo, aid)))
+               WHERE ap.alvo_tipo=? AND ap.alvo_id=? AND q.servico<>? GROUP BY q.servico, q.unidade""",
+            (tipo, aid, servico_solda)))
+        aprov = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM soldas WHERE alvo_tipo=? AND alvo_id=? "
+                             "AND resultado='APROVADA'", (tipo, aid)).fetchone()[0]
+        if aprov:
+            _lancar(conn, med["id"], 1, servico_solda, None, "UN", aprov, tipo, aid,
+                    motivo="SOLDA: item de BM e regra contratual a confirmar; quantidade = soldas verificadas e "
+                           "APROVADAS no controle de soldas (a estimativa ⌈L/6⌉ não é usada)")
         if tipo == "TRECHO":
             mnd = a.get("metodologia") == "MND"
             for s in servs:
@@ -1479,11 +1591,41 @@ def detalhe(conn, alvo_tipo, ref):
     return d
 
 
+# Tabelas com registro operacional ligado a um alvo. A importação não retira um alvo com histórico sem
+# conciliação, e o mapa lista os retirados que têm histórico. Uma definição só, usada pelos dois.
+HISTORICO_POR_ALVO = ["checkins", "apontamentos", "fotos", "execucao", "movimentos", "medicao_lancamentos", "soldas",
+                      "reservas"]
+HISTORICO_POR_TRECHO = [("cadastro", "trecho_id"), ("ligacoes_prediais", "trecho_id"), ("intervalos_execucao", "trecho_id"),
+                        ("conciliacoes_legado", "trecho_id")]
+NOMES_HISTORICO = {"checkins": "check-in", "apontamentos": "apontamento", "fotos": "foto", "execucao": "execução",
+                   "movimentos": "movimento de material", "medicao_lancamentos": "lançamento de medição (teste)",
+                   "soldas": "soldas", "reservas": "reserva de material", "cadastro": "esteira de cadastro",
+                   "ligacoes_prediais": "ligação predial", "intervalos_execucao": "intervalos executados",
+                   "conciliacoes_legado": "conciliação do legado"}
+
+
+def historico_alvos(conn, alvo_tipo):
+    """{id: [tabelas com registro]} para TRECHO ou ATIVIDADE."""
+    tabelas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    out = {}
+    for t in HISTORICO_POR_ALVO:
+        if t in tabelas:
+            for (aid,) in conn.execute(f"SELECT DISTINCT alvo_id FROM {t} WHERE alvo_tipo=? AND alvo_id IS NOT NULL", (alvo_tipo,)):
+                out.setdefault(aid, []).append(t)
+    if alvo_tipo == "TRECHO":
+        for t, col in HISTORICO_POR_TRECHO:
+            if t in tabelas:
+                for (aid,) in conn.execute(f"SELECT DISTINCT {col} FROM {t}"):
+                    out.setdefault(aid, []).append(t)
+    return out
+
+
 def estado_mapa(conn, medicao_atual_id=None, data=None):
     """Mapa Iluminado: estado CORRENTE por nome visível (só objetos vigentes), pins e bandeja sem posição.
 
-    O histórico de objetos retirados não é apagado. Ele aparece em `retirados_com_historico` para
-    tratamento explícito (check-in aberto, execução sem OK) e não entra nas cores do mapa.
+    O histórico de objetos retirados não é apagado. Cada objeto retirado com qualquer registro operacional
+    (execução, check-in, foto, soldas, intervalos, reserva...) aparece UMA vez em `retirados_com_historico`, com
+    o que existe e o que precisa de tratamento; não entra nas cores do mapa.
     """
     vig = {("TRECHO", r[0]): r[1] for r in conn.execute("SELECT id, ponto FROM trechos WHERE vigente=1")}
     vig.update({("ATIVIDADE", r[0]): r[1] for r in conn.execute(
@@ -1491,31 +1633,42 @@ def estado_mapa(conn, medicao_atual_id=None, data=None):
         "WHERE a.vigente=1 AND e.vigente=1")})
     ex = {(r["alvo_tipo"], r["alvo_id"]): dict(r) for r in conn.execute("SELECT * FROM execucao")}
     fotos = {}
-    for r in conn.execute("SELECT alvo_tipo, alvo_id, categoria FROM fotos"):
+    for r in conn.execute(f"SELECT alvo_tipo, alvo_id, categoria FROM fotos WHERE {FOTO_VALIDA}"):
         fotos.setdefault((r[0], r[1]), []).append(r[2])
-    status, retirados = {}, []
+    status = {}
     for (tipo, aid), e in ex.items():
-        if (tipo, aid) not in vig:
-            retirados.append({"alvo_tipo": tipo, "alvo_id": aid, "nome": nome_alvo(conn, tipo, aid),
-                              "situacao": "execução registrada em objeto retirado da revisão vigente"})
-            continue
-        her = _sinalizacao_herdada(conn, tipo, aid) if tipo == "ATIVIDADE" else False
-        falt = R.fotos_pendentes(tipo, fotos.get((tipo, aid), []), her)
-        status[vig[(tipo, aid)]] = R.status_mapa(e, falt, medicao_atual_id)
+        if (tipo, aid) in vig:
+            her = _sinalizacao_herdada(conn, tipo, aid) if tipo == "ATIVIDADE" else False
+            falt = R.fotos_pendentes(tipo, fotos.get((tipo, aid), []), her)
+            status[vig[(tipo, aid)]] = R.status_mapa(e, falt, medicao_atual_id)
+    retirados = {}
+    for tipo in ("TRECHO", "ATIVIDADE"):
+        for aid, tabs in historico_alvos(conn, tipo).items():
+            if (tipo, aid) in vig:
+                continue
+            retirados[(tipo, aid)] = {"alvo_tipo": tipo, "alvo_id": aid, "nome": nome_alvo(conn, tipo, aid),
+                                      "historico": sorted({NOMES_HISTORICO.get(t, t) for t in tabs}), "situacoes": []}
+            if (tipo, aid) in ex and not ex[(tipo, aid)].get("ok_fiscal_em"):
+                retirados[(tipo, aid)]["situacoes"].append("execução registrada sem OK interno")
+            n = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM soldas WHERE alvo_tipo=? AND alvo_id=?", (tipo, aid)).fetchone()[0]
+            if n:
+                retirados[(tipo, aid)]["situacoes"].append(f"{n} solda(s) registrada(s)")
     pins = []
     for c in checkins_abertos(conn, data or date.today().isoformat()):
         if not c["alvo_id"]:
             continue
         if c["alvo_retirado"]:
-            retirados.append({"alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_id"], "nome": c["alvo_nome"],
-                              "situacao": f"check-in {c['id']} aberto ({c['equipe_id']}) em objeto retirado — encerrar no check-out"})
+            r = retirados.setdefault((c["alvo_tipo"], c["alvo_id"]), {
+                "alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_id"], "nome": c["alvo_nome"], "historico": ["check-in"],
+                "situacoes": []})
+            r["situacoes"].append(f"check-in {c['id']} aberto ({c['equipe_id']}) — encerrar no check-out")
             continue
         pins.append({"equipe": c["equipe_id"], "alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_nome"], "checkin": c["id"],
                      "data": c["data"], "origem": "programação do check-in"})
     return {
         "status": status,
         "pins": pins,
-        "retirados_com_historico": retirados,
+        "retirados_com_historico": sorted(retirados.values(), key=lambda r: (r["alvo_tipo"], str(r["nome"]))),
         "sem_posicao": _rows(conn.execute(
             """SELECT e.id, e.numero, e.status_posicao, GROUP_CONCAT(a.nomenclatura, ' | ') nomenclaturas
                FROM elementos e JOIN atividades a ON a.elemento_id=e.id AND a.vigente=1

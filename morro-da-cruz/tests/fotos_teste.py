@@ -1,7 +1,9 @@
-"""JPEGs mínimos e únicos para os testes (cada evidência precisa de uma foto própria), com EXIF opcional."""
+"""Fotos de teste REAIS (decodificáveis) e únicas — cada evidência precisa de uma foto própria —, com EXIF opcional."""
 import base64
 import itertools
+import os
 import struct
+import zlib
 
 _seq = itertools.count(1)
 
@@ -39,9 +41,33 @@ def _exif(data_hora=None, lat=None, lon=None):
     return b"\xff\xe1" + struct.pack(">H", len(app1) + 2) + app1
 
 
-def jpeg(data_hora=None, lat=None, lon=None):
-    """base64 de um JPEG mínimo e único; com data_hora/lat/lon grava EXIF."""
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "fotos")
+
+
+def bytes_fixture(nome):
+    with open(os.path.join(FIXTURES, nome), "rb") as f:
+        return f.read()
+
+
+def jpeg_bytes(data_hora=None, lat=None, lon=None, base="base.jpg"):
+    """JPEG REAL (32×24 px, decodificável) e único: insere EXIF opcional e um comentário (COM) logo após o SOI.
+    Segmentos APP1/COM não alteram os pixels."""
+    d = bytes_fixture(base)
     exif = _exif(data_hora, lat, lon) if (data_hora or lat is not None) else b""
     unico = f"foto-teste-{next(_seq)}".encode()
     com = b"\xff\xfe" + struct.pack(">H", len(unico) + 2) + unico
-    return base64.b64encode(b"\xff\xd8" + exif + com + b"\xff\xda\x00\x02\xff\xd9").decode()
+    return d[:2] + exif + com + d[2:]
+
+
+def jpeg(data_hora=None, lat=None, lon=None, base="base.jpg"):
+    """base64 de jpeg_bytes()."""
+    return base64.b64encode(jpeg_bytes(data_hora, lat, lon, base)).decode()
+
+
+def png():
+    """PNG REAL e único (bloco tEXt com CRC válido antes do IEND)."""
+    d = bytes_fixture("base.png")
+    txt = b"Comment\x00" + f"foto-teste-{next(_seq)}".encode()
+    bloco = struct.pack(">I", len(txt)) + b"tEXt" + txt + struct.pack(">I", zlib.crc32(b"tEXt" + txt) & 0xFFFFFFFF)
+    fim = d.rindex(b"IEND") - 4
+    return base64.b64encode(d[:fim] + bloco + d[fim:]).decode()

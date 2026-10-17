@@ -1,5 +1,5 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v6. Banco SQLite local.
+-- Esquema v7. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
@@ -10,6 +10,8 @@
 --     baixa teórica fora do saldo físico.
 --   * v5: custódia por sessão (fechamentos em ordem), reserva nunca descoberta, retificação de fechamento.
 --   * v6 (etapa 4, campo): intervalos por etapa no trecho, soldas informadas × verificadas, foto original com hash.
+--   * v7 (auditoria f035f5c): avanço legado sem posição + conciliação explícita, cronologia dos pré-requisitos,
+--     validação da imagem antes de aceitar a foto como evidência.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS schema_versao (
@@ -427,7 +429,9 @@ CREATE TABLE IF NOT EXISTS apontamentos (
 -- Intervalo executado de um trecho, por etapa (metros a partir do início do trecho, sentido da 06.1).
 -- Não pode sobrepor outro da mesma etapa; reaterro e cadastro de campo só sobre o que foi assentado.
 -- origem: INFORMADO (ini/fim do campo) · COMPLETO (100 % concluído: preenche as lacunas)
---         · SEQUENCIAL (apontamento só em metros: posição presumida em sequência, sinalizada)
+--         · SEQUENCIAL (v6: apontamento só em metros, posição presumida — não é mais aceito; confirmar por retificação)
+--         · LEGADO (metros de apontamento anterior aos intervalos, posição confirmada por conciliação; sem quantidades novas)
+--         · RETIFICACAO (substitui intervalos anulados por retificação)
 CREATE TABLE IF NOT EXISTS intervalos_execucao (
   id INTEGER PRIMARY KEY,
   trecho_id TEXT NOT NULL REFERENCES trechos(id),
@@ -437,12 +441,29 @@ CREATE TABLE IF NOT EXISTS intervalos_execucao (
   data TEXT NOT NULL,
   equipe_id TEXT REFERENCES equipes(id),
   apontamento_id INTEGER REFERENCES apontamentos(id),
-  origem TEXT NOT NULL CHECK (origem IN ('INFORMADO','COMPLETO','SEQUENCIAL')),
+  origem TEXT NOT NULL CHECK (origem IN ('INFORMADO','COMPLETO','SEQUENCIAL','LEGADO','RETIFICACAO')),
+  conciliacao_id INTEGER REFERENCES conciliacoes_legado(id),
   informado_por TEXT,
   sem_cadastro_campo INTEGER NOT NULL DEFAULT 0,   -- reaterro sobre trecho ainda sem cadastro de campo (alerta)
   verificado_em TEXT, verificado_por TEXT,
   registrado_em TEXT NOT NULL,
   CHECK (fim_m > ini_m)
+);
+
+-- Conciliação do avanço legado (apontamentos em metros, sem posição, anteriores aos intervalos): a pessoa
+-- responsável informa onde esses metros estão; a soma por etapa precisa ser igual ao legado. Não gera quantidades.
+CREATE TABLE IF NOT EXISTS conciliacoes_legado (
+  id INTEGER PRIMARY KEY,
+  trecho_id TEXT NOT NULL REFERENCES trechos(id),
+  metros_assentado REAL NOT NULL,
+  metros_reaterrado REAL NOT NULL,
+  motivo TEXT NOT NULL,
+  responsavel TEXT NOT NULL,
+  em TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS conciliacao_legado_apontamentos (
+  apontamento_id INTEGER PRIMARY KEY REFERENCES apontamentos(id),
+  conciliacao_id INTEGER NOT NULL REFERENCES conciliacoes_legado(id)
 );
 
 -- Soldas informadas pela equipe e verificadas por outra pessoa (o previsto ⌈L/6⌉ continua só estimativa)
@@ -486,7 +507,8 @@ CREATE TABLE IF NOT EXISTS fotos (
   mime TEXT,
   origem_data TEXT,                    -- EXIF · DISPOSITIVO · ENVIO · LEGADO
   origem_gps TEXT,                     -- EXIF · NAVEGADOR · (NULL = indisponível)
-  enviada_em TEXT
+  enviada_em TEXT,
+  validacao TEXT                       -- DECODIFICADA (Pillow/PNG) · ESTRUTURAL (JPEG sem Pillow) · INVALIDA · ARQUIVO_AUSENTE
 );
 -- índice único de fotos.sha256: criado por servicos.aplicar_esquema quando a coluna existe (migração v6)
 

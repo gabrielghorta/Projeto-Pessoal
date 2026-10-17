@@ -73,7 +73,7 @@ async function carregarMapa() {
   $('#semPosicao').innerHTML = est.sem_posicao.map(e => `<div style="margin-bottom:6px"><b>${esc(e.numero)}</b> <span class="chip ${String(e.status_posicao || '').startsWith('PROV') ? 'amarelo' : 'vermelho'}">${esc(e.status_posicao || 'sem posição')}</span><br><small>${esc(e.nomenclaturas)}</small></div>`).join('');
   const ret = est.retirados_com_historico || [];
   $('#painelRetirados').hidden = !ret.length;
-  $('#retirados').innerHTML = ret.map(r => `<div style="margin-bottom:6px"><button class="btn" data-fisc="${esc(r.alvo_tipo)}|${esc(r.alvo_id)}">${esc(curto(r.nome))}</button><br><small>${esc(r.situacao)}</small></div>`).join('');
+  $('#retirados').innerHTML = ret.map(r => `<div style="margin-bottom:6px"><button class="btn" data-fisc="${esc(r.alvo_tipo)}|${esc(r.alvo_id)}">${esc(curto(r.nome))}</button><br><small>histórico: ${esc((r.historico || []).join(', '))}${(r.situacoes || []).length ? ' · ' + esc(r.situacoes.join('; ')) : ''}</small></div>`).join('');
 }
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-fisc]'); if (!b) return;
@@ -295,11 +295,26 @@ async function selecionarCampo(tipo, id) {
         <table style="margin-top:6px"><thead><tr><th>Etapa</th><th class="n">Metros</th><th>Feito (m)</th><th>Lacunas (m)</th></tr></thead><tbody>
         ${Object.entries(iv.etapas).map(([e, v]) => `<tr><td>${esc(e)}</td><td class="n">${nf(v.metros)}</td><td>${faixa(v.cobertura)}</td><td>${faixa(v.lacunas)}</td></tr>`).join('')}</tbody></table>
         ${iv.intervalos.filter(i => !i.verificado_em).map(i => `<div style="margin-top:4px"><small>${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m · ${esc(i.data)} · ${esc(i.origem)}${i.informado_por ? ' · ' + esc(i.informado_por) : ''}</small> <button type="button" class="btn" data-verificar-intervalo="${i.id}">Verificar</button></div>`).join('')}</div>
-      ${iv.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}`
+      ${iv.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}
+      ${iv.legado ? `<div class="form" id="fLegado" style="border:1px dashed var(--borda);padding:8px">
+        <b>Conciliar avanço anterior sem posição</b> — ${nf(iv.legado.ASSENTADO)} m assentados${d.mnd ? '' : ` e ${nf(iv.legado.REATERRADO)} m reaterrados`}
+        (apontamentos de ${esc([...new Set(iv.legado.apontamentos.map(a => a.data))].join(', '))}). Informe onde esses metros estão; a soma precisa ser igual. Não gera quantidades novas.
+        <div class="linha"><label>Assentado de (m)<input name="la_ini" type="number" step="any" min="0"></label><label>até<input name="la_fim" type="number" step="any" min="0"></label></div>
+        ${d.mnd ? '' : '<div class="linha"><label>Reaterrado de (m)<input name="lr_ini" type="number" step="any" min="0"></label><label>até<input name="lr_fim" type="number" step="any" min="0"></label></div>'}
+        <div class="linha"><label>Como a posição foi confirmada<input name="motivo"></label><label>Responsável<input name="responsavel"></label></div>
+        <div class="acoes"><button type="button" class="btn prim" id="legadoBtn">Conciliar</button></div></div>` : ''}`
     : `<div class="aviso info">${esc(curto(d.nome))}: ${esc(d.texto)}</div>`;
   renderSoldas();
   $('#apQuant').innerHTML = '';
   renderFotos();
+  const fl = $('#fLegado');   // bloco dentro do formulário de apontamento: não pode ser <form> aninhado
+  if (fl) $('#legadoBtn').addEventListener('click', async () => {
+    const o = Object.fromEntries($$('input', fl).map(i => [i.name, i.value]));
+    const intervalos = [['ASSENTADO', 'la'], ['REATERRADO', 'lr']].filter(([, k]) => o[k + '_ini'] && o[k + '_fim'])
+      .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'] }));
+    await acao(() => api('/api/legado/conciliar', { trecho_id: CAMPO.id, intervalos, motivo: o.motivo, responsavel: o.responsavel }), 'Avanço anterior conciliado (sem quantidades novas).');
+    selecionarCampo(CAMPO.tipo, CAMPO.id);
+  });
 }
 function renderFotos() {
   if (!CAMPO) return;
@@ -318,10 +333,11 @@ $('#apPrevisto').addEventListener('click', async () => {
   if (CAMPO.tipo === 'TRECHO' && o.concluido_100) metros = CAMPO.d.extensao_m - (CAMPO.d.execucao ? CAMPO.d.execucao.metros_executados : 0);
   const prev = await acao(() => api(`/api/previsto?tipo=${CAMPO.tipo}&id=${encodeURIComponent(CAMPO.id)}&metros=${metros}`));
   $('#apQuant').innerHTML = `<div class="tabela" style="max-height:340px"><table><thead><tr><th>Serviço / peça</th><th>Unid.</th><th class="n">Previsto</th><th style="width:120px">Confirmado</th></tr></thead><tbody>
-    ${prev.map(q => `<tr><td>${esc(q.servico)}</td><td>${esc(q.unidade)}</td><td class="n">${nf(q.previsto, 3)}</td><td><input type="number" step="any" min="0" value="${q.previsto}" data-s="${esc(q.servico)}" data-u="${esc(q.unidade)}" data-p="${q.previsto}"></td></tr>`).join('') || '<tr><td colspan="4" class="vazio">Sem quantidades (apenas avanço).</td></tr>'}</tbody></table></div>
+    ${prev.map(q => q.estimativa ? `<tr><td>${esc(q.servico)}</td><td>${esc(q.unidade)}</td><td class="n">${nf(q.previsto, 3)}</td><td><small>estimativa — registre no controle de soldas</small></td></tr>`
+      : `<tr><td>${esc(q.servico)}</td><td>${esc(q.unidade)}</td><td class="n">${nf(q.previsto, 3)}</td><td><input type="number" step="any" min="0" value="${q.previsto}" data-s="${esc(q.servico)}" data-u="${esc(q.unidade)}" data-p="${q.previsto}"></td></tr>`).join('') || '<tr><td colspan="4" class="vazio">Sem quantidades (apenas avanço).</td></tr>'}</tbody></table></div>
     <div class="acoes" style="margin-top:10px"><button type="button" class="btn ok" id="apOk">[✅ OK, Confirmar Previsto]</button><button type="button" class="btn" id="apEdit">Salvar com as quantidades editadas</button></div>`;
-  $('#apOk').onclick = () => enviarApontamento(false);
-  $('#apEdit').onclick = () => enviarApontamento(true);
+  $('#apOk').onclick = () => enviarApontamento(false).catch(() => null);      // recusa já exibida no aviso
+  $('#apEdit').onclick = () => enviarApontamento(true).catch(() => null);
 });
 async function enviarApontamento(editado) {
   const o = formObj(fAp);
@@ -387,7 +403,7 @@ $('#fFoto').addEventListener('submit', async ev => {
   const f = ev.target, arq = f.arquivo.files[0], cat = f.categoria.value;
   const pos = await gps(), quando = new Date(arq.lastModified || Date.now()), dh = new Date(quando - quando.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
   const b64 = await lerOriginal(arq);
-  await acao(() => api('/api/foto', { alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id, categoria: cat, conteudo_b64: b64, data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon }), 'Foto original enviada (hash registrado).');
+  await acao(() => api('/api/foto', { alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id, categoria: cat, conteudo_b64: b64, data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon }), 'Foto original enviada (hash registrado).').catch(() => null);
   f.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id);
 });
 

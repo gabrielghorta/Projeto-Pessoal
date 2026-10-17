@@ -85,17 +85,22 @@ class PilotoZona01(unittest.TestCase):
         c = self.c
         S.entrada_material(c, D, "CAESB-PEAD-DE63", 100, "ROMANEIO_CAESB", "ROM-1")
         ck = S.checkin(c, D, "Zona01", "TRECHO", TR, materiais=[{"material_id": "CAESB-PEAD-DE63", "quantidade": 80}])
-        S.apontar(c, D, "Zona01", "TRECHO", TR, 40, 30)
+        S.apontar(c, D, "Zona01", "TRECHO", TR, intervalos_novos=[{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 40}, {"etapa": "REATERRADO", "ini_m": 0, "fim_m": 30}])
         S.apontar(c, D, "Zona01", "TRECHO", TR, concluido_100=True)
         for cat in ("SINALIZACAO", "EXECUCAO", "CONCLUIDO"):
             self.foto("TRECHO", TR, cat)
         S.checkout(c, ck, [{"material_id": "CAESB-PEAD-DE63", "aplicado": 76.55, "sobra": 3.45}])
+        sid = S.registrar_soldas(c, D, "Zona01", "TRECHO", TR, "ELETROFUSAO", 11, "Soldador X", "Encarregado")
+        S.registrar_soldas(c, D, "Zona01", "TRECHO", TR, "ELETROFUSAO", 2, "Soldador X", "Encarregado")   # sem verificação
+        S.verificar_soldas(c, sid, "Fiscal", "APROVADA")
         S.ok_fiscalizacao(c, "TRECHO", TR, "eng", D)
         r, ls = self.lanc(S.alvo(c, "TRECHO", TR)["id"])
         por = {l["servico"]: l for l in ls}
         self.assertEqual((por["ASSENTAMENTO"]["item"], por["ASSENTAMENTO"]["status"]), ("2.2_5.8.44", "PROPOSTO"))
         self.assertAlmostEqual(por["ASSENTAMENTO"]["quantidade"], 76.55)
-        self.assertEqual(por["SOLDA"]["status"], "PENDENTE")
+        # soldas: só as verificadas e aprovadas (11), não a estimativa ⌈76,55/6⌉ = 13; regra contratual pendente
+        self.assertEqual((por["SOLDA"]["status"], por["SOLDA"]["quantidade"]), ("PENDENTE", 11))
+        self.assertIn("APROVADAS", por["SOLDA"]["motivo"])
         self.assertEqual(por["LASTRO"]["status"], "PENDENTE")
         self.assertTrue(all(l["material_id"] is None for l in ls))        # nenhum regime de material
         self.assertTrue(r["teste"])

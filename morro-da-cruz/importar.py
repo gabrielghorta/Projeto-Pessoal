@@ -13,7 +13,7 @@ Garantias:
       - totalização do BM igual ao rodapé da própria planilha;
       - pendências impeditivas de identidade (nome × geometria, retirada de objeto com histórico, conciliação inválida);
   * reimportar os mesmos arquivos termina em SEM_ALTERACOES;
-  * banco em esquema anterior (v1 do MVP, v2 a v5) é migrado sem perda.
+  * banco em esquema anterior (v1 do MVP, v2 a v6) é migrado sem perda.
 """
 import argparse
 import json
@@ -34,7 +34,8 @@ DIR_RELATORIOS = os.path.join(BASE, "dados", "relatorios")
 OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontamentos", "apontamento_quantidades", "fotos",
                 "execucao", "cadastro", "cadastro_historico", "ligacoes_prediais", "notas_fiscais", "nf_itens",
                 "funcionarios", "maquinas", "medicoes", "medicao_lancamentos", "reservas", "estornos", "custodia_declarada",
-                "retificacoes", "reserva_ajustes", "intervalos_execucao", "soldas"]
+                "retificacoes", "reserva_ajustes", "intervalos_execucao", "soldas",
+                "conciliacoes_legado", "conciliacao_legado_apontamentos"]
 
 
 class ImportacaoReprovada(RuntimeError):
@@ -61,7 +62,8 @@ def _gravar_relatorio(rel, dir_relatorios):
     return destino
 
 
-def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None, cfg=None, dir_relatorios=DIR_RELATORIOS):
+def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None, cfg=None, dir_relatorios=DIR_RELATORIOS,
+             dir_fotos=None):
     """Roda a importação completa sobre `caminho_db` numa transação.
 
     Retorna o relatório (dict). Se uma conferência impeditiva reprovar, faz ROLLBACK, grava o
@@ -91,6 +93,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v5(conn)
         if 0 < versao < 6:
             I.preparar_v6(conn)
+        if 0 < versao < 7:
+            I.preparar_v7(conn)
         S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar
@@ -99,6 +103,7 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
         imp_obj = I.Importador(conn, cfg, imp, pasta_planilhas)
         imp_obj.executar()
         migracao = I.remapear_v1(conn, imp) if versao == 1 else None
+        fotos_revalidadas = S.revalidar_fotos(conn, dir_fotos or os.path.join(os.path.dirname(os.path.abspath(caminho_db)), "fotos"))
         aud = I.auditar(conn, cfg, imp, imp_obj.fontes, imp_obj.conferencias, modo)
         depois = contar_operacionais(conn)
         # tabelas v1_* são arquivo de auditoria (referências antigas preservadas como estavam)
@@ -126,6 +131,7 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             "alteracoes_registradas": n_alt,
             "decisoes_novas": imp_obj.decisoes_novas,
             "medicoes_congeladas_na_migracao": congeladas,
+            "fotos_revalidadas": fotos_revalidadas,
             "registros_operacionais_preservados": depois,
             "migracao_v1": migracao,
             "pendencias": [dict(r) for r in conn.execute(
@@ -164,7 +170,9 @@ def simular(db, pasta_planilhas=I.DIR_PLANILHAS, cfg=None, dir_relatorios=DIR_RE
     try:
         if os.path.exists(db):
             backup.copiar_banco(db, copia)
-        return executar(copia, "SIMULACAO", pasta_planilhas, cfg=cfg, dir_relatorios=dir_relatorios)
+        # fotos: as do banco original (a cópia temporária não tem pasta de fotos)
+        return executar(copia, "SIMULACAO", pasta_planilhas, cfg=cfg, dir_relatorios=dir_relatorios,
+                        dir_fotos=os.path.join(os.path.dirname(os.path.abspath(db)), "fotos"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -183,7 +191,7 @@ def aplicar(db, pasta_planilhas=I.DIR_PLANILHAS, destino_backup=None, dir_fotos=
             # lança RuntimeError (não íntegro) ou BackupIncompleto (anexo ausente) — a importação não começa
             pasta = backup.criar(db, destino_backup, dir_fotos, rotulo="antes_importacao",
                                  permitir_incompleto=aceitar_backup_incompleto, trava=False)
-        rel = executar(db, "APLICACAO", pasta_planilhas, pasta, cfg=cfg, dir_relatorios=dir_relatorios)
+        rel = executar(db, "APLICACAO", pasta_planilhas, pasta, cfg=cfg, dir_relatorios=dir_relatorios, dir_fotos=dir_fotos)
         if pasta:
             rel["backup_completo"] = backup.verificar_detalhado(pasta)["completo"]
         return rel

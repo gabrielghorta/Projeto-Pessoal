@@ -184,6 +184,10 @@ def p_apontamento(b, c):
                             b.get("estaca_fim"), b.get("quantidades"), b.get("intervalos") or None, b.get("informado_por"))}
 
 
+def p_legado_conciliar(b, c):
+    return {"id": S.conciliar_legado(c, b["trecho_id"], b.get("intervalos") or [], b.get("motivo"), b.get("responsavel"))}
+
+
 def p_intervalo_verificar(b, c):
     S.verificar_intervalo(c, int(b["intervalo_id"]), b.get("verificado_por"))
     return {"ok": True}
@@ -251,7 +255,7 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
         "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar,
-        "/api/intervalo/verificar": p_intervalo_verificar, "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
+        "/api/intervalo/verificar": p_intervalo_verificar, "/api/legado/conciliar": p_legado_conciliar, "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
         "/api/reserva/cancelar": p_reserva_cancelar}
 
 
