@@ -36,6 +36,7 @@
     <button role="tab" data-aba="esteira">📐 4. Esteira de Cadastro (GDOC)</button>
     <button role="tab" data-aba="medicao">💰 5. Medição (BM &amp; Memória de Cálculo)</button>
     <button role="tab" data-aba="admin">⚙️ 6. Usuários &amp; Histórico</button>
+    <button role="tab" data-aba="relatorios">📊 7. Relatórios</button>
   </nav>
 </header>
 
@@ -406,6 +407,29 @@
       </div>
     </div>
   </section>
+  <!-- ======================================================= 7. RELATÓRIOS -->
+  <section class="aba" id="aba-relatorios">
+    <div class="painel">
+      <div class="acoes" style="justify-content:space-between">
+        <div class="linha"><label>De<input type="date" id="rlIni"></label><label>Até<input type="date" id="rlFim"></label>
+          <label>Frente<select id="rlFrente"><option value="">obra inteira</option></select></label></div>
+        <a class="btn azul" id="rlExport" href="#">⬇ Exportar .xlsx</a>
+      </div>
+      <p class="vazio" style="margin:4px 0 0">Tudo calculado a partir dos registros efetivos: sem movimentos estornados e sem intervalos anulados por retificação.</p>
+    </div>
+    <div class="grade-2" style="margin-top:16px">
+      <div class="painel"><h3>Avanço no período (por frente e equipe)</h3><div id="rlAvanco" class="vazio">—</div>
+        <h3 style="margin-top:14px">Acumulado por frente</h3><div class="tabela" id="rlFrentes"></div></div>
+      <div class="painel"><h3>Pendências por frente</h3><div id="rlPend" class="vazio">—</div>
+        <h3 style="margin-top:14px">Materiais faltantes para a programação do período</h3><div class="tabela" id="rlFalt"></div></div>
+    </div>
+    <div class="painel" style="margin-top:16px">
+      <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Ciclo do material — previsto × comprado × recebido × reservado × aplicado × medido</h3>
+        <label class="check"><input type="checkbox" id="rlSoMov" checked> só materiais com movimento</label></div>
+      <div class="tabela" id="rlMat"></div>
+    </div>
+  </section>
+
   <!-- ======================================================= 6. ADMIN -->
   <section class="aba" id="aba-admin">
     <div class="grade-2">

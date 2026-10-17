@@ -49,7 +49,7 @@ section.aba { display: none; }
 section.aba.ativa { display: block; }
 /* a aba do mapa nunca fica com tamanho zero: o motor da REV02 calcula o viewBox pelo tamanho do iframe */
 #aba-mapa:not(.ativa) { display: block; position: absolute; left: -10000px; top: 0; width: calc(100% - 40px); visibility: hidden; }
-.grade { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); align-items: start; }
+.grade { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); align-items: start; }
 .grade-2 { display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); align-items: start; }
 .painel { background: var(--painel); border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px; box-shadow: var(--sombra); min-width: 0; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
@@ -155,6 +155,25 @@ details > summary { cursor: pointer; font-size: 13px; color: var(--suave); margi
   .grade-2 { grid-template-columns: 1fr; }
   .obra { display: none; }
 }
+/* celular (≈360–600 px): cabeçalho em duas linhas, formulários em uma coluna, nada além da largura da tela */
+@media (max-width: 600px) {
+  .marca { flex-wrap: wrap; padding: 6px 12px; gap: 6px 10px; }
+  .direita { flex-wrap: wrap; gap: 6px; justify-content: flex-end; flex: 1 1 auto; }
+  .caesb { font-size: 16px; }
+  .quem { text-align: left; }
+  nav.abas { padding: 0 4px; }
+  nav.abas button { padding: 9px 10px; font-size: 13px; }
+  main { padding-left: 8px; padding-right: 8px; }
+  .painel { padding: 12px; min-width: 0; }
+  .linha, .lin-compl, #fOcor, .lin-item, .editor-itens[data-itens=nfdig] .lin-item, .lin-ped { grid-template-columns: 1fr; }
+  .acoes { flex-wrap: wrap; }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi { min-width: 0; overflow-wrap: anywhere; }
+  .kpi b { font-size: 16px; }
+  .busca, .busca input { width: 100%; }
+  #medTetos, #medRegras, #medConfHist { overflow-x: auto; }
+  #toast { left: 8px; right: 8px; max-width: none; }
+}
 
 /* foto original com carimbo exibido por cima (não gravado na imagem) */
 .foto-carimbo { position: relative; }
@@ -176,3 +195,9 @@ details > summary { cursor: pointer; font-size: 13px; color: var(--suave); margi
 .lin-insp { grid-template-columns: 1.6fr .7fr .7fr 1fr 1.2fr auto; align-items: center; margin: 4px 0; }
 .conf-nf table select, .conf-nf table input { width: 100%; }
 .kanban, .grade { min-width: 0; }
+
+/* ---------- relatórios */
+.barras { display: flex; gap: 6px; align-items: flex-end; overflow-x: auto; padding: 10px 0 2px; }
+.barras div { display: flex; flex-direction: column; align-items: center; min-width: 38px; }
+.barras i { display: block; width: 18px; background: var(--laranja); border-radius: 3px 3px 0 0; }
+.barras small { font-size: 10px; color: var(--suave); }

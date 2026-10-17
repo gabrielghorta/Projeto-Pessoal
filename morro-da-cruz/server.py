@@ -22,6 +22,7 @@ import backup
 import compras as C
 import medicao as M
 import planejamento as P
+import relatorios as RL
 import exportar
 import regras as R
 import servicos as S
@@ -297,6 +298,16 @@ def r_medicao(q, c):
     return {**S.resumo_medicao(c, mid), **M.complementos(c, mid)}
 
 
+def _periodo(q):
+    hoje = date.today()
+    return q.get("ini") or hoje.replace(day=1).isoformat(), q.get("fim") or hoje.isoformat()
+
+
+def r_relatorios(q, c):
+    ini, fim = _periodo(q)
+    return RL.painel(c, ini, fim, q.get("frente") or None)
+
+
 def r_medicao_elegibilidade(q, c):
     return M.elegibilidade(c, int(q["id"]))
 
@@ -431,7 +442,7 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
        "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
        "/api/reservas-vencidas": r_reservas_vencidas, "/api/programacoes": r_programacoes,
-       "/api/medicao/elegibilidade": r_medicao_elegibilidade}
+       "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
@@ -575,6 +586,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(e.status, {"erro": str(e)})
             except R.RegraViolada as e:
                 return self._send(422, {"erro": str(e)})
+        if u.path == "/api/relatorios/exportar":
+            with LOCK:
+                ini, fim = _periodo(q)
+                nome, dados = RL.planilha(CONN, ini, fim, q.get("frente") or None)
+                A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
+            return self._send(200, dados, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                              {"Content-Disposition": f'attachment; filename="{nome}"'})
         if u.path in ("/mapa", "/mapa/"):
             return self._mapa()
         if u.path.startswith("/fotos/"):

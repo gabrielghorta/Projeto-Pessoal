@@ -124,7 +124,7 @@ function abrirAba(id) {
   $$('nav.abas button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.aba === id)));
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
   try { localStorage.setItem('aba', id); } catch (_) { /* sem storage */ }
-  ({ mapa: carregarMapa, prog: carregarProg, almox: carregarAlmox, compras: carregarCompras, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin })[id]();
+  ({ mapa: carregarMapa, prog: carregarProg, almox: carregarAlmox, compras: carregarCompras, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin, relatorios: carregarRelatorios })[id]();
 }
 
 /* ---------------------------------------------------------------- busca de trecho/nó */
@@ -943,6 +943,53 @@ $('#medFechar').addEventListener('click', async () => {
   const ok = await acao(() => api('/api/medicao/fechar', { medicao_id: +$('#medSel').value }), 'Medição fechada.').catch(() => null);
   if (ok) carregarMedicoes();
 });
+
+/* ---------------------------------------------------------------- 7. relatórios */
+const ROT_PEND = { impedimentos: 'Impedimentos', nao_conformidades: 'Não conformidades', intervalos_sem_verificacao: 'Intervalos sem verificação',
+  reaterro_sem_cadastro: 'Reaterro sem cadastro', legado_sem_posicao: 'Legado sem posição', aguardando_ok_interno: 'Aguardando OK interno',
+  concluidos_sem_fotos: 'Concluídos sem fotos', cadastro_pronto: 'Cadastro não enviado', cadastro_recebido: 'Cadastro a conferir',
+  cadastro_negado: 'Cadastro negado', programacao_vencida: 'Programação vencida' };
+let RELATORIO = null;
+async function carregarRelatorios() {
+  if (!carregarRelatorios.feito) { carregarRelatorios.feito = true; $('#rlIni').value = hoje().slice(0, 8) + '01'; $('#rlFim').value = hoje(); }
+  if ($('#rlFrente').options.length < 2) $('#rlFrente').innerHTML += (RESUMO.frentes || []).map(f => `<option>${esc(f)}</option>`).join('');
+  const q = new URLSearchParams({ ini: $('#rlIni').value, fim: $('#rlFim').value });
+  if ($('#rlFrente').value) q.set('frente', $('#rlFrente').value);
+  $('#rlExport').href = '/api/relatorios/exportar?' + q;
+  const r = RELATORIO = await api('/api/relatorios?' + q);
+  const av = r.avanco, t = av.total_periodo;
+  const dias = Object.entries(av.por_dia), maxd = Math.max(1, ...dias.map(d => d[1]));
+  $('#rlAvanco').className = '';
+  $('#rlAvanco').innerHTML = `<div class="kpis"><div class="kpi"><span>Assentado</span><b>${nf(t.ASSENTADO, 2)} m</b></div><div class="kpi"><span>Cadastro de campo</span><b>${nf(t.CADASTRO_CAMPO, 2)} m</b></div><div class="kpi"><span>Reaterrado</span><b>${nf(t.REATERRADO, 2)} m</b></div></div>
+    ${av.por_equipe.length ? `<div class="tabela"><table><thead><tr><th>Frente</th><th>Equipe</th><th class="n">Assentado</th><th class="n">Cad. campo</th><th class="n">Reaterrado</th><th class="n">Trechos</th></tr></thead><tbody>
+      ${av.por_equipe.map(l => `<tr><td>${esc(l.frente_id)}</td><td>${esc(l.equipe_id)}</td><td class="n">${nf(l.ASSENTADO, 2)}</td><td class="n">${nf(l.CADASTRO_CAMPO, 2)}</td><td class="n">${nf(l.REATERRADO, 2)}</td><td class="n">${l.trechos}</td></tr>`).join('')}</tbody></table></div>` : '<div class="vazio">Nenhum intervalo no período.</div>'}
+    ${dias.length ? `<div class="barras" title="assentado por dia">${dias.map(([d, m]) => `<div><i style="height:${Math.max(3, 60 * m / maxd)}px"></i><small>${d.slice(8)}/${d.slice(5, 7)}</small><small>${nf(m, 1)}</small></div>`).join('')}</div>` : ''}`;
+  $('#rlFrentes').innerHTML = `<table><thead><tr><th>Frente</th><th class="n">Extensão (m)</th><th class="n">Assentado</th><th class="n">%</th><th class="n">Reaterrado</th><th class="n">Legado s/ posição</th><th class="n">Nós concl.</th></tr></thead><tbody>
+    ${av.frentes.map(f => `<tr><td>${esc(f.frente_id)}</td><td class="n">${nf(f.extensao_m, 2)}</td><td class="n">${nf(f.assentado_m, 2)}</td><td class="n">${f.assentado_pct != null ? nf(f.assentado_pct, 2) : '—'}</td>
+      <td class="n">${nf(f.reaterrado_m, 2)}</td><td class="n">${f.legado_sem_posicao_m ? `<span class="chip amarelo">${nf(f.legado_sem_posicao_m, 2)}</span>` : '—'}</td><td class="n">${f.nos_concluidos}/${f.nos}</td></tr>`).join('')}</tbody></table>`;
+  const pf = r.pendencias.frentes.filter(f => f.total), g = r.pendencias.gerais;
+  $('#rlPend').className = '';
+  $('#rlPend').innerHTML = (pf.length ? `<div class="tabela"><table><thead><tr><th>Frente</th><th>Pendências</th><th class="n">Total</th></tr></thead><tbody>
+    ${pf.map(f => `<tr><td>${esc(f.frente_id)}</td><td>${Object.entries(ROT_PEND).filter(([k]) => f[k]).map(([k, rot]) => `<span class="chip ${['impedimentos', 'nao_conformidades', 'cadastro_negado'].includes(k) ? 'vermelho' : 'amarelo'}">${f[k]} ${esc(rot)}</span>`).join(' ')}</td><td class="n">${f.total}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="vazio">Nenhuma pendência nas frentes.</div>')
+    + `<p style="margin:8px 0 0"><span class="chip ${g.reservas_vencidas ? 'amarelo' : ''}">${g.reservas_vencidas} reserva(s) vencida(s)</span> <span class="chip ${g.notas_a_conferir ? 'amarelo' : ''}">${g.notas_a_conferir} nota(s) a conferir</span> <span class="chip ${g.itens_em_quarentena ? 'amarelo' : ''}">${g.itens_em_quarentena} item(ns) em quarentena</span></p>`;
+  $('#rlFalt').innerHTML = r.faltantes.length ? `<table><thead><tr><th>Material</th><th class="n">Previsto</th><th class="n">Reservado</th><th class="n">Disponível</th><th class="n">A receber</th><th class="n">Faltante</th></tr></thead><tbody>
+    ${r.faltantes.map(f => `<tr><td>${esc(f.material_id)}</td><td class="n">${nf(f.previsto, 3)}</td><td class="n">${nf(f.reservado, 3)}</td><td class="n">${nf(f.disponivel, 3)}</td><td class="n">${nf(f.a_receber, 3)}</td>
+      <td class="n">${f.faltante > 0 ? `<span class="chip vermelho">${nf(f.faltante, 3)}</span>` : '0'}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio" style="padding:8px">Nenhum material previsto nas programações do período.</div>';
+  renderMateriaisRel();
+}
+function renderMateriaisRel() {
+  const ms = RELATORIO.materiais.filter(m => !$('#rlSoMov').checked || m.movimentado);
+  $('#rlMat').innerHTML = ms.length ? `<table><thead><tr><th>Material</th><th>Prop.</th><th class="n">Previsto</th><th class="n">Solicitado</th><th class="n">Comprado</th><th class="n">A receber</th><th class="n">Quarentena</th><th class="n">Recebido</th>
+    <th class="n">Saldo almox.</th><th class="n">Reservado</th><th class="n">Com equipes</th><th class="n">Aplicado</th><th class="n">Perda</th><th>Medido</th></tr></thead><tbody>
+    ${ms.map(m => `<tr><td title="${esc(m.descricao)}">${esc(m.material_id)}<br><small>${esc(m.descricao.slice(0, 48))} (${esc(m.unidade)})</small></td><td>${esc(m.propriedade)}</td>
+      ${['previsto', 'solicitado', 'comprado', 'a_receber', 'quarentena', 'recebido', 'saldo_almox', 'reservado', 'com_equipes', 'aplicado', 'perda'].map(k => `<td class="n">${m[k] == null ? '—' : nf(m[k], 3)}</td>`).join('')}
+      <td><span class="chip vermelho" title="${esc(m.medido_situacao)}">bloqueado</span></td></tr>`).join('')}</tbody></table>
+    <p class="vazio" style="margin:6px 0 0">Medido: material não entra na medição enquanto o regime estiver bloqueado (D-53 · D-54). Pedido não é estoque; recebido não é faturável.</p>`
+    : '<div class="vazio" style="padding:8px">Nenhum material com movimento.</div>';
+}
+['#rlIni', '#rlFim', '#rlFrente'].forEach(x => $(x).addEventListener('change', carregarRelatorios));
+$('#rlSoMov').addEventListener('change', () => RELATORIO && renderMateriaisRel());
 
 /* ---------------------------------------------------------------- 6. usuários e histórico */
 async function carregarAdmin() {

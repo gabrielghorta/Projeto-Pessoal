@@ -4,7 +4,8 @@ Aplicação web **privada e local** da obra *Implantação de Redes de Distribui
 São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 
 - Tecnologia: Python (biblioteca padrão + `openpyxl`), banco SQLite e interface HTML/JS sem dependências externas.
-- Roda só no computador da obra (`127.0.0.1`), sem autenticação. Ainda não serve para acesso pelo celular.
+- Roda só no computador da obra (`127.0.0.1`), com login, perfis e permissões checadas no servidor. O layout funciona em tela de celular (360 px), mas o acesso pelo celular depende da hospedagem (D-60).
+- **Implantação, backup e recuperação:** `docs/IMPLANTACAO.md`.
 - **Estado atual: piloto de TESTE.**
   - Medição oficial bloqueada.
   - Regras financeiras de material pendentes: veja `docs/MATRIZ_REGIMES_FATURAMENTO.md`.
@@ -13,7 +14,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
   - Etapa 3, estoque (reserva, saldo com a equipe, empréstimo autorizado, estorno): `docs/ETAPA_3_ESTOQUE.md`.
   - **Plano de entrega completa** (requisitos, situação, aceitação): `docs/PLANO_ENTREGA_COMPLETA.md`. **Decisões pendentes** (documento único): `docs/DECISOES_PENDENTES.md`.
   - Etapa 4, campo e cadastro (intervalos por etapa, retificação, conciliação do legado, levantamento de campo, conferência interna do cadastro, soldas verificadas, foto original com hash): `docs/ETAPA_4_CAMPO.md`.
-  - Módulos do plano: acesso e auditoria `docs/MODULO_A_ACESSO.md`; campo `docs/MODULO_B_CAMPO.md`; compras e recebimento `docs/MODULO_C_COMPRAS.md`; planejamento e mapa `docs/MODULO_D_PLANEJAMENTO.md`; medição (parcela única, elegibilidade, conferência antes do fechamento, regras bloqueadas) `docs/MODULO_E_MEDICAO.md`.
+  - Módulos do plano: acesso e auditoria `docs/MODULO_A_ACESSO.md`; campo `docs/MODULO_B_CAMPO.md`; compras e recebimento `docs/MODULO_C_COMPRAS.md`; planejamento e mapa `docs/MODULO_D_PLANEJAMENTO.md`; medição (parcela única, elegibilidade, conferência antes do fechamento, regras bloqueadas) `docs/MODULO_E_MEDICAO.md`; relatórios e operação `docs/MODULO_F_RELATORIOS.md`.
 
 ## Como rodar (Windows)
 
