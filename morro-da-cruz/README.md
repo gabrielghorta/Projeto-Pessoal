@@ -27,12 +27,19 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
    - **A aplicação exige o servidor parado** e um conjunto de controles completo e **aprovado por você** em `config/controles.json`: bloco `aprovacao` com status `APROVADO`, nome e data.
    - Sem isso, só a simulação roda (`SIMULADA_SEM_CONTROLE_APROVADO`).
    - O sistema não preenche a aprovação.
-4. Suba o sistema e abra **http://127.0.0.1:8765**:
+4. Crie você mesmo o primeiro usuário (o sistema não cria usuários sozinho). A senha é pedida no terminal:
+   ```
+   python usuarios.py perfis                                   # perfis e permissões (matriz provisória, D-10)
+   python usuarios.py criar --login seu.nome --nome "Seu Nome" --perfil ADMINISTRACAO
+   ```
+   Os demais usuários podem ser criados pela aba **6. Usuários & Histórico** ou pelo mesmo comando.
+5. Suba o sistema e abra **http://127.0.0.1:8765** (tela de login):
    ```
    python server.py
    ```
-5. Backup a qualquer momento: `python backup.py criar | verificar <pasta> | restaurar <pasta>`. A restauração exige o servidor parado.
-6. Testes: `python -m unittest discover -s tests -v`. Os testes do piloto Zona01 e de `test_base_real.py` exigem as planilhas reais em `planilhas/` (sempre em cópias descartáveis).
+   Cada gravação fica registrada com o usuário logado (auditoria). O log do servidor fica em `dados/logs/servidor.log`.
+6. Backup a qualquer momento: `python backup.py criar | verificar <pasta> | restaurar <pasta>`. A restauração exige o servidor parado.
+7. Testes: `python -m unittest discover -s tests -v`. Os testes do piloto Zona01 e de `test_base_real.py` exigem as planilhas reais em `planilhas/` (sempre em cópias descartáveis).
 
 ## Importação (`importar.py` / `importacao.py`)
 

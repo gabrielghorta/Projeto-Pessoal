@@ -332,7 +332,7 @@ class TestMigracaoV7ParaV8(Base):
                  ("apontamentos", "apontamento_quantidades", "intervalos_execucao", "conciliacoes_legado", "execucao")}
         c.close()
         rel = self.aplicar()
-        self.assertEqual((rel["esquema_antes"], rel["esquema_depois"]), (7, 8))
+        self.assertEqual((rel["esquema_antes"], rel["esquema_depois"]), (7, S.VERSAO_ESQUEMA))
         c2 = self.conectar()
         for t, n in antes.items():
             self.assertEqual(c2.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0], n, t)

@@ -158,3 +158,11 @@ details > summary { cursor: pointer; font-size: 13px; color: var(--suave); margi
 .foto-carimbo { position: relative; }
 .foto-carimbo .carimbo { position: absolute; left: 0; right: 0; top: 0; padding: 4px 6px; font-size: 11px; line-height: 1.25;
   color: #fff; background: rgba(23,32,43,.72); border-left: 4px solid #E85D22; word-break: break-word; }
+
+/* ---------- login e usuário */
+.login { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: grid; place-items: center; padding: 16px; }
+.login[hidden], [hidden] { display: none !important; }
+.login form { width: min(420px, 100%); }
+.quem { font-size: 12px; color: var(--suave); text-align: right; line-height: 1.3; }
+.quem b { color: var(--texto); }
+[data-sem-permissao] { opacity: .45; }

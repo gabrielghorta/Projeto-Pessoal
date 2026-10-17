@@ -24,7 +24,7 @@ from regras import RegraViolada
 BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 8
+VERSAO_ESQUEMA = 9
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -56,7 +56,7 @@ def aplicar_esquema(conn):
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "campo: retificação de intervalos, conferência interna do cadastro"))
+                 (VERSAO_ESQUEMA, _agora(), "acesso: usuários, sessões, auditoria e reenvio idempotente"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -78,15 +78,27 @@ def conectar(caminho=DB_PADRAO, permitir_antigo=False):
 
 
 class transacao:
+    """Tudo ou nada. Dentro de outra transação (o servidor envolve cada requisição numa só, com o registro de
+    reenvio e a auditoria), vira SAVEPOINT: a falha desfaz só esta parte e a externa decide o resto."""
+
     def __init__(self, conn):
-        self.conn = conn
+        self.conn, self.ponto = conn, None
 
     def __enter__(self):
-        self.conn.execute("BEGIN")
+        if self.conn.in_transaction:
+            self.ponto = f"sp_{id(self)}"
+            self.conn.execute(f"SAVEPOINT {self.ponto}")
+        else:
+            self.conn.execute("BEGIN IMMEDIATE")
         return self.conn
 
     def __exit__(self, tipo, *_):
-        self.conn.execute("ROLLBACK" if tipo else "COMMIT")
+        if self.ponto:
+            if tipo:
+                self.conn.execute(f"ROLLBACK TO {self.ponto}")
+            self.conn.execute(f"RELEASE {self.ponto}")
+        else:
+            self.conn.execute("ROLLBACK" if tipo else "COMMIT")
         return False
 
 

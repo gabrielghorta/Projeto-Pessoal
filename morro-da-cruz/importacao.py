@@ -976,6 +976,11 @@ def preparar_v8(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v9(conn):
+    """Esquema v8 → v9: tabelas de acesso e auditoria (usuários, sessões, auditoria, reenvio). Só acréscimos."""
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

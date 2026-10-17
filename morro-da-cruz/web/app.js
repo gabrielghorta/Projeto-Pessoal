@@ -54,19 +54,42 @@ const htmlFases = fs => (fs || []).map(f => `<div class="fase"><b>${esc(f.nome)}
     ${f.pendencias.length ? `<ul class="pendencias">${f.pendencias.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}</div>`).join('');
 const FOTO_OK = v => v && !['INVALIDA', 'ARQUIVO_AUSENTE'].includes(v);
 
-async function api(url, body) {
-  const r = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+let USUARIO = null;
+const EM_CURSO = new Map();
+async function tratar(r) {
   const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { mostrarLogin(j.erro); throw new Error(j.erro || 'Entre com seu usuário.'); }
   if (!r.ok) throw new Error(j.erro || `Erro ${r.status}`);
   return j;
 }
+// Gravação: cabeçalho da aplicação (X-MC) e chave de reenvio (X-Idem). Clique repetido devolve a mesma
+// requisição em curso; falha de rede reenvia com a MESMA chave e o servidor não executa duas vezes.
+async function api(url, body) {
+  if (body === undefined) return tratar(await fetch(url));
+  const k = url + '|' + JSON.stringify(body);
+  if (EM_CURSO.has(k)) return EM_CURSO.get(k);
+  const idem = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const p = (async () => {
+    for (let t = 0; ; t++) {
+      let r;
+      try { r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-MC': '1', 'X-Idem': idem }, body: JSON.stringify(body) }); }
+      catch (e) { if (t < 2) { await new Promise(ok => setTimeout(ok, 800)); continue; } throw new Error('Sem conexão com o servidor.'); }
+      return tratar(r);
+    }
+  })().finally(() => EM_CURSO.delete(k));
+  EM_CURSO.set(k, p);
+  return p;
+}
+const pode = perm => !!(USUARIO && USUARIO.permissoes.includes(perm));
 function toast(msg, tipo = '') {
   const t = $('#toast'); t.textContent = msg; t.className = tipo; t.style.display = 'block';
   clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', tipo === 'erro' ? 7000 : 3500);
 }
 async function acao(fn, okMsg) {
-  try { const r = await fn(); if (okMsg) toast(okMsg, 'ok'); return r; } catch (e) { toast(e.message, 'erro'); throw e; }
+  try { const r = await fn(); if (okMsg) toast(okMsg, 'ok'); return r; } catch (e) { toast(e.message, 'erro'); e.exibido = true; throw e; }
 }
+// recusa já mostrada no aviso interrompe o restante do clique, sem virar erro não tratado
+window.addEventListener('unhandledrejection', ev => { if (ev.reason && ev.reason.exibido) ev.preventDefault(); });
 const formObj = f => Object.fromEntries(new FormData(f).entries());
 
 /* ---------------------------------------------------------------- tema (escuro por padrão; o mapa REV02 acompanha) */
@@ -85,7 +108,7 @@ function abrirAba(id) {
   $$('nav.abas button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.aba === id)));
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
   try { localStorage.setItem('aba', id); } catch (_) { /* sem storage */ }
-  ({ mapa: carregarMapa, almox: carregarAlmox, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes })[id]();
+  ({ mapa: carregarMapa, almox: carregarAlmox, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin })[id]();
 }
 
 /* ---------------------------------------------------------------- busca de trecho/nó */
@@ -258,8 +281,7 @@ document.addEventListener('click', async ev => {
   const e = ev.target.closest('[data-estornar]');
   if (e) {
     const motivo = prompt('Motivo do estorno (o movimento não é apagado):'); if (!motivo) return;
-    const responsavel = prompt('Responsável pelo estorno:'); if (!responsavel) return;
-    const corpo = { movimento_id: e.dataset.estornar, motivo, responsavel };
+    const corpo = { movimento_id: e.dataset.estornar, motivo };
     try { await api('/api/estorno', corpo); toast('Movimento estornado.', 'ok'); }
     catch (err) {
       if (!/sem cobertura/.test(err.message) || !confirm(err.message + '\n\nReduzir/cancelar as reservas mais recentes (registrado com este estorno)?')) { toast(err.message, 'erro'); return; }
@@ -273,8 +295,7 @@ document.addEventListener('click', async ev => {
     const destino = { aplicado: n('Aplicado'), sobra: n('Sobra devolvida'), perda: n('Perda'), fica_com_equipe: n('Fica com a equipe') };
     if (destino.perda) destino.motivo_perda = prompt('Motivo da perda:') || '';
     const motivo = prompt('Motivo da retificação:'); if (!motivo) return;
-    const responsavel = prompt('Responsável:'); if (!responsavel) return;
-    await acao(() => api('/api/retificar', { movimento_id: rt.dataset.retificar, destino, motivo, responsavel }), 'Fechamento retificado (o lançamento original fica no histórico).');
+    await acao(() => api('/api/retificar', { movimento_id: rt.dataset.retificar, destino, motivo }), 'Fechamento retificado (o lançamento original fica no histórico).');
     carregarAlmox();
   }
 });
@@ -359,7 +380,7 @@ async function selecionarCampo(tipo, id) {
         (apontamentos de ${esc([...new Set(iv.legado.apontamentos.map(a => a.data))].join(', '))}). Informe onde esses metros estão (um ou mais intervalos por etapa); a soma por etapa precisa ser igual. Não gera quantidades novas.
         <div class="editor" data-etapas="${d.mnd ? 'ASSENTADO' : 'ASSENTADO,REATERRADO'}" data-com-data="1">${(d.mnd ? ['ASSENTADO'] : ['ASSENTADO', 'REATERRADO']).map((e, _, et) => linhaIntervalo(et, { etapa: e }, true, false)).join('')}</div>
         <button type="button" class="btn" data-mais-linha>+ intervalo</button>
-        <div class="linha"><label>Como a posição foi confirmada<input data-r="motivo"></label><label>Responsável<input data-r="responsavel"></label></div>
+        <label>Como a posição foi confirmada<input data-r="motivo"></label>
         <div class="acoes"><button type="button" class="btn prim" id="legadoBtn">Conciliar</button></div></div>` : ''}
       <h4 style="margin:10px 0 4px">Intervalos por registro</h4>
       ${htmlRegistros(iv, editavel)}
@@ -372,7 +393,7 @@ async function selecionarCampo(tipo, id) {
   const fl = $('#fLegado');   // bloco dentro do formulário de apontamento: não pode ser <form> aninhado
   if (fl) $('#legadoBtn').addEventListener('click', async () => {
     const r = Object.fromEntries($$('[data-r]', fl).map(i => [i.dataset.r, i.value]));
-    const ok = await acao(() => api('/api/legado/conciliar', { trecho_id: CAMPO.id, intervalos: lerLinhas(fl), motivo: r.motivo, responsavel: r.responsavel }),
+    const ok = await acao(() => api('/api/legado/conciliar', { trecho_id: CAMPO.id, intervalos: lerLinhas(fl), motivo: r.motivo }),
       'Avanço anterior conciliado (sem quantidades novas).').catch(() => null);
     if (ok) { selecionarCampo(CAMPO.tipo, CAMPO.id); recarregarCamadaMapa(); }   // recusa: mantém o que foi digitado
   });
@@ -407,7 +428,7 @@ document.addEventListener('click', async ev => {
     <div class="editor" data-etapas="${etapas.join(',')}" ${conc ? 'data-com-data="1"' : ''}>${g.intervalos.map(i => linhaIntervalo(etapas, i, conc, !conc)).join('')}</div>
     <button type="button" class="btn" data-mais-linha>+ intervalo</button>
     <div class="linha">${conc ? '' : `<label>Data do apontamento<input type="date" data-r="data" value="${esc(g.intervalos[0].data)}"></label>`}
-      <label>Motivo (o que estava errado e como foi confirmado)<input data-r="motivo"></label><label>Responsável<input data-r="responsavel"></label></div>
+      <label>Motivo (o que estava errado e como foi confirmado)<input data-r="motivo"></label></div>
     <div class="acoes"><button type="button" class="btn azul" data-retif-acao="previa">Prévia</button><button type="button" class="btn prim" data-retif-acao="aplicar">Aplicar retificação</button><button type="button" class="btn" data-retif-acao="cancelar">Cancelar</button></div>
     <div class="retif-previa"></div></div>`;
 });
@@ -416,7 +437,7 @@ document.addEventListener('click', async ev => {
   const box = b.closest('.caixa-retif');
   if (b.dataset.retifAcao === 'cancelar') { box.remove(); return; }
   const [ref_tipo, ref_id] = box.dataset.ref.split('|'), r = Object.fromEntries($$('[data-r]', box).map(i => [i.dataset.r, i.value]));
-  const corpo = { ref_tipo, ref_id, intervalos: lerLinhas($('.editor', box)), motivo: r.motivo, responsavel: r.responsavel, data: r.data, simular: b.dataset.retifAcao === 'previa' };
+  const corpo = { ref_tipo, ref_id, intervalos: lerLinhas($('.editor', box)), motivo: r.motivo, data: r.data, simular: b.dataset.retifAcao === 'previa' };
   const p = await acao(() => api('/api/intervalos/retificar', corpo), corpo.simular ? null : 'Retificação aplicada — original preservado no histórico.').catch(() => null);
   if (!p) return;
   if (!corpo.simular) { selecionarCampo(CAMPO.tipo, CAMPO.id); recarregarCamadaMapa(); return; }
@@ -460,7 +481,7 @@ async function enviarApontamento(editado) {
     .filter(([, k]) => o[k + '_ini'] !== '' && o[k + '_fim'] !== '' && o[k + '_ini'] != null)
     .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'], ...(k === 'cad' && o.cad_ref ? { referencia: o.cad_ref } : {}) }));
   await acao(() => api('/api/apontamento', { data: o.data, equipe_id: o.equipe_id, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id,
-    concluido_100: !!o.concluido_100, intervalos: o.concluido_100 ? null : intervalos, informado_por: o.informado_por,
+    concluido_100: !!o.concluido_100, intervalos: o.concluido_100 ? null : intervalos,
     estaca_ini: o.estaca_ini, estaca_fim: o.estaca_fim, quantidades }), 'Apontamento registrado.');
   $('#apQuant').innerHTML = ''; ['ass', 'cad', 'rea'].forEach(k => { $(`input[name=${k}_ini]`, fAp).value = ''; $(`input[name=${k}_fim]`, fAp).value = ''; });
   $('input[name=cad_ref]', fAp).value = '';
@@ -470,8 +491,8 @@ async function enviarApontamento(editado) {
 
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-verificar-intervalo]'); if (!b) return;
-  const quem = prompt('Verificado por (não pode ser quem informou):'); if (!quem) return;
-  const r = await acao(() => api('/api/intervalo/verificar', { intervalo_id: b.dataset.verificarIntervalo, verificado_por: quem }), 'Intervalo verificado (conferência interna).').catch(() => null);
+  if (!confirm(`Confirmar que você (${USUARIO.login}) conferiu este intervalo em campo? Quem informou não pode verificar.`)) return;
+  const r = await acao(() => api('/api/intervalo/verificar', { intervalo_id: b.dataset.verificarIntervalo }), 'Intervalo verificado (conferência interna).').catch(() => null);
   if (r) { selecionarCampo(CAMPO.tipo, CAMPO.id); recarregarCamadaMapa(); }
 });
 function renderSoldas() {
@@ -489,10 +510,10 @@ $('#fSolda').addEventListener('submit', async ev => {
 });
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-verificar-solda]'); if (!b) return;
-  const quem = prompt('Verificado por (não pode ser o soldador nem quem informou):'); if (!quem) return;
-  const ok = confirm('Soldas APROVADAS? (Cancelar = reprovadas)');
+  const ok = confirm(`Verificação por ${USUARIO.login} (não pode ser o soldador nem quem informou).\n\nSoldas APROVADAS? (Cancelar = reprovadas)`);
   const obs = ok ? null : prompt('Motivo da reprovação:');
-  const r = await acao(() => api('/api/solda/verificar', { solda_id: b.dataset.verificarSolda, verificado_por: quem, resultado: ok ? 'APROVADA' : 'REPROVADA', obs }), 'Verificação registrada.').catch(() => null);
+  if (!ok && !obs) return;
+  const r = await acao(() => api('/api/solda/verificar', { solda_id: b.dataset.verificarSolda, resultado: ok ? 'APROVADA' : 'REPROVADA', obs }), 'Verificação registrada.').catch(() => null);
   if (r) selecionarCampo(CAMPO.tipo, CAMPO.id);
 });
 
@@ -543,7 +564,7 @@ async function carregarEsteira() {
       ${c.conferencia ? `<div><span class="chip ${c.conferencia.resultado === 'CONFORME' ? 'azul' : 'vermelho'}" title="conferência interna Ankara — não é aprovação da Caesb">Rev. ${c.conferencia.revisao}: ${c.conferencia.resultado === 'CONFORME' ? 'conforme' : 'não conforme'} (interno) · ${esc(c.conferencia.revisor)}</span>${c.conferencia.obs ? `<div class="aviso problema">${esc(c.conferencia.obs)}</div>` : ''}</div>` : ''}
       ${k === '3_RECEBIDO' ? `<details class="conf" data-tr="${esc(c.trecho_id)}"><summary>Conferência interna Ankara (não é aprovação da Caesb)</summary>
         ${Object.entries(RESUMO.checklist_conferencia || {}).map(([ck, txt]) => `<label class="check"><input type="checkbox" data-ck="${ck}"> ${esc(txt)}</label>`).join('')}
-        <input data-c="revisor" placeholder="Conferido por"><input data-c="obs" placeholder="Divergência (obrigatória se não conforme)">
+        <input data-c="obs" placeholder="Divergência (obrigatória se não conforme)">
         <div class="acoes"><button type="button" class="btn" data-conf="CONFORME">Conforme</button><button type="button" class="btn" data-conf="NAO_CONFORME">Não conforme</button></div></details>` : ''}
       ${(CAMPOS_ETAPA[k] || []).filter(([dest]) => k !== '3_RECEBIDO' || (dest === '2_ENVIADO') === !!(c.conferencia && c.conferencia.resultado === 'NAO_CONFORME'))
         .map(([dest, rot, campos]) => `<form class="form" data-tr="${esc(c.trecho_id)}" data-dest="${dest}">
@@ -556,7 +577,7 @@ $('#kanban').addEventListener('click', async ev => {
   const box = b.closest('details.conf');
   const checklist = Object.fromEntries($$('[data-ck]', box).map(i => [i.dataset.ck, i.checked]));
   const ok = await acao(() => api('/api/cadastro/conferencia', { trecho_id: box.dataset.tr, resultado: b.dataset.conf, checklist,
-    revisor: $('[data-c=revisor]', box).value, obs: $('[data-c=obs]', box).value }), 'Conferência interna registrada (não é aprovação da Caesb).').catch(() => null);
+    obs: $('[data-c=obs]', box).value }), 'Conferência interna registrada (não é aprovação da Caesb).').catch(() => null);
   if (ok) carregarEsteira();
 });
 $('#kanban').addEventListener('submit', async ev => {
@@ -615,8 +636,75 @@ $('#medFechar').addEventListener('click', async () => {
   await acao(() => api('/api/medicao/fechar', { id: $('#medSel').value }), 'Medição fechada.'); carregarMedicoes();
 });
 
-/* ---------------------------------------------------------------- início */
-(async function iniciar() {
+/* ---------------------------------------------------------------- 6. usuários e histórico */
+async function carregarAdmin() {
+  $('#painelUsuarios').hidden = !pode('usuarios');
+  if (pode('usuarios')) {
+    const us = await api('/api/usuarios');
+    $('#selPerfil').innerHTML = Object.entries(RESUMO.perfis).map(([k, p]) => `<option value="${k}">${esc(p.nome)}</option>`).join('');
+    $('#usuariosLista').innerHTML = `<table><thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Equipe</th><th></th></tr></thead><tbody>${us.map(u => `<tr${u.ativo ? '' : ' style="opacity:.5"'}>
+      <td>${esc(u.login)}</td><td>${esc(u.nome)}</td><td>${esc(u.perfil_nome)}</td><td>${esc(u.equipe_id || '')}</td>
+      <td>${u.login === USUARIO.login ? '' : `<button type="button" class="btn" data-usr-ativo="${esc(u.login)}" data-v="${u.ativo ? 0 : 1}">${u.ativo ? 'Desativar' : 'Reativar'}</button> <button type="button" class="btn" data-usr-senha="${esc(u.login)}">Nova senha</button>`}</td></tr>`).join('')}</tbody></table>`;
+  }
+  carregarAuditoria();
+}
+async function carregarAuditoria() {
+  const q = new URLSearchParams({ limite: 200 });
+  if ($('#audLogin').value) q.set('login', $('#audLogin').value.trim());
+  if ($('#audAlvo').value) q.set('alvo_id', $('#audAlvo').value.trim());
+  if (!q.get('alvo_id') && !pode('auditoria')) { $('#audLista').innerHTML = '<div class="vazio" style="padding:8px">Seu perfil consulta o histórico de um objeto: informe o objeto.</div>'; return; }
+  const ls = await acao(() => api('/api/auditoria?' + q)).catch(() => []);
+  $('#audLista').innerHTML = ls.length ? `<table><thead><tr><th>Quando</th><th>Usuário</th><th>Operação</th><th>Objeto</th><th>Resultado</th></tr></thead><tbody>${ls.map(a => `<tr>
+    <td>${esc(a.em.replace('T', ' '))}</td><td>${esc(a.login || '—')} <small>${esc(a.perfil || '')}</small></td><td>${esc(a.rota.replace('/api/', ''))}</td>
+    <td>${esc([a.alvo_tipo, a.alvo_id].filter(Boolean).join(' '))}</td>
+    <td>${a.status === 200 ? '<span class="chip azul">aceito</span>' : `<span class="chip vermelho">${a.status}</span>`} <small>${esc((a.resultado || '').slice(0, 160))}</small></td></tr>`).join('')}</tbody></table>`
+    : '<div class="vazio" style="padding:8px">Nada registrado.</div>';
+}
+$('#audBtn').addEventListener('click', carregarAuditoria);
+$('#fUsuario').addEventListener('submit', async ev => {
+  ev.preventDefault(); const o = formObj(ev.target);
+  const r = await acao(() => api('/api/usuarios', { acao: 'criar', ...o }), 'Usuário criado.').catch(() => null);
+  if (r) { ev.target.reset(); carregarAdmin(); }
+});
+document.addEventListener('click', async ev => {
+  const a = ev.target.closest('[data-usr-ativo]'), s = ev.target.closest('[data-usr-senha]');
+  if (a) { const r = await acao(() => api('/api/usuarios', { acao: 'alterar', login: a.dataset.usrAtivo, ativo: a.dataset.v === '1' }), 'Usuário atualizado.').catch(() => null); if (r) carregarAdmin(); }
+  if (s) { const senha = prompt('Nova senha (mín. 10 caracteres) para ' + s.dataset.usrSenha + ':'); if (!senha) return;
+    await acao(() => api('/api/usuarios', { acao: 'senha', login: s.dataset.usrSenha, senha }), 'Senha redefinida; as sessões dessa pessoa foram encerradas.').catch(() => null); }
+});
+
+/* ---------------------------------------------------------------- login e início */
+function mostrarLogin(msg) {
+  USUARIO = null; $('#login').hidden = false;
+  const m = $('#loginMsg'); m.hidden = !msg || /Entre com seu usuário/.test(msg); m.textContent = msg || '';
+  setTimeout(() => $('#fLogin input[name=login]').focus(), 50);
+}
+$('#fLogin').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  try { const r = await api('/api/login', formObj(ev.target)); USUARIO = r.usuario; ev.target.reset(); $('#login').hidden = true; iniciar(); }
+  catch (e) { const m = $('#loginMsg'); m.hidden = false; m.textContent = e.message; }
+});
+$('#sairBtn').addEventListener('click', async () => { await api('/api/logout', {}).catch(() => null); location.reload(); });
+$('#senhaBtn').addEventListener('click', async () => {
+  const atual = prompt('Senha atual:'); if (!atual) return;
+  const nova = prompt('Nova senha (mín. 10 caracteres):'); if (!nova) return;
+  await acao(() => api('/api/senha', { senha_atual: atual, nova_senha: nova }), 'Senha alterada.').catch(() => null);
+});
+function aplicarPermissoes() {
+  $('#quem').innerHTML = `<b>${esc(USUARIO.nome)}</b><br>${esc(USUARIO.login)} · ${esc(USUARIO.perfil_nome)}${USUARIO.equipe_id ? ' · ' + esc(USUARIO.equipe_id) : ''}`;
+  $('#sairBtn').hidden = $('#senhaBtn').hidden = false;
+  // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
+  $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
+}
+
+let INICIADO = false;
+async function iniciar() {
+  if (!USUARIO) {
+    try { USUARIO = (await api('/api/sessao')).usuario; } catch (_) { return; }   // sem sessão: tela de login
+  }
+  aplicarPermissoes();
+  if (INICIADO) return;
+  INICIADO = true;
   RESUMO = await api('/api/resumo');
   $$('.selEquipe').forEach(s => s.innerHTML = '<option value="">—</option>' + RESUMO.equipes.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join(''));
   $$('.selClima').forEach(s => s.innerHTML = '<option value="">—</option>' + Object.entries(RESUMO.clima).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''));
@@ -625,4 +713,5 @@ $('#medFechar').addEventListener('click', async () => {
   const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id;
   let aba = 'mapa'; try { aba = localStorage.getItem('aba') || 'mapa'; } catch (_) { /* sem storage */ }
   abrirAba(aba);
-})();
+}
+iniciar();

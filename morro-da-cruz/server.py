@@ -5,15 +5,18 @@ Abra http://127.0.0.1:8765
 """
 import argparse
 import json
+import logging
+import logging.handlers
 import mimetypes
 import os
 import signal
 import sys
 import threading
-import traceback
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import acesso as A
 import backup
 import exportar
 import regras as R
@@ -25,6 +28,10 @@ LOCK = threading.Lock()
 CONN = None
 DB_PATH = S.DB_PADRAO
 DIR_FOTOS = S.DIR_FOTOS                 # sempre <pasta do banco>/fotos (é o que o backup copia e confere)
+COOKIE = "mc_sessao"
+COOKIE_SEGURO = False                   # True só atrás de HTTPS (decisão D-60); em 127.0.0.1 é HTTP
+LOG = logging.getLogger("morro_da_cruz.servidor")
+LOG.addHandler(logging.NullHandler())
 
 
 def _cfg():
@@ -56,6 +63,7 @@ def r_resumo(q, c):
         "contingencias": R.CONTINGENCIAS,
         "etapas": R.ETAPAS,
         "checklist_conferencia": R.CHECKLIST_CONFERENCIA_CADASTRO,
+        "perfis": {k: {"nome": v["nome"]} for k, v in A.carregar_perfis()["perfis"].items()},
     }
 
 
@@ -257,19 +265,70 @@ def p_medicao_fechar(b, c):
     return {"ok": True}
 
 
+# ------------------------------------------------------------------ acesso (módulo A)
+def r_usuarios(q, c):
+    return [A.publico(dict(r)) for r in c.execute("SELECT * FROM usuarios ORDER BY login")]
+
+
+def p_usuarios(b, c, usuario):
+    acao = b.get("acao")
+    if acao == "criar":
+        return {"id": A.criar_usuario(c, b.get("login"), b.get("nome"), b.get("perfil"), b.get("senha"), b.get("equipe_id") or None,
+                                      usuario["login"])}
+    if acao == "alterar":
+        A.alterar_usuario(c, b.get("login"), usuario["login"], b.get("perfil"), b.get("ativo"), b.get("equipe_id"), b.get("nome"))
+        return {"ok": True}
+    if acao == "senha":
+        A.redefinir_senha(c, b.get("login"), b.get("senha"))
+        return {"ok": True}
+    raise R.RegraViolada("Ação inválida (criar, alterar ou senha).")
+
+
+def p_senha(b, c, usuario):
+    A.trocar_senha(c, usuario["id"], b.get("senha_atual"), b.get("nova_senha"))
+    return {"ok": True}
+
+
+def r_auditoria(q, c, usuario):
+    if not q.get("alvo_id"):                       # histórico completo só com a permissão de auditoria
+        A.exigir(usuario, "auditoria")
+    return A.consultar_auditoria(c, q.get("alvo_tipo"), q.get("alvo_id"), q.get("login"), int(q.get("limite", 100)))
+
+
 GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detalhe, "/api/previsto": r_previsto,
        "/api/mapa/estado": r_mapa_estado, "/api/equipe": r_equipe, "/api/estoque": r_estoque,
        "/api/compat-caesb": r_compat, "/api/nfs": r_nfs, "/api/checkins": r_checkins, "/api/histograma": r_histograma,
        "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo}
+GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
+GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento, "/api/nf": p_nf,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
         "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar,
         "/api/intervalo/verificar": p_intervalo_verificar, "/api/legado/conciliar": p_legado_conciliar,
-        "/api/intervalos/retificar": p_intervalos_retificar, "/api/cadastro/conferencia": p_cadastro_conferencia, "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
+        "/api/intervalos/retificar": p_intervalos_retificar, "/api/cadastro/conferencia": p_cadastro_conferencia,
+        "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
         "/api/reserva/cancelar": p_reserva_cancelar}
+POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
+# permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
+PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox", "/api/nf": "almox",
+             "/api/nf/aceitar": "receber", "/api/checkin": "almox", "/api/checkout": "almox", "/api/clima": "campo",
+             "/api/apontamento": "campo", "/api/foto": "campo", "/api/ok-fiscal": "ok_interno", "/api/recomposicao": "ok_interno",
+             "/api/cadastro": "cadastro", "/api/medicao": "medicao", "/api/medicao/fechar": "medicao", "/api/estorno": "almox",
+             "/api/retificar": "almox", "/api/intervalo/verificar": "verificar", "/api/legado/conciliar": "retificar_campo",
+             "/api/intervalos/retificar": "retificar_campo", "/api/cadastro/conferencia": "conferir_cadastro",
+             "/api/solda": "campo", "/api/solda/verificar": "verificar", "/api/reserva": "almox",
+             "/api/reserva/cancelar": "almox", "/api/usuarios": "usuarios", "/api/senha": None}
+# campos de autoria: o servidor grava o usuário da sessão, nunca o nome digitado no navegador
+AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "/api/retificar": ("responsavel",),
+         "/api/reserva": ("responsavel",), "/api/apontamento": ("informado_por",), "/api/solda": ("informado_por",),
+         "/api/intervalo/verificar": ("verificado_por",), "/api/solda/verificar": ("verificado_por",),
+         "/api/legado/conciliar": ("responsavel",), "/api/intervalos/retificar": ("responsavel",),
+         "/api/cadastro/conferencia": ("revisor",), "/api/ok-fiscal": ("usuario",)}
+assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
+PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
 
 
 def _mapa_path():
@@ -292,21 +351,39 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+        LOG.info("%s %s %s %s %d", self.client_address[0], getattr(self, "_login", "-") or "-", self.command,
+                 urlparse(self.path).path, status)
+
+    def _token(self):
+        c = SimpleCookie(self.headers.get("Cookie") or "")
+        return c[COOKIE].value if COOKIE in c else None
+
+    def _usuario(self):
+        u = A.sessao(CONN, self._token())
+        self._login = u and u["login"]
+        return u
+
+    def _sem_usuarios(self):
+        return {"erro": "Nenhum usuário cadastrado. No computador do servidor, crie o primeiro: python usuarios.py criar",
+                "sem_usuarios": True}
 
     def _api(self, fn, arg):
         try:
             with LOCK:
                 self._send(200, fn(arg, CONN))
+        except A.AcessoNegado as e:
+            self._send(e.status, {"erro": str(e)})
         except R.RegraViolada as e:
             self._send(422, {"erro": str(e)})
         except (KeyError, ValueError, TypeError) as e:
             self._send(400, {"erro": f"Requisição inválida: {e}"})
         except Exception as e:  # noqa: BLE001 — devolve a falha ao usuário em vez de derrubar o servidor
-            traceback.print_exc()
+            LOG.exception("falha em GET %s", self.path)
             self._send(500, {"erro": f"Erro interno: {e}"})
 
     def _static(self, raiz, rel):
@@ -319,37 +396,126 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
+        if u.path in PUBLICOS:
+            return self._static(WEB, "index.html" if u.path in ("/", "/index.html") else u.path.lstrip("/"))
+        with LOCK:
+            sem = not A.ha_usuarios(CONN)
+            usuario = None if sem else self._usuario()
+        if u.path == "/api/sessao":
+            if sem:
+                return self._send(401, self._sem_usuarios())
+            return self._send(200, {"usuario": usuario}) if usuario else self._send(401, {"erro": "Entre com seu usuário."})
+        if usuario is None:                            # API, fotos e mapa só com sessão
+            if u.path.startswith("/api/"):
+                return self._send(401, self._sem_usuarios() if sem else {"erro": "Sessão encerrada: entre de novo."})
+            if u.path in ("/mapa", "/mapa/") or u.path.startswith("/fotos/"):
+                return self._send(401, "Entre no sistema para ver o mapa e as fotos.", "text/plain; charset=utf-8")
         if u.path in GET:
             return self._api(GET[u.path], q)
+        if u.path in GET_PERM:
+            fn, perm = GET_PERM[u.path]
+            return self._api(lambda a, c: (A.exigir(usuario, perm), fn(a, c))[1], q)
+        if u.path in GET_USUARIO:
+            return self._api(lambda a, c: GET_USUARIO[u.path](a, c, usuario), q)
         if u.path == "/api/medicao/exportar":
             try:
+                A.exigir(usuario, "medicao")
                 with LOCK:
                     nome, dados = exportar.planilha_medicao(CONN, int(q["id"]))
+                    A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
                 return self._send(200, dados, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   {"Content-Disposition": f'attachment; filename="{nome}"'})
+            except A.AcessoNegado as e:
+                return self._send(e.status, {"erro": str(e)})
             except R.RegraViolada as e:
                 return self._send(422, {"erro": str(e)})
         if u.path in ("/mapa", "/mapa/"):
             return self._mapa()
         if u.path.startswith("/fotos/"):
             return self._static(DIR_FOTOS, u.path[len("/fotos/"):])
-        if u.path in ("/", "/index.html"):
-            return self._static(WEB, "index.html")
         return self._static(WEB, u.path.lstrip("/"))
+
+    def _ler_corpo(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        return json.loads(self.rfile.read(n) or b"{}")
 
     def do_POST(self):
         u = urlparse(self.path)
-        if u.path not in POST:
+        rota = u.path
+        if rota not in POST and rota not in POST_USUARIO and rota not in ("/api/login", "/api/logout"):
             return self._send(404, {"erro": "rota inexistente"})
+        if self.headers.get("X-MC") != "1":            # só a própria aplicação grava (proteção contra CSRF)
+            return self._send(403, {"erro": "Requisição recusada: origem não reconhecida."})
+        try:
+            body = self._ler_corpo()
+        except json.JSONDecodeError:
+            return self._send(400, {"erro": "JSON inválido"})
+        if not isinstance(body, dict):
+            return self._send(400, {"erro": "JSON inválido"})
+        if rota == "/api/login":
+            return self._login_post(body)
+        if rota == "/api/logout":
+            with LOCK:
+                usuario = self._usuario()
+                A.encerrar(CONN, self._token())
+                if usuario:
+                    A.auditar(CONN, usuario, "POST", rota, 200)
+            return self._send(200, {"ok": True}, extra={"Set-Cookie": f"{COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict"})
         if backup.em_manutencao(os.path.dirname(os.path.abspath(DB_PATH))):
             return self._send(503, {"erro": "Manutenção em andamento (backup, restauração ou importação): gravações "
                                             "suspensas. Tente de novo quando terminar."})
-        n = int(self.headers.get("Content-Length") or 0)
-        try:
-            body = json.loads(self.rfile.read(n) or b"{}")
-        except json.JSONDecodeError:
-            return self._send(400, {"erro": "JSON inválido"})
-        self._api(POST[u.path], body)
+        self._gravar(rota, body)
+
+    def _login_post(self, body):
+        with LOCK:
+            if not A.ha_usuarios(CONN):
+                return self._send(401, self._sem_usuarios())
+            try:
+                token, usuario = A.autenticar(CONN, body.get("login"), body.get("senha"), self.client_address[0])
+            except A.AcessoNegado as e:
+                A.auditar(CONN, None, "POST", "/api/login", e.status, body, str(e), login=str(body.get("login") or "").lower())
+                return self._send(e.status, {"erro": str(e)})
+            A.auditar(CONN, usuario, "POST", "/api/login", 200, body)
+            self._login = usuario["login"]
+        cookie = f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict" + ("; Secure" if COOKIE_SEGURO else "")
+        return self._send(200, {"usuario": usuario}, extra={"Set-Cookie": cookie})
+
+    def _gravar(self, rota, body):
+        """Uma requisição = uma transação: permissão, autoria, reenvio, a operação e a auditoria do aceite.
+        Recusa ou falha desfazem tudo; a auditoria da recusa é gravada depois, fora da transação desfeita."""
+        idem = self.headers.get("X-Idem") or None
+        with LOCK:
+            if not A.ha_usuarios(CONN):
+                return self._send(401, self._sem_usuarios())
+            usuario = self._usuario()
+            original = json.loads(json.dumps(body))
+            try:
+                A.exigir(usuario, PERMISSAO[rota])
+                if usuario["restrito_a_equipe"] and body.get("equipe_id") not in (None, "", usuario["equipe_id"]):
+                    raise A.AcessoNegado(f"Seu usuário lança só para a equipe {usuario['equipe_id']}.", 403)
+                for campo in AUTOR.get(rota, ()):
+                    body[campo] = usuario["login"]
+                with S.transacao(CONN):
+                    anterior = A.resposta_anterior(CONN, usuario, idem, rota, original)
+                    if anterior is not None:
+                        A.auditar(CONN, usuario, "POST", rota, 200, original, "reenvio: resposta anterior devolvida, nada executado", idem)
+                        resposta = anterior
+                    else:
+                        resposta = POST_USUARIO[rota](body, CONN, usuario) if rota in POST_USUARIO else POST[rota](body, CONN)
+                        A.guardar_resposta(CONN, usuario, idem, rota, original, resposta)
+                        A.auditar(CONN, usuario, "POST", rota, 200, original, json.dumps(resposta, default=str)[:500], idem)
+                return self._send(200, resposta)
+            except A.AcessoNegado as e:
+                status, msg = e.status, str(e)
+            except R.RegraViolada as e:
+                status, msg = 422, str(e)
+            except (KeyError, ValueError, TypeError) as e:
+                status, msg = 400, f"Requisição inválida: {e}"
+            except Exception as e:  # noqa: BLE001
+                LOG.exception("falha em POST %s", rota)
+                status, msg = 500, f"Erro interno: {e}"
+            A.auditar(CONN, usuario, "POST", rota, status, original, msg, idem, login=None)
+            return self._send(status, {"erro": msg})
 
     def _mapa(self):
         """Serve o HTML REV02 original com a camada do Mapa Iluminado injetada (o arquivo não é alterado)."""
@@ -362,6 +528,17 @@ class Handler(BaseHTTPRequestHandler):
         i = html.lower().rfind("</body>")
         html = html[:i] + tag + html[i:] if i >= 0 else html + tag
         self._send(200, html, "text/html; charset=utf-8")
+
+
+def configurar_log(pasta_db):
+    """Log de requisições e erros em <pasta do banco>/logs/servidor.log (5 arquivos de 2 MB, rotação)."""
+    pasta = os.path.join(pasta_db, "logs")
+    os.makedirs(pasta, exist_ok=True)
+    h = logging.handlers.RotatingFileHandler(os.path.join(pasta, "servidor.log"), maxBytes=2 * 1024 * 1024, backupCount=5,
+                                             encoding="utf-8")
+    h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    LOG.handlers[:] = [h]
+    LOG.setLevel(logging.INFO)
 
 
 def main():
@@ -381,7 +558,10 @@ def main():
     except S.EsquemaAntigo as e:
         raise SystemExit(str(e))
     if a.host not in ("127.0.0.1", "localhost"):
-        raise SystemExit("Este servidor não tem autenticação: só pode escutar em 127.0.0.1 (uso local).")
+        raise SystemExit("Acesso pela rede ainda não liberado (decisão D-60: hospedagem, HTTPS e rede): só 127.0.0.1.")
+    configurar_log(os.path.dirname(os.path.abspath(a.db)))
+    if not A.ha_usuarios(CONN):
+        print("ATENÇÃO: nenhum usuário cadastrado. Crie o primeiro com: python usuarios.py criar --db " + a.db)
     srv = ThreadingHTTPServer((a.host, a.porta), Handler)
     marca = backup.marcar_servidor(os.path.dirname(os.path.abspath(a.db)), a.host, a.porta)
     print(f"Sistema Morro da Cruz em http://{a.host}:{a.porta}  (Ctrl+C para sair)")

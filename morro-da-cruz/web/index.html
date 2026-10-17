@@ -20,6 +20,9 @@
     </div>
     <div class="obra"><strong id="obraNome">Implantação de Redes de Distribuição — Morro da Cruz, São Sebastião/DF</strong><span id="obraContrato">Contrato Caesb × Ankara nº 10239/2026 · LC 014/2026</span></div>
     <div class="direita">
+      <span id="quem" class="quem"></span>
+      <button type="button" class="btn tema" id="senhaBtn" hidden>Trocar senha</button>
+      <button type="button" class="btn tema" id="sairBtn" hidden>Sair</button>
       <button type="button" class="btn tema" id="temaBtn" title="Alternar entre tema escuro e claro">☀️ Tema claro</button>
       <div class="caesb" aria-label="Caesb">Caesb</div>
     </div>
@@ -30,6 +33,7 @@
     <button role="tab" data-aba="campo">📲 3. Lançamento de Campo &amp; Fotos</button>
     <button role="tab" data-aba="esteira">📐 4. Esteira de Cadastro (GDOC)</button>
     <button role="tab" data-aba="medicao">💰 5. Medição (BM &amp; Memória de Cálculo)</button>
+    <button role="tab" data-aba="admin">⚙️ 6. Usuários &amp; Histórico</button>
   </nav>
 </header>
 
@@ -87,7 +91,7 @@
     <div class="grade">
       <div class="painel">
         <h3>☀️ Check-in da manhã</h3>
-        <form id="fCheckin">
+        <form id="fCheckin" data-perm="almox">
           <div class="linha">
             <label>Data<input type="date" name="data" required></label>
             <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
@@ -108,7 +112,7 @@
       </div>
       <div class="painel">
         <h3>Entradas no almoxarifado</h3>
-        <form id="fMov">
+        <form id="fMov" data-perm="almox">
           <div class="linha">
             <label>Data<input type="date" name="data" required></label>
             <label>Tipo<select name="tipo">
@@ -120,22 +124,20 @@
           <label>Material<select name="material_id" class="selMaterial" required></select></label>
           <div class="linha"><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
             <label>Documento<input name="documento" placeholder="nº romaneio / nota / ofício"></label></div>
-          <div class="linha"><label>Responsável<input name="responsavel" placeholder="quem lança"></label>
-            <label>Autorização (empréstimo)<input name="autorizacao" placeholder="quem autorizou + documento"></label></div>
-          <p class="vazio" style="margin:4px 0">Empréstimo exige documento, responsável e autorização. Consumo não é baixado por estimativa: confirma-se no check-out.</p>
+          <label>Autorização (empréstimo)<input name="autorizacao" placeholder="quem autorizou + documento"></label>
+          <p class="vazio" style="margin:4px 0">O responsável é o usuário logado. Empréstimo exige documento e autorização. Consumo não é baixado por estimativa: confirma-se no check-out.</p>
           <div class="acoes"><button class="btn prim">Lançar</button></div>
         </form>
       </div>
       <div class="painel">
         <h3>Reserva para a programação</h3>
-        <form id="fReserva">
+        <form id="fReserva" data-perm="almox">
           <div class="linha">
             <label>Dia<input type="date" name="data" required></label>
             <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
           </div>
           <label>Material<select name="material_id" class="selMaterialReserva" required></select></label>
-          <div class="linha"><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
-            <label>Responsável<input name="responsavel"></label></div>
+          <label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
           <p class="vazio" style="margin:4px 0">A reserva não tira material do almoxarifado: só reduz o disponível para as outras equipes. É consumida no check-in da equipe naquele dia.</p>
           <div class="acoes"><button class="btn prim">Reservar</button></div>
         </form>
@@ -143,7 +145,7 @@
       </div>
       <div class="painel">
         <h3>Nota fiscal — material Ankara</h3>
-        <form id="fNF">
+        <form id="fNF" data-perm="almox">
           <div class="linha">
             <label>Nº NF-e<input name="numero" required></label>
             <label>Entrega<input type="date" name="data_entrega" required></label>
@@ -179,7 +181,7 @@
       </div>
       <div class="painel">
         <h3>Equipe — funcionários e máquinas</h3>
-        <form id="fRecurso">
+        <form id="fRecurso" data-perm="equipes">
           <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
           <div class="linha"><label>Funcionário<input name="nome"></label><label>Função<input name="funcao"></label></div>
           <label>Máquina<input name="descricao" placeholder="Retroescavadeira, compactador…"></label>
@@ -199,7 +201,7 @@
     <div class="grade-2">
       <div class="painel">
         <h3>Apontamento</h3>
-        <form id="fApont">
+        <form id="fApont" data-perm="campo">
           <div class="linha">
             <label>Data<input type="date" name="data" required></label>
             <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
@@ -221,7 +223,6 @@
             <div class="linha"><label>Estaca inicial (NS, referência)<input name="estaca_ini"></label><label>Estaca final<input name="estaca_fim"></label></div>
           </div>
           <label class="check"><input type="checkbox" name="concluido_100"> 100 % concluído (preenche as lacunas de assentado e reaterro)</label>
-          <label>Informado por<input name="informado_por" placeholder="encarregado"></label>
           <div class="acoes"><button type="button" class="btn azul" id="apPrevisto">Calcular previsto</button></div>
           <div id="apQuant"></div>
         </form>
@@ -229,7 +230,7 @@
       <div class="painel">
         <h3>Fotos obrigatórias</h3>
         <div id="fotoPend" class="vazio">Selecione o trecho/nó.</div>
-        <form id="fFoto" style="margin-top:10px">
+        <form id="fFoto" data-perm="campo" style="margin-top:10px">
           <label>Categoria<select name="categoria">
             <option value="SINALIZACAO">1. Placa de sinalização / segurança da via</option>
             <option value="EXECUCAO">2. Executando o serviço / vala aberta</option>
@@ -241,13 +242,13 @@
         </form>
         <div class="fotos" id="fotoLista" style="margin-top:12px"></div>
         <h3 style="margin-top:16px">Soldas — informadas × verificadas</h3>
-        <form id="fSolda" class="form">
+        <form id="fSolda" data-perm="campo" class="form">
           <div class="linha">
             <label>Tipo<select name="tipo"><option value="ELETROFUSAO">Eletrofusão</option><option value="TOPO">Topo</option></select></label>
             <label>Quantidade<input type="number" min="1" step="1" name="quantidade" required></label>
             <label>Posição (m, opcional)<input type="number" step="any" min="0" name="posicao_m"></label>
           </div>
-          <div class="linha"><label>Soldador<input name="soldador" required></label><label>Informado por<input name="informado_por" required></label></div>
+          <label>Soldador<input name="soldador" required></label>
           <div class="acoes"><button class="btn prim">Registrar soldas</button></div>
         </form>
         <div id="soldas" style="margin-top:8px"></div>
@@ -266,7 +267,7 @@
       <div class="painel">
         <div class="acoes" style="justify-content:space-between;margin-bottom:12px">
           <div class="acoes"><label>Medição<select id="medSel"></select></label></div>
-          <div class="acoes"><a class="btn azul" id="medExport" href="#">⬇ Exportar .xlsx</a><button class="btn" id="medFechar">Fechar medição</button></div>
+          <div class="acoes"><a class="btn azul" id="medExport" data-perm="medicao" href="#">⬇ Exportar .xlsx</a><button class="btn" id="medFechar" data-perm="medicao">Fechar medição</button></div>
         </div>
         <div id="medResumo" class="vazio">Crie a medição do mês ao lado.</div>
       </div>
@@ -274,7 +275,7 @@
         <div class="painel">
           <h3>Nova medição de TESTE</h3>
           <p class="vazio" style="margin:0 0 8px">Medição oficial bloqueada até validar regras financeiras, controle de acesso e exportação no modelo oficial.</p>
-          <form id="fMed">
+          <form id="fMed" data-perm="medicao">
             <input type="hidden" name="tipo" value="TESTE">
             <div class="linha"><label>Nº<input type="number" min="1" name="numero" required></label>
               <label>Início<input type="date" name="periodo_ini" required></label>
@@ -286,7 +287,40 @@
       </div>
     </div>
   </section>
+  <!-- ======================================================= 6. ADMIN -->
+  <section class="aba" id="aba-admin">
+    <div class="grade-2">
+      <div class="painel">
+        <h3>Histórico de alterações (auditoria)</h3>
+        <div class="linha"><label>Usuário<input id="audLogin" placeholder="login (opcional)"></label><label>Objeto<input id="audAlvo" placeholder="TR-00001, nº do movimento… (opcional)"></label></div>
+        <div class="acoes" style="margin:8px 0"><button type="button" class="btn azul" id="audBtn">Consultar</button></div>
+        <div class="tabela" id="audLista"></div>
+      </div>
+      <div class="painel" id="painelUsuarios">
+        <h3>Usuários e perfis</h3>
+        <p class="vazio" style="margin:0 0 8px">Matriz de perfis provisória (decisão D-10): <code>config/perfis.json</code>.</p>
+        <div id="usuariosLista"></div>
+        <form id="fUsuario" data-perm="usuarios" class="form" style="margin-top:10px">
+          <div class="linha"><label>Login<input name="login" required></label><label>Nome<input name="nome" required></label></div>
+          <div class="linha"><label>Perfil<select name="perfil" id="selPerfil" required></select></label><label>Equipe (perfil Equipe)<select name="equipe_id" class="selEquipe"></select></label></div>
+          <label>Senha inicial (mín. 10)<input name="senha" type="password" autocomplete="new-password" required></label>
+          <div class="acoes"><button class="btn prim">Criar usuário</button></div>
+        </form>
+      </div>
+    </div>
+  </section>
 </main>
+<!-- ======================================================= login -->
+<div id="login" class="login" hidden>
+  <form id="fLogin" class="painel">
+    <h2>Entrar — Morro da Cruz</h2>
+    <label>Usuário<input name="login" autocomplete="username" required></label>
+    <label>Senha<input name="senha" type="password" autocomplete="current-password" required></label>
+    <div id="loginMsg" class="aviso problema" hidden></div>
+    <div class="acoes"><button class="btn prim">Entrar</button></div>
+    <p class="vazio" style="margin:0">Cada lançamento fica registrado com o seu usuário. Usuários são criados pela administração.</p>
+  </form>
+</div>
 <div id="toast" role="status"></div>
 <script src="/app.js"></script>
 </body>

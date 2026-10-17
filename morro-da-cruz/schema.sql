@@ -627,6 +627,52 @@ CREATE TABLE IF NOT EXISTS medicao_lancamentos (
   item_congelado TEXT
 );
 
+-- ---------------------------------------------------------------- acesso e auditoria (v9, módulo A)
+-- Usuários do sistema: senha só como hash PBKDF2. Perfis e permissões em config/perfis.json (provisório, D-10).
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INTEGER PRIMARY KEY,
+  login TEXT NOT NULL UNIQUE,
+  nome TEXT NOT NULL,
+  perfil TEXT NOT NULL,
+  senha TEXT NOT NULL,
+  equipe_id TEXT REFERENCES equipes(id),     -- perfil EQUIPE só lança para a própria equipe
+  ativo INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
+  criado_em TEXT NOT NULL,
+  criado_por TEXT NOT NULL
+);
+-- Sessão: só o SHA-256 do token (o token fica no cookie HttpOnly do navegador)
+CREATE TABLE IF NOT EXISTS sessoes (
+  token_sha TEXT PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  criada_em TEXT NOT NULL,
+  expira_em TEXT NOT NULL,
+  origem TEXT
+);
+-- Toda gravação (aceita ou recusada), login e saída. Nunca é apagada pelo sistema.
+CREATE TABLE IF NOT EXISTS auditoria (
+  id INTEGER PRIMARY KEY,
+  em TEXT NOT NULL,
+  usuario_id INTEGER REFERENCES usuarios(id),
+  login TEXT, perfil TEXT,
+  metodo TEXT NOT NULL, rota TEXT NOT NULL,
+  alvo_tipo TEXT, alvo_id TEXT,
+  status INTEGER NOT NULL,             -- 200 aceito · 4xx recusado · 5xx falha
+  resultado TEXT,                      -- resposta resumida ou motivo da recusa
+  corpo TEXT,                          -- requisição sem senha nem conteúdo de arquivo
+  idem TEXT                            -- chave de reenvio
+);
+-- Reenvio idempotente: a mesma chave do mesmo usuário devolve a mesma resposta, sem executar de novo
+CREATE TABLE IF NOT EXISTS requisicoes (
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  chave TEXT NOT NULL,
+  rota TEXT NOT NULL,
+  corpo_sha TEXT NOT NULL,
+  resposta TEXT NOT NULL,
+  em TEXT NOT NULL,
+  PRIMARY KEY (usuario_id, chave)
+);
+CREATE INDEX IF NOT EXISTS ix_auditoria_alvo ON auditoria(alvo_id);
+
 CREATE INDEX IF NOT EXISTS ix_itens_ativ ON itens_projeto(atividade_id);
 CREATE INDEX IF NOT EXISTS ix_ativ_elem ON atividades(elemento_id);
 CREATE INDEX IF NOT EXISTS ix_avisos_item ON avisos_origem(item_id);

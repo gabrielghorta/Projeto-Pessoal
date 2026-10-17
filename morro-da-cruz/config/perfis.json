@@ -1,0 +1,33 @@
+{
+  "_leia": "Matriz PROVISÓRIA de perfis e permissões (decisão D-10 em docs/DECISOES_PENDENTES.md). O servidor confere a permissão de cada rota; quem grava é sempre o usuário da sessão. Ajuste esta matriz e os usuários reais você mesmo (python usuarios.py). Consultas (GET) exigem só estar logado.",
+  "permissoes": {
+    "usuarios": "Cadastrar, alterar e desativar usuários",
+    "auditoria": "Consultar o histórico de alterações de qualquer objeto",
+    "equipes": "Cadastrar funcionários e máquinas das equipes",
+    "almox": "Movimentos de almoxarifado, reservas, check-in/check-out, estorno e retificação de fechamento",
+    "receber": "Recebimento e inspeção de notas fiscais (aceite e recusa), devolução ao fornecedor",
+    "compras_solicitar": "Abrir solicitação de compra",
+    "compras_aprovar": "Aprovar ou recusar solicitação de compra",
+    "compras_pedir": "Emitir pedido de compra e cadastrar fornecedores",
+    "inventario_contar": "Registrar contagem de inventário",
+    "inventario_ajustar": "Aprovar ajuste de inventário",
+    "campo": "Clima, apontamento, soldas (registro), fotos e ocorrências de campo",
+    "topografia": "Liberação topográfica",
+    "verificar": "Verificar intervalos e soldas (conferência interna) e resolver ocorrências",
+    "retificar_campo": "Retificar intervalos e conciliar avanço legado",
+    "ok_interno": "OK interno (Ankara) e recomposição — não é aprovação da Caesb",
+    "cadastro": "Avançar a esteira de cadastro e registrar documentos do GDOC",
+    "conferir_cadastro": "Conferência interna do cadastro (não é aprovação da Caesb)",
+    "planejar": "Programação das equipes",
+    "medicao": "Abrir, conferir, fechar e exportar medição de TESTE"
+  },
+  "perfis": {
+    "ADMINISTRACAO": {"nome": "Administração", "permissoes": ["usuarios", "auditoria", "equipes", "compras_pedir"]},
+    "ENGENHARIA": {"nome": "Engenharia", "permissoes": ["auditoria", "equipes", "campo", "verificar", "retificar_campo", "ok_interno",
+                   "cadastro", "conferir_cadastro", "planejar", "medicao", "compras_solicitar", "compras_aprovar", "inventario_ajustar", "topografia"]},
+    "ALMOXARIFADO": {"nome": "Almoxarifado", "permissoes": ["almox", "receber", "inventario_contar", "compras_solicitar"]},
+    "EQUIPE": {"nome": "Equipe de campo (encarregado)", "permissoes": ["campo"], "restrito_a_equipe": true},
+    "TOPOGRAFIA": {"nome": "Topografia", "permissoes": ["topografia", "campo"]},
+    "CADASTRO": {"nome": "Cadastro", "permissoes": ["cadastro"]}
+  }
+}
