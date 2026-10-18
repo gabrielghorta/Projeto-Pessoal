@@ -28,8 +28,11 @@ echo "== 3/4 Banco da obra e administrador"
 
 echo "== 4/4 Site"
 SITE="${PYTHONANYWHERE_SITE:-www.${PYTHONANYWHERE_DOMAIN:-pythonanywhere.com}}"
-DOMINIO="$USER.${PYTHONANYWHERE_DOMAIN:-pythonanywhere.com}"
+DOMINIO=$(echo "$USER.${PYTHONANYWHERE_DOMAIN:-pythonanywhere.com}" | tr '[:upper:]' '[:lower:]')   # o endereço é sempre minúsculo
 WSGI="/var/www/$(echo "$DOMINIO" | tr '.' '_')_wsgi.py"
+for f in /var/www/*_wsgi.py; do                       # usa o arquivo que o PythonAnywhere criou, qualquer que seja a caixa
+  [ -f "$f" ] && [ "$(echo "$f" | tr '[:upper:]' '[:lower:]')" = "$WSGI" ] && WSGI="$f"
+done
 API="https://$SITE/api/v0/user/$USER/webapps"
 VERSAO="python$(echo "${PY#python}" | tr -d '.')"
 api() { [ -n "${API_TOKEN:-}" ] && curl -fsS -o /dev/null -H "Authorization: Token $API_TOKEN" "$@"; }
