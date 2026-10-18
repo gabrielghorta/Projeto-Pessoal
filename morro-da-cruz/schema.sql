@@ -917,6 +917,30 @@ CREATE TABLE IF NOT EXISTS requisicoes (
 );
 CREATE INDEX IF NOT EXISTS ix_auditoria_alvo ON auditoria(alvo_id);
 
+-- ---------------------------------------------------------------- documentos oficiais da obra (v14)
+-- Catálogo dos arquivos guardados no Google Drive da obra: o sistema guarda o ENDEREÇO (link) e o que é preciso para
+-- achar o arquivo sem abrir; o arquivo continua no Drive. Só links do Google Drive/Docs. Nunca é apagado: sai da lista
+-- por ativo=0, com quem, quando e por quê. origem: MANUAL (cadastrado na tela) · INDICE (veio da planilha-índice).
+CREATE TABLE IF NOT EXISTS documentos_obra (
+  id INTEGER PRIMARY KEY,
+  titulo TEXT NOT NULL,
+  pasta TEXT NOT NULL,
+  tipo TEXT,
+  revisao TEXT,
+  data_documento TEXT,                 -- AAAA-MM-DD
+  codigo TEXT,                         -- código original (ex.: A.RED.SSB-D014.V03.T01.002-037, 06.2, BM 03.3.2)
+  nome_anterior TEXT,                  -- nome do arquivo antes da organização da pasta
+  descricao TEXT,
+  link TEXT NOT NULL,
+  drive_id TEXT,                       -- id do arquivo no Drive, tirado do link
+  origem TEXT NOT NULL CHECK (origem IN ('MANUAL','INDICE')),
+  ativo INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
+  criado_por TEXT NOT NULL, criado_em TEXT NOT NULL,
+  alterado_por TEXT, alterado_em TEXT,
+  retirado_por TEXT, retirado_em TEXT, retirado_motivo TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_documentos_drive ON documentos_obra(drive_id) WHERE drive_id IS NOT NULL AND ativo=1;
+
 CREATE INDEX IF NOT EXISTS ix_itens_ativ ON itens_projeto(atividade_id);
 CREATE INDEX IF NOT EXISTS ix_ativ_elem ON atividades(elemento_id);
 CREATE INDEX IF NOT EXISTS ix_avisos_item ON avisos_origem(item_id);

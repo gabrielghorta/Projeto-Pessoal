@@ -1061,6 +1061,11 @@ def preparar_v13(conn):
     return sem_chave
 
 
+def preparar_v14(conn):
+    """Esquema v13 → v14: catálogo dos documentos oficiais (links do Google Drive). Só acréscimos."""
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

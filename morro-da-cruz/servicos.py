@@ -25,7 +25,7 @@ from regras import RegraViolada
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 13
+VERSAO_ESQUEMA = 14
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -66,7 +66,7 @@ def aplicar_esquema(conn):
     if "chave" in {r[1] for r in conn.execute("PRAGMA table_info(medicao_lancamentos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_lanc_chave ON medicao_lancamentos(chave) WHERE chave IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "medição: parcela única, conferência interna e elegibilidade por período"))
+                 (VERSAO_ESQUEMA, _agora(), "documentos oficiais: catálogo dos links do Google Drive da obra"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):

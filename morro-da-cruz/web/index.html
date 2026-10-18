@@ -38,6 +38,7 @@
     <button role="tab" data-aba="medicao">💰 5. Medição (BM &amp; Memória de Cálculo)</button>
     <button role="tab" data-aba="admin">⚙️ 6. Usuários &amp; Histórico</button>
     <button role="tab" data-aba="relatorios">📊 7. Relatórios</button>
+    <button role="tab" data-aba="docs">📁 8. Documentos</button>
   </nav>
 </header>
 
@@ -408,6 +409,51 @@
         <div class="painel"><h3>Teto por subgrupo (BM Vertical)</h3><div id="medTetos" class="vazio">—</div></div>
       </div>
     </div>
+  </section>
+  <!-- ======================================================= 8. DOCUMENTOS (links do Google Drive) -->
+  <section class="aba" id="aba-docs">
+    <div class="painel">
+      <div class="acoes" style="justify-content:space-between;align-items:flex-end">
+        <label style="flex:1;min-width:220px">Buscar documento<input id="docBusca" type="search" placeholder="Nome, código ou pasta: 06.2, BM, prancha 015, PB07"></label>
+        <a class="btn" id="docPastaBtn" target="_blank" rel="noopener" hidden>📂 Abrir a pasta da obra no Drive</a>
+      </div>
+      <div class="pastas-docs" id="docAreas" role="group" aria-label="Pastas"></div>
+      <div class="pastas-docs" id="docSubpastas" role="group" aria-label="Subpastas"></div>
+      <div class="tabela" id="docLista" style="margin-top:12px"></div>
+      <p class="vazio" style="margin:6px 0 0">O sistema guarda só o endereço de cada arquivo: o arquivo continua no Google Drive da obra e abre ou baixa direto de lá.</p>
+    </div>
+    <details class="painel" id="docGerenciar" style="margin-top:16px" hidden>
+      <summary><b>Gerenciar a lista de documentos</b>: pasta, planilha-índice e cadastro manual</summary>
+      <div class="grade-2" style="margin-top:10px">
+        <div style="display:grid;gap:16px;align-content:start">
+          <form id="fDocConfig" data-perm="documentos">
+            <h3 style="margin:0">1. Pasta e planilha-índice</h3>
+            <label>Link da pasta da obra no Drive<input name="pasta_url" placeholder="https://drive.google.com/drive/folders/…"></label>
+            <label>Link da planilha-índice<input name="indice_url" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
+            <small class="vazio">A planilha precisa estar compartilhada como "qualquer pessoa com o link pode ver". Colunas lidas: nome antigo, nome novo, pasta, tipo, revisão, data, link e observação (nome novo e link são obrigatórias).</small>
+            <div class="acoes"><button class="btn">Salvar os links</button><button type="button" class="btn azul" id="docSincPrevia">Ver o que muda pelo índice</button></div>
+          </form>
+          <form id="fDocCsv" data-perm="documentos">
+            <h3 style="margin:0">2. Ou importe o índice em arquivo</h3>
+            <label>Arquivo CSV do índice (no Google Planilhas: Arquivo › Fazer download › CSV)<input type="file" name="arquivo" accept=".csv,.tsv,.txt,text/csv" required></label>
+            <div class="acoes"><button class="btn azul">Ver o que muda</button></div>
+          </form>
+          <div id="docPrevia"></div>
+        </div>
+        <form id="fDoc" data-perm="documentos">
+          <h3 style="margin:0" id="docFormTitulo">Adicionar um documento</h3>
+          <input type="hidden" name="documento_id">
+          <label>Nome claro do documento<input name="titulo" required placeholder="Morro da Cruz - Projeto Executivo de Redes - Rev 03 - Pranchas 01 a 37"></label>
+          <label>Pasta<input name="pasta" list="docPastasLista" required placeholder="01_DOCUMENTOS_OFICIAIS / 02_Projeto_Executivo"></label>
+          <datalist id="docPastasLista"></datalist>
+          <label>Link do arquivo no Drive<input name="link" required placeholder="https://drive.google.com/file/d/…"></label>
+          <div class="linha"><label>Tipo<input name="tipo" placeholder="PDF, DWG, XLSX"></label><label>Revisão<input name="revisao" placeholder="Rev 03"></label><label>Data<input type="date" name="data_documento"></label></div>
+          <label>Código original<input name="codigo" placeholder="A.RED.SSB-D014.V03.T01"></label>
+          <label>Observação<input name="descricao"></label>
+          <div class="acoes"><button class="btn prim" id="docSalvar">Adicionar à lista</button><button type="button" class="btn" id="docCancelar" hidden>Cancelar a edição</button></div>
+        </form>
+      </div>
+    </details>
   </section>
   <!-- ======================================================= 7. RELATÓRIOS -->
   <section class="aba" id="aba-relatorios">

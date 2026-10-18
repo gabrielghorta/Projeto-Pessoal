@@ -25,6 +25,7 @@ import acesso as A
 import caminhos
 import backup
 import compras as C
+import documentos as D
 import medicao as M
 import planejamento as P
 import relatorios as RL
@@ -359,6 +360,42 @@ def r_ocorrencias(q, c):
     return S.ocorrencias(c, q.get("tipo"), q.get("id"), None if ab is None else ab == "1")
 
 
+# ------------------------------------------------------------------ documentos oficiais (links do Google Drive)
+def r_documentos(q, c):
+    return D.listar(c)
+
+
+def p_documento(b, c):
+    campos = {k: b.get(k) for k in D.CAMPOS if k in b}
+    if b.get("documento_id"):
+        D.alterar(c, int(b["documento_id"]), campos, b["por"])
+        return {"id": int(b["documento_id"])}
+    return {"id": D.cadastrar(c, campos, b["por"])}
+
+
+def p_documento_retirar(b, c):
+    D.retirar(c, int(b["documento_id"]), b["por"], b.get("motivo"))
+    return {"ok": True}
+
+
+def p_documentos_importar(b, c):
+    return D.importar_indice(c, b.get("csv") or "", b["por"], simular=bool(b.get("simular")))
+
+
+def p_documentos_config(b, c):
+    D.salvar_config(c, b.get("pasta_url"), b.get("indice_url"), b["por"])
+    return {"ok": True}
+
+
+def p_documentos_sincronizar(b, c):
+    return D.sincronizar(c, b["por"], simular=bool(b.get("simular")))
+
+
+ROTAS_DOCUMENTOS = {"/api/documento": p_documento, "/api/documento/retirar": p_documento_retirar,
+                    "/api/documentos/importar": p_documentos_importar, "/api/documentos/config": p_documentos_config,
+                    "/api/documentos/sincronizar": p_documentos_sincronizar}
+
+
 # ------------------------------------------------------------------ compras e recebimento (módulo C)
 def _c(fn):
     return lambda b, c: {"id": fn(b, c)}
@@ -452,7 +489,8 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
        "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
        "/api/reservas-vencidas": r_reservas_vencidas, "/api/programacoes": r_programacoes,
-       "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios}
+       "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios,
+       "/api/documentos": r_documentos}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
@@ -467,6 +505,7 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/escavacao": _etapa("ESCAVADO"), "/api/etapa-complementar/anular": p_etapa_anular,
         "/api/ocorrencia": p_ocorrencia, "/api/ocorrencia/resolver": p_ocorrencia_resolver}
 POST.update({rota: fn for rota, (_, _, fn) in ROTAS_COMPRAS.items()})
+POST.update(ROTAS_DOCUMENTOS)
 POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar,
              "/api/medicao/conferir": p_medicao_conferir})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
@@ -494,6 +533,8 @@ PERMISSAO.update({"/api/programacao": "planejar", "/api/programacao/encerrar": "
 AUTOR.update({"/api/programacao": ("por",), "/api/programacao/encerrar": ("por",), "/api/medicao/conferir": ("por",),
               "/api/medicao/fechar": ("por",)})
 AUTOR.update({rota: campos for rota, (_, campos, _) in ROTAS_COMPRAS.items()})
+PERMISSAO.update({rota: "documentos" for rota in ROTAS_DOCUMENTOS})
+AUTOR.update({rota: ("por",) for rota in ROTAS_DOCUMENTOS})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
 

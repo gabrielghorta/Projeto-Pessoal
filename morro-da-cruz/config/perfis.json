@@ -19,12 +19,14 @@
     "cadastro": "Avançar a esteira de cadastro e registrar documentos do GDOC",
     "conferir_cadastro": "Conferência interna do cadastro (não é aprovação da Caesb)",
     "planejar": "Programação das equipes",
-    "medicao": "Abrir, conferir, fechar e exportar medição de TESTE"
+    "medicao": "Abrir, conferir, fechar e exportar medição de TESTE",
+    "documentos": "Organizar a lista de documentos oficiais (links do Google Drive): adicionar, corrigir, retirar e importar o índice"
   },
   "perfis": {
-    "ADMINISTRACAO": {"nome": "Administração", "permissoes": ["usuarios", "auditoria", "equipes", "compras_pedir"]},
+    "ADMINISTRACAO": {"nome": "Administração", "permissoes": ["usuarios", "auditoria", "equipes", "compras_pedir", "documentos"]},
     "ENGENHARIA": {"nome": "Engenharia", "permissoes": ["auditoria", "equipes", "campo", "verificar", "retificar_campo", "ok_interno",
-                   "cadastro", "conferir_cadastro", "planejar", "medicao", "compras_solicitar", "compras_aprovar", "inventario_ajustar", "topografia"]},
+                   "cadastro", "conferir_cadastro", "planejar", "medicao", "compras_solicitar", "compras_aprovar", "inventario_ajustar", "topografia",
+                   "documentos"]},
     "ALMOXARIFADO": {"nome": "Almoxarifado", "permissoes": ["almox", "receber", "inventario_contar", "compras_solicitar"]},
     "EQUIPE": {"nome": "Equipe de campo (encarregado)", "permissoes": ["campo"], "restrito_a_equipe": true},
     "TOPOGRAFIA": {"nome": "Topografia", "permissoes": ["topografia", "campo"]},

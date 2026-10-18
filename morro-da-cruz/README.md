@@ -127,6 +127,12 @@ O executável é gerado e testado no Windows pelo GitHub Actions (`.github/workf
 - **Visão integrada:** o detalhe do trecho reúne intervalos, lacunas, soldas, fotos (com validação), verificações, histórico e pendências (bloqueio, alerta, pendente).
 - **Pin do mapa:** mostra a programação do check-in, não a posição atual da equipe.
 
+## Documentos oficiais
+
+A aba **8. Documentos** lista os arquivos oficiais da obra, que ficam no Google Drive. O sistema guarda só o link de
+cada um. A lista vem da planilha-índice da pasta (pelo link ou em CSV, sempre com prévia) ou do cadastro na própria
+tela. Como colocar os documentos: `docs/DOCUMENTOS.md`.
+
 ## Mapa
 
 O servidor abre `mapa/PLANTAS_..._REV02_EQUIPES.html` **sem alterá-lo** e injeta `web/mapa_iluminado.js`. A camada lê o mesmo `DADOS` da REV02 e faz o seguinte:

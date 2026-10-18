@@ -104,6 +104,12 @@ td input { width: 100%; padding: 4px 6px; }
 .aviso.ok { border-color: var(--verde); background: var(--verde-claro); }
 .chip.cinza { background: var(--chip); color: var(--suave); }
 .vazio { color: var(--suave); font-style: italic; padding: 8px 0; }
+.pastas-docs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pastas-docs:empty { display: none; }
+.pastas-docs button { border: 1px solid var(--borda); background: var(--painel2); color: var(--texto); border-radius: 999px; padding: 5px 12px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.pastas-docs button[aria-pressed="true"] { background: var(--laranja); border-color: var(--laranja); color: #fff; }
+.pastas-docs button small { font-weight: 400; opacity: .8; }
+.doc-tipo { display: inline-block; min-width: 42px; text-align: center; padding: 2px 6px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--chip); color: var(--suave); margin-right: 6px; }
 
 /* ---------- mapa */
 .mapa-quadro { position: relative; height: calc(100vh - 210px); min-height: 520px; border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; background: var(--painel); }

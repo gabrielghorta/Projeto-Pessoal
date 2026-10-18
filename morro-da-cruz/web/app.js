@@ -124,7 +124,7 @@ function abrirAba(id) {
   $$('nav.abas button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.aba === id)));
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
   try { localStorage.setItem('aba', id); } catch (_) { /* sem storage */ }
-  ({ mapa: carregarMapa, prog: carregarProg, almox: carregarAlmox, compras: carregarCompras, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin, relatorios: carregarRelatorios })[id]();
+  ({ mapa: carregarMapa, prog: carregarProg, almox: carregarAlmox, compras: carregarCompras, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin, relatorios: carregarRelatorios, docs: carregarDocumentos })[id]();
 }
 
 /* ---------------------------------------------------------------- busca de trecho/nó */
@@ -1042,6 +1042,120 @@ document.addEventListener('click', async ev => {
     await acao(() => api('/api/usuarios', { acao: 'senha', login: s.dataset.usrSenha, senha }), 'Senha redefinida; as sessões dessa pessoa foram encerradas.').catch(() => null); }
 });
 
+/* ---------------------------------------------------------------- 8. documentos oficiais (links do Google Drive) */
+let DOCS = null, DOC_AREA = '', DOC_SUB = '';
+const semAcento = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const dataBR = d => d ? d.split('-').reverse().join('/') : '—';
+async function carregarDocumentos() {
+  const r = await acao(() => api('/api/documentos')).catch(() => null);
+  if (!r) return;
+  DOCS = r;
+  $('#docGerenciar').hidden = !pode('documentos');
+  const cfg = r.config, pb = $('#docPastaBtn');
+  pb.hidden = !cfg.pasta_url; if (cfg.pasta_url) pb.href = cfg.pasta_url;
+  const f = $('#fDocConfig'); f.pasta_url.value = cfg.pasta_url; f.indice_url.value = cfg.indice_url;
+  $('#docPastasLista').innerHTML = r.pastas.map(p => `<option value="${esc(p)}">`).join('');
+  renderDocumentos();
+}
+function renderDocumentos() {
+  if (!DOCS) return;
+  const q = semAcento($('#docBusca').value).trim();
+  const achou = d => !q || semAcento([d.titulo, d.codigo, d.nome_anterior, d.descricao, d.pasta_rotulo, d.tipo, d.revisao].join(' ')).includes(q);
+  const base = DOCS.documentos.filter(achou);
+  const area = d => d.pasta_rotulo.split(' / ')[0], sub = d => d.pasta_rotulo.split(' / ')[1] || '';
+  const contar = (lista, f) => lista.reduce((m, d) => (m[f(d)] = (m[f(d)] || 0) + 1, m), {});
+  const areas = contar(base, area);
+  if (DOC_AREA && !areas[DOC_AREA]) { DOC_AREA = ''; DOC_SUB = ''; }
+  const chip = (nome, n, on, dado) => `<button type="button" ${dado}="${esc(nome)}" aria-pressed="${on}">${esc(nome || 'Todas')} <small>${n}</small></button>`;
+  $('#docAreas').innerHTML = DOCS.total ? chip('', base.length, !DOC_AREA, 'data-doc-area') + Object.keys(areas).sort().map(a => chip(a, areas[a], a === DOC_AREA, 'data-doc-area')).join('') : '';
+  const naArea = base.filter(d => !DOC_AREA || area(d) === DOC_AREA);
+  const subs = DOC_AREA ? contar(naArea.filter(d => sub(d)), sub) : {};
+  if (DOC_SUB && !subs[DOC_SUB]) DOC_SUB = '';
+  $('#docSubpastas').innerHTML = Object.keys(subs).length ? chip('', naArea.length, !DOC_SUB, 'data-doc-sub') + Object.keys(subs).sort().map(s => chip(s, subs[s], s === DOC_SUB, 'data-doc-sub')).join('') : '';
+  const lista = naArea.filter(d => !DOC_SUB || sub(d) === DOC_SUB);
+  const editar = pode('documentos');
+  if (!DOCS.total) {
+    $('#docLista').innerHTML = `<div class="vazio" style="padding:12px">Nenhum documento na lista ainda. Quando o índice da pasta estiver pronto, ${editar ? 'abra <b>Gerenciar a lista de documentos</b> logo abaixo e importe o CSV do índice ou cole o link da planilha-índice.' : 'quem organiza os documentos importa o índice aqui.'}</div>`;
+    return;
+  }
+  if (!lista.length) { $('#docLista').innerHTML = '<div class="vazio" style="padding:12px">Nenhum documento com esse nome. Tente parte do nome ou do código, como 06.2, BM ou PB07.</div>'; return; }
+  const mostrar = lista.slice(0, 500);
+  $('#docLista').innerHTML = `<table><thead><tr><th>Documento</th><th>Pasta</th><th>Revisão</th><th>Data</th><th></th></tr></thead><tbody>${mostrar.map(d => `<tr>
+    <td><span class="doc-tipo">${esc(d.tipo || 'ARQ.')}</span><a href="${esc(d.link)}" target="_blank" rel="noopener">${esc(d.titulo)}</a>
+      ${d.codigo || d.nome_anterior ? `<br><small class="vazio" style="padding:0">${d.codigo ? 'código ' + esc(d.codigo) : ''}${d.codigo && d.nome_anterior ? '; ' : ''}${d.nome_anterior ? 'antes: ' + esc(d.nome_anterior) : ''}</small>` : ''}</td>
+    <td>${esc(d.pasta_rotulo)}</td><td>${esc(d.revisao || '—')}</td><td>${dataBR(d.data_documento)}</td>
+    <td style="white-space:nowrap"><a class="btn" href="${esc(d.link)}" target="_blank" rel="noopener">Abrir</a>
+      ${d.baixar ? `<a class="btn" href="${esc(d.baixar)}" target="_blank" rel="noopener">Baixar</a>` : ''}
+      ${editar ? `<button type="button" class="btn" data-doc-editar="${d.id}">Editar</button> <button type="button" class="btn" data-doc-retirar="${d.id}">Retirar</button>` : ''}</td></tr>`).join('')}</tbody></table>
+    ${lista.length > mostrar.length ? `<p class="vazio" style="margin:6px 8px">Mostrando 500 de ${lista.length}. Use a busca ou as pastas para afinar.</p>` : ''}`;
+}
+function renderPreviaDocs(r, aplicar) {
+  const ign = r.ignorados || [];
+  $('#docPrevia').innerHTML = `<div class="aviso ${r.simulado ? 'info' : 'sugestao'}"><b>${r.simulado ? 'Prévia: nada foi gravado ainda.' : 'Índice importado.'}</b><br>
+    ${r.linhas} linhas lidas: ${r.novos} novos, ${r.atualizados} atualizados, ${r.iguais} sem mudança e ${ign.length} ignorados.
+    ${r.fora_do_indice ? `<br>${r.fora_do_indice} documento(s) da lista não aparecem no índice. Continuam na lista; retire à mão se for o caso.` : ''}
+    ${ign.length ? `<details><summary>Ver os ignorados</summary><ul>${ign.slice(0, 50).map(i => `<li>Linha ${i.linha}: ${esc(i.titulo || 'sem nome')}: ${esc(i.motivo)}</li>`).join('')}</ul></details>` : ''}
+    ${r.simulado && (r.novos || r.atualizados) ? `<div class="acoes" style="margin-top:8px"><button type="button" class="btn prim" id="docAplicar">Aplicar: ${r.novos} novos e ${r.atualizados} atualizados</button></div>` : ''}</div>`;
+  const b = $('#docAplicar');
+  if (b) b.addEventListener('click', async () => {
+    b.disabled = true;
+    const r2 = await acao(aplicar, 'Lista de documentos atualizada.').catch(() => null);
+    if (r2) { renderPreviaDocs(r2); carregarDocumentos(); } else b.disabled = false;
+  });
+}
+async function lerTextoArquivo(arquivo) {
+  const buf = await arquivo.arrayBuffer();
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (_) { return new TextDecoder('windows-1252').decode(buf); }
+}
+function editarDocumento(d) {
+  const f = $('#fDoc');
+  ['documento_id', 'titulo', 'pasta', 'link', 'tipo', 'revisao', 'data_documento', 'codigo', 'descricao'].forEach(k => f[k].value = k === 'documento_id' ? d.id : (d[k] || ''));
+  $('#docFormTitulo').textContent = 'Corrigir o documento'; $('#docSalvar').textContent = 'Salvar a correção'; $('#docCancelar').hidden = false;
+  $('#docGerenciar').open = true; f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.titulo.focus();
+}
+function limparFormDocumento() {
+  $('#fDoc').reset(); $('#fDoc').documento_id.value = '';
+  $('#docFormTitulo').textContent = 'Adicionar um documento'; $('#docSalvar').textContent = 'Adicionar à lista'; $('#docCancelar').hidden = true;
+}
+$('#docBusca').addEventListener('input', renderDocumentos);
+$('#docCancelar').addEventListener('click', limparFormDocumento);
+$('#fDocConfig').addEventListener('submit', async ev => {
+  ev.preventDefault(); const o = formObj(ev.target);
+  const r = await acao(() => api('/api/documentos/config', o), 'Links salvos.').catch(() => null);
+  if (r) carregarDocumentos();
+});
+$('#docSincPrevia').addEventListener('click', async () => {
+  const r = await acao(() => api('/api/documentos/sincronizar', { simular: true })).catch(() => null);
+  if (r) renderPreviaDocs(r, () => api('/api/documentos/sincronizar', { simular: false }));
+});
+$('#fDocCsv').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const arq = ev.target.arquivo.files[0]; if (!arq) return;
+  if (arq.size > 5 * 1024 * 1024) { toast('Arquivo grande demais (máximo 5 MB).', 'erro'); return; }
+  const csv = await lerTextoArquivo(arq);
+  const r = await acao(() => api('/api/documentos/importar', { csv, simular: true })).catch(() => null);
+  if (r) renderPreviaDocs(r, () => api('/api/documentos/importar', { csv, simular: false }));
+});
+$('#fDoc').addEventListener('submit', async ev => {
+  ev.preventDefault(); const o = formObj(ev.target); const editando = !!o.documento_id;
+  if (!editando) delete o.documento_id;
+  const r = await acao(() => api('/api/documento', o), editando ? 'Documento corrigido.' : 'Documento adicionado à lista.').catch(() => null);
+  if (r) { limparFormDocumento(); carregarDocumentos(); }
+});
+document.addEventListener('click', async ev => {
+  const a = ev.target.closest('[data-doc-area]'), s = ev.target.closest('[data-doc-sub]');
+  const e = ev.target.closest('[data-doc-editar]'), x = ev.target.closest('[data-doc-retirar]');
+  if (a) { DOC_AREA = a.dataset.docArea; DOC_SUB = ''; renderDocumentos(); }
+  if (s) { DOC_SUB = s.dataset.docSub; renderDocumentos(); }
+  if (e && DOCS) { const d = DOCS.documentos.find(z => String(z.id) === e.dataset.docEditar); if (d) editarDocumento(d); }
+  if (x && DOCS) {
+    const d = DOCS.documentos.find(z => String(z.id) === x.dataset.docRetirar); if (!d) return;
+    const motivo = prompt(`Por que "${d.titulo}" sai da lista? O arquivo continua no Drive.`); if (!motivo) return;
+    const r = await acao(() => api('/api/documento/retirar', { documento_id: d.id, motivo }), 'Documento retirado da lista.').catch(() => null);
+    if (r) carregarDocumentos();
+  }
+});
+
 /* ---------------------------------------------------------------- login e início */
 function mostrarLogin(msg) {
   USUARIO = null; $('#login').hidden = false;
@@ -1084,7 +1198,7 @@ async function iniciar() {
   $$('.selEquipe').forEach(s => s.innerHTML = '<option value="">—</option>' + RESUMO.equipes.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join(''));
   $$('.selClima').forEach(s => s.innerHTML = '<option value="">—</option>' + Object.entries(RESUMO.clima).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''));
   $('select[name=contingencia]').innerHTML += RESUMO.contingencias.map(c => `<option>${esc(c)}</option>`).join('');
-  $$('input[type=date]').forEach(i => { if (!i.value && i.name !== 'periodo_ini' && i.name !== 'periodo_fim') i.value = hoje(); });
+  $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id;
   let aba = 'mapa'; try { aba = localStorage.getItem('aba') || 'mapa'; } catch (_) { /* sem storage */ }
   abrirAba(aba);
