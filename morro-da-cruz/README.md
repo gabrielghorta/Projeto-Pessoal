@@ -4,7 +4,7 @@ Aplicação web **privada e local** da obra *Implantação de Redes de Distribui
 São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 
 - Tecnologia: Python (biblioteca padrão + `openpyxl`), banco SQLite e interface HTML/JS sem dependências externas.
-- Roda só no computador da obra (`127.0.0.1`), com login, perfis e permissões checadas no servidor. O layout funciona em tela de celular (360 px), mas o acesso pelo celular depende da hospedagem (D-60).
+- Com login, perfis e permissões checadas no servidor. Roda no computador (`MorroDaCruz.exe`) ou **na nuvem, com link fixo e sem depender de computador** (`nuvem.py`, passo a passo em `docs/NUVEM.md`). O layout funciona em tela de celular (360 px).
 - **Implantação, backup e recuperação:** `docs/IMPLANTACAO.md`.
 - **Entrega para revisão** (situação, matriz, testes, decisões): `docs/ENTREGA_FINAL.md`. Ciclo completo da Zona01: `docs/EVIDENCIAS_CICLO_ZONA01.md`.
 - **Estado atual: piloto de TESTE.**

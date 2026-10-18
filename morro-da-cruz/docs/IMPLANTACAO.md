@@ -9,7 +9,7 @@ Este é o procedimento para pôr o sistema em uso no computador da obra, operá-
 - **Não ensaiado em Windows**: os comandos são os mesmos (`python` no lugar de `python3`). Confira o primeiro backup e a primeira restauração nessa máquina antes de depender deles.
 
 **Limites que continuam valendo:**
-- O servidor escuta **só em 127.0.0.1**. O acesso pelo celular depende da decisão D-60 (hospedagem, HTTPS, rede).
+- No computador, o servidor escuta **só em 127.0.0.1**. Para a equipe, use a nuvem (link fixo, `docs/NUVEM.md`) ou o link temporário do programa do escritório (§1.1).
 - Não há funcionamento sem internet. A instalação como aplicativo também não existe, e não seria prova de funcionamento offline (D-61).
 - A medição oficial continua bloqueada (D-56).
 - A importação no banco real exige os controles CTRL-01 aprovados por você (D-01).
@@ -42,7 +42,11 @@ morro-da-cruz/
 
 As pastas `planilhas/`, `mapa/` e `dados/` ficam **fora do Git** (`.gitignore`). Os dados da obra não vão para o repositório.
 
-## 1.1 Link para a equipe (decisão D-60, 17/10/2026)
+## 1.0 Na nuvem, com link fixo (D-60 revista em 18/10/2026)
+
+Para o sistema ficar no ar sem depender de nenhum computador, siga `docs/NUVEM.md`: PythonAnywhere (grátis) ou Render (pago). O resto deste guia vale para o uso no computador.
+
+## 1.1 Link para a equipe pelo computador do escritório (decisão D-60, 17/10/2026)
 
 O programa do escritório publica o sistema num endereço `https://….trycloudflare.com`, pelo túnel gratuito da Cloudflare (`cloudflared.exe`, que vem no pacote). Não precisa de conta, de domínio nem de abrir porta no roteador; o servidor continua escutando só em 127.0.0.1.
 
@@ -178,11 +182,11 @@ O histórico (check-in, intervalos, fotos, execução, medição, cadastro) segu
 - [ ] Usuários reais criados por você, com a matriz de perfis aprovada (D-10).
 - [ ] Primeiro backup criado, verificado e copiado para fora do computador.
 - [ ] Uma restauração ensaiada numa cópia (outra pasta, `--db` de teste) antes do uso real.
-- [ ] Decisão sobre o acesso de campo (D-60). Até lá, só no computador da obra.
+- [ ] Hospedagem da nuvem escolhida e conta criada pelo responsável (D-62, `docs/NUVEM.md`).
 
 ## 11. O que não fazer
 
 - Não edite o banco SQLite à mão. Correções passam por estorno, retificação ou conciliação, que guardam autor e motivo.
 - Não apague `dados/fotos` nem `dados/documentos`: os registros apontam para eles pelo hash.
 - Não rode `importar.py --aplicar` nem `backup.py restaurar` com o servidor no ar. Ambos recusam, mas não force apagando a marca.
-- Não exponha o servidor na rede (`--host`) antes da D-60. O servidor recusa um host diferente de 127.0.0.1.
+- Não exponha o servidor na rede (`--host`) fora do modo nuvem. Sem `--nuvem` (que o `nuvem.py` usa atrás do https da hospedagem), o servidor recusa um host diferente de 127.0.0.1.

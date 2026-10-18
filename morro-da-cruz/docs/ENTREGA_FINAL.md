@@ -17,7 +17,7 @@ CT 10.239/2026 Caesb × Ankara · LC 014/2026 · 17/10/2026 · branch `claude/po
 | Distribuição dos perfis e usuários reais | Uso por outras pessoas (a matriz atual é provisória) | D-10, D-11 |
 | Regras financeiras sem fonte | Valor de material, solda, MND, 14 serviços, rateio da escavação, reajuste com frações elegíveis | D-31, D-50…D-55, D-57 |
 | Liberação da medição oficial e do modelo `01ª MC` | Toda medição é TESTE | D-56 |
-| Acesso de campo (hospedagem, HTTPS, rede) | Uso pelo celular: o layout está pronto, mas o servidor só escuta em 127.0.0.1 | D-60 |
+| Hospedagem da nuvem (conta no nome do responsável) | Link fixo para a equipe: o código e as receitas estão prontos (`docs/NUVEM.md`); falta criar a conta | D-62 |
 | Funcionamento sem internet | Não iniciado, por regra | D-61 |
 
 **O que não foi feito (fora das decisões acima):**
@@ -116,7 +116,7 @@ A demonstração também apontou três comportamentos, registrados no documento:
   - O `MorroDaCruz.exe` foi gerado e abriu a primeira abertura no Windows.
   - Ainda não ensaiados no Windows: a montagem com as planilhas reais e o uso completo. Confira o primeiro backup e a primeira restauração na máquina da obra.
 - **Servidor de um processo:** as gravações são serializadas. A concorrência é segura, mas o servidor é dimensionado para o porte da obra, não para muitos acessos simultâneos.
-- **Acesso pela equipe (D-60, decidida em 17/10):** link https pelo computador do escritório. O link vale enquanto o programa estiver aberto e muda a cada reinício. O servidor continua só em 127.0.0.1, atrás do túnel.
+- **Acesso pela equipe (D-60, revista em 18/10):** na nuvem, com link fixo e sem computador (`nuvem.py`, `docs/NUVEM.md`). Ensaiado aqui pelo adaptador WSGI e pelo comando de início; a hospedagem real depende da conta do responsável (D-62). O link pelo computador do escritório continua disponível (vale enquanto o programa estiver aberto e muda a cada reinício).
 - **Medição de TESTE:** valores com hipóteses (teto por subgrupo, reajuste sem frações elegíveis, rateio da escavação) e pendências fora do valor. Nada é oficial.
 - **Relatórios ao vivo:** não há histórico mensal além da medição fechada (congelada).
 - **Material sem de-para** numa revisão do BM (A2).
@@ -128,7 +128,7 @@ Documento único com opções, impacto, recomendação e regra provisória: `doc
 
 1. **D-01**: conferir e aprovar os controles CTRL-01 (você preenche `aprovacao` em `config/controles.json`). Libera a importação real.
 2. **D-10 / D-11**: aprovar a matriz de perfis e criar os usuários reais. Definir se a verificação exige perfil diferente.
-3. **D-60**: forma de acesso de campo (rede local do canteiro ou servidor privado com HTTPS e VPN).
+3. **D-62**: escolher a hospedagem da nuvem e criar a conta (PythonAnywhere grátis ou Render pago, `docs/NUVEM.md`).
 4. **D-30, D-31, D-50…D-55, D-57, D-58**: regras de medição com fonte (intervalo × trecho completo, soldas, itens sem vínculo, escavação, MND, regimes de material, reajuste, teto, cadastro).
 5. **D-56**: liberação da medição oficial e do modelo `01ª MC`, depois das anteriores.
 6. **D-59** (nova): conferência interna obrigatória antes de fechar a medição; roteiro e segregação.

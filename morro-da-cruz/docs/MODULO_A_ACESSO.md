@@ -58,6 +58,6 @@ CT 10.239/2026 · 17/10/2026 · esquema v9 · plano: `docs/PLANO_ENTREGA_COMPLET
 
 ## Limitações e decisões
 
-- O acesso continua só em `127.0.0.1` até a decisão D-60 (hospedagem, HTTPS e rede). Com HTTPS, ligar `COOKIE_SEGURO` em `server.py`.
+- No computador, o acesso é só em `127.0.0.1`. Na nuvem (`nuvem.py`, D-60 revista), o servidor liga `COOKIE_SEGURO` e o HSTS, e nada é tratado como local.
 - Um processo e uma conexão: as gravações são serializadas. É seguro para o porte da obra, mas não é feito para muitos acessos simultâneos.
 - A matriz de perfis e as pessoas autorizadas dependem de você (D-10, D-11). Os usuários desta validação existem só no banco isolado.

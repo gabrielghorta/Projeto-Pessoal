@@ -1,7 +1,11 @@
-"""Servidor local (privado) do Sistema Morro da Cruz — só biblioteca padrão + openpyxl.
+"""Servidor do Sistema Morro da Cruz — só biblioteca padrão + openpyxl.
 
 Uso:  python server.py [--porta 8765] [--db dados/morro_da_cruz.db] [--host 127.0.0.1]
 Abra http://127.0.0.1:8765
+
+Na nuvem (link fixo, sem depender de nenhum computador) quem inicia é o nuvem.py, com --nuvem: aí nenhum pedido é
+tratado como "do próprio computador" (sem /configurar e sem entrar sem senha) e o cookie de sessão vai sempre com
+Secure, porque a hospedagem entrega só por https.
 """
 import argparse
 import json
@@ -36,6 +40,7 @@ CONN = None
 DB_PATH = S.DB_PADRAO
 DEMONSTRACAO = False                  # banco de demonstração (dados_demo/): a interface mostra a faixa de aviso
 LINK = False                          # link para a equipe (túnel), ligado pelo programa do escritório (iniciar.py)
+NUVEM = False                         # hospedado na nuvem (nuvem.py): todo pedido vem de fora, pelo https da hospedagem
 PORTA = 8765
 DIR_FOTOS = S.DIR_FOTOS                 # sempre <pasta do banco>/fotos (é o que o backup copia e confere)
 COOKIE = "mc_sessao"
@@ -514,6 +519,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if NUVEM:
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -522,12 +529,14 @@ class Handler(BaseHTTPRequestHandler):
                  urlparse(self.path).path, status)
 
     def _local(self):
-        """Pedido feito no próprio computador (não veio pelo link da equipe: o túnel acrescenta Cf-Connecting-Ip)."""
-        return (self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("Cf-Connecting-Ip")
+        """Pedido feito no próprio computador (não veio pelo link da equipe: o túnel acrescenta Cf-Connecting-Ip).
+        Na nuvem, nunca: o "computador do sistema" é da hospedagem e todo pedido chega pela internet."""
+        return (not NUVEM and self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("Cf-Connecting-Ip")
                 and not self.headers.get("X-Forwarded-For"))
 
     def _ip(self):
-        return self.headers.get("Cf-Connecting-Ip") or self.client_address[0]
+        encaminhado = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip() if NUVEM else ""
+        return self.headers.get("Cf-Connecting-Ip") or encaminhado or self.client_address[0]
 
     def _https(self):
         return (self.headers.get("X-Forwarded-Proto") == "https" or '"https"' in (self.headers.get("Cf-Visitor") or "")
@@ -543,6 +552,9 @@ class Handler(BaseHTTPRequestHandler):
         return u
 
     def _sem_usuarios(self):
+        if NUVEM:
+            return {"erro": "Nenhum usuário ativo. Na hospedagem, defina MC_ADMIN_LOGIN e MC_ADMIN_SENHA e reinicie "
+                            "(docs/NUVEM.md).", "sem_usuarios": True}
         return {"erro": "Nenhum usuário cadastrado. No computador do servidor, crie o primeiro: python usuarios.py criar",
                 "sem_usuarios": True}
 
@@ -568,6 +580,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, f.read(), mimetypes.guess_type(p)[0] or "application/octet-stream")
 
     def do_GET(self):
+        if NUVEM and self.headers.get("X-Forwarded-Proto") == "http":     # endereço digitado sem https
+            return self._send(301, "", "text/plain; charset=utf-8", {"Location": f"https://{self.headers.get('Host', '')}{self.path}"})
         u = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if u.path in PUBLICOS:
@@ -790,8 +804,23 @@ def _anunciar_link(url):
     print("=" * 72 + "\n", flush=True)
 
 
+def abrir(db, demonstracao=False, nuvem=False):
+    """Abre o banco e define o modo do servidor. Usado pelo main e pelo adaptador WSGI da nuvem (nuvem.py)."""
+    global CONN, DB_PATH, DIR_FOTOS, DEMONSTRACAO, NUVEM, COOKIE_SEGURO
+    if not os.path.exists(db):
+        raise SystemExit(f"Banco {db} não existe — rode antes: python importar.py --aplicar")
+    try:
+        conn = S.conectar(db)
+    except S.EsquemaAntigo as e:
+        raise SystemExit(str(e))
+    CONN, DB_PATH, DEMONSTRACAO, NUVEM = conn, db, demonstracao, nuvem
+    COOKIE_SEGURO = nuvem                  # na nuvem a hospedagem só entrega por https
+    DIR_FOTOS = os.path.join(os.path.dirname(os.path.abspath(db)), "fotos")
+    configurar_log(os.path.dirname(os.path.abspath(db)))
+
+
 def main():
-    global CONN, DB_PATH, DIR_FOTOS, DEMONSTRACAO, LINK, PORTA
+    global LINK, PORTA
     backup.utf8_console()
     ap = argparse.ArgumentParser()
     ap.add_argument("--porta", type=int, default=8765)
@@ -799,24 +828,17 @@ def main():
     ap.add_argument("--db", default=S.DB_PADRAO)
     ap.add_argument("--demonstracao", action="store_true", help="mostra a faixa DEMONSTRAÇÃO na interface")
     ap.add_argument("--link", action="store_true", help="liga o link para a equipe (túnel https) depois do administrador")
+    ap.add_argument("--nuvem", action="store_true", help="hospedado na nuvem atrás do https da hospedagem (use o nuvem.py)")
     a = ap.parse_args()
-    DEMONSTRACAO, LINK, PORTA = a.demonstracao, a.link, a.porta
-    if not os.path.exists(a.db):
-        raise SystemExit(f"Banco {a.db} não existe — rode antes: python importar.py --aplicar")
-    DB_PATH = a.db
-    DIR_FOTOS = os.path.join(os.path.dirname(os.path.abspath(a.db)), "fotos")
-    try:
-        CONN = S.conectar(a.db)
-    except S.EsquemaAntigo as e:
-        raise SystemExit(str(e))
-    if a.host not in ("127.0.0.1", "localhost"):
-        raise SystemExit("Acesso pela rede ainda não liberado (decisão D-60: hospedagem, HTTPS e rede): só 127.0.0.1.")
-    configurar_log(os.path.dirname(os.path.abspath(a.db)))
+    if a.host not in ("127.0.0.1", "localhost") and not a.nuvem:
+        raise SystemExit("Acesso pela rede só no modo nuvem (python nuvem.py, atrás do https da hospedagem): aqui, só 127.0.0.1.")
+    LINK, PORTA = a.link and not a.nuvem, a.porta
+    abrir(a.db, a.demonstracao, a.nuvem)
     if not A.ha_usuarios(CONN):
         print("ATENÇÃO: nenhum usuário cadastrado. Crie o primeiro com: python usuarios.py criar --db " + a.db)
     srv = ThreadingHTTPServer((a.host, a.porta), Handler)
     marca = backup.marcar_servidor(os.path.dirname(os.path.abspath(a.db)), a.host, a.porta)
-    print(f"Sistema Morro da Cruz em http://{a.host}:{a.porta}  (Ctrl+C para sair)")
+    print(f"Sistema Morro da Cruz em http://{a.host}:{a.porta}{'  (nuvem)' if NUVEM else ''}  (Ctrl+C para sair)", flush=True)
     print("Importação e restauração exigem este servidor parado.")
     if LINK:
         if A.acesso_configurado(CONN):

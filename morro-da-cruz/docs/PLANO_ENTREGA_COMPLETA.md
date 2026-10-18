@@ -141,7 +141,7 @@ As decisões que dependem de você ficam num documento único: `docs/DECISOES_PE
 | F1 Previsto × comprado × recebido × reservado × aplicado × medido | Ver o ciclo do material de ponta a ponta | **CONCLUÍDO**: aba 7 e .xlsx, por material (previsto, solicitado, comprado, a receber, quarentena, recebido, almoxarifado, reservado, com as equipes, aplicado, perda); medido = bloqueado (D-53 · D-54), nunca zero | — | C | números batem com os movimentos (igualdade de conferência; estorno sai) | `test_relatorios`, navegador | D-53, D-54 |
 | F2 Avanço por zona, equipe, período e etapa | Acompanhar a produção | **CONCLUÍDO**: intervalos efetivos por frente × equipe × etapa no período, por dia e acumulado por frente (%); legado sem posição à parte | — | — | soma por zona = soma geral; retificação conta o valor corrigido | `test_relatorios`, navegador | — |
 | F3 Materiais faltantes, pendências, programação | Antecipar falta de material | **CONCLUÍDO**: faltantes da programação (D) e pendências por frente (ocorrências, verificação, reaterro sem cadastro, legado, aguardando OK, sem fotos, cadastro, programação vencida) e gerais | — | D2, C | a falta aparece antes do dia programado; cada pendência na sua frente | `test_planejamento`, `test_relatorios` | — |
-| F4 Computador e celular | Usar em campo | **CONCLUÍDO no layout**: 0 px de rolagem lateral nas 9 abas em 360 px. **BLOQUEADO** o acesso real pelo celular (hospedagem) | — | — | navegação no celular sem rolagem lateral | navegador (360 × 740, toque) | D-60 |
+| F4 Computador e celular | Usar em campo | **CONCLUÍDO no layout**: 0 px de rolagem lateral nas 9 abas em 360 px. acesso pelo celular **pronto para a nuvem** (`nuvem.py`, link fixo, `tests/test_nuvem.py`); falta a conta da hospedagem | — | — | navegação no celular sem rolagem lateral; login pelo https da hospedagem | navegador (360 × 740, toque); `test_nuvem` | D-60, D-62 |
 | F5 Implantação, configuração, logs, backup e recuperação | Pôr em operação com segurança | **CONCLUÍDO**: log com rotação; `docs/IMPLANTACAO.md` (instalação, primeiro usuário, operação, rotina de backup, restauração, nova revisão, atualização de versão, recuperação de desastre, checklist); ensaio no ciclo Z. Windows não ensaiado | — | A3 | procedimento ensaiado no ciclo Z | etapa Z | D-60, D-61 |
 | F6 Funcionamento sem internet | — | **NÃO INICIADO por regra**: depende de confirmar necessidade e alcance | — | — | — | — | D-61 |
 
@@ -170,5 +170,5 @@ Evidência: teste automatizado (`tests/test_ciclo_zona01.py`, que exige as plani
 
 - **Windows não testado** (ambiente Linux).
 - **Servidor de um processo**: a concorrência é segura porque as gravações são serializadas, mas não escala para muitos acessos simultâneos (adequado ao porte da obra; registrar).
-- **Acesso pelo celular**: depende da decisão de hospedagem (D-60). Até lá, o servidor continua só em 127.0.0.1, mesmo com login.
+- **Acesso pelo celular**: na nuvem, com link fixo (`docs/NUVEM.md`). Falta o responsável criar a conta da hospedagem (D-62).
 - **Regras financeiras** sem fonte continuam bloqueadas (D-50 a D-56): a medição de TESTE mostra PENDENTE e hipóteses.

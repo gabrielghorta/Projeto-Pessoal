@@ -47,20 +47,24 @@ def cfg_demonstracao():
     return cfg
 
 
-def criar():
+def criar(pasta=None):
+    """Monta o banco de demonstração em <pasta>/obra.db (padrão: dados_demo/ ao lado do programa; na nuvem, a pasta
+    persistente da hospedagem)."""
+    pasta = pasta or PASTA
+    db = os.path.join(pasta, "obra.db")
     faltam = [k for k in ("redes", "conexoes", "evidencias", "bm", "reajuste") if not I.caminho(I.carregar_config(), k)]
     if faltam:
         raise SystemExit("Faltam planilhas em planilhas/ (" + ", ".join(faltam) + "). Os nomes exatos estão em planilhas/LEIA-ME.md.")
-    os.makedirs(os.path.join(PASTA, "fotos"), exist_ok=True)
-    print("Criando o banco de demonstração a partir das planilhas (pode levar 1 a 2 minutos)…")
+    os.makedirs(os.path.join(pasta, "fotos"), exist_ok=True)
+    print("Criando o banco de demonstração a partir das planilhas (pode levar 1 a 2 minutos)…", flush=True)
     try:
-        rel = importar.aplicar(DB, I.DIR_PLANILHAS, cfg=cfg_demonstracao(), dir_relatorios=os.path.join(PASTA, "relatorios"))
+        rel = importar.aplicar(db, I.DIR_PLANILHAS, cfg=cfg_demonstracao(), dir_relatorios=os.path.join(pasta, "relatorios"))
     except importar.ImportacaoReprovada as e:
         importar.imprimir(e.relatorio)
         raise SystemExit("A importação de demonstração foi reprovada (veja o relatório acima). Se as planilhas não são as do "
                          "CTRL-01 (mesmo SHA-256), a demonstração não tem conjunto de controles para elas.")
     print(f"Importação: {rel['status']}")
-    c = S.conectar(DB)
+    c = S.conectar(db)
     try:
         for login, nome, perfil, eq in USUARIOS:
             A.criar_usuario(c, login, nome, perfil, SENHA, eq, "demonstração local")
