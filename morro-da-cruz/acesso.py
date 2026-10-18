@@ -177,11 +177,16 @@ def configurar_acesso(conn, login, nome, senha):
     if normalizar_login(login).endswith(".demo"):
         raise R.RegraViolada("Escolha um login seu (o final .demo é dos usuários de demonstração).")
     uid = criar_usuario(conn, login, nome, "ADMINISTRACAO", senha, None, "configuração do link da equipe")
+    return uid, desativar_demonstracao(conn)
+
+
+def desativar_demonstracao(conn):
+    """Desativa os usuários de demonstração ativos (senha pública). Chamado antes de qualquer abertura pelo link."""
     demos = [r[0] for r in conn.execute("SELECT id FROM usuarios WHERE ativo=1 AND login LIKE ?", (DEMO,))]
     for i in demos:
         conn.execute("UPDATE usuarios SET ativo=0 WHERE id=?", (i,))
         conn.execute("DELETE FROM sessoes WHERE usuario_id=?", (i,))
-    return uid, len(demos)
+    return len(demos)
 
 
 def autenticar(conn, login, senha, origem=None):

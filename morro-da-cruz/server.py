@@ -820,6 +820,10 @@ def main():
     print("Importação e restauração exigem este servidor parado.")
     if LINK:
         if A.acesso_configurado(CONN):
+            with S.transacao(CONN):
+                n = A.desativar_demonstracao(CONN)       # senha pública: nunca ativos com o link ligado
+            if n:
+                print(f"{n} usuário(s) de demonstração desativado(s) antes de ligar o link.", flush=True)
             print("Ligando o link para a equipe (alguns segundos)…", flush=True)
             link.iniciar(PORTA, _anunciar_link)
         else:
