@@ -16,6 +16,7 @@ import json
 import os
 import re
 import secrets
+import unicodedata
 from datetime import datetime, timedelta
 
 import caminhos
@@ -71,8 +72,16 @@ def _validar_senha(senha):
         raise R.RegraViolada("A senha precisa ter pelo menos 10 caracteres.")
 
 
+def normalizar_login(login):
+    """O mesmo login escrito de jeitos diferentes vira o mesmo: sem acento, minúsculo, espaços viram ponto.
+    "Gabriel Horta" → "gabriel.horta"; "João" → "joao"; e-mail continua e-mail. Vale no cadastro e na entrada."""
+    s = unicodedata.normalize("NFKD", str(login or "").strip().lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", ".", s)
+
+
 def _usuario(conn, login):
-    r = conn.execute("SELECT * FROM usuarios WHERE login=?", (str(login or "").strip().lower(),)).fetchone()
+    r = conn.execute("SELECT * FROM usuarios WHERE login=?", (normalizar_login(login),)).fetchone()
     return dict(r) if r else None
 
 
@@ -92,9 +101,9 @@ def publico(u, perfis=None):
 
 
 def criar_usuario(conn, login, nome, perfil, senha, equipe_id=None, criado_por="instalação"):
-    login = str(login or "").strip().lower()
-    if not re.fullmatch(r"[a-z0-9._-]{3,32}", login):
-        raise R.RegraViolada("Login: 3 a 32 caracteres (letras minúsculas, números, ponto, hífen ou sublinhado).")
+    login = normalizar_login(login)
+    if not re.fullmatch(r"[a-z0-9._@+-]{3,64}", login):
+        raise R.RegraViolada("Login: de 3 a 64 caracteres — pode ser o seu nome (ex.: gabriel.horta) ou o seu e-mail.")
     if not str(nome or "").strip():
         raise R.RegraViolada("Informe o nome da pessoa.")
     perfis = carregar_perfis()
@@ -165,7 +174,7 @@ def configurar_acesso(conn, login, nome, senha):
     feitos por eles continuam no histórico; podem ser reativados com `usuarios.py reativar`."""
     if acesso_configurado(conn):
         raise R.RegraViolada("O acesso já foi configurado: entre com o administrador.")
-    if str(login or "").strip().lower().endswith(".demo"):
+    if normalizar_login(login).endswith(".demo"):
         raise R.RegraViolada("Escolha um login seu (o final .demo é dos usuários de demonstração).")
     uid = criar_usuario(conn, login, nome, "ADMINISTRACAO", senha, None, "configuração do link da equipe")
     demos = [r[0] for r in conn.execute("SELECT id FROM usuarios WHERE ativo=1 AND login LIKE ?", (DEMO,))]
@@ -177,7 +186,7 @@ def configurar_acesso(conn, login, nome, senha):
 
 def autenticar(conn, login, senha, origem=None):
     """Devolve (token, usuário público). Falha → AcessoNegado 401 (mensagem única, sem dizer o que errou)."""
-    login = str(login or "").strip().lower()
+    login = normalizar_login(login)
     desde = _iso(_agora() - JANELA_FALHAS)
     falhas = conn.execute("SELECT COUNT(*) FROM auditoria WHERE rota='/api/login' AND login=? AND status=401 AND em>=?",
                           (login, desde)).fetchone()[0]
@@ -186,12 +195,27 @@ def autenticar(conn, login, senha, origem=None):
     u = _usuario(conn, login)
     if not u or not u["ativo"] or not conferir_senha(senha or "", u["senha"]):
         raise AcessoNegado("Login ou senha inválidos.", 401)
+    return _nova_sessao(conn, u, origem), publico(u)
+
+
+def entrar_local(conn, origem="computador do sistema"):
+    """Entrada sem senha NO PRÓPRIO COMPUTADOR do sistema (o servidor confere que o pedido é local): entra como o
+    primeiro administrador real. Quem está nesse computador já tem o banco nas mãos; pelo link, sempre login e senha."""
+    u = conn.execute("""SELECT * FROM usuarios WHERE ativo=1 AND perfil='ADMINISTRACAO' AND login NOT LIKE ?
+                        ORDER BY id LIMIT 1""", (DEMO,)).fetchone()
+    if not u:
+        raise R.RegraViolada("Ainda não há administrador: crie o seu primeiro.")
+    u = dict(u)
+    return _nova_sessao(conn, u, origem), publico(u)
+
+
+def _nova_sessao(conn, u, origem):
     token = secrets.token_urlsafe(32)
     agora = _agora()
     conn.execute("INSERT INTO sessoes(token_sha,usuario_id,criada_em,expira_em,origem) VALUES (?,?,?,?,?)",
                  (hashlib.sha256(token.encode()).hexdigest(), u["id"], _iso(agora), _iso(agora + VALIDADE_SESSAO), origem))
     conn.execute("DELETE FROM sessoes WHERE expira_em < ?", (_iso(agora),))
-    return token, publico(u)
+    return token
 
 
 def sessao(conn, token):

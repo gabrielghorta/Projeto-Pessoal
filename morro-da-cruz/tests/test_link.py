@@ -71,7 +71,7 @@ class TestConfigurarAcesso(BaseLink):
     def test_so_no_computador_desativa_demonstracao_e_liga_o_link(self):
         st, _, html = self.bruto("GET", "/")
         self.assertIn(b'id="dicaDemo" class="aviso info">', html)                     # local: dicas aparecem
-        self.assertIn(b'id="dicaLink" class="aviso sugestao">', html)
+        self.assertIn(b'id="dicaPrimeiro" class="aviso sugestao">', html)            # botão "Criar meu usuário"
         st, _, html = self.bruto("GET", "/", cab=TUNEL)
         self.assertIn(b'id="dicaDemo" class="aviso info" hidden', html)                # pelo link: nada de senha na tela
         self.assertEqual(self.bruto("GET", "/configurar", cab=TUNEL)[0], 403)
@@ -101,7 +101,27 @@ class TestConfigurarAcesso(BaseLink):
         with open(os.path.join(self.tmp, link.ARQUIVO), encoding="utf-8") as f:
             self.assertIn(r["url"], f.read())
         st, _, html = self.bruto("GET", "/")
-        self.assertIn(b'id="dicaLink" class="aviso sugestao" hidden', html)            # configurado: sem aviso
+        self.assertIn(b'id="dicaPrimeiro" class="aviso sugestao" hidden', html)        # configurado: sem "primeiro acesso"
+        self.assertIn(b'id="dicaLocal" class="aviso sugestao">', html)                 # e com "entrar sem senha" (local)
+        st, _, html = self.bruto("GET", "/", cab=TUNEL)
+        self.assertIn(b'id="dicaLocal" class="aviso sugestao" hidden', html)
+
+    def test_entrar_sem_senha_so_no_computador_e_login_tolerante(self):
+        self.assertEqual(self.bruto("POST", "/api/entrar-local", {})[0], 409)              # ainda sem administrador
+        st, _, r = self.bruto("POST", "/api/configurar-acesso", {"login": "Gabriel Horta", "nome": "Gabriel", "senha": "senha-forte-do-admin"})
+        self.assertEqual(st, 200, r)
+        self.assertEqual(self.q("SELECT login FROM usuarios WHERE ativo=1"), [("gabriel.horta",)])   # sem espaço nem maiúscula
+        self.assertEqual(self.bruto("POST", "/api/entrar-local", {}, TUNEL)[0], 403)       # pelo link: nunca sem senha
+        st, cab, r = self.bruto("POST", "/api/entrar-local", {})
+        self.assertEqual((st, json.loads(r)["usuario"]["login"]), (200, "gabriel.horta"))
+        self.assertIn("mc_sessao=", cab["Set-Cookie"])
+        self.assertEqual(self.q("SELECT COUNT(*) FROM auditoria WHERE rota='/api/entrar-local' AND status=200"), [(1,)])
+        for escrito in ("gabriel horta", "GABRIEL.HORTA", " Gabriel  Horta "):            # do jeito que a pessoa digitar
+            self.assertEqual(self.bruto("POST", "/api/login", {"login": escrito, "senha": "senha-forte-do-admin"}, TUNEL)[0], 200, escrito)
+        A.criar_usuario(self.c, "Maria.Souza@Ankara.com.br", "Maria", "ENGENHARIA", "senha-da-maria-1", None, "teste")
+        self.assertEqual(self.bruto("POST", "/api/login", {"login": "maria.souza@ankara.com.br", "senha": "senha-da-maria-1"}, TUNEL)[0], 200)
+        A.criar_usuario(self.c, "João Pedro", "João", "ENGENHARIA", "senha-do-joao-12", None, "teste")
+        self.assertEqual(self.q("SELECT login FROM usuarios WHERE nome='João'"), [("joao.pedro",)])
 
     def test_cookie_seguro_so_atras_do_https(self):
         A.configurar_acesso(self.c, "gabriel.horta", "Gabriel", "senha-forte-do-admin")

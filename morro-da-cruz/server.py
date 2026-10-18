@@ -579,8 +579,10 @@ class Handler(BaseHTTPRequestHandler):
                         configurado = A.acesso_configurado(CONN)
                     if DEMONSTRACAO and not configurado:
                         html = html.replace(b'id="dicaDemo" class="aviso info" hidden', b'id="dicaDemo" class="aviso info"')
-                    if LINK and not configurado:
-                        html = html.replace(b'id="dicaLink" class="aviso sugestao" hidden', b'id="dicaLink" class="aviso sugestao"')
+                    if not configurado:
+                        html = html.replace(b'id="dicaPrimeiro" class="aviso sugestao" hidden', b'id="dicaPrimeiro" class="aviso sugestao"')
+                    else:
+                        html = html.replace(b'id="dicaLocal" class="aviso sugestao" hidden', b'id="dicaLocal" class="aviso sugestao"')
                 return self._send(200, html, "text/html; charset=utf-8")
             return self._static(WEB, "index.html" if u.path in ("/", "/index.html") else u.path.lstrip("/"))
         with LOCK:
@@ -646,7 +648,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         rota = u.path
-        if rota not in POST and rota not in POST_USUARIO and rota not in ("/api/login", "/api/logout", "/api/configurar-acesso"):
+        if rota not in POST and rota not in POST_USUARIO and rota not in ("/api/login", "/api/logout", "/api/configurar-acesso",
+                                                                          "/api/entrar-local"):
             return self._send(404, {"erro": "rota inexistente"})
         if self.headers.get("X-MC") != "1":            # só a própria aplicação grava (proteção contra CSRF)
             return self._send(403, {"erro": "Requisição recusada: origem não reconhecida."})
@@ -660,6 +663,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._login_post(body)
         if rota == "/api/configurar-acesso":
             return self._configurar_acesso(body)
+        if rota == "/api/entrar-local":
+            return self._entrar_local()
         if rota == "/api/logout":
             with LOCK:
                 usuario = self._usuario()
@@ -679,12 +684,26 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 token, usuario = A.autenticar(CONN, body.get("login"), body.get("senha"), self._ip())
             except A.AcessoNegado as e:
-                A.auditar(CONN, None, "POST", "/api/login", e.status, body, str(e), login=str(body.get("login") or "").lower())
+                A.auditar(CONN, None, "POST", "/api/login", e.status, body, str(e), login=A.normalizar_login(body.get("login")))
                 return self._send(e.status, {"erro": str(e)})
             A.auditar(CONN, usuario, "POST", "/api/login", 200, body)
             self._login = usuario["login"]
         cookie = f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict" + ("; Secure" if COOKIE_SEGURO or self._https() else "")
         return self._send(200, {"usuario": usuario, "demonstracao": DEMONSTRACAO}, extra={"Set-Cookie": cookie})
+
+    def _entrar_local(self):
+        """Entrada sem senha só no próprio computador do sistema (pelo link, sempre login e senha)."""
+        if not self._local():
+            return self._send(403, {"erro": "Pelo link, entre com o seu usuário e senha."})
+        with LOCK:
+            try:
+                token, usuario = A.entrar_local(CONN)
+            except R.RegraViolada as e:
+                return self._send(409, {"erro": str(e), "configurar": True})
+            A.auditar(CONN, usuario, "POST", "/api/entrar-local", 200, None, "entrada sem senha no computador do sistema")
+            self._login = usuario["login"]
+        return self._send(200, {"usuario": usuario, "demonstracao": DEMONSTRACAO},
+                          extra={"Set-Cookie": f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict"})
 
     def _configurar_acesso(self, body):
         """Primeiro administrador real, só no próprio computador; depois liga o link da equipe."""
@@ -697,7 +716,7 @@ class Handler(BaseHTTPRequestHandler):
             except R.RegraViolada as e:
                 return self._send(422, {"erro": str(e)})
             A.auditar(CONN, None, "POST", "/api/configurar-acesso", 200, {"login": body.get("login")},
-                      f"administrador criado; {desativados} usuário(s) de demonstração desativado(s)", login=str(body.get("login")).lower())
+                      f"administrador criado; {desativados} usuário(s) de demonstração desativado(s)", login=A.normalizar_login(body.get("login")))
         if LINK:
             link.iniciar(PORTA, _anunciar_link)
         return self._send(200, {"ok": True, "desativados": desativados, "link": dict(link.estado)})

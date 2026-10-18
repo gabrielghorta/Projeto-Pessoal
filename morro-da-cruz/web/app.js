@@ -1053,6 +1053,10 @@ $('#fLogin').addEventListener('submit', async ev => {
   try { const r = await api('/api/login', formObj(ev.target)); USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; ev.target.reset(); $('#login').hidden = true; iniciar(); }
   catch (e) { const m = $('#loginMsg'); m.hidden = false; m.textContent = e.message; }
 });
+$('#entrarLocal').addEventListener('click', async () => {
+  try { const r = await api('/api/entrar-local', {}); USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; $('#login').hidden = true; iniciar(); }
+  catch (e) { if (/administrador/.test(e.message)) location.href = '/configurar'; else { const m = $('#loginMsg'); m.hidden = false; m.textContent = e.message; } }
+});
 $('#sairBtn').addEventListener('click', async () => { await api('/api/logout', {}).catch(() => null); location.reload(); });
 $('#senhaBtn').addEventListener('click', async () => {
   const atual = prompt('Senha atual:'); if (!atual) return;

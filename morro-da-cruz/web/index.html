@@ -463,7 +463,11 @@
     <label>Usuário<input name="login" autocomplete="username" required></label>
     <label>Senha<input name="senha" type="password" autocomplete="current-password" required></label>
     <div id="loginMsg" class="aviso problema" hidden></div>
-    <div id="dicaLink" class="aviso sugestao" hidden><b>Link para a equipe:</b> para abrir o sistema pela internet, <a href="/configurar">crie o seu administrador</a>. Os usuários de demonstração serão desativados.</div>
+    <div id="dicaPrimeiro" class="aviso sugestao" hidden><b>Primeiro acesso?</b> Crie aqui o seu usuário de administrador (é ele que libera o link para a equipe).
+      <div class="acoes" style="margin-top:6px"><a class="btn prim" href="/configurar">Criar meu usuário</a></div></div>
+    <div id="dicaLocal" class="aviso sugestao" hidden><b>Você está no computador do sistema.</b>
+      <div class="acoes" style="margin-top:6px"><button type="button" class="btn prim" id="entrarLocal">Entrar sem senha</button></div>
+      <small>Só funciona neste computador. Pelo link, cada pessoa entra com o próprio usuário e senha.</small></div>
     <div id="dicaDemo" class="aviso info" hidden><b>Demonstração:</b> usuário <code>eng.demo</code> (ou <code>eng2.demo</code>, <code>almox.demo</code>, <code>equipe.demo</code>, <code>admin.demo</code>, <code>topo.demo</code>, <code>cadastro.demo</code>) e senha <code>demo-morro-123</code>.</div>
     <div class="acoes"><button class="btn prim">Entrar</button></div>
     <p class="vazio" style="margin:0">Cada lançamento fica registrado com o seu usuário. Usuários são criados pela administração.</p>

@@ -27,12 +27,12 @@ button.sec, a.sec { background: #273140; }
 
 <div class="caixa" id="form" hidden>
   <p style="margin-top:0">Primeiro, crie o <b>seu usuário de administrador</b>. Os usuários de demonstração (com a senha escrita na tela) serão desativados, para que ninguém de fora entre com eles.</p>
-  <label>Login<input id="login" placeholder="ex.: gabriel.horta" autocomplete="username"></label>
+  <label>Login (o seu nome ou e-mail)<input id="login" placeholder="ex.: gabriel.horta ou seu@email.com" autocomplete="username"></label>
   <label>Nome<input id="nome" placeholder="Seu nome"></label>
   <label>Senha (mín. 10 caracteres)<input id="senha" type="password" autocomplete="new-password"></label>
   <label>Repita a senha<input id="senha2" type="password" autocomplete="new-password"></label>
   <button id="criar">Criar administrador e ligar o link</button>
-  <p id="msg"></p>
+  <p id="msg" style="font-weight:600"></p>
 </div>
 
 <div class="caixa" id="estado" hidden>
@@ -69,7 +69,7 @@ $('#criar').onclick = async () => {
     body: JSON.stringify({ login: $('#login').value, nome: $('#nome').value, senha: $('#senha').value }) });
   const j = await r.json(); $('#criar').disabled = false;
   if (!r.ok) { m.textContent = j.erro; return; }
-  m.className = 'ok'; m.textContent = `Administrador criado. ${j.desativados} usuário(s) de demonstração desativado(s).`;
+  m.className = 'ok'; m.textContent = `Administrador criado. ${j.desativados} usuário(s) de demonstração desativado(s). Neste computador você entra sem senha; pelo link, com o login e a senha que acabou de criar.`;
   acompanhar();
 };
 $('#copiar').onclick = async () => { try { await navigator.clipboard.writeText(URL_ATUAL); $('#copiar').textContent = 'Copiado!'; } catch (_) { prompt('Copie o link:', URL_ATUAL); } };
