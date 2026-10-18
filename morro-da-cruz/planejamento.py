@@ -176,7 +176,16 @@ def camadas_mapa(conn, hoje=None, dias=7):
         n = nomes.get(("TRECHO", r[0]))
         if n:
             pend[n] = pend.get(n, 0) + 1
-    return {"planejado": planejado, "material": material, "cadastro": cadastro, "pendencias": pend, "hoje": hoje, "ate": ate}
+    # liberação topográfica (nota de serviço/locação registrada, não anulada): trecho todo ou só uma parte
+    liberado = {}
+    ext = {r[0]: r[1] for r in conn.execute("SELECT id, extensao_m FROM trechos WHERE vigente=1")}
+    for r in conn.execute("""SELECT trecho_id, SUM(fim_m - ini_m) FROM etapas_complementares
+                              WHERE etapa='LIBERACAO_TOPOGRAFICA' AND anulado_em IS NULL GROUP BY trecho_id"""):
+        n = nomes.get(("TRECHO", r[0]))
+        if n:
+            liberado[n] = "TOTAL" if r[1] >= (ext.get(r[0]) or 0) - 0.01 else "PARCIAL"
+    return {"planejado": planejado, "material": material, "cadastro": cadastro, "pendencias": pend, "liberado": liberado,
+            "hoje": hoje, "ate": ate}
 
 
 def _levantamentos(conn):

@@ -13,13 +13,14 @@ import logging
 import logging.handlers
 import mimetypes
 import os
+import re
 import signal
 import sys
 import threading
 from http.cookies import SimpleCookie
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import acesso as A
 import caminhos
@@ -31,6 +32,7 @@ import planejamento as P
 import relatorios as RL
 import exportar
 import link
+import mapa_geral as MG
 import regras as R
 import servicos as S
 
@@ -93,7 +95,15 @@ def r_resumo(q, c):
         "categorias_ocorrencia": S.CATEGORIAS_OCORRENCIA,
         "perfis": {k: {"nome": v["nome"]} for k, v in A.carregar_perfis()["perfis"].items()},
         "servicos_programacao": P.SERVICOS,
+        "ligacoes": _ligacoes(c),
     }
+
+
+def _ligacoes(c):
+    """Ligações prediais previstas no BM: ligação predial de água em rede de PEAD (código Caesb 8005508120013)."""
+    r = c.execute("SELECT item, quantidade FROM bm_itens WHERE planilha='JUNTADA' AND vigente=1 AND codigo_caesb='8005508120013'"
+                  ).fetchone()
+    return {"quantidade": r[1], "fonte": f"BM, item {r[0]}"} if r and r[1] else None
 
 
 def r_buscar(q, c):
@@ -109,6 +119,38 @@ def r_detalhe(q, c):
 
 def r_previsto(q, c):
     return S.previsto(c, q["tipo"], q["id"], float(q.get("metros") or 0))
+
+
+def r_mapa_geral(q, c):
+    """Satélite, zonas oficiais e traçado dos trechos da visão geral do HTML REV02 (o arquivo não é alterado)."""
+    p = _mapa_path()
+    if not os.path.exists(p):
+        return {"ausente": True}
+    return MG.geometria(p)
+
+
+# planilhas oficiais versionadas com o programa (config/fontes.json): baixadas direto do sistema, sem Drive
+PLANILHAS = {"bm": "Boletim de Medição com a identificação dos itens", "reajuste": "Boletim de Medição com o reajuste",
+             "redes": "Levantamento de quantitativos das redes (tubos)", "conexoes": "Levantamento de conexões e peças por nó",
+             "evidencias": "Evidências e conciliação entre a 06.1 e a 06.2", "mapa": "Mapa de plantas, trechos e nós (equipes)"}
+
+
+def _arquivo_oficial(chave):
+    nome = _cfg()["arquivos"].get(chave)
+    if not nome:
+        return None
+    p = os.path.join(BASE, "mapa" if chave == "mapa" else "planilhas", nome)
+    return p if os.path.isfile(p) else None
+
+
+def r_planilhas(q, c):
+    out = []
+    for chave, descricao in PLANILHAS.items():
+        p = _arquivo_oficial(chave)
+        if p:
+            out.append({"chave": chave, "arquivo": os.path.basename(p), "descricao": descricao, "bytes": os.path.getsize(p),
+                        "url": "/arquivos/" + chave})
+    return out
 
 
 def r_mapa_estado(q, c):
@@ -490,7 +532,7 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
        "/api/reservas-vencidas": r_reservas_vencidas, "/api/programacoes": r_programacoes,
        "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios,
-       "/api/documentos": r_documentos}
+       "/api/documentos": r_documentos, "/api/mapa/geral": r_mapa_geral, "/api/planilhas": r_planilhas}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
@@ -558,7 +600,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        if "Cache-Control" not in (extra or {}):
+            self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         if NUVEM:
             self.send_header("Strict-Transport-Security", "max-age=31536000")
@@ -662,8 +705,8 @@ class Handler(BaseHTTPRequestHandler):
         if usuario is None:                            # API, fotos e mapa só com sessão
             if u.path.startswith("/api/"):
                 return self._send(401, self._sem_usuarios() if sem else {"erro": "Sessão encerrada: entre de novo."})
-            if u.path in ("/mapa", "/mapa/") or u.path.startswith("/fotos/"):
-                return self._send(401, "Entre no sistema para ver o mapa e as fotos.", "text/plain; charset=utf-8")
+            if u.path in ("/mapa", "/mapa/") or u.path.startswith(("/fotos/", "/mapa/", "/arquivos/")):
+                return self._send(401, "Entre no sistema para ver o mapa, as fotos e os arquivos.", "text/plain; charset=utf-8")
         if u.path in GET:
             return self._api(GET[u.path], q)
         if u.path in GET_PERM:
@@ -692,6 +735,17 @@ class Handler(BaseHTTPRequestHandler):
                               {"Content-Disposition": f'attachment; filename="{nome}"'})
         if u.path in ("/mapa", "/mapa/"):
             return self._mapa()
+        if u.path.startswith("/mapa/"):
+            return self._mapa_imagem(u.path[len("/mapa/"):])
+        if u.path.startswith("/arquivos/"):
+            p = _arquivo_oficial(u.path[len("/arquivos/"):])
+            if not p:
+                return self._send(404, {"erro": "não encontrado"})
+            with open(p, "rb") as f:
+                dados = f.read()
+            nome = os.path.basename(p)
+            return self._send(200, dados, mimetypes.guess_type(p)[0] or "application/octet-stream",
+                              {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nome)}"})
         if u.path.startswith("/fotos/"):
             return self._static(DIR_FOTOS, u.path[len("/fotos/"):])
         return self._static(WEB, u.path.lstrip("/"))
@@ -813,6 +867,17 @@ class Handler(BaseHTTPRequestHandler):
             A.auditar(CONN, usuario, "POST", rota, status, original, msg, idem, login=None)
             return self._send(status, {"erro": msg})
 
+    def _mapa_imagem(self, rel):
+        """Satélite da visão geral (mosaico das 25 PBs) ou a imagem de uma PB, tirados do HTML REV02."""
+        p = _mapa_path()
+        m = re.fullmatch(r"pb/(PB\d\d)\.webp", rel)
+        dados = None
+        if os.path.exists(p):                     # mapa_geral tem trava própria: não segura o banco
+            dados = MG.mosaico(p) if rel == "geral.webp" else MG.imagem_pb(p, m.group(1)) if m else None
+        if not dados:
+            return self._send(404, {"erro": "não encontrado"})
+        self._send(200, dados, "image/webp", {"Cache-Control": "private, max-age=86400"})
+
     def _mapa(self):
         """Serve o HTML REV02 original com a camada do Mapa Iluminado injetada (o arquivo não é alterado)."""
         p = _mapa_path()
@@ -841,7 +906,7 @@ def _anunciar_link(url):
     print("\n" + "=" * 72)
     print(f" LINK PARA A EQUIPE:  {url}")
     print(" Envie este link. Ele vale enquanto este programa estiver aberto (muda quando reiniciar).")
-    print(f" Ele também fica em {link.ARQUIVO}, na pasta do programa, e na aba 6 do sistema.")
+    print(f" Ele também fica em {link.ARQUIVO}, na pasta do programa, e no sistema (Administrativo › Usuários e histórico).")
     print("=" * 72 + "\n", flush=True)
 
 
@@ -858,6 +923,17 @@ def abrir(db, demonstracao=False, nuvem=False):
     COOKIE_SEGURO = nuvem                  # na nuvem a hospedagem só entrega por https
     DIR_FOTOS = os.path.join(os.path.dirname(os.path.abspath(db)), "fotos")
     configurar_log(os.path.dirname(os.path.abspath(db)))
+    threading.Thread(target=_preparar_mapa_geral, daemon=True).start()
+
+
+def _preparar_mapa_geral():
+    """Monta a visão geral do mapa (traçado e satélite) em segundo plano, para o primeiro acesso não esperar."""
+    try:
+        if os.path.exists(_mapa_path()):
+            MG.geometria(_mapa_path())
+            MG.mosaico(_mapa_path())
+    except Exception:  # noqa: BLE001 — sem visão geral o mapa monta as PBs uma a uma; nada para no servidor
+        LOG.exception("falha ao preparar a visão geral do mapa")
 
 
 def main():

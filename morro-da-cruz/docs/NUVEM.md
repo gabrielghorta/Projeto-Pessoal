@@ -43,7 +43,7 @@ Os limites acima foram conferidos nas páginas públicas em 18/10/2026: [PythonA
    - pede **o seu login e a sua senha de administrador** (10 caracteres ou mais);
    - liga o site.
 4. Se ele pedir, abra **Web**, ligue **Force HTTPS** e clique no botão verde **Reload**.
-5. Abra o link, entre com o seu login e cadastre a equipe na aba 6.
+5. Abra o link, entre com o seu login e cadastre a equipe em Administrativo › Usuários e histórico.
 
 **Depois:**
 - Uma vez por mês, abra **Web** e clique em **Run until 1 month from today**. O PythonAnywhere manda e-mail antes de desligar.
@@ -58,7 +58,7 @@ Os limites acima foram conferidos nas páginas públicas em 18/10/2026: [PythonA
    - `MC_ADMIN_NOME`: o seu nome;
    - `MC_ADMIN_SENHA`: a sua senha, com 10 caracteres ou mais.
 4. Clique em **Apply**. Em poucos minutos o link aparece no topo da página do serviço (`https://….onrender.com`).
-5. Entre com o seu login. Troque a senha em **Trocar senha**, porque a do passo 3 fica visível para quem acessa a conta do Render. Depois cadastre a equipe na aba 6.
+5. Entre com o seu login. Troque a senha em **Trocar senha**, porque a do passo 3 fica visível para quem acessa a conta do Render. Depois cadastre a equipe em Administrativo › Usuários e histórico.
 
 **Depois:** cada envio ao GitHub que mexe na pasta `morro-da-cruz/` publica sozinho a versão nova. Se a versão nova não subir, o Render mantém a anterior no ar.
 

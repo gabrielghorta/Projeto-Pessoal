@@ -57,9 +57,9 @@ Como funciona:
   - `/configurar` é recusado (403);
   - o cookie de sessão vai com `Secure`;
   - o IP de origem (Cf-Connecting-Ip) fica no log e na sessão.
-- **Cada pessoa** entra com o próprio usuário, criado na aba 6.
+- **Cada pessoa** entra com o próprio usuário, criado em Administrativo › Usuários e histórico.
 - **Limites:**
-  - o link vale enquanto o computador e o programa estiverem ligados, e muda a cada reinício. O atual aparece na janela, em `LINK_DA_EQUIPE.txt` e na aba 6;
+  - o link vale enquanto o computador e o programa estiverem ligados, e muda a cada reinício. O atual aparece na janela, em `LINK_DA_EQUIPE.txt` e em Administrativo › Usuários e histórico;
   - se a internet cair, ele religa sozinho, até 5 vezes, com um endereço novo;
   - o serviço gratuito da Cloudflare não tem garantia de disponibilidade.
 
@@ -95,7 +95,7 @@ Para atualizar, substitua só o `.exe`; as pastas de dados continuam.
 4. Simule a importação: `python importar.py`. Leia o relatório; nada é gravado.
 5. Aplique: `python importar.py --aplicar`. O comando trava a manutenção, faz backup verificado, importa numa transação única e grava o relatório.
 6. Crie o primeiro usuário: `python usuarios.py criar --login seu.nome --nome "Seu Nome" --perfil ADMINISTRACAO`. A senha é pedida no terminal, com 10 caracteres ou mais.
-7. Crie os demais usuários pela aba 6 ou pelo mesmo comando, conforme a distribuição de perfis que você aprovar (D-10, `config/perfis.json`).
+7. Crie os demais usuários em Administrativo › Usuários e histórico ou pelo mesmo comando, conforme a distribuição de perfis que você aprovar (D-10, `config/perfis.json`).
 8. Suba o servidor: `python server.py` e abra http://127.0.0.1:8765.
 9. Faça e verifique o primeiro backup (§5).
 
@@ -104,8 +104,8 @@ Para atualizar, substitua só o `.exe`; as pastas de dados continuam.
 - **Iniciar:** `python server.py` (opções: `--porta 8765`, `--db caminho`). Um banco em esquema antigo é recusado com a orientação de migrar.
 - **Encerrar:** Ctrl+C. O servidor apaga a marca de "servidor ativo".
 - **Logs:** em `dados/logs/servidor.log` ficam as requisições com status, as recusas e os erros com rastreamento.
-- **Auditoria:** a aba 6 mostra, por objeto ou usuário, quem fez cada gravação, aceita ou recusada.
-- **Relatórios:** a aba 7 mostra o ciclo do material, o avanço, as pendências e os faltantes, com exportação .xlsx.
+- **Auditoria:** Administrativo › Usuários e histórico mostra, por objeto ou usuário, quem fez cada gravação, aceita ou recusada.
+- **Relatórios:** Administrativo › Relatórios mostra o ciclo do material, o avanço, as pendências e os faltantes, com exportação .xlsx.
 - **Senhas:** cada usuário troca a própria no botão "Trocar senha". O administrador redefine com `python usuarios.py senha --login x`.
 - **Desativar quem saiu:** `python usuarios.py desativar --login x`. O histórico é preservado.
 
@@ -146,8 +146,8 @@ python backup.py restaurar dados/backups/<pasta>
 
 Depois de restaurar:
 1. suba o servidor;
-2. confira na aba 7 as pendências e o avanço;
-3. confira na aba 6 o último registro de auditoria. Ele marca até quando os dados foram recuperados; o que foi lançado depois precisa ser relançado.
+2. confira em Administrativo › Relatórios as pendências e o avanço;
+3. confira em Administrativo › Usuários e histórico o último registro de auditoria. Ele marca até quando os dados foram recuperados; o que foi lançado depois precisa ser relançado.
 
 ## 7. Nova revisão das planilhas (servidor PARADO)
 

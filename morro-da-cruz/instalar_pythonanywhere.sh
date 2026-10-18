@@ -71,7 +71,7 @@ cat <<FIM
 
 =======================================================================
  LINK DA EQUIPE (fixo):  https://$DOMINIO
- Entre com o administrador que você criou e cadastre a equipe na aba 6.
+ Entre com o administrador que você criou e cadastre a equipe em Administrativo > Usuários e histórico.
  Conta gratuita: uma vez por mês, abra "Web" e clique em "Run until 1 month from today"
  (o PythonAnywhere avisa por e-mail antes de desligar).
  Para atualizar o sistema depois: cole de novo o mesmo comando.

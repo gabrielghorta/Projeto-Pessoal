@@ -2009,7 +2009,7 @@ def medicao_para(conn, data):
             if m["status"] != "ABERTA":
                 raise RegraViolada(f"A {m['numero']}ª medição ({t}) cobrindo {data} já está fechada.")
             return m
-    raise RegraViolada(f"Nenhuma medição de teste cobrindo {data}. Abra a medição na aba 5.")
+    raise RegraViolada(f"Nenhuma medição de teste cobrindo {data}. Abra a medição na tela Medição.")
 
 
 def assinatura_medicao(conn, medicao_id):
@@ -2041,7 +2041,7 @@ def fechar_medicao(conn, medicao_id, por=None):
         raise RegraViolada(f"A {med['numero']}ª medição ({med['tipo']}) já está fechada.")
     conf = conferencia_vigente(conn, medicao_id)
     if not conf:
-        raise RegraViolada("Fechar exige a conferência interna da medição (aba 5 — Conferência).")
+        raise RegraViolada("Fechar exige a conferência interna da medição (tela Medição, Conferência interna).")
     if conf["resultado"] != "CONFORME":
         raise RegraViolada(f"A última conferência interna foi NÃO CONFORME ({conf['obs']}): corrija e confira de novo.")
     if not conf["vale"]:

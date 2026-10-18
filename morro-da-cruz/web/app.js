@@ -111,21 +111,127 @@ const formObj = f => Object.fromEntries(new FormData(f).entries());
 /* ---------------------------------------------------------------- tema (escuro por padrão; o mapa REV02 acompanha) */
 function aplicarTema(t) {
   document.documentElement.dataset.tema = t;
-  $('#temaBtn').textContent = t === 'claro' ? '🌙 Tema escuro' : '☀️ Tema claro';
+  $('#temaBtn').textContent = t === 'claro' ? 'Tema escuro' : 'Tema claro';
   try { localStorage.setItem('mc-tema', t); } catch (_) { /* sem storage */ }
   try { $('#mapaFrame').contentWindow.postMessage({ tipo: 'mc-tema', tema: t }, location.origin); } catch (_) { /* mapa ausente */ }
 }
 $('#temaBtn').addEventListener('click', () => aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'escuro' : 'claro'));
 aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escuro');
 
-/* ---------------------------------------------------------------- abas */
-$$('nav.abas button').forEach(b => b.addEventListener('click', () => abrirAba(b.dataset.aba)));
-function abrirAba(id) {
-  $$('nav.abas button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.aba === id)));
+/* ---------------------------------------------------------------- navegação: tela inicial, menu lateral e telas */
+// cada tela é uma <section id="aba-…">; as do Administrativo aparecem como subitens no menu lateral
+const TELAS = {
+  inicio: { titulo: 'Início', carregar: () => renderInicio() },
+  iluminado: { titulo: 'Mapa iluminado', carregar: () => carregarIluminado() },
+  campo: { titulo: 'Lançamento de campo', carregar: () => {} },
+  equipes: { titulo: 'Equipes', adm: true, carregar: () => carregarAlmox() },
+  prog: { titulo: 'Planejamento', adm: true, carregar: () => carregarProg() },
+  compras: { titulo: 'Compras e notas', adm: true, carregar: () => carregarCompras() },
+  almox: { titulo: 'Almoxarifado', adm: true, carregar: () => carregarAlmox() },
+  ponto: { titulo: 'Check-in e check-out', adm: true, carregar: () => carregarAlmox() },
+  mapa: { titulo: 'Dados da obra', adm: true, carregar: () => carregarMapa() },
+  esteira: { titulo: 'Cadastro', adm: true, carregar: () => carregarEsteira() },
+  relatorios: { titulo: 'Relatórios', adm: true, carregar: () => carregarRelatorios() },
+  admin: { titulo: 'Usuários e histórico', adm: true, carregar: () => carregarAdmin() },
+  docs: { titulo: 'Documentos', carregar: () => carregarDocumentos() },
+  medicao: { titulo: 'Medição', carregar: () => carregarMedicoes() },
+};
+// a primeira seção do Administrativo segue o trabalho de cada perfil
+const admInicial = () => pode('planejar') || pode('usuarios') ? 'equipes' : pode('almox') ? 'almox' : pode('cadastro') ? 'esteira' : 'equipes';
+let TELA = null;
+function abrirAba(id, opcoes = {}) {
+  if (id === 'administrativo') id = admInicial();
+  if (!TELAS[id]) id = 'inicio';
+  TELA = id;
+  document.body.classList.toggle('no-inicio', id === 'inicio');
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
-  try { localStorage.setItem('aba', id); } catch (_) { /* sem storage */ }
-  ({ mapa: carregarMapa, prog: carregarProg, almox: carregarAlmox, compras: carregarCompras, campo: () => {}, esteira: carregarEsteira, medicao: carregarMedicoes, admin: carregarAdmin, relatorios: carregarRelatorios, docs: carregarDocumentos })[id]();
+  $$('.rail-item').forEach(b => b.dataset.tela === id ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  $('#rail').classList.toggle('no-adm', !!TELAS[id].adm);
+  $('#topoTitulo').textContent = id === 'inicio' ? 'Morro da Cruz' : TELAS[id].titulo;
+  document.title = id === 'inicio' ? 'Morro da Cruz' : `${TELAS[id].titulo} · Morro da Cruz`;
+  if (location.hash !== '#' + id) history[opcoes.substituir ? 'replaceState' : 'pushState'](null, '', '#' + id);
+  fecharMenuMovel();
+  if (!opcoes.manterRolagem) window.scrollTo(0, 0);
+  return TELAS[id].carregar();
 }
+window.addEventListener('popstate', () => USUARIO && abrirAba(location.hash.slice(1) || 'inicio', { substituir: true }));
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-tela]'); if (!b) return;
+  ev.preventDefault(); abrirAba(b.dataset.tela);
+});
+
+// menu lateral: recolhido mostra só os ícones; passar o mouse (ou o foco do teclado) abre por cima; o botão fixa aberto
+const RAIL = $('#rail');
+const telaMovel = () => matchMedia('(max-width: 760px)').matches;
+RAIL.addEventListener('mouseenter', () => { if (!telaMovel()) RAIL.classList.add('aberto'); });
+RAIL.addEventListener('mouseleave', () => RAIL.classList.remove('aberto'));
+RAIL.addEventListener('focusin', () => { if (!telaMovel()) RAIL.classList.add('aberto'); });
+RAIL.addEventListener('focusout', ev => { if (!RAIL.contains(ev.relatedTarget)) RAIL.classList.remove('aberto'); });
+function fixarRail(fixo) {
+  RAIL.classList.toggle('fixo', fixo); document.body.classList.toggle('rail-fixo', fixo);
+  const b = $('#railFixar'); b.setAttribute('aria-pressed', String(fixo));
+  b.title = b.ariaLabel = fixo ? 'Soltar o menu' : 'Fixar o menu aberto';
+  try { localStorage.setItem('mc-rail-fixo', fixo ? '1' : ''); } catch (_) { /* sem storage */ }
+}
+$('#railFixar').addEventListener('click', () => fixarRail(!RAIL.classList.contains('fixo')));
+try { if (localStorage.getItem('mc-rail-fixo')) fixarRail(true); } catch (_) { /* sem storage */ }
+function fecharMenuMovel() { document.body.classList.remove('menu-aberto'); $('#railFundo').hidden = true; $('#menuBtn').setAttribute('aria-expanded', 'false'); }
+$('#menuBtn').addEventListener('click', () => {
+  const abrir = !document.body.classList.contains('menu-aberto');
+  if (!abrir) return fecharMenuMovel();
+  document.body.classList.add('menu-aberto'); $('#railFundo').hidden = false; $('#menuBtn').setAttribute('aria-expanded', 'true');
+});
+$('#railFundo').addEventListener('click', fecharMenuMovel);
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenuMovel(); });
+
+/* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
+const MODOS = {
+  iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
+  campo: { nome: 'Lançamento de campo', desc: 'Metros do dia, soldas, clima, fotos e ocorrências de cada trecho.' },
+  administrativo: { nome: 'Administrativo', desc: 'Equipes, planejamento, compras e notas, almoxarifado, check-in, dados da obra, cadastro, relatórios e usuários.' },
+  docs: { nome: 'Documentos', desc: 'Planilhas, projetos e documentos oficiais. As planilhas baixam daqui; o resto abre no Google Drive da obra.' },
+  medicao: { nome: 'Medição', desc: 'Boletim e memória de cálculo. Por enquanto, só de teste.', teste: true },
+};
+const MENU_PERFIL = {
+  ENGENHARIA: ['iluminado', 'campo', 'administrativo', 'docs', 'medicao'], ALMOXARIFADO: ['administrativo', 'iluminado', 'docs'],
+  EQUIPE: ['campo', 'iluminado', 'docs'], TOPOGRAFIA: ['campo', 'iluminado', 'docs'], CADASTRO: ['administrativo', 'iluminado', 'docs'],
+  ADMINISTRACAO: ['administrativo', 'iluminado', 'docs', 'medicao'],
+};
+let MENU_FOCO = null;
+const iniciais = n => (String(n || '').replace(/\(.*?\)/g, '').replace(/[^\p{L}\s]/gu, '').trim().split(/\s+/).filter(Boolean)
+  .map(p => p[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join('') || '?').toUpperCase();
+function renderInicio() {
+  if (!USUARIO) return;
+  const itens = MENU_PERFIL[USUARIO.perfil] || Object.keys(MODOS);
+  if (!itens.includes(MENU_FOCO)) MENU_FOCO = itens[0];
+  const seta = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h15M13 5l7 7-7 7"/></svg>';
+  $('#menuLista').innerHTML = itens.map(id => `<div class="menu-bloco" data-modo="${id}">
+      <button type="button" class="menu-item" data-tela="${id}"><span>${esc(MODOS[id].nome)}</span>
+        <span class="fim">${MODOS[id].teste ? '<span class="teste">teste</span>' : ''}${seta}</span></button></div>`).join('');
+  focarMenu(MENU_FOCO);
+  if (RESUMO) {
+    const km = (RESUMO.extensao_m / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const lig = RESUMO.ligacoes ? ` e ${nf(RESUMO.ligacoes.quantidade, 0)} casas ligadas à rede` : '';
+    $('#inicioDesc').textContent = `Rede de água em São Sebastião (DF) para a Caesb: ${km} km de tubulação${lig}.`;
+    if (RESUMO.ligacoes) $('#inicioDesc').title = `Ligações: ${RESUMO.ligacoes.fonte}. Tubulação: soma dos trechos da 06.1.`;
+    $('#inicioContrato').textContent = RESUMO.contrato;
+  }
+  desenharRede();
+}
+function focarMenu(id) {
+  MENU_FOCO = id;
+  $$('#menuLista .menu-bloco').forEach(b => {
+    const ativo = b.dataset.modo === id;
+    $('.menu-item', b).classList.toggle('ativo', ativo);
+    const d = $('.menu-desc', b);
+    if (ativo && !d) b.insertAdjacentHTML('beforeend', `<p class="menu-desc">${esc(MODOS[id].desc)}</p>`);
+    if (!ativo && d) d.remove();
+  });
+  realcarRede(id === 'iluminado');
+}
+['mouseover', 'focusin'].forEach(t => $('#menuLista').addEventListener(t, ev => {
+  const b = ev.target.closest('.menu-bloco'); if (b && b.dataset.modo !== MENU_FOCO) focarMenu(b.dataset.modo);
+}));
 
 /* ---------------------------------------------------------------- busca de trecho/nó */
 function ligarBusca(input, aoEscolher) {
@@ -151,7 +257,6 @@ async function carregarMapa() {
   const r = await api('/api/resumo' + (frente ? '?frente=' + encodeURIComponent(frente) : ''));
   if (!frente) RESUMO = { ...RESUMO, ...r };
   if ($('#selFrente').options.length < 2) $('#selFrente').innerHTML += r.frentes.map(f => `<option>${esc(f)}</option>`).join('');
-  $('#obraContrato').textContent = r.contrato;
   $('#kpis').innerHTML = [
     ['Rede de projeto', nf(r.extensao_m) + ' m'], ['Rede reaterrada', nf(r.executado_m) + ' m'],
     ['Trechos', nf(r.trechos)], ['Nós e caixas', nf(r.elementos)], ['Validados (OK interno)', nf(r.ok_fiscal)], ['Contrato (cl. 3.1)', brl(r.valor_contrato)],
@@ -1056,6 +1161,16 @@ async function carregarDocumentos() {
   const f = $('#fDocConfig'); f.pasta_url.value = cfg.pasta_url; f.indice_url.value = cfg.indice_url;
   $('#docPastasLista').innerHTML = r.pastas.map(p => `<option value="${esc(p)}">`).join('');
   renderDocumentos();
+  carregarPlanilhas();
+}
+// planilhas e mapa do projeto que vêm com o sistema (config/fontes.json): baixam do próprio servidor, sem Drive
+const tamanho = b => b >= 1048576 ? `${nf(b / 1048576, 1)} MB` : `${nf(Math.max(1, Math.round(b / 1024)), 0)} KB`;
+async function carregarPlanilhas() {
+  const ls = await api('/api/planilhas').catch(() => []);
+  $('#painelPlanilhas').hidden = !ls.length;
+  $('#planilhasLista').innerHTML = ls.map(a => `<a class="arquivo" href="${esc(a.url)}" download>
+      <span class="doc-tipo">${esc(a.arquivo.split('.').pop().toUpperCase())}</span>
+      <span><b>${esc(a.descricao)}</b><small>${esc(a.arquivo)} · ${tamanho(a.bytes)}</small></span><span class="seta">Baixar</span></a>`).join('');
 }
 function renderDocumentos() {
   if (!DOCS) return;
@@ -1171,16 +1286,22 @@ $('#entrarLocal').addEventListener('click', async () => {
   try { const r = await api('/api/entrar-local', {}); USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; $('#login').hidden = true; iniciar(); }
   catch (e) { if (/administrador/.test(e.message)) location.href = '/configurar'; else { const m = $('#loginMsg'); m.hidden = false; m.textContent = e.message; } }
 });
-$('#sairBtn').addEventListener('click', async () => { await api('/api/logout', {}).catch(() => null); location.reload(); });
+const sair = async () => { await api('/api/logout', {}).catch(() => null); location.hash = ''; location.reload(); };
+$('#sairBtn').addEventListener('click', sair);
+$('#inicioSair').addEventListener('click', sair);
 $('#senhaBtn').addEventListener('click', async () => {
   const atual = prompt('Senha atual:'); if (!atual) return;
   const nova = prompt('Nova senha (mín. 10 caracteres):'); if (!nova) return;
   await acao(() => api('/api/senha', { senha_atual: atual, nova_senha: nova }), 'Senha alterada.').catch(() => null);
 });
 function aplicarPermissoes() {
-  $('#quem').innerHTML = `<b>${esc(USUARIO.nome)}</b><br>${esc(USUARIO.login)} · ${esc(USUARIO.perfil_nome)}${USUARIO.equipe_id ? ' · ' + esc(USUARIO.equipe_id) : ''}`;
+  const perfil = USUARIO.perfil_nome + (USUARIO.equipe_id ? ' · ' + USUARIO.equipe_id : '');
+  $('#quemNome').textContent = $('#inicioNome').textContent = USUARIO.nome;
+  $('#quemPerfil').textContent = $('#inicioPerfil').textContent = perfil;
+  $('#railAvatar').textContent = $('#inicioAvatar').textContent = iniciais(USUARIO.nome);
+  $('.rail-quem').title = `${USUARIO.nome} (${USUARIO.login})`;
   $('#sairBtn').hidden = $('#senhaBtn').hidden = false;
-  $('#faixaDemo').hidden = !DEMONSTRACAO;
+  $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO;
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
 }
@@ -1200,7 +1321,6 @@ async function iniciar() {
   $('select[name=contingencia]').innerHTML += RESUMO.contingencias.map(c => `<option>${esc(c)}</option>`).join('');
   $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id;
-  let aba = 'mapa'; try { aba = localStorage.getItem('aba') || 'mapa'; } catch (_) { /* sem storage */ }
-  abrirAba(aba);
+  abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });
 }
 iniciar();

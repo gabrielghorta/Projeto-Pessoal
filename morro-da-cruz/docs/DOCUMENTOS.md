@@ -1,6 +1,10 @@
-# Documentos oficiais: a aba 8 do sistema
+# Documentos oficiais: a tela Documentos do sistema
 
-A aba **8. Documentos** é a lista dos arquivos oficiais da obra. Os arquivos ficam no **Google Drive da obra**. O sistema
+As planilhas e o mapa que são a base do sistema (BM REV04, BM 03.3.2 REV03, 06.1 REV01, 06.2 REV08, Evidências e o HTML
+REV02, nomes em `config/fontes.json`) já vêm com o programa e aparecem no topo da tela, para baixar direto do servidor.
+Não precisam de link nem de índice.
+
+Abaixo delas fica a lista dos demais arquivos oficiais da obra. Os arquivos ficam no **Google Drive da obra**. O sistema
 guarda só o endereço (link) de cada um e o que é preciso para achá-lo sem abrir: nome claro, pasta, tipo, revisão,
 data e código original. Nada é enviado nem copiado para o servidor.
 
@@ -8,14 +12,14 @@ data e código original. Nada é enviado nem copiado para o servidor.
 - Quem organiza a lista: perfis com a permissão `documentos`, hoje Engenharia e Administração (`config/perfis.json`).
 - Só entram links do Google Drive ou do Google Docs, com https. Outro endereço é recusado.
 - Nada é apagado. Retirar da lista exige o motivo, registra quem e quando, e o arquivo continua no Drive.
-- Toda alteração fica no histórico (aba 6, objeto `DOCUMENTO`).
+- Toda alteração fica no histórico (Administrativo › Usuários e histórico, objeto `DOCUMENTO`).
 
 ## Como colocar os documentos
 
 1. Organize a pasta do Drive e crie a planilha-índice. O prompt para o ChatGPT faz isso e cria a planilha
    "Morro da Cruz - Índice de Documentos".
 2. Na planilha-índice, clique em **Compartilhar** e escolha "qualquer pessoa com o link pode ver".
-3. No sistema, abra **8. Documentos** e depois **Gerenciar a lista de documentos**:
+3. No sistema, abra **Documentos** e depois **Gerenciar a lista de documentos**:
    - cole o link da pasta da obra e o link da planilha-índice, e clique em **Salvar os links**;
    - clique em **Ver o que muda pelo índice**. A prévia mostra os novos, os atualizados e as linhas ignoradas, com o
      motivo de cada uma. Nada é gravado até você clicar em **Aplicar**.

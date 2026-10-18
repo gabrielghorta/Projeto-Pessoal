@@ -5,7 +5,7 @@ domínio nem de abrir porta no roteador. O servidor continua escutando só em 12
 túnel. Limites, que valem para este modo:
 * o link só funciona enquanto o computador e o programa estiverem ligados;
 * o endereço muda a cada vez que o programa reinicia (o atual aparece na janela do programa, em LINK_DA_EQUIPE.txt e
-  na aba 6);
+  em Administrativo › Usuários e histórico);
 * o link só é ligado depois que existir um administrador real (os usuários de demonstração são desativados antes).
 """
 import os

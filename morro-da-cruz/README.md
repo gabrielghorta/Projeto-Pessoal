@@ -3,7 +3,7 @@
 Aplicação web **privada e local** da obra *Implantação de Redes de Distribuição no Morro da Cruz,
 São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 
-- Tecnologia: Python (biblioteca padrão + `openpyxl`), banco SQLite e interface HTML/JS sem dependências externas.
+- Tecnologia: Python (biblioteca padrão + `openpyxl`; `pillow` opcional, para o satélite do Mapa iluminado), banco SQLite e interface HTML/JS sem bibliotecas externas (só as fontes do Google Fonts, com fonte do sistema se faltar internet).
 - Com login, perfis e permissões checadas no servidor. Roda no computador (`MorroDaCruz.exe`) ou **na nuvem, com link fixo e sem depender de computador** (`nuvem.py`, passo a passo em `docs/NUVEM.md`). O layout funciona em tela de celular (360 px).
 - **Implantação, backup e recuperação:** `docs/IMPLANTACAO.md`.
 - **Entrega para revisão** (situação, matriz, testes, decisões): `docs/ENTREGA_FINAL.md`. Ciclo completo da Zona01: `docs/EVIDENCIAS_CICLO_ZONA01.md`.
@@ -22,7 +22,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 1. Baixe `MorroDaCruz-Windows.zip` em **Releases** do repositório (versão mais recente) e descompacte numa pasta. Ele já traz as planilhas, o mapa e o túnel (cloudflared).
 2. Dê dois cliques em `MorroDaCruz.exe`. Se o Windows avisar "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
 3. Na primeira vez, a obra é montada sozinha e o navegador abre em "Link para a equipe". Crie o seu administrador; os usuários de demonstração são desativados.
-4. Aparece o **link para a equipe** (`https://….trycloudflare.com`). Quem abre o link entra pelo computador ou celular, de qualquer lugar. Crie os usuários de cada pessoa na aba 6.
+4. Aparece o **link para a equipe** (`https://….trycloudflare.com`). Quem abre o link entra pelo computador ou celular, de qualquer lugar. Crie os usuários de cada pessoa em Administrativo › Usuários e histórico.
 
 Não precisa instalar o Python nem criar conta em lugar nenhum. O link vale enquanto o programa estiver aberto e muda a cada reinício. O link atual fica na janela do programa, em `LINK_DA_EQUIPE.txt` e no botão "Link da equipe" do sistema. Os dados ficam na pasta do programa (`dados_demo/`).
 
@@ -127,13 +127,32 @@ O executável é gerado e testado no Windows pelo GitHub Actions (`.github/workf
 - **Visão integrada:** o detalhe do trecho reúne intervalos, lacunas, soldas, fotos (com validação), verificações, histórico e pendências (bloqueio, alerta, pendente).
 - **Pin do mapa:** mostra a programação do check-in, não a posição atual da equipe.
 
+## Telas
+
+Depois do login abre a **tela inicial**: o Menu do perfil (Mapa iluminado, Lançamento de campo, Administrativo, Documentos e
+Medição, na ordem do trabalho de cada perfil) e, ao lado, o traçado real da rede, com as equipes que fizeram check-in hoje.
+O subtítulo sai do banco: a extensão dos trechos da 06.1 e as ligações prediais do BM (item de código Caesb
+8005508120013).
+
+Nas outras telas, o **menu lateral** fica recolhido em ícones; passar o mouse abre por cima e o botão do topo fixa aberto.
+No celular, ele abre pelo botão ☰. O Administrativo reúne Equipes, Planejamento, Compras e notas, Almoxarifado, Check-in e
+check-out, Dados da obra (o mapa técnico REV02 com a ficha de cada trecho), Cadastro, Relatórios e Usuários e histórico.
+Cada tela tem endereço próprio (`/#iluminado`, `/#campo`, `/#docs`…), e o botão Voltar do navegador funciona.
+
+O **Mapa iluminado** (`web/iluminado.js`) desenha a visão geral do HTML REV02, que o `mapa_geral.py` lê sem alterar o
+arquivo: satélite (as 25 plantas montadas numa imagem, se houver Pillow; senão, uma a uma), zonas oficiais e o traçado dos
+1.436 trechos. A cor de cada trecho vem só dos registros do banco: não iniciado, liberado pela topografia, em execução,
+concluído aguardando o OK interno, OK interno com o cadastro pendente e cadastro aprovado pela Caesb. O pino de cada equipe
+fica no alvo do check-in de hoje. Nada sem posição no projeto ganha coordenada; isso continua na bandeja do Dados da obra.
+
 ## Documentos oficiais
 
-A aba **8. Documentos** lista os arquivos oficiais da obra, que ficam no Google Drive. O sistema guarda só o link de
-cada um. A lista vem da planilha-índice da pasta (pelo link ou em CSV, sempre com prévia) ou do cadastro na própria
-tela. Como colocar os documentos: `docs/DOCUMENTOS.md`.
+A tela **Documentos** começa pelas planilhas e pelo mapa que já vêm com o sistema (BM REV04, BM 03.3.2 REV03, 06.1 REV01,
+06.2 REV08, Evidências e o HTML REV02): baixam do próprio servidor, com login, sem Drive. Abaixo fica a lista dos arquivos
+oficiais no Google Drive, da qual o sistema guarda só o link. Essa lista vem da planilha-índice da pasta (pelo link ou em
+CSV, sempre com prévia) ou do cadastro na própria tela. Como colocar os documentos: `docs/DOCUMENTOS.md`.
 
-## Mapa
+## Mapa técnico (Dados da obra)
 
 O servidor abre `mapa/PLANTAS_..._REV02_EQUIPES.html` **sem alterá-lo** e injeta `web/mapa_iluminado.js`. A camada lê o mesmo `DADOS` da REV02 e faz o seguinte:
 - alterna Modo Projeto (cores de DE) e Mapa Iluminado (andamento, a partir só dos registros efetivos);
