@@ -26,12 +26,14 @@ import acesso as A
 import caminhos
 import backup
 import compras as C
+import diario as DI
 import documentos as D
 import drive as DR
 import medicao as M
 import planejamento as P
 import relatorios as RL
 import exportar
+import lev as LV
 import link
 import mapa_geral as MG
 import regras as R
@@ -406,6 +408,35 @@ def r_ocorrencias(q, c):
     return S.ocorrencias(c, q.get("tipo"), q.get("id"), None if ab is None else ab == "1")
 
 
+# ------------------------------------------------------------------ campo: diário do dia e interferências
+def r_diario(q, c, usuario):
+    """O encarregado (perfil restrito à equipe) vê só o diário da própria equipe."""
+    equipe = usuario["equipe_id"] if usuario["restrito_a_equipe"] else q.get("equipe")
+    return DI.diario(c, q.get("data") or date.today().isoformat(), equipe)
+
+
+def r_lev_cronograma(q, c):
+    return LV.cronograma(_arquivo_oficial("reajuste") or _arquivo_oficial("bm"))
+
+
+def r_lev_bm(q, c):
+    return LV.bm(c, q.get("planilha"), q.get("q"))
+
+
+def r_lev_redes(q, c):
+    return LV.redes(c, q.get("frente") or None, q.get("q"))
+
+
+def r_lev_conexoes(q, c):
+    return LV.conexoes(c, q.get("frente") or None, q.get("q"))
+
+
+def r_interferencias(q, c):
+    ab = q.get("abertas")
+    return DI.interferencias(c, None if ab in (None, "") else ab == "1", q.get("equipe"), q.get("tipo"), q.get("categoria"),
+                             q.get("ini"), q.get("fim"))
+
+
 # ------------------------------------------------------------------ documentos oficiais (links do Google Drive)
 def r_documentos(q, c):
     return D.listar(c)
@@ -569,9 +600,11 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
        "/api/reservas-vencidas": r_reservas_vencidas, "/api/programacoes": r_programacoes,
        "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios,
-       "/api/documentos": r_documentos, "/api/mapa/geral": r_mapa_geral, "/api/planilhas": r_planilhas}
+       "/api/documentos": r_documentos, "/api/mapa/geral": r_mapa_geral, "/api/planilhas": r_planilhas,
+       "/api/interferencias": r_interferencias, "/api/lev/cronograma": r_lev_cronograma, "/api/lev/bm": r_lev_bm,
+       "/api/lev/redes": r_lev_redes, "/api/lev/conexoes": r_lev_conexoes}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
-GET_USUARIO = {"/api/auditoria": r_auditoria,
+GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"])}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
@@ -630,7 +663,9 @@ TELA_GET = {"/api/equipe": ("equipes", "ponto") + _CAMPO, "/api/estoque": _ALMOX
             "/api/programacoes": ("prog", "almox") + _CAMPO, "/api/ocorrencias": _CAMPO + ("mapa",),
             "/api/esteira": ("esteira",), "/api/relatorios": ("relatorios",), "/api/medicoes": ("medicao",),
             "/api/medicao": ("medicao",), "/api/medicao/elegibilidade": ("medicao",), "/api/planilhas": ("lev",),
-            "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa")}
+            "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa"),
+            "/api/diario": ("diario",), "/api/interferencias": ("interferencias",),
+            **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
 TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",)}   # downloads (/arquivos/: LEV)
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
