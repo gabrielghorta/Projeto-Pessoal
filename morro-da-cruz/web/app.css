@@ -62,7 +62,7 @@ h4 { font-size: 14px; }
 .rail-item.sub[aria-current="page"] { font-weight: 700; }
 .rail.aberto .rail-item.sub, .rail.fixo .rail-item.sub { padding-left: 28px; }
 .rail-sub { display: none; flex-direction: column; gap: 2px; }
-.rail.aberto .rail-sub, .rail.fixo .rail-sub, .rail.no-adm .rail-sub { display: flex; }
+.rail.aberto .rail-sub, .rail.fixo .rail-sub, .rail-sub.aberta { display: flex; }   /* o grupo da tela aberta fica à mostra */
 .rail-div { height: 1px; margin: 6px 8px; background: var(--borda); flex: none; }
 .rail-rot { opacity: 0; transition: opacity .15s; }
 .rail.aberto .rail-rot, .rail.fixo .rail-rot { opacity: 1; }
@@ -161,13 +161,36 @@ td input { width: 100%; padding: 6px 8px; min-height: 34px; }
 .aviso.info { border-color: var(--amarelo); background: var(--info-claro); }
 .aviso.ok { border-color: var(--verde); background: var(--verde-claro); }
 .vazio { color: var(--suave); padding: 8px 0; }
-.pastas-docs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.pastas-docs:empty { display: none; }
-.pastas-docs button { border: 1px solid var(--borda2); background: transparent; color: var(--texto); border-radius: 999px; padding: 7px 14px; cursor: pointer; font-weight: 700; font-size: 14px; }
-.pastas-docs button:hover { border-color: var(--azul); }
-.pastas-docs button[aria-pressed="true"] { background: var(--laranja); border-color: var(--laranja); color: var(--sobre-laranja); }
-.pastas-docs button small { font-weight: 400; opacity: .8; }
+.abas-chip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.abas-chip:empty { display: none; }
+.abas-chip button { border: 1px solid var(--borda2); background: transparent; color: var(--texto); border-radius: 999px; padding: 7px 14px; cursor: pointer; font-weight: 700; font-size: 14px; }
+.abas-chip button:hover { border-color: var(--azul); }
+.abas-chip button[aria-pressed="true"] { background: var(--laranja); border-color: var(--laranja); color: var(--sobre-laranja); }
+.abas-chip button small { font-weight: 400; opacity: .8; }
 .doc-tipo { display: inline-block; min-width: 46px; text-align: center; padding: 2px 6px; border-radius: 6px; font-size: 12px; font-weight: 700; background: var(--chip); color: var(--suave); margin-right: 8px; }
+
+/* ---------- campo: diário do dia e interferências */
+.dia-equipe { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--borda); }
+.dia-equipe:last-child { border-bottom: 0; }
+.dia-equipe b { min-width: 72px; }
+.int-item { border: 1px solid var(--borda); border-left: 4px solid var(--amarelo); border-radius: var(--raio-p); padding: 10px 12px; margin: 8px 0; background: var(--painel2); }
+.int-item.resolvida { border-left-color: var(--verde); opacity: .8; }
+.int-item .topo { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; }
+.int-item p { margin: 6px 0 0; overflow-wrap: anywhere; }
+.int-item small { color: var(--suave); }
+
+/* ---------- LEV: tabelas das planilhas e o cronograma (cada mês: quanto mais forte, mais programado) */
+tr.grupo td { background: var(--painel2); font-weight: 700; }
+.crono { font-size: 13px; }
+.crono th.mes { text-align: center; font-size: 12px; white-space: nowrap; }
+.crono td.mes { padding: 2px; min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+.crono td.mes span { display: block; border-radius: 4px; padding: 4px 2px; background: color-mix(in srgb, var(--laranja) calc(var(--p, 0) * 60%), var(--painel2)); }
+.crono td.mes.agora span { outline: 2px solid var(--azul); outline-offset: -2px; }
+.crono tr.n0 td.desc { font-weight: 700; }
+.crono tr.n1 td.desc { padding-left: 22px; }
+.crono tr.total td { background: var(--painel2); }
+.crono-legenda { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; color: var(--suave); font-size: 13px; margin: 0 0 10px; }
+.crono-legenda i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
 .lista-drive { display: grid; gap: 6px; margin-top: 10px; }
 .drive-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--borda); border-radius: var(--raio-p); }
 .drive-item > span:nth-child(2) { min-width: 0; flex: 1; }

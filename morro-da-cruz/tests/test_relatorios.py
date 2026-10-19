@@ -111,12 +111,13 @@ class TestAvancoEPendencias(BaseCampo):
 class TestRelatoriosPeloHTTP(BaseHTTP):
     def test_consulta_e_exportacao(self):
         self.assertEqual(self.cliente().get("/api/relatorios")[0], 401)
-        enc = self.cliente("enc1")                                                     # leitura: basta estar logado
-        st, r = enc.get(f"/api/relatorios?ini={D}&fim={D2}&frente=Zona01")
+        enc, eng = self.cliente("enc1"), self.cliente("eng1")                         # Relatórios: tela do Administrativo
+        self.assertEqual((enc.get("/api/relatorios")[0], enc.get(f"/api/relatorios/exportar?ini={D}&fim={D2}")[0]), (403, 403))
+        st, r = eng.get(f"/api/relatorios?ini={D}&fim={D2}&frente=Zona01")
         self.assertEqual(st, 200, r)
         self.assertEqual(set(r), {"materiais", "avanco", "pendencias", "faltantes"})
         self.assertEqual([f["frente_id"] for f in r["avanco"]["frentes"]], ["Zona01"])
-        st, xlsx = enc.get(f"/api/relatorios/exportar?ini={D}&fim={D2}")
+        st, xlsx = eng.get(f"/api/relatorios/exportar?ini={D}&fim={D2}")
         self.assertEqual(st, 200)
         wb = load_workbook(io.BytesIO(xlsx))
         self.assertEqual(wb.sheetnames, ["MATERIAIS", "AVANÇO", "PENDÊNCIAS", "FALTANTES"])

@@ -119,34 +119,39 @@ $('#temaBtn').addEventListener('click', () => aplicarTema(document.documentEleme
 aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escuro');
 
 /* ---------------------------------------------------------------- navegação: tela inicial, menu lateral e telas */
-// cada tela é uma <section id="aba-…">; as do Administrativo aparecem como subitens no menu lateral
+// cada tela é uma <section id="aba-…">; as dos grupos (Campo, Almoxarifado, Administrativo) aparecem como subitens no menu lateral
 const TELAS = {
   inicio: { titulo: 'Início', carregar: () => renderInicio() },
   iluminado: { titulo: 'Mapa iluminado', carregar: () => carregarIluminado() },
-  campo: { titulo: 'Lançamento de campo', carregar: () => {} },
-  equipes: { titulo: 'Equipes', adm: true, carregar: () => carregarAlmox() },
-  prog: { titulo: 'Planejamento', adm: true, carregar: () => carregarProg() },
-  compras: { titulo: 'Compras e notas', adm: true, carregar: () => carregarCompras() },
-  almox: { titulo: 'Almoxarifado', adm: true, carregar: () => carregarAlmox() },
-  ponto: { titulo: 'Check-in e check-out', adm: true, carregar: () => carregarAlmox() },
-  mapa: { titulo: 'Dados da obra', adm: true, carregar: () => carregarMapa() },
-  esteira: { titulo: 'Cadastro', adm: true, carregar: () => carregarEsteira() },
-  relatorios: { titulo: 'Relatórios', adm: true, carregar: () => carregarRelatorios() },
-  admin: { titulo: 'Usuários e histórico', adm: true, carregar: () => carregarAdmin() },
-  docs: { titulo: 'Documentos', carregar: () => carregarDocumentos() },
+  campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', carregar: () => {} },
+  diario: { titulo: 'Diário de campo', grupo: 'grupo-campo', carregar: () => carregarDiario() },
+  interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
+  almox: { titulo: 'Estoque e movimentos', grupo: 'grupo-almox', carregar: () => carregarAlmox() },
+  ponto: { titulo: 'Check-in e check-out', grupo: 'grupo-almox', carregar: () => carregarAlmox() },
+  compras: { titulo: 'Compras e notas', grupo: 'grupo-almox', carregar: () => carregarCompras() },
+  equipes: { titulo: 'Equipes', grupo: 'administrativo', carregar: () => carregarAlmox() },
+  prog: { titulo: 'Planejamento', grupo: 'administrativo', carregar: () => carregarProg() },
+  mapa: { titulo: 'Dados da obra', grupo: 'administrativo', carregar: () => carregarMapa() },
+  esteira: { titulo: 'Cadastro', grupo: 'administrativo', carregar: () => carregarEsteira() },
+  relatorios: { titulo: 'Relatórios', grupo: 'administrativo', carregar: () => carregarRelatorios() },
+  admin: { titulo: 'Usuários e histórico', grupo: 'administrativo', carregar: () => carregarAdmin() },
+  lev: { titulo: 'LEV', carregar: () => carregarLev() },
   medicao: { titulo: 'Medição', carregar: () => carregarMedicoes() },
 };
-// a primeira seção do Administrativo segue o trabalho de cada perfil
-const admInicial = () => pode('planejar') || pode('usuarios') ? 'equipes' : pode('almox') ? 'almox' : pode('cadastro') ? 'esteira' : 'equipes';
+const GRUPOS = { 'grupo-campo': 'Campo', 'grupo-almox': 'Almoxarifado', administrativo: 'Administrativo' };
+// telas que o perfil abre (config/perfis.json); o servidor confere de novo em cada consulta
+const podeTela = id => id === 'inicio' || !!(USUARIO && USUARIO.telas.includes(id));
+const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeTela(t));
 let TELA = null;
 function abrirAba(id, opcoes = {}) {
-  if (id === 'administrativo') id = admInicial();
-  if (!TELAS[id]) id = 'inicio';
+  if (GRUPOS[id]) id = telasDoGrupo(id)[0];          // o grupo abre a primeira tela dele que o perfil usa
+  if (!TELAS[id] || !podeTela(id)) id = 'inicio';
   TELA = id;
   document.body.classList.toggle('no-inicio', id === 'inicio');
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
-  $$('.rail-item').forEach(b => b.dataset.tela === id ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
-  $('#rail').classList.toggle('no-adm', !!TELAS[id].adm);
+  $$('.rail-item').forEach(b => b.dataset.tela === id || (b.dataset.grupo && b.dataset.grupo === TELAS[id].grupo)
+    ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
+  $$('.rail-sub').forEach(s => s.classList.toggle('aberta', s.dataset.grupo === TELAS[id].grupo));
   $('#topoTitulo').textContent = id === 'inicio' ? 'Morro da Cruz' : TELAS[id].titulo;
   document.title = id === 'inicio' ? 'Morro da Cruz' : `${TELAS[id].titulo} · Morro da Cruz`;
   if (location.hash !== '#' + id) history[opcoes.substituir ? 'replaceState' : 'pushState'](null, '', '#' + id);
@@ -156,8 +161,8 @@ function abrirAba(id, opcoes = {}) {
 }
 window.addEventListener('popstate', () => USUARIO && abrirAba(location.hash.slice(1) || 'inicio', { substituir: true }));
 document.addEventListener('click', ev => {
-  const b = ev.target.closest('[data-tela]'); if (!b) return;
-  ev.preventDefault(); abrirAba(b.dataset.tela);
+  const b = ev.target.closest('[data-tela]') || ev.target.closest('button[data-grupo]'); if (!b) return;
+  ev.preventDefault(); abrirAba(b.dataset.tela || b.dataset.grupo);
 });
 
 // menu lateral: recolhido mostra só os ícones; passar o mouse (ou o foco do teclado) abre por cima; o botão fixa aberto
@@ -187,22 +192,26 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
-  campo: { nome: 'Lançamento de campo', desc: 'Metros do dia, soldas, clima, fotos e ocorrências de cada trecho.' },
-  administrativo: { nome: 'Administrativo', desc: 'Equipes, planejamento, compras e notas, almoxarifado, check-in, dados da obra, cadastro, relatórios e usuários.' },
-  docs: { nome: 'Documentos', desc: 'Planilhas, projetos e documentos oficiais. As planilhas baixam daqui; o resto abre no Google Drive da obra.' },
+  'grupo-campo': { nome: 'Campo', desc: 'Lançamento do dia, diário de campo e interferências: o que cada equipe fez e o que atrapalhou o avanço.' },
+  'grupo-almox': { nome: 'Almoxarifado', desc: 'Estoque e movimentos, check-in e check-out das equipes, compras e notas fiscais.' },
+  administrativo: { nome: 'Administrativo', desc: 'Equipes, planejamento, dados da obra, cadastro, relatórios e usuários.' },
+  lev: { nome: 'LEV', desc: 'Cronograma físico-financeiro Caesb, BM, BM Vertical e os levantamentos de redes e de conexões.' },
   medicao: { nome: 'Medição', desc: 'Boletim e memória de cálculo. Por enquanto, só de teste.', teste: true },
 };
+// a ordem do Menu segue o trabalho de cada perfil; o que o perfil não abre fica de fora
 const MENU_PERFIL = {
-  ENGENHARIA: ['iluminado', 'campo', 'administrativo', 'docs', 'medicao'], ALMOXARIFADO: ['administrativo', 'iluminado', 'docs'],
-  EQUIPE: ['campo', 'iluminado', 'docs'], TOPOGRAFIA: ['campo', 'iluminado', 'docs'], CADASTRO: ['administrativo', 'iluminado', 'docs'],
-  ADMINISTRACAO: ['administrativo', 'iluminado', 'docs', 'medicao'],
+  ENGENHARIA: ['iluminado', 'grupo-campo', 'grupo-almox', 'administrativo', 'lev', 'medicao'],
+  ADMINISTRACAO: ['administrativo', 'grupo-almox', 'lev', 'medicao', 'iluminado', 'grupo-campo'],
+  ALMOXARIFADO: ['grupo-almox', 'grupo-campo', 'iluminado'], CADASTRO: ['administrativo', 'iluminado'],
 };
+const ORDEM_MENU = ['grupo-campo', 'iluminado', 'grupo-almox', 'administrativo', 'lev', 'medicao'];
+const abreModo = id => GRUPOS[id] ? telasDoGrupo(id).length > 0 : podeTela(id);
 let MENU_FOCO = null;
 const iniciais = n => (String(n || '').replace(/\(.*?\)/g, '').replace(/[^\p{L}\s]/gu, '').trim().split(/\s+/).filter(Boolean)
   .map(p => p[0]).filter((_, i, a) => i === 0 || i === a.length - 1).join('') || '?').toUpperCase();
 function renderInicio() {
   if (!USUARIO) return;
-  const itens = MENU_PERFIL[USUARIO.perfil] || Object.keys(MODOS);
+  const itens = (MENU_PERFIL[USUARIO.perfil] || ORDEM_MENU).filter(abreModo);
   if (!itens.includes(MENU_FOCO)) MENU_FOCO = itens[0];
   const seta = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12h15M13 5l7 7-7 7"/></svg>';
   $('#menuLista').innerHTML = itens.map(id => `<div class="menu-bloco" data-modo="${id}">
@@ -1114,13 +1123,16 @@ $('#linkBtn').addEventListener('click', async () => {
 });
 async function carregarAdmin() {
   carregarLink();
+  $('#painelDrive').hidden = !pode('documentos');
+  if (pode('documentos')) carregarDrive();
   $('#painelUsuarios').hidden = !pode('usuarios');
   if (pode('usuarios')) {
     const us = await api('/api/usuarios');
     $('#selPerfil').innerHTML = Object.entries(RESUMO.perfis).map(([k, p]) => `<option value="${k}">${esc(p.nome)}</option>`).join('');
     $('#usuariosLista').innerHTML = `<table><thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Equipe</th><th></th></tr></thead><tbody>${us.map(u => `<tr${u.ativo ? '' : ' style="opacity:.5"'}>
       <td>${esc(u.login)}</td><td>${esc(u.nome)}</td><td>${esc(u.perfil_nome)}</td><td>${esc(u.equipe_id || '')}</td>
-      <td>${u.login === USUARIO.login ? '' : `<button type="button" class="btn" data-usr-ativo="${esc(u.login)}" data-v="${u.ativo ? 0 : 1}">${u.ativo ? 'Desativar' : 'Reativar'}</button> <button type="button" class="btn" data-usr-senha="${esc(u.login)}">Nova senha</button>`}</td></tr>`).join('')}</tbody></table>`;
+      <td>${u.login === USUARIO.login ? '' : `<div class="acoes"><button type="button" class="btn" data-usr-ativo="${esc(u.login)}" data-v="${u.ativo ? 0 : 1}">${u.ativo ? 'Desativar' : 'Reativar'}</button><button type="button" class="btn" data-usr-senha="${esc(u.login)}">Nova senha</button>${u.tem_historico ? '' : `<button type="button" class="btn" data-usr-excluir="${esc(u.login)}">Excluir</button>`}</div>`}</td></tr>`).join('')}</tbody></table>
+      <p class="vazio" style="margin:6px 0 0">Excluir aparece só para a conta que nunca registrou nada (criada por engano). Quem já tem histórico é desativado: perde o acesso e o histórico fica.</p>`;
   }
   carregarAuditoria();
 }
@@ -1143,29 +1155,18 @@ $('#fUsuario').addEventListener('submit', async ev => {
   if (r) { ev.target.reset(); carregarAdmin(); }
 });
 document.addEventListener('click', async ev => {
-  const a = ev.target.closest('[data-usr-ativo]'), s = ev.target.closest('[data-usr-senha]');
+  const a = ev.target.closest('[data-usr-ativo]'), s = ev.target.closest('[data-usr-senha]'), x = ev.target.closest('[data-usr-excluir]');
   if (a) { const r = await acao(() => api('/api/usuarios', { acao: 'alterar', login: a.dataset.usrAtivo, ativo: a.dataset.v === '1' }), 'Usuário atualizado.').catch(() => null); if (r) carregarAdmin(); }
+  if (x) {
+    if (!confirm(`Excluir a conta ${x.dataset.usrExcluir}? Só funciona se ela nunca registrou nada; se já tiver histórico, use Desativar.`)) return;
+    const r = await acao(() => api('/api/usuarios', { acao: 'excluir', login: x.dataset.usrExcluir }), 'Conta excluída.').catch(() => null);
+    if (r) carregarAdmin();
+  }
   if (s) { const senha = prompt('Nova senha (mín. 10 caracteres) para ' + s.dataset.usrSenha + ':'); if (!senha) return;
     await acao(() => api('/api/usuarios', { acao: 'senha', login: s.dataset.usrSenha, senha }), 'Senha redefinida; as sessões dessa pessoa foram encerradas.').catch(() => null); }
 });
 
-/* ---------------------------------------------------------------- 8. documentos oficiais (links do Google Drive) */
-let DOCS = null, DOC_AREA = '', DOC_SUB = '';
-const semAcento = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const dataBR = d => d ? d.split('-').reverse().join('/') : '—';
-async function carregarDocumentos() {
-  const r = await acao(() => api('/api/documentos')).catch(() => null);
-  if (!r) return;
-  DOCS = r;
-  $('#docGerenciar').hidden = !pode('documentos');
-  const cfg = r.config, pb = $('#docPastaBtn');
-  pb.hidden = !cfg.pasta_url; if (cfg.pasta_url) pb.href = cfg.pasta_url;
-  const f = $('#fDocConfig'); f.pasta_url.value = cfg.pasta_url; f.indice_url.value = cfg.indice_url;
-  $('#docPastasLista').innerHTML = r.pastas.map(p => `<option value="${esc(p)}">`).join('');
-  renderDocumentos();
-  carregarPlanilhas();
-  carregarDrive();
-}
 // planilhas e mapa do projeto que vêm com o sistema (config/fontes.json): baixam do próprio servidor, sem Drive
 const tamanho = b => b >= 1048576 ? `${nf(b / 1048576, 1)} MB` : `${nf(Math.max(1, Math.round(b / 1024)), 0)} KB`;
 /* ---------------------------------------------------------------- Google Drive conectado: fotos e notas sobem sozinhas */
@@ -1181,7 +1182,7 @@ async function driveEmSegundoPlano(depois) {
   try {
     const r = await api('/api/drive/processar', {});
     if (r && r.enviados && depois) depois();
-    if (TELA === 'docs') carregarDrive();
+    if (TELA === 'admin' && pode('documentos')) carregarDrive();
   } catch (_) { /* sem conexão agora: a fila sobe na próxima vez */ } finally { DRIVE_EM_CURSO = false; }
 }
 const linkPasta = id => `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
@@ -1247,106 +1248,205 @@ async function carregarPlanilhas() {
       <span class="doc-tipo">${esc(a.arquivo.split('.').pop().toUpperCase())}</span>
       <span><b>${esc(a.descricao)}</b><small>${esc(a.arquivo)} · ${tamanho(a.bytes)}</small></span><span class="seta">Baixar</span></a>`).join('');
 }
-function renderDocumentos() {
-  if (!DOCS) return;
-  const q = semAcento($('#docBusca').value).trim();
-  const achou = d => !q || semAcento([d.titulo, d.codigo, d.nome_anterior, d.descricao, d.pasta_rotulo, d.pasta, d.tipo, d.formato, d.revisao].join(' ')).includes(q);
-  const base = DOCS.documentos.filter(achou);
-  const area = d => d.pasta_rotulo.split(' / ')[0], sub = d => d.pasta_rotulo.split(' / ')[1] || '';
-  const contar = (lista, f) => lista.reduce((m, d) => (m[f(d)] = (m[f(d)] || 0) + 1, m), {});
-  const areas = contar(base, area);
-  if (DOC_AREA && !areas[DOC_AREA]) { DOC_AREA = ''; DOC_SUB = ''; }
-  const chip = (nome, n, on, dado) => `<button type="button" ${dado}="${esc(nome)}" aria-pressed="${on}">${esc(nome || 'Todas')} <small>${n}</small></button>`;
-  $('#docAreas').innerHTML = DOCS.total ? chip('', base.length, !DOC_AREA, 'data-doc-area') + Object.keys(areas).sort().map(a => chip(a, areas[a], a === DOC_AREA, 'data-doc-area')).join('') : '';
-  const naArea = base.filter(d => !DOC_AREA || area(d) === DOC_AREA);
-  const subs = DOC_AREA ? contar(naArea.filter(d => sub(d)), sub) : {};
-  if (DOC_SUB && !subs[DOC_SUB]) DOC_SUB = '';
-  $('#docSubpastas').innerHTML = Object.keys(subs).length ? chip('', naArea.length, !DOC_SUB, 'data-doc-sub') + Object.keys(subs).sort().map(s => chip(s, subs[s], s === DOC_SUB, 'data-doc-sub')).join('') : '';
-  const lista = naArea.filter(d => !DOC_SUB || sub(d) === DOC_SUB);
-  const editar = pode('documentos');
-  if (!DOCS.total) {
-    $('#docLista').innerHTML = `<div class="vazio" style="padding:12px">Nenhum documento na lista ainda. Quando o índice da pasta estiver pronto, ${editar ? 'abra <b>Gerenciar a lista de documentos</b> logo abaixo e importe o CSV do índice ou cole o link da planilha-índice.' : 'quem organiza os documentos importa o índice aqui.'}</div>`;
-    return;
+/* ---------------------------------------------------------------- campo: diário do dia */
+const ROT_CATEG = { INTERFERENCIA: 'Interferência', FALTA_MATERIAL: 'Falta de material', CHUVA: 'Chuva', LIBERACAO: 'Liberação', PROJETO: 'Projeto',
+  SEGURANCA: 'Segurança', ACESSO: 'Acesso', OUTRO: 'Outro', EXECUCAO: 'Execução', MATERIAL: 'Material', SOLDA: 'Solda', CADASTRO: 'Cadastro',
+  DOCUMENTO: 'Documento' };
+const ROT_PRODUCAO = { ASSENTADO: 'Assentado', CADASTRO_CAMPO: 'Cadastro de campo', REATERRADO: 'Reaterrado' };
+const rotCateg = c => ROT_CATEG[c] || c;
+const tabelaHtml = (cab, linhas) => `<div class="tabela"><table><thead><tr>${cab}</tr></thead><tbody>${linhas.join('')}</tbody></table></div>`;
+function opcoesEquipe(sel, primeira) {
+  if (sel.options.length < 2) sel.innerHTML = `<option value="">${primeira}</option>` + RESUMO.equipes.map(e => `<option value="${esc(e.id)}">${esc(e.nome)}</option>`).join('');
+}
+const somarDia = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+async function carregarDiario() {
+  const sel = $('#diaEquipe'); opcoesEquipe(sel, 'Todas as equipes');
+  if (USUARIO.restrito_a_equipe) { sel.value = USUARIO.equipe_id; sel.disabled = true; }   // o encarregado vê a própria equipe
+  if (!$('#diaData').value) $('#diaData').value = hoje();
+  const q = new URLSearchParams({ data: $('#diaData').value }); if (sel.value) q.set('equipe', sel.value);
+  const d = await acao(() => api('/api/diario?' + q)).catch(() => null); if (!d) return;
+  const t = d.totais;
+  $('#diaKpis').innerHTML = [['Assentado', nf(t.assentado_m) + ' m'], ['Cadastro de campo', nf(t.cadastro_m) + ' m'], ['Reaterrado', nf(t.reaterrado_m) + ' m'],
+    ['Soldas', nf(t.soldas, 0)], ['Fotos', nf(t.fotos, 0)], ['Ocorrências', nf(t.ocorrencias, 0)]].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join('');
+  const nada = '<p class="vazio">Nada registrado neste dia.</p>';
+  $('#diaEquipes').innerHTML = d.equipes.map(e => `<div class="dia-equipe"><b>${esc(e.nome)}</b>
+      <span>Manhã: ${esc(e.clima.MANHA || '—')}</span><span>Tarde: ${esc(e.clima.TARDE || '—')}</span></div>`).join('') || '<p class="vazio">Nenhuma equipe registrou nada neste dia.</p>';
+  $('#diaProducao').innerHTML = d.producao.length ? tabelaHtml('<th>Equipe</th><th>Trecho</th><th>Etapa</th><th class="n">De–até (m)</th><th class="n">Metros</th><th>Registro</th><th></th>',
+    d.producao.map(p => `<tr><td>${esc(p.equipe_id || '—')}</td><td>${esc(curto(p.trecho))}</td><td>${esc(ROT_PRODUCAO[p.etapa] || p.etapa)}</td>
+      <td class="n">${nf(p.ini_m)}–${nf(p.fim_m)}</td><td class="n"><b>${nf(p.metros)}</b></td><td><small>${esc([p.informado_por, p.referencia].filter(Boolean).join(' · '))}</small></td>
+      <td>${p.verificado ? '<span class="chip verde">verificado</span>' : '<span class="chip cinza">informado</span>'}</td></tr>`)) : nada;
+  $('#diaSoldas').innerHTML = d.soldas.length ? tabelaHtml('<th>Equipe</th><th>Trecho / nó</th><th>Tipo</th><th class="n">Qtd.</th><th>Soldador</th><th></th>',
+    d.soldas.map(s => `<tr><td>${esc(s.equipe_id || '—')}</td><td>${esc(curto(s.alvo_nome))}</td><td>${s.tipo === 'TOPO' ? 'Topo' : 'Eletrofusão'}</td>
+      <td class="n">${nf(s.quantidade, 0)}</td><td>${esc(s.soldador)}</td>
+      <td>${s.resultado ? `<span class="chip ${s.resultado === 'APROVADA' ? 'verde' : 'vermelho'}">${s.resultado === 'APROVADA' ? 'aprovada' : 'reprovada'}</span>` : '<span class="chip cinza">sem verificação</span>'}</td></tr>`)) : nada;
+  $('#diaFotos').innerHTML = d.fotos.map(f => `<figure class="foto-carimbo"><img src="/fotos/${encodeURIComponent(f.arquivo)}" alt="${esc(f.categoria)} · ${esc(f.alvo_nome)}" loading="lazy">
+      <span class="carimbo">${esc(f.carimbo)}</span><figcaption>${esc(curto(f.alvo_nome))}</figcaption></figure>`).join('') || nada;
+  $('#diaProg').innerHTML = d.programacoes.map(p => `<div class="dia-equipe"><b>${esc(p.equipe_id)}</b><span>${esc(p.servico_nome)} · ${esc(curto(p.alvo_nome))}</span>
+      <span class="chip ${p.status === 'REALIZADA' ? 'verde' : p.status === 'PLANEJADA' ? 'azul' : 'cinza'}">${esc(p.status.toLowerCase().replace('_', ' '))}</span></div>`).join('') || '<p class="vazio">Nada programado para este dia.</p>';
+  $('#diaCheckins').innerHTML = d.checkins.map(c => `<div class="registro"><div><b>${esc(c.equipe_id)}${c.alvo_nome ? ' · ' + esc(curto(c.alvo_nome)) : ''}</b>
+      <span class="chip ${c.encerrado ? 'verde' : 'amarelo'}">${c.encerrado ? 'check-out feito' : 'em campo'}</span></div>
+      <small>${nf(c.funcionarios, 0)} pessoa(s) · ${nf(c.maquinas, 0)} máquina(s)${c.contingencia ? ' · ' + esc(c.contingencia) : ''}</small>
+      ${c.materiais.length ? `<div><small>${c.materiais.map(m => `${esc(m.tipo.toLowerCase())} ${nf(m.quantidade, 3)} ${esc(m.material_id)}`).join(' · ')}</small></div>` : ''}</div>`).join('') || '<p class="vazio">Nenhum check-in neste dia.</p>';
+  $('#diaOcorrencias').innerHTML = d.ocorrencias.map(htmlInterf).join('') || '<p class="vazio">Nenhuma interferência ou ocorrência aberta neste dia.</p>';
+  $('#painelDiaLib').hidden = !!d.equipe;
+  $('#diaLiberacoes').innerHTML = d.liberacoes.map(l => `<div class="dia-equipe"><b>${esc(ROT_ETAPA[l.etapa] || l.etapa)}</b><span>${esc(curto(l.trecho))} · ${nf(l.ini_m)}–${nf(l.fim_m)} m</span>
+      <small>${esc([l.registrado_por, l.referencia].filter(Boolean).join(' · '))}</small></div>`).join('') || nada;
+}
+$('#diaData').addEventListener('change', carregarDiario);
+$('#diaEquipe').addEventListener('change', carregarDiario);
+$('#diaAnterior').addEventListener('click', () => { $('#diaData').value = somarDia($('#diaData').value || hoje(), -1); carregarDiario(); });
+$('#diaProximo').addEventListener('click', () => { $('#diaData').value = somarDia($('#diaData').value || hoje(), 1); carregarDiario(); });
+
+/* ---------------------------------------------------------------- campo: interferências e ocorrências */
+let INT_SITUACAO = '1';
+function htmlInterf(o) {
+  return `<div class="int-item${o.resolvida_em ? ' resolvida' : ''}"><div class="topo"><b>${esc(rotCateg(o.categoria))} · ${esc(curto(o.alvo_nome))}</b>
+      ${o.resolvida_em ? '<span class="chip verde">resolvida</span>' : `<span class="chip amarelo">${o.tipo === 'IMPEDIMENTO' ? 'impedimento' : 'não conformidade'} · aberta</span>`}</div>
+    <p>${esc(o.descricao)}</p>
+    <small>#${o.id} · ${dataBR(o.data)} · ${esc(o.equipe_id || 'sem equipe')} · aberta por ${esc(o.aberta_por)}</small>
+    ${o.resolvida_em ? `<p><small>Resolução (${esc(o.resolvida_por)}, ${dataBR(o.resolvida_em.slice(0, 10))}):</small> ${esc(o.resolucao)}</p>`
+      : pode('verificar') ? `<div class="acoes" style="margin-top:8px"><button type="button" class="btn" data-int-resolver="${o.id}">Marcar como resolvida</button></div>` : ''}</div>`;
+}
+function catsInterf() {
+  const c = $('#intCat');
+  c.innerHTML = (RESUMO.categorias_ocorrencia[$('#intTipo').value] || []).map(x => `<option value="${x}">${esc(rotCateg(x))}</option>`).join('');
+  if ($('#intTipo').value === 'IMPEDIMENTO') c.value = 'INTERFERENCIA';
+}
+const marcarSituacao = () => $$('#intSituacao button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.intSituacao === INT_SITUACAO)));
+async function carregarInterferencias() {
+  opcoesEquipe($('#intEquipe'), 'Todas as equipes');
+  if ($('#intCategoria').options.length < 2) {
+    $('#intCategoria').innerHTML = '<option value="">Todas</option>' + [...new Set(Object.values(RESUMO.categorias_ocorrencia).flat())]
+      .map(c => `<option value="${c}">${esc(rotCateg(c))}</option>`).join('');
+    catsInterf();
+    if (USUARIO.restrito_a_equipe) $('#fInterf').equipe_id.value = USUARIO.equipe_id;
   }
-  if (!lista.length) { $('#docLista').innerHTML = '<div class="vazio" style="padding:12px">Nenhum documento com esse nome. Tente parte do nome ou do código, como 06.2, BM ou PB07.</div>'; return; }
-  const mostrar = lista.slice(0, 500);
-  $('#docLista').innerHTML = `<table><thead><tr><th>Documento</th><th>Pasta</th><th>Revisão</th><th>Data</th><th></th></tr></thead><tbody>${mostrar.map(d => `<tr>
-    <td><span class="doc-tipo">${esc(d.formato || 'ARQ.')}</span><a href="${esc(d.abrir || d.link)}" target="_blank" rel="noopener">${esc(d.titulo)}</a>
-      ${d.tipo && d.tipo !== d.formato || d.codigo || d.nome_anterior ? `<br><small class="vazio" style="padding:0">${[d.tipo && d.tipo !== d.formato ? esc(d.tipo) : '', d.codigo ? 'código ' + esc(d.codigo) : '', d.nome_anterior ? 'antes: ' + esc(d.nome_anterior) : ''].filter(Boolean).join(' · ')}</small>` : ''}</td>
-    <td title="${esc(d.pasta)}">${esc(d.pasta_rotulo)}</td><td>${esc(d.revisao || '—')}</td><td>${dataBR(d.data_documento)}</td>
-    <td style="white-space:nowrap"><a class="btn" href="${esc(d.abrir || d.link)}" target="_blank" rel="noopener" title="Ver na internet (Word e Excel abrem no Google Docs e no Planilhas)">Abrir</a>
-      ${d.baixar ? `<a class="btn" href="${esc(d.baixar)}" target="_blank" rel="noopener">Baixar</a>` : ''}
-      ${editar ? `<button type="button" class="btn" data-doc-editar="${d.id}">Editar</button> <button type="button" class="btn" data-doc-retirar="${d.id}">Retirar</button>` : ''}</td></tr>`).join('')}</tbody></table>
-    ${lista.length > mostrar.length ? `<p class="vazio" style="margin:6px 8px">Mostrando 500 de ${lista.length}. Use a busca ou as pastas para afinar.</p>` : ''}`;
+  const q = new URLSearchParams();
+  if (INT_SITUACAO) q.set('abertas', INT_SITUACAO);
+  if ($('#intEquipe').value) q.set('equipe', $('#intEquipe').value);
+  if ($('#intCategoria').value) q.set('categoria', $('#intCategoria').value);
+  const r = await acao(() => api('/api/interferencias?' + q)).catch(() => null); if (!r) return;
+  const k = r.contagem;
+  $('#intContagem').textContent = `${nf(k.abertas, 0)} aberta(s), ${nf(k.interferencias_abertas, 0)} delas interferência · ${nf(k.resolvidas, 0)} resolvida(s)`;
+  $('#intLista').innerHTML = r.ocorrencias.map(htmlInterf).join('') || `<p class="vazio">${INT_SITUACAO === '1' ? 'Nenhuma interferência ou ocorrência aberta.' : 'Nada encontrado com esses filtros.'}</p>`;
 }
-function renderPreviaDocs(r, aplicar) {
-  const ign = r.ignorados || [];
-  $('#docPrevia').innerHTML = `<div class="aviso ${r.simulado ? 'info' : 'sugestao'}"><b>${r.simulado ? 'Prévia: nada foi gravado ainda.' : 'Índice importado.'}</b><br>
-    ${r.linhas} linhas lidas: ${r.novos} novos, ${r.atualizados} atualizados, ${r.iguais} sem mudança e ${ign.length} ignorados.
-    ${Object.keys(r.pastas_de_trabalho || {}).length ? `<br>Ficaram de fora as pastas de trabalho: ${Object.entries(r.pastas_de_trabalho).map(([k, v]) => `${nf(v, 0)} arquivos de ${esc(k)}`).join(', ')}. Para trazê-las também, marque a opção abaixo e veja de novo.` : ''}
-    ${r.fora_do_indice ? `<br>${r.fora_do_indice} documento(s) da lista não aparecem no índice. Continuam na lista; retire à mão se for o caso.` : ''}
-    ${ign.length ? `<details><summary>Ver os ignorados</summary><ul>${ign.slice(0, 50).map(i => `<li>Linha ${i.linha}: ${esc(i.titulo || 'sem nome')}: ${esc(i.motivo)}</li>`).join('')}</ul></details>` : ''}
-    ${r.simulado && (r.novos || r.atualizados) ? `<div class="acoes" style="margin-top:8px"><button type="button" class="btn prim" id="docAplicar">Aplicar: ${r.novos} novos e ${r.atualizados} atualizados</button></div>` : ''}</div>`;
-  const b = $('#docAplicar');
-  if (b) b.addEventListener('click', async () => {
-    b.disabled = true;
-    const r2 = await acao(aplicar, 'Lista de documentos atualizada.').catch(() => null);
-    if (r2) { renderPreviaDocs(r2); carregarDocumentos(); } else b.disabled = false;
-  });
-}
-async function lerTextoArquivo(arquivo) {
-  const buf = await arquivo.arrayBuffer();
-  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (_) { return new TextDecoder('windows-1252').decode(buf); }
-}
-function editarDocumento(d) {
-  const f = $('#fDoc');
-  ['documento_id', 'titulo', 'pasta', 'link', 'tipo', 'revisao', 'data_documento', 'codigo', 'descricao'].forEach(k => f[k].value = k === 'documento_id' ? d.id : (d[k] || ''));
-  $('#docFormTitulo').textContent = 'Corrigir o documento'; $('#docSalvar').textContent = 'Salvar a correção'; $('#docCancelar').hidden = false;
-  $('#docGerenciar').open = true; f.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.titulo.focus();
-}
-function limparFormDocumento() {
-  $('#fDoc').reset(); $('#fDoc').documento_id.value = '';
-  $('#docFormTitulo').textContent = 'Adicionar um documento'; $('#docSalvar').textContent = 'Adicionar à lista'; $('#docCancelar').hidden = true;
-}
-$('#docBusca').addEventListener('input', renderDocumentos);
-$('#docCancelar').addEventListener('click', limparFormDocumento);
-$('#fDocConfig').addEventListener('submit', async ev => {
-  ev.preventDefault(); const o = formObj(ev.target);
-  const r = await acao(() => api('/api/documentos/config', o), 'Links salvos.').catch(() => null);
-  if (r) carregarDocumentos();
+const fInt = $('#fInterf');
+ligarBusca($('input[name=alvo_txt]', fInt));
+$('#intTipo').addEventListener('change', catsInterf);
+$('#intSituacao').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-int-situacao]'); if (!b) return;
+  INT_SITUACAO = b.dataset.intSituacao; marcarSituacao(); carregarInterferencias();
 });
-$('#docSincPrevia').addEventListener('click', async () => {
-  const incluir_trabalho = $('#docIncluirTrabalho').checked;
-  const r = await acao(() => api('/api/documentos/sincronizar', { simular: true, incluir_trabalho })).catch(() => null);
-  if (r) renderPreviaDocs(r, () => api('/api/documentos/sincronizar', { simular: false, incluir_trabalho }));
-});
-$('#fDocCsv').addEventListener('submit', async ev => {
+$('#intEquipe').addEventListener('change', carregarInterferencias);
+$('#intCategoria').addEventListener('change', carregarInterferencias);
+fInt.addEventListener('submit', async ev => {
   ev.preventDefault();
-  const arq = ev.target.arquivo.files[0]; if (!arq) return;
-  if (arq.size > 12 * 1024 * 1024) { toast('Arquivo grande demais (máximo 12 MB).', 'erro'); return; }
-  const csv = await lerTextoArquivo(arq), incluir_trabalho = $('#docIncluirTrabalho').checked;
-  const r = await acao(() => api('/api/documentos/importar', { csv, simular: true, incluir_trabalho })).catch(() => null);
-  if (r) renderPreviaDocs(r, () => api('/api/documentos/importar', { csv, simular: false, incluir_trabalho }));
-});
-$('#fDoc').addEventListener('submit', async ev => {
-  ev.preventDefault(); const o = formObj(ev.target); const editando = !!o.documento_id;
-  if (!editando) delete o.documento_id;
-  const r = await acao(() => api('/api/documento', o), editando ? 'Documento corrigido.' : 'Documento adicionado à lista.').catch(() => null);
-  if (r) { limparFormDocumento(); carregarDocumentos(); }
+  const o = formObj(fInt), inp = $('input[name=alvo_txt]', fInt);
+  if (!inp.dataset.id) { toast('Escolha o trecho, nó ou caixa na lista que aparece enquanto você digita.', 'erro'); return; }
+  const r = await acao(() => api('/api/ocorrencia', { alvo_tipo: inp.dataset.tipo, alvo_id: inp.dataset.id, tipo: o.tipo, categoria: o.categoria,
+    descricao: o.descricao, data: o.data, equipe_id: o.equipe_id || null }), 'Interferência registrada.').catch(() => null);
+  if (r) { fInt.descricao.value = ''; inp.value = ''; inp.dataset.id = ''; INT_SITUACAO = '1'; marcarSituacao(); carregarInterferencias(); }
 });
 document.addEventListener('click', async ev => {
-  const a = ev.target.closest('[data-doc-area]'), s = ev.target.closest('[data-doc-sub]');
-  const e = ev.target.closest('[data-doc-editar]'), x = ev.target.closest('[data-doc-retirar]');
-  if (a) { DOC_AREA = a.dataset.docArea; DOC_SUB = ''; renderDocumentos(); }
-  if (s) { DOC_SUB = s.dataset.docSub; renderDocumentos(); }
-  if (e && DOCS) { const d = DOCS.documentos.find(z => String(z.id) === e.dataset.docEditar); if (d) editarDocumento(d); }
-  if (x && DOCS) {
-    const d = DOCS.documentos.find(z => String(z.id) === x.dataset.docRetirar); if (!d) return;
-    const motivo = prompt(`Por que "${d.titulo}" sai da lista? O arquivo continua no Drive.`); if (!motivo) return;
-    const r = await acao(() => api('/api/documento/retirar', { documento_id: d.id, motivo }), 'Documento retirado da lista.').catch(() => null);
-    if (r) carregarDocumentos();
-  }
+  const b = ev.target.closest('[data-int-resolver]'); if (!b) return;
+  const resolucao = prompt('Como foi resolvida? Descreva o que foi feito.'); if (!resolucao) return;
+  const r = await acao(() => api('/api/ocorrencia/resolver', { ocorrencia_id: +b.dataset.intResolver, resolucao }), 'Marcada como resolvida.').catch(() => null);
+  if (r) TELA === 'diario' ? carregarDiario() : carregarInterferencias();
 });
+
+/* ---------------------------------------------------------------- LEV: as planilhas da obra como tabelas */
+let LEV_ABA = 'cronograma', LEV_BUSCA_T = null;
+const LEV_ROTA = { cronograma: () => '/api/lev/cronograma', bm: q => '/api/lev/bm?planilha=JUNTADA&' + q, vertical: q => '/api/lev/bm?planilha=VERTICAL&' + q,
+  redes: q => '/api/lev/redes?' + q, conexoes: q => '/api/lev/conexoes?' + q };
+const reais = v => v == null ? '—' : 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (v, c = 1) => v == null ? '—' : nf(v * 100, c) + '%';
+async function carregarLev() {
+  $$('#levAbas button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lev === LEV_ABA)));
+  const fr = $('#levFrente');
+  if (fr.options.length < 2) fr.innerHTML += RESUMO.frentes.map(x => `<option>${esc(x)}</option>`).join('');
+  $('#levFiltros').hidden = !['bm', 'vertical', 'redes', 'conexoes'].includes(LEV_ABA);
+  $('#levFrenteRot').hidden = !['redes', 'conexoes'].includes(LEV_ABA);
+  $('#painelPlanilhas').hidden = LEV_ABA !== 'arquivos';
+  const alvo = $('#levConteudo'), aba = LEV_ABA;
+  if (aba === 'arquivos') { alvo.innerHTML = ''; return carregarPlanilhas(); }
+  const q = new URLSearchParams();
+  if ($('#levBusca').value.trim()) q.set('q', $('#levBusca').value.trim());
+  if (['redes', 'conexoes'].includes(aba) && fr.value) q.set('frente', fr.value);
+  alvo.innerHTML = '<p class="vazio">Carregando…</p>';
+  const r = await acao(() => api(LEV_ROTA[aba](q))).catch(() => null);
+  if (!r || aba !== LEV_ABA) return;                  // trocou de aba enquanto carregava
+  alvo.innerHTML = { cronograma: htmlCronograma, bm: htmlBM, vertical: htmlBM, redes: htmlRedes, conexoes: htmlConexoes }[aba](r);
+}
+// período da planilha "01-10-26 A 31-10-26" → ['2026-10-01', '2026-10-31']
+const datasDoPeriodo = p => String(p).split(' A ').map(x => { const [d, m, a] = x.trim().split('-'); return `20${a}-${m}-${d}`; });
+function htmlCronograma(r) {
+  const h = hoje(), datas = r.meses.map(m => datasDoPeriodo(m.periodo));
+  const agora = datas.findIndex(([a, b]) => h >= a && h <= b);
+  const acum = r.totais.find(t => t.descricao.startsWith('FATURAMENTO - ACUMULADO')) || {};
+  const ate = agora >= 0 ? agora : h < datas[0][0] ? -1 : r.meses.length - 1;     // antes do início: nada programado
+  const kpi = (k, v) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`;
+  const val = (lst, i) => lst && i >= 0 ? lst[i] : null;
+  const cab = r.meses.map((m, i) => `<th class="mes" title="${esc(m.periodo)} · ${nf(m.dias, 0)} dias">M${String(m.n).padStart(2, '0')}</th>`).join('');
+  const linha = it => {
+    const mx = Math.max(...(it.fis_prog || []).map(v => v || 0), 0) || 1;
+    return `<tr class="n${Math.min(it.nivel, 1)}"><td>${esc(it.item)}</td><td class="desc">${esc(it.descricao)}</td><td class="n">${reais(it.valor)}</td><td class="n">${pct(it.peso, 2)}</td>
+      ${r.meses.map((m, i) => { const p = val(it.fis_prog, i) || 0, e = val(it.fis_exec, i) || 0;
+        return `<td class="mes${i === agora ? ' agora' : ''}" title="${esc(m.periodo)}: programado ${pct(p, 2)} · executado ${pct(e, 2)}"><span style="--p:${(p / mx).toFixed(3)}">${p ? nf(p * 100, 1) : ''}</span></td>`; }).join('')}</tr>`;
+  };
+  return `<div class="kpis">${kpi('Valor do contrato (programado)', reais(val(acum.fin_prog, r.meses.length - 1)))}${kpi('Prazo', `${nf(r.prazo_dias, 0)} dias · ${r.meses.length} meses`)}
+      ${kpi(agora >= 0 ? `Programado até o mês ${agora + 1}` : 'Programado até hoje', pct(val(acum.fis_prog, ate)))}${kpi('Executado (planilha)', pct(val(acum.fis_exec, ate)))}</div>
+    <div class="painel"><h3>Físico programado por mês (% de cada item)</h3>
+      <p class="crono-legenda"><span>Fonte: ${esc(r.arquivo)} · aba CRONOGRAMA FF CAESB</span><span><i style="background:var(--laranja)"></i>mais forte = maior parte do item naquele mês</span>${agora >= 0 ? '<span><i style="outline:2px solid var(--azul);outline-offset:-2px"></i>mês atual</span>' : ''}</p>
+      <div class="tabela crono"><table><thead><tr><th>Item</th><th>Descrição</th><th class="n">Valor</th><th class="n">Peso</th>${cab}</tr></thead>
+        <tbody>${r.itens.map(linha).join('')}</tbody></table></div></div>
+    <div class="painel" style="margin-top:16px"><h3>Curva acumulada da obra</h3>
+      ${tabelaHtml('<th>Mês</th><th>Período</th><th class="n">Faturamento programado acumulado</th><th class="n">Físico programado acumulado</th><th class="n">Físico executado acumulado</th>',
+        r.meses.map((m, i) => `<tr${i === agora ? ' style="font-weight:700"' : ''}><td>M${String(m.n).padStart(2, '0')}</td><td>${esc(m.periodo)}</td>
+          <td class="n">${reais(val(acum.fin_prog, i))}</td><td class="n">${pct(val(acum.fis_prog, i))}</td><td class="n">${pct(val(acum.fis_exec, i))}</td></tr>`))}</div>`;
+}
+function htmlBM(r) {
+  const vert = r.planilha === 'VERTICAL';
+  let sub = null;
+  const linhas = r.itens.flatMap(i => {
+    const grupo = vert && i.subgrupo !== sub ? (sub = i.subgrupo, [`<tr class="grupo"><td colspan="7">${esc(i.subgrupo)} · ${esc(i.subgrupo_nome || '')}</td></tr>`]) : [];
+    return [...grupo, `<tr><td>${esc(vert ? i.item_bm || i.item : i.item)}</td><td>${esc(i.codigo_caesb || '')}</td><td>${esc(i.descricao)}</td><td>${esc(i.unidade || '')}</td>
+      <td class="n">${nf(i.quantidade, 3)}</td><td class="n">${reais(i.preco_unitario)}</td><td class="n">${reais(i.valor_total)}</td></tr>`];
+  });
+  return `<div class="kpis"><div class="kpi"><span>Total ${vert ? 'BM Vertical' : 'BM'} (sem BDI)</span><b>${reais(r.total)}</b></div>
+      ${Object.entries(r.por_classe).map(([k, v]) => `<div class="kpi"><span>${esc(k)}</span><b>${reais(v)}</b></div>`).join('')}
+      <div class="kpi"><span>BDI material · serviço</span><b>${r.bdi == null ? '—' : pct(+r.bdi, 2)} · ${r.bdi_servico == null ? '—' : pct(+r.bdi_servico, 2)}</b></div></div>
+    <p class="vazio" style="margin:0 0 8px">${nf(r.itens.length, 0)} itens${$('#levBusca').value.trim() ? ' encontrados' : ''}. Preços sem BDI (contrato, cláusula 5.2).</p>
+    ${r.itens.length ? tabelaHtml('<th>Item</th><th>Cód. Caesb</th><th>Descrição</th><th>Und.</th><th class="n">Quantidade</th><th class="n">Preço unit.</th><th class="n">Total</th>', linhas)
+      : '<p class="vazio">Nenhum item com essa busca.</p>'}`;
+}
+function htmlRedes(r) {
+  return `<div class="kpis"><div class="kpi"><span>Trechos</span><b>${nf(r.total_trechos, 0)}</b></div><div class="kpi"><span>Extensão</span><b>${nf(r.total_m)} m</b></div></div>
+    <div class="painel"><h3>Resumo por diâmetro</h3>${tabelaHtml('<th class="n">DE (mm)</th><th>Material</th><th>Método</th><th class="n">Trechos</th><th class="n">Extensão (m)</th>',
+      r.resumo.map(x => `<tr><td class="n">${nf(x.de_mm, 0)}</td><td>${esc(x.material || '—')}</td><td>${esc(x.metodologia || '—')}</td><td class="n">${nf(x.trechos, 0)}</td><td class="n">${nf(x.extensao_m)}</td></tr>`))}</div>
+    <div class="painel" style="margin-top:16px"><h3>Trechos (06.1)</h3>
+      ${r.mostrando < r.total_trechos ? `<p class="vazio" style="margin:0 0 8px">Mostrando ${nf(r.mostrando, 0)} de ${nf(r.total_trechos, 0)}: escolha a frente ou busque para afinar.</p>` : ''}
+      ${tabelaHtml('<th>Trecho</th><th>Frente</th><th>PB</th><th>Prancha</th><th class="n">DE</th><th>Material</th><th>Método</th><th>Classe</th><th class="n">Extensão (m)</th><th>Nós</th><th>Cód. BM</th>',
+        r.trechos.map(t => `<tr><td>${esc(curto(t.ponto))}</td><td>${esc(t.frente_id || '')}</td><td>${esc(t.pb || '')}</td><td>${esc(t.prancha || '')}</td><td class="n">${nf(t.de_mm, 0)}</td>
+          <td>${esc(t.material || '')}</td><td>${esc(t.metodologia || '')}</td><td>${esc(t.classe || '')}</td><td class="n">${nf(t.extensao_m)}</td>
+          <td><small>${esc([t.no_ini, t.no_fim].filter(Boolean).map(curto).join(' → '))}</small></td><td>${esc(t.codigo_bm || '')}</td></tr>`))}</div>`;
+}
+function htmlConexoes(r) {
+  return `<div class="kpis"><div class="kpi"><span>Peças</span><b>${nf(r.total_itens, 0)}</b></div><div class="kpi"><span>Nós e caixas</span><b>${nf(r.total_nos, 0)}</b></div></div>
+    <div class="painel"><h3>Resumo por peça</h3>${tabelaHtml('<th>Peça</th><th>DE</th><th>Und.</th><th>Cód. BM</th><th class="n">Nós</th><th class="n">Quantidade</th>',
+      r.resumo.map(x => `<tr><td>${esc(x.descricao)}</td><td>${esc(x.diametro || '')}</td><td>${esc(x.unidade || '—')}</td><td>${esc(x.codigo_bm || '')}</td>
+        <td class="n">${nf(x.nos, 0)}</td><td class="n">${nf(x.quantidade, 3)}</td></tr>`))}</div>
+    <div class="painel" style="margin-top:16px"><h3>Peças por nó e caixa (06.2)</h3>
+      ${r.mostrando < r.total_itens ? `<p class="vazio" style="margin:0 0 8px">Mostrando ${nf(r.mostrando, 0)} de ${nf(r.total_itens, 0)} peças: escolha a frente ou busque para afinar.</p>` : ''}
+      ${tabelaHtml('<th>Nó / caixa</th><th>Frente</th><th>Peça</th><th>DE</th><th>PN</th><th>Material</th><th class="n">Qtd.</th><th>Und.</th><th>Cód. BM</th><th>Situação</th>',
+        r.itens.map(i => `<tr><td>${esc(curto(i.nomenclatura))}</td><td>${esc(i.frente_id || '')}</td><td>${esc(i.descricao)}</td><td>${esc(i.diametro || '')}</td><td>${esc(i.pressao || '')}</td>
+          <td>${esc(i.material || '')}</td><td class="n">${nf(i.quantidade, 3)}</td><td>${esc(i.unidade || '—')}</td><td>${esc(i.codigo_bm || '')}</td><td><small>${esc(i.status_conexao || '')}</small></td></tr>`))}</div>`;
+}
+$('#levAbas').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-lev]'); if (!b || b.dataset.lev === LEV_ABA) return;
+  LEV_ABA = b.dataset.lev; $('#levBusca').value = ''; carregarLev();
+});
+$('#levBusca').addEventListener('input', () => { clearTimeout(LEV_BUSCA_T); LEV_BUSCA_T = setTimeout(carregarLev, 350); });
+$('#levFrente').addEventListener('change', carregarLev);
 
 /* ---------------------------------------------------------------- login e início */
 function mostrarLogin(msg) {
@@ -1381,6 +1481,14 @@ function aplicarPermissoes() {
   $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO;
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
+  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Campo; o almoxarife, também o Almoxarifado
+  $$('.rail-item[data-tela]').forEach(b => { b.hidden = !podeTela(b.dataset.tela); });
+  $$('button.rail-grupo').forEach(b => { b.hidden = $(`.rail-sub[data-grupo="${b.dataset.grupo}"]`).hidden = !telasDoGrupo(b.dataset.grupo).length; });
+  $$('.rail-itens .rail-div').forEach(d => {                    // divisória sem nada visível depois dela some
+    let x = d.nextElementSibling, algo = false;
+    for (; x && !x.classList.contains('rail-div'); x = x.nextElementSibling) algo = algo || !x.hidden;
+    d.hidden = !algo;
+  });
 }
 
 let INICIADO = false;
@@ -1397,7 +1505,7 @@ async function iniciar() {
   $$('.selClima').forEach(s => s.innerHTML = '<option value="">—</option>' + Object.entries(RESUMO.clima).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''));
   $('select[name=contingencia]').innerHTML += RESUMO.contingencias.map(c => `<option>${esc(c)}</option>`).join('');
   $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
-  const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id;
+  if (podeTela('medicao')) { const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }
   abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });
   setTimeout(() => driveEmSegundoPlano(), 4000);   // o que ficou na fila (sem rede, sem conexão) sobe agora
 }

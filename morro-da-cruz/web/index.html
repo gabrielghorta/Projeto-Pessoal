@@ -27,22 +27,30 @@
   <div class="rail-itens">
       <button type="button" class="rail-item" data-tela="inicio" title="Início"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg><span class="rail-rot">Início</span></button>
       <button type="button" class="rail-item" data-tela="iluminado" title="Mapa iluminado"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg><span class="rail-rot">Mapa iluminado</span></button>
-      <button type="button" class="rail-item" data-tela="campo" title="Lançamento de campo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Lançamento de campo</span></button>
       <div class="rail-div" aria-hidden="true"></div>
-      <button type="button" class="rail-item rail-grupo" data-tela="administrativo" title="Administrativo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h16v11H4zM9 8V5h6v3M4 13h16"/></svg><span class="rail-rot">Administrativo</span></button>
-      <div class="rail-sub">
-      <button type="button" class="rail-item sub" data-tela="equipes" title="Equipes"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 4.5"/></svg><span class="rail-rot">Equipes</span></button>
-      <button type="button" class="rail-item sub" data-tela="prog" title="Planejamento"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg><span class="rail-rot">Planejamento</span></button>
-      <button type="button" class="rail-item sub" data-tela="compras" title="Compras e notas"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4"/></svg><span class="rail-rot">Compras e notas</span></button>
-      <button type="button" class="rail-item sub" data-tela="almox" title="Almoxarifado"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/></svg><span class="rail-rot">Almoxarifado</span></button>
-      <button type="button" class="rail-item sub" data-tela="ponto" title="Check-in e check-out"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"/></svg><span class="rail-rot">Check-in e check-out</span></button>
-      <button type="button" class="rail-item sub" data-tela="mapa" title="Dados da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg><span class="rail-rot">Dados da obra</span></button>
-      <button type="button" class="rail-item sub" data-tela="esteira" title="Cadastro"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5zM15 3v4h4M8 12h8M8 16h6"/></svg><span class="rail-rot">Cadastro</span></button>
-      <button type="button" class="rail-item sub" data-tela="relatorios" title="Relatórios"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/></svg><span class="rail-rot">Relatórios</span></button>
-      <button type="button" class="rail-item sub" data-tela="admin" title="Usuários e histórico"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span class="rail-rot">Usuários e histórico</span></button>
+      <button type="button" class="rail-item rail-grupo" data-grupo="grupo-campo" title="Campo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Campo</span></button>
+      <div class="rail-sub" data-grupo="grupo-campo">
+        <button type="button" class="rail-item sub" data-tela="campo" title="Lançamento do dia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg><span class="rail-rot">Lançamento do dia</span></button>
+        <button type="button" class="rail-item sub" data-tela="diario" title="Diário de campo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><span class="rail-rot">Diário de campo</span></button>
+        <button type="button" class="rail-item sub" data-tela="interferencias" title="Interferências"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></svg><span class="rail-rot">Interferências</span></button>
+      </div>
+      <button type="button" class="rail-item rail-grupo" data-grupo="grupo-almox" title="Almoxarifado"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/></svg><span class="rail-rot">Almoxarifado</span></button>
+      <div class="rail-sub" data-grupo="grupo-almox">
+        <button type="button" class="rail-item sub" data-tela="almox" title="Estoque e movimentos"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h2M8 16.5h2"/></svg><span class="rail-rot">Estoque e movimentos</span></button>
+        <button type="button" class="rail-item sub" data-tela="ponto" title="Check-in e check-out"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"/></svg><span class="rail-rot">Check-in e check-out</span></button>
+        <button type="button" class="rail-item sub" data-tela="compras" title="Compras e notas"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4"/></svg><span class="rail-rot">Compras e notas</span></button>
+      </div>
+      <button type="button" class="rail-item rail-grupo" data-grupo="administrativo" title="Administrativo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h16v11H4zM9 8V5h6v3M4 13h16"/></svg><span class="rail-rot">Administrativo</span></button>
+      <div class="rail-sub" data-grupo="administrativo">
+        <button type="button" class="rail-item sub" data-tela="equipes" title="Equipes"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 4.5"/></svg><span class="rail-rot">Equipes</span></button>
+        <button type="button" class="rail-item sub" data-tela="prog" title="Planejamento"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg><span class="rail-rot">Planejamento</span></button>
+        <button type="button" class="rail-item sub" data-tela="mapa" title="Dados da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg><span class="rail-rot">Dados da obra</span></button>
+        <button type="button" class="rail-item sub" data-tela="esteira" title="Cadastro"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5zM15 3v4h4M8 12h8M8 16h6"/></svg><span class="rail-rot">Cadastro</span></button>
+        <button type="button" class="rail-item sub" data-tela="relatorios" title="Relatórios"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/></svg><span class="rail-rot">Relatórios</span></button>
+        <button type="button" class="rail-item sub" data-tela="admin" title="Usuários e histórico"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span class="rail-rot">Usuários e histórico</span></button>
       </div>
       <div class="rail-div" aria-hidden="true"></div>
-      <button type="button" class="rail-item" data-tela="docs" title="Documentos"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></svg><span class="rail-rot">Documentos</span></button>
+      <button type="button" class="rail-item" data-tela="lev" title="LEV"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 10h18M3 15h18M9 5v14"/></svg><span class="rail-rot">LEV</span></button>
       <button type="button" class="rail-item" data-tela="medicao" title="Medição"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2"/></svg><span class="rail-rot">Medição</span></button>
   </div>
   <div class="rail-pe">
@@ -114,7 +122,7 @@
 
   <!-- ======================================================= CAMPO -->
   <section class="aba" id="aba-campo">
-    <header class="cab-tela"><h1>Lançamento de campo</h1><p>Metros do dia, soldas, clima, fotos e ocorrências de cada trecho.</p></header>
+    <header class="cab-tela"><h1>Lançamento do dia</h1><p>Metros do dia, soldas, clima, fotos e ocorrências de cada trecho.</p></header>
     <div class="grade-2">
       <div class="painel">
         <h3>Apontamento</h3>
@@ -170,6 +178,63 @@
         </form>
         <div id="soldas" style="margin-top:8px"></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= CAMPO: DIÁRIO DE CAMPO -->
+  <section class="aba" id="aba-diario">
+    <header class="cab-tela"><h1>Diário de campo</h1><p>O que cada equipe registrou no dia: clima, programação, saída de material, metros, soldas, fotos e ocorrências.</p></header>
+    <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
+      <label>Dia<input type="date" id="diaData"></label>
+      <label>Equipe<select id="diaEquipe"></select></label>
+      <button type="button" class="btn" id="diaAnterior">‹ Dia anterior</button>
+      <button type="button" class="btn" id="diaProximo">Dia seguinte ›</button>
+    </div>
+    <div class="kpis" id="diaKpis"></div>
+    <div class="grade-2">
+      <div style="display:grid;gap:16px;min-width:0">
+        <div class="painel"><h3>Produção do dia</h3><div id="diaProducao"></div></div>
+        <div class="painel"><h3>Soldas</h3><div id="diaSoldas"></div></div>
+        <div class="painel"><h3>Fotos</h3><div class="fotos" id="diaFotos"></div></div>
+      </div>
+      <div style="display:grid;gap:16px;min-width:0">
+        <div class="painel"><h3>Equipes e clima</h3><div id="diaEquipes"></div></div>
+        <div class="painel"><h3>Programação</h3><div id="diaProg"></div></div>
+        <div class="painel"><h3>Check-in: pessoas e material</h3><div id="diaCheckins"></div></div>
+        <div class="painel"><h3>Interferências e ocorrências</h3><div id="diaOcorrencias"></div></div>
+        <div class="painel" id="painelDiaLib"><h3>Liberação topográfica e escavação</h3><div id="diaLiberacoes"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= CAMPO: INTERFERÊNCIAS -->
+  <section class="aba" id="aba-interferencias">
+    <header class="cab-tela"><h1>Interferências e ocorrências</h1><p>O que impede ou atrapalha o avanço — rede existente, falta de material, chuva, acesso — e o que precisa ser corrigido.</p></header>
+    <div class="grade-2">
+      <div class="painel" style="min-width:0">
+        <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Registradas</h3><span id="intContagem" class="vazio" style="padding:0"></span></div>
+        <div class="abas-chip" id="intSituacao" role="group" aria-label="Situação">
+          <button type="button" data-int-situacao="1" aria-pressed="true">Abertas</button>
+          <button type="button" data-int-situacao="0" aria-pressed="false">Resolvidas</button>
+          <button type="button" data-int-situacao="" aria-pressed="false">Todas</button>
+        </div>
+        <div class="linha" style="margin-top:10px">
+          <label>Equipe<select id="intEquipe"></select></label>
+          <label>Categoria<select id="intCategoria"></select></label>
+        </div>
+        <div id="intLista" style="margin-top:10px"></div>
+      </div>
+      <form class="painel" id="fInterf" data-perm="campo">
+        <h3 style="margin:0">Relatar interferência</h3>
+        <label>Trecho / nó / caixa
+          <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div></label>
+        <div class="linha"><label>Tipo<select name="tipo" id="intTipo"><option value="IMPEDIMENTO">Impedimento</option><option value="NAO_CONFORMIDADE">Não conformidade</option></select></label>
+          <label>Categoria<select name="categoria" id="intCat"></select></label></div>
+        <div class="linha"><label>Dia<input type="date" name="data" required></label><label>Equipe<select name="equipe_id" class="selEquipe"></select></label></div>
+        <label>O que foi encontrado<textarea name="descricao" rows="4" required placeholder="ex.: rede de esgoto cruzando a vala a 1,2 m, entre as estacas 3 e 4"></textarea></label>
+        <div class="acoes"><button class="btn prim">Registrar</button></div>
+        <p class="vazio" style="margin:0">Fica registrado com o seu usuário. Quem tem a permissão de verificar marca como resolvida.</p>
+      </form>
     </div>
   </section>
 
@@ -483,17 +548,11 @@
   <section class="aba" id="aba-admin">
     <header class="cab-tela"><h1>Usuários e histórico</h1><p>Quem tem acesso, com qual perfil, e o histórico de alterações.</p></header>
     <div class="painel" id="painelLink" hidden style="margin-bottom:16px"><h3>Link para a equipe</h3><div id="linkEstado"></div></div>
-    <div class="grade-2">
-      <div class="painel">
-        <h3>Histórico de alterações (auditoria)</h3>
-        <div class="linha"><label>Usuário<input id="audLogin" placeholder="login (opcional)"></label><label>Objeto<input id="audAlvo" placeholder="TR-00001, nº do movimento… (opcional)"></label></div>
-        <div class="acoes" style="margin:8px 0"><button type="button" class="btn azul" id="audBtn">Consultar</button></div>
-        <div class="tabela" id="audLista"></div>
-      </div>
+    <div style="display:grid;gap:16px">
       <div class="painel" id="painelUsuarios">
         <h3>Usuários e perfis</h3>
         <p class="vazio" style="margin:0 0 8px">Matriz de perfis provisória (decisão D-10): <code>config/perfis.json</code>.</p>
-        <div id="usuariosLista"></div>
+        <div id="usuariosLista" style="overflow-x:auto"></div>
         <form id="fUsuario" data-perm="usuarios" class="form" style="margin-top:10px">
           <div class="linha"><label>Login<input name="login" required></label><label>Nome<input name="nome" required></label></div>
           <div class="linha"><label>Perfil<select name="perfil" id="selPerfil" required></select></label><label>Equipe (perfil Equipe)<select name="equipe_id" class="selEquipe"></select></label></div>
@@ -501,18 +560,14 @@
           <div class="acoes"><button class="btn prim">Criar usuário</button></div>
         </form>
       </div>
+      <div class="painel">
+        <h3>Histórico de alterações (auditoria)</h3>
+        <div class="linha"><label>Usuário<input id="audLogin" placeholder="login (opcional)"></label><label>Objeto<input id="audAlvo" placeholder="TR-00001, nº do movimento… (opcional)"></label></div>
+        <div class="acoes" style="margin:8px 0"><button type="button" class="btn azul" id="audBtn">Consultar</button></div>
+        <div class="tabela" id="audLista"></div>
+      </div>
     </div>
-  </section>
-
-  <!-- ======================================================= DOCUMENTOS -->
-  <section class="aba" id="aba-docs">
-    <header class="cab-tela"><h1>Documentos</h1><p>Planilhas, projetos e documentos oficiais da obra.</p></header>
-    <div class="painel" id="painelPlanilhas">
-      <h3>Planilhas e mapa do projeto</h3>
-      <p class="vazio" style="margin:0 0 8px">Já estão no sistema e são a base dos números da obra. Baixam direto daqui, sem Drive.</p>
-      <div id="planilhasLista" class="lista-arquivos"></div>
-    </div>
-    <div class="painel" id="painelDrive" style="margin-top:16px">
+    <div class="painel" id="painelDrive" data-perm="documentos" style="margin-top:16px">
       <h3>Fotos e notas no Google Drive</h3>
       <p class="vazio" style="margin:0 0 8px">Cada foto de campo e cada anexo de nota fiscal sobe sozinho para a pasta da obra no Drive, numa subpasta por trecho ou por mês. O nome da pasta aparece junto de cada foto e de cada nota. O original continua guardado no sistema.</p>
       <div id="driveEstado"></div>
@@ -531,50 +586,29 @@
         </form>
       </details>
     </div>
-    <div class="painel" style="margin-top:16px">
-      <h3>Documentos no Google Drive</h3>
-      <div class="acoes" style="justify-content:space-between;align-items:flex-end">
-        <label style="flex:1;min-width:220px">Buscar documento<input id="docBusca" type="search" placeholder="Nome, código ou pasta: 06.2, BM, prancha 015, PB07"></label>
-        <a class="btn" id="docPastaBtn" target="_blank" rel="noopener" hidden>📂 Abrir a pasta da obra no Drive</a>
-      </div>
-      <div class="pastas-docs" id="docAreas" role="group" aria-label="Pastas"></div>
-      <div class="pastas-docs" id="docSubpastas" role="group" aria-label="Subpastas"></div>
-      <div class="tabela" id="docLista" style="margin-top:12px"></div>
-      <p class="vazio" style="margin:6px 0 0">O sistema guarda só o endereço de cada arquivo: o arquivo continua no Google Drive da obra e abre ou baixa direto de lá.</p>
+  </section>
+
+  <!-- ======================================================= LEV -->
+  <section class="aba" id="aba-lev">
+    <header class="cab-tela"><h1>LEV</h1><p>As planilhas da obra dentro do sistema: cronograma físico-financeiro, BM, BM Vertical e os levantamentos de redes e conexões.</p></header>
+    <div class="abas-chip" id="levAbas" role="group" aria-label="Planilha">
+      <button type="button" data-lev="cronograma" aria-pressed="true">Cronograma FF Caesb</button>
+      <button type="button" data-lev="bm" aria-pressed="false">BM</button>
+      <button type="button" data-lev="vertical" aria-pressed="false">BM Vertical</button>
+      <button type="button" data-lev="redes" aria-pressed="false">LEV Redes</button>
+      <button type="button" data-lev="conexoes" aria-pressed="false">LEV Conexões</button>
+      <button type="button" data-lev="arquivos" aria-pressed="false">Baixar planilhas</button>
     </div>
-    <details class="painel" id="docGerenciar" style="margin-top:16px" hidden>
-      <summary><b>Gerenciar a lista de documentos</b>: pasta, planilha-índice e cadastro manual</summary>
-      <div class="grade-2" style="margin-top:10px">
-        <div style="display:grid;gap:16px;align-content:start">
-          <form id="fDocConfig" data-perm="documentos">
-            <h3 style="margin:0">1. Pasta e planilha-índice</h3>
-            <label>Link da pasta da obra no Drive<input name="pasta_url" placeholder="https://drive.google.com/drive/folders/…"></label>
-            <label>Link da planilha-índice<input name="indice_url" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
-            <small class="vazio">Com o Google Drive conectado (no quadro acima), a planilha é lida pela sua conta e não precisa ser pública; o Drive lê a primeira aba. Sem a conexão, ela precisa estar compartilhada como "qualquer pessoa com o link pode ver". Colunas lidas: nome antigo, nome novo, pasta, tipo, revisão, data, link e observação (nome novo e link são obrigatórias).</small>
-            <div class="acoes"><button class="btn">Salvar os links</button><button type="button" class="btn azul" id="docSincPrevia">Ver o que muda pelo índice</button></div>
-          </form>
-          <form id="fDocCsv" data-perm="documentos">
-            <h3 style="margin:0">2. Ou importe o índice em arquivo</h3>
-            <label>Arquivo CSV do índice (no Google Planilhas: Arquivo › Fazer download › CSV)<input type="file" name="arquivo" accept=".csv,.tsv,.txt,text/csv" required></label>
-            <div class="acoes"><button class="btn azul">Ver o que muda</button></div>
-          </form>
-          <label class="check"><input type="checkbox" id="docIncluirTrabalho"> Incluir também as pastas de trabalho (07_IA_CHATGPT_E_CLAUDE e 99_TEMPORARIOS_E_SISTEMA)</label>
-          <div id="docPrevia"></div>
-        </div>
-        <form id="fDoc" data-perm="documentos">
-          <h3 style="margin:0" id="docFormTitulo">Adicionar um documento</h3>
-          <input type="hidden" name="documento_id">
-          <label>Nome claro do documento<input name="titulo" required placeholder="Morro da Cruz - Projeto Executivo de Redes - Rev 03 - Pranchas 01 a 37"></label>
-          <label>Pasta<input name="pasta" list="docPastasLista" required placeholder="01_DOCUMENTOS_OFICIAIS / 02_Projeto_Executivo"></label>
-          <datalist id="docPastasLista"></datalist>
-          <label>Link do arquivo no Drive<input name="link" required placeholder="https://drive.google.com/file/d/…"></label>
-          <div class="linha"><label>Tipo<input name="tipo" placeholder="PDF, DWG, XLSX"></label><label>Revisão<input name="revisao" placeholder="Rev 03"></label><label>Data<input type="date" name="data_documento"></label></div>
-          <label>Código original<input name="codigo" placeholder="A.RED.SSB-D014.V03.T01"></label>
-          <label>Observação<input name="descricao"></label>
-          <div class="acoes"><button class="btn prim" id="docSalvar">Adicionar à lista</button><button type="button" class="btn" id="docCancelar" hidden>Cancelar a edição</button></div>
-        </form>
-      </div>
-    </details>
+    <div class="acoes" id="levFiltros" style="margin-top:12px;align-items:flex-end" hidden>
+      <label style="flex:1;min-width:220px">Buscar<input id="levBusca" type="search" placeholder="Item, descrição, trecho ou código"></label>
+      <label id="levFrenteRot">Frente<select id="levFrente"><option value="">Obra inteira</option></select></label>
+    </div>
+    <div id="levConteudo" style="margin-top:12px"></div>
+    <div class="painel" id="painelPlanilhas" hidden>
+      <h3>Planilhas e mapa do projeto</h3>
+      <p class="vazio" style="margin:0 0 8px">Os arquivos originais que alimentam o sistema. Baixam direto daqui, sem Drive.</p>
+      <div id="planilhasLista" class="lista-arquivos"></div>
+    </div>
   </section>
 
   <!-- ======================================================= MEDIÇÃO -->

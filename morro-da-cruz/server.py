@@ -561,7 +561,9 @@ ROTAS_COMPRAS = {
 
 # ------------------------------------------------------------------ acesso (módulo A)
 def r_usuarios(q, c):
-    return [A.publico(dict(r)) for r in c.execute("SELECT * FROM usuarios ORDER BY login")]
+    """Com tem_historico: só a conta sem nenhum registro pode ser excluída (as outras, desativadas)."""
+    usados = {r[0] for r in c.execute("SELECT usuario_id FROM auditoria UNION SELECT usuario_id FROM requisicoes")}
+    return [dict(A.publico(dict(r)), tem_historico=r["id"] in usados) for r in c.execute("SELECT * FROM usuarios ORDER BY login")]
 
 
 def p_usuarios(b, c, usuario):

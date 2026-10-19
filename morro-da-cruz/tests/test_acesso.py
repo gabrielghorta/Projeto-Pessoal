@@ -193,6 +193,8 @@ class TestPermissoesEAutoria(BaseHTTP):
         eng = self.cliente("eng1")
         novo = {"acao": "criar", "login": "errado.digitado", "nome": "Errado", "perfil": "EQUIPE", "senha": SENHA, "equipe_id": "Zona01"}
         self.assertEqual(eng.post("/api/usuarios", novo)[0], 200)
+        hist = {u["login"]: u["tem_historico"] for u in eng.get("/api/usuarios")[1]}       # a tela só oferece Excluir sem histórico
+        self.assertEqual((hist["errado.digitado"], hist["eng1"]), (False, True))
         self.assertEqual(eng.post("/api/usuarios", {"acao": "excluir", "login": "errado.digitado"})[0], 200)
         self.assertEqual(self.n("usuarios", "login='errado.digitado'"), 0)
         self.cliente("almox2")                                                              # entrou: já tem histórico
