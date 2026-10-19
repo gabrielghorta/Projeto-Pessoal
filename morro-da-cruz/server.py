@@ -544,7 +544,10 @@ def p_usuarios(b, c, usuario):
     if acao == "senha":
         A.redefinir_senha(c, b.get("login"), b.get("senha"))
         return {"ok": True}
-    raise R.RegraViolada("Ação inválida (criar, alterar ou senha).")
+    if acao == "excluir":
+        A.excluir_usuario(c, b.get("login"), usuario["login"])
+        return {"ok": True}
+    raise R.RegraViolada("Ação inválida (criar, alterar, senha ou excluir).")
 
 
 def p_senha(b, c, usuario):
@@ -616,6 +619,20 @@ AUTOR.update({rota: ("por",) for rota in ROTAS_DOCUMENTOS})
 PERMISSAO.update({rota: "documentos" for rota in ROTAS_DRIVE})
 AUTOR.update({rota: ("por",) for rota in ROTAS_DRIVE})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
+# tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
+COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral"}
+_CAMPO = ("campo", "diario", "interferencias")
+_ALMOX = ("almox", "ponto", "equipes")                  # a tela de Equipes e a de Check-in também montam o almoxarifado
+TELA_GET = {"/api/equipe": ("equipes", "ponto") + _CAMPO, "/api/estoque": _ALMOX + ("compras", "prog"),
+            "/api/compat-caesb": _ALMOX, "/api/nfs": _ALMOX, "/api/movimentos": _ALMOX, "/api/reservas": _ALMOX,
+            "/api/consumo": _ALMOX, "/api/checkins": ("ponto",) + _CAMPO, "/api/histograma": ("equipes",) + _CAMPO,
+            "/api/compras": ("compras",), "/api/inventarios": ("compras",), "/api/reservas-vencidas": ("compras",),
+            "/api/programacoes": ("prog", "almox") + _CAMPO, "/api/ocorrencias": _CAMPO + ("mapa",),
+            "/api/esteira": ("esteira",), "/api/relatorios": ("relatorios",), "/api/medicoes": ("medicao",),
+            "/api/medicao": ("medicao",), "/api/medicao/elegibilidade": ("medicao",), "/api/planilhas": ("lev",),
+            "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa")}
+assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
+TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",)}   # downloads (/arquivos/: LEV)
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
 
 
@@ -747,6 +764,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(401, self._sem_usuarios() if sem else {"erro": "Sessão encerrada: entre de novo."})
             if u.path in ("/mapa", "/mapa/") or u.path.startswith(("/fotos/", "/mapa/", "/arquivos/")):
                 return self._send(401, "Entre no sistema para ver o mapa, as fotos e os arquivos.", "text/plain; charset=utf-8")
+        telas = TELA_GET.get(u.path) or TELA_ARQUIVO.get(u.path) or (("lev",) if u.path.startswith("/arquivos/") else None)
+        if telas:                                      # a consulta é de uma tela que o perfil precisa abrir
+            try:
+                A.exigir_tela(usuario, telas)
+            except A.AcessoNegado as e:
+                return self._send(e.status, {"erro": str(e)})
         if u.path in GET:
             return self._api(GET[u.path], q)
         if u.path in GET_PERM:

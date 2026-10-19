@@ -91,13 +91,23 @@ def permissoes_do_perfil(perfil, perfis=None):
     return set(p["permissoes"]) if p else set()
 
 
+def telas_do_perfil(perfil, perfis=None):
+    """Telas que o perfil abre (config/perfis.json); "*" = todas as telas do catálogo."""
+    perfis = perfis or carregar_perfis()
+    p = perfis["perfis"].get(perfil)
+    if not p:
+        return set()
+    telas = set(p.get("telas") or ())
+    return set(perfis.get("telas", {})) if "*" in telas else telas
+
+
 def publico(u, perfis=None):
     """Dados do usuário que podem ir para a tela (sem hash de senha)."""
     perfis = perfis or carregar_perfis()
     p = perfis["perfis"].get(u["perfil"], {})
     return {"id": u["id"], "login": u["login"], "nome": u["nome"], "perfil": u["perfil"], "perfil_nome": p.get("nome", u["perfil"]),
             "equipe_id": u["equipe_id"], "ativo": u["ativo"], "restrito_a_equipe": bool(p.get("restrito_a_equipe")),
-            "permissoes": sorted(permissoes_do_perfil(u["perfil"], perfis))}
+            "permissoes": sorted(permissoes_do_perfil(u["perfil"], perfis)), "telas": sorted(telas_do_perfil(u["perfil"], perfis))}
 
 
 def criar_usuario(conn, login, nome, perfil, senha, equipe_id=None, criado_por="instalação"):
@@ -137,6 +147,22 @@ def alterar_usuario(conn, login, por, perfil=None, ativo=None, equipe_id=None, n
                  (novo_perfil, u["ativo"] if ativo is None else (1 if ativo else 0), nova_equipe, nome or u["nome"], u["id"]))
     if ativo is not None and not ativo:
         conn.execute("DELETE FROM sessoes WHERE usuario_id=?", (u["id"],))
+
+
+def excluir_usuario(conn, login, por):
+    """Exclui de vez só a conta que nunca registrou nada (criada por engano). Quem já tem histórico é desativado: a
+    auditoria nunca é apagada e continua apontando para o usuário."""
+    u = _usuario(conn, login)
+    if not u:
+        raise R.RegraViolada(f"Usuário '{login}' não encontrado.")
+    if u["login"] == normalizar_login(por):
+        raise R.RegraViolada("Você não pode excluir o próprio usuário.")
+    usos = conn.execute("SELECT (SELECT COUNT(*) FROM auditoria WHERE usuario_id=?) + (SELECT COUNT(*) FROM requisicoes WHERE usuario_id=?)",
+                        (u["id"], u["id"])).fetchone()[0]
+    if usos:
+        raise R.RegraViolada(f"'{u['login']}' já tem registros no histórico: use Desativar (o acesso é bloqueado e o histórico fica).")
+    conn.execute("DELETE FROM sessoes WHERE usuario_id=?", (u["id"],))
+    conn.execute("DELETE FROM usuarios WHERE id=?", (u["id"],))
 
 
 def redefinir_senha(conn, login, senha):
@@ -248,6 +274,16 @@ def exigir(usuario, permissao):
         perfis = carregar_perfis()
         raise AcessoNegado(f"Seu perfil ({usuario['perfil_nome']}) não tem a permissão "
                            f"\"{perfis['permissoes'].get(permissao, permissao)}\".", 403)
+
+
+def exigir_tela(usuario, telas):
+    """Consulta de uma tela: basta o perfil abrir uma das telas que usam a rota."""
+    if usuario is None:
+        raise AcessoNegado("Entre com seu usuário.", 401)
+    if not set(telas) & set(usuario["telas"]):
+        nomes = carregar_perfis().get("telas", {})
+        raise AcessoNegado(f"Seu perfil ({usuario['perfil_nome']}) não abre esta tela "
+                           f"({', '.join(nomes.get(t, t) for t in sorted(telas))}).", 403)
 
 
 def _limpo(corpo):

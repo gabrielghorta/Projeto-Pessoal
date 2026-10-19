@@ -244,7 +244,7 @@ class TestComprasPeloHTTP(BaseHTTP):
         self.assertEqual(st, 200, n)
         lid = self.q("SELECT id FROM nf_linhas")[0][0]
         pi = self.q("SELECT id FROM pedido_itens")[0][0]
-        self.assertEqual(eng1.post("/api/nf/conferir", {"nf_id": n["nf_id"], "pedido_id": p["id"], "linhas": []})[0], 403)
+        self.assertEqual(self.cliente("enc1").post("/api/nf/conferir", {"nf_id": n["nf_id"], "pedido_id": p["id"], "linhas": []})[0], 403)
         st, _ = almox.post("/api/nf/conferir", {"nf_id": n["nf_id"], "pedido_id": p["id"],
                                                 "linhas": [{"linha_id": lid, "material_id": MAT, "pedido_item_id": pi}]})
         self.assertEqual(st, 200)

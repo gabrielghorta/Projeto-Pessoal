@@ -71,9 +71,10 @@ class TestCamadasELigacoes(BaseHTTP):
 
 class TestArquivosHTTP(BaseHTTP):
     def test_planilhas_baixam_do_sistema_so_com_sessao(self):
-        anon, alm = self.cliente(), self.cliente("almox1")
+        anon, almox, alm = self.cliente(), self.cliente("almox1"), self.cliente("eng1")
         self.assertEqual(anon.get("/api/planilhas")[0], 401)
         self.assertEqual(anon.get("/arquivos/bm")[0], 401)
+        self.assertEqual((almox.get("/api/planilhas")[0], almox.get("/arquivos/bm")[0]), (403, 403))   # LEV: engenharia e adm
         st, ls = alm.get("/api/planilhas")
         self.assertEqual(st, 200)
         cfg = server._cfg()["arquivos"]

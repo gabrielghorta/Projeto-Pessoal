@@ -163,14 +163,45 @@ class TestPermissoesEAutoria(BaseHTTP):
         self.assertEqual(st, 403)
         self.assertEqual(self.n("usuarios", "login='x1'"), 0)
         self.assertEqual(self.n("auditoria", "login='almox1' AND status=403"), 2)
-        eng = self.cliente("eng1")
-        self.assertEqual(eng.post("/api/movimento", {"data": D, "material_id": "CAESB-PEAD-DE63", "quantidade": 5,
-                                                     "tipo": "ROMANEIO_CAESB"})[0], 403)   # engenharia não movimenta estoque
-        self.assertEqual(eng.get("/api/usuarios")[0], 403)
-        self.assertEqual(eng.get("/api/auditoria")[0], 200)                     # engenharia consulta o histórico
         enc = self.cliente("enc1")
-        self.assertEqual(enc.get("/api/auditoria")[0], 403)                     # sem permissão: só por objeto
-        self.assertEqual(enc.get("/api/auditoria?alvo_id=" + S.alvo(self.c, "TRECHO", TR)["id"])[0], 200)
+        self.assertEqual(enc.post("/api/movimento", {"data": D, "material_id": "CAESB-PEAD-DE63", "quantidade": 5,
+                                                     "tipo": "ROMANEIO_CAESB"})[0], 403)   # o encarregado não movimenta estoque
+        self.assertEqual(almox.get("/api/usuarios")[0], 403)                    # usuários: só Engenharia e Administração
+        eng = self.cliente("eng1")
+        self.assertEqual(eng.get("/api/usuarios")[0], 200)
+        self.assertEqual(eng.get("/api/auditoria")[0], 200)                     # engenharia consulta o histórico
+        objeto = "/api/auditoria?alvo_id=" + S.alvo(self.c, "TRECHO", TR)["id"]
+        self.assertEqual((enc.get("/api/auditoria")[0], enc.get(objeto)[0]), (403, 403))   # o encarregado não abre essas telas
+        self.assertEqual(eng.get(objeto)[0], 200)
+
+    def test_cada_perfil_consulta_so_as_proprias_telas(self):
+        enc, almox, eng, adm = (self.cliente(x) for x in ("enc1", "almox1", "eng1", "adm"))
+        self.assertEqual(enc.get("/api/sessao")[1]["usuario"]["telas"], ["campo", "diario", "iluminado", "interferencias"])
+        for rota in ("/api/resumo", "/api/mapa/estado", "/api/buscar?q=TR001"):             # comuns: mapa e busca
+            self.assertEqual((enc.get(rota)[0], almox.get(rota)[0]), (200, 200), rota)
+        for rota in ("/api/estoque", "/api/movimentos", "/api/compras", "/api/medicoes", "/api/relatorios", "/api/planilhas"):
+            self.assertEqual(enc.get(rota)[0], 403, rota)                                   # encarregado: mapa e campo
+        for rota in ("/api/estoque", "/api/movimentos", "/api/compras", "/api/checkins"):
+            self.assertEqual(almox.get(rota)[0], 200, rota)                                 # almoxarife: + almoxarifado
+        for rota in ("/api/medicoes", "/api/relatorios", "/api/planilhas", "/api/usuarios"):
+            self.assertEqual(almox.get(rota)[0], 403, rota)
+            self.assertEqual((eng.get(rota)[0], adm.get(rota)[0]), (200, 200), rota)         # engenharia e adm: tudo
+        st, r = enc.get("/api/estoque")
+        self.assertIn("não abre esta tela", r["erro"])
+
+    def test_excluir_so_conta_sem_historico(self):
+        eng = self.cliente("eng1")
+        novo = {"acao": "criar", "login": "errado.digitado", "nome": "Errado", "perfil": "EQUIPE", "senha": SENHA, "equipe_id": "Zona01"}
+        self.assertEqual(eng.post("/api/usuarios", novo)[0], 200)
+        self.assertEqual(eng.post("/api/usuarios", {"acao": "excluir", "login": "errado.digitado"})[0], 200)
+        self.assertEqual(self.n("usuarios", "login='errado.digitado'"), 0)
+        self.cliente("almox2")                                                              # entrou: já tem histórico
+        st, r = eng.post("/api/usuarios", {"acao": "excluir", "login": "almox2"})
+        self.assertEqual(st, 422)
+        self.assertIn("Desativar", r["erro"])
+        self.assertEqual(self.n("usuarios", "login='almox2'"), 1)
+        self.assertEqual(eng.post("/api/usuarios", {"acao": "excluir", "login": "eng1"})[0], 422)   # nunca o próprio
+        self.assertEqual(self.cliente("almox1").post("/api/usuarios", {"acao": "excluir", "login": "almox2"})[0], 403)
 
     def test_equipe_so_lanca_para_a_propria_e_autor_e_o_usuario_da_sessao(self):
         enc = self.cliente("enc1")

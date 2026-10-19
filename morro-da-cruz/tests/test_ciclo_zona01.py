@@ -182,7 +182,7 @@ class CicloZona01(unittest.TestCase):
                                                    "motivo": "Zona01 TR001 — programação de 16/10"})["id"]
         erro = self.recusa("eng1", "/api/solicitacao/decidir", {"solicitacao_id": sid, "aprovar": True})
         self.ok("eng2", "/api/solicitacao/decidir", {"solicitacao_id": sid, "aprovar": True})
-        self.recusa("eng1", "/api/fornecedor", {"cnpj": NT.CNPJ_FORNECEDOR, "nome": "Fornecedor de Teste Ltda"}, 403)
+        self.recusa("almox1", "/api/fornecedor", {"cnpj": NT.CNPJ_FORNECEDOR, "nome": "Fornecedor de Teste Ltda"}, 403)
         fid = self.ok("adm", "/api/fornecedor", {"cnpj": NT.CNPJ_FORNECEDOR, "nome": "Fornecedor de Teste Ltda"})["id"]
         pid = self.ok("adm", "/api/pedido", {"numero": "PC-Z01-001", "data": D0, "fornecedor_id": fid, "solicitacao_id": sid,
                                              "itens": [{"material_id": self.luva, "quantidade": 20, "valor_unitario": 12.5}]})["id"]

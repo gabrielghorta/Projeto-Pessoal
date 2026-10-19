@@ -154,7 +154,8 @@ class TestConexao(BaseDrive):
         self.assertIn(b"Google Drive conectado", pagina)
         st, d = eng.get("/api/drive")
         self.assertEqual((d["conectado"], d["conta"], d["pasta_id"], d["cliente_id"], d["tem_segredo"]), (True, "gabriel@exemplo.com", RAIZ, CLIENTE, True))
-        st, d = alm.get("/api/drive")                         # quem não configura vê o estado, não as credenciais
+        self.assertEqual(alm.get("/api/drive")[0], 403)      # o Drive fica em Usuários e histórico: engenharia e adm
+        d = DR.resumo(self.c, completo=False)                 # quem não configura vê o estado, não as credenciais
         self.assertTrue(d["conectado"])
         self.assertNotIn("cliente_id", d)
         self.assertNotIn("drive_cliente_segredo", json.dumps(d))

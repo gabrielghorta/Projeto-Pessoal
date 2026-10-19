@@ -170,7 +170,8 @@ class TestDocumentosHTTP(BaseHTTP):
         self.assertEqual(st, 200, r)
         self.assertEqual(self.q("SELECT criado_por, codigo FROM documentos_obra WHERE id=?", r["id"]),
                          [("eng1", "A.RED.SSB-D014.V03.T01")])
-        st, lista = alm.get("/api/documentos")                     # consultar: basta estar logado
+        self.assertEqual(alm.get("/api/documentos")[0], 403)       # consultar: só quem abre Usuários e histórico
+        st, lista = eng.get("/api/documentos")
         self.assertEqual((st, lista["total"], lista["documentos"][0]["pasta_rotulo"]), (200, 1, "Documentos oficiais / Projeto Executivo"))
         self.assertEqual(eng.post("/api/documento/retirar", {"documento_id": r["id"], "motivo": "teste"})[0], 200)
         self.assertEqual(self.q("""SELECT alvo_tipo, alvo_id, login FROM auditoria WHERE rota='/api/documento/retirar'
