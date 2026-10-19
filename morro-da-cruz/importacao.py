@@ -1071,6 +1071,11 @@ def preparar_v15(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v16(conn):
+    """Esquema v15 → v16: fotos com o original só no Google Drive (miniatura no servidor). Só acréscimos."""
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

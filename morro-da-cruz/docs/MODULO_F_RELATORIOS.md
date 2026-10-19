@@ -14,7 +14,7 @@ Todos os relatórios são calculados a partir dos registros efetivos: sem movime
 | **Faltantes** | A mesma regra da aba 1.1: previsto na programação − reservado para a equipe no dia − disponível; mostra também o a receber. | — |
 
 Rotas:
-- `GET /api/relatorios?ini=&fim=&frente=`: basta estar logado;
+- `GET /api/relatorios?ini=&fim=&frente=`: perfis que abrem a tela Relatórios (Engenharia e Administração);
 - `GET /api/relatorios/exportar?...`: a exportação fica registrada na auditoria.
 
 ## Celular (360 px)

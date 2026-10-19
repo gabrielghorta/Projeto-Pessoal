@@ -2,6 +2,7 @@
 dos anexos das notas, pastas por trecho e por mês, reaproveitamento sem duplicar, falha de rede sem perder nada, conexão
 revogada e leitura da planilha-índice pela conta. Tudo contra um Google de mentira: nenhum acesso real ao Drive."""
 import base64
+import hashlib
 import json
 import os
 import sys
@@ -11,6 +12,7 @@ import urllib.parse
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
 sys.path.insert(0, AQUI)
+import backup  # noqa: E402
 import compras as C  # noqa: E402
 import documentos as D  # noqa: E402
 import drive as DR  # noqa: E402
@@ -43,6 +45,7 @@ class GoogleFalso:
     def __init__(self):
         self.itens = {RAIZ: {"id": RAIZ, "name": "ANKARA_Morro_da_Cruz", "mimeType": DR.PASTA_MIME, "parents": [], "dados": None}}
         self.n, self.envios_abertos, self.pedidos, self.falhar_rede, self.refresh_invalido = 0, {}, [], False, False
+        self.md5_errado = False                          # o Google devolve um MD5 que não bate (cópia diferente)
 
     def novo_id(self):
         self.n += 1
@@ -99,10 +102,12 @@ class GoogleFalso:
             return 200, {}, json.dumps(self._publico(self.itens[fid])).encode()
         raise AssertionError(f"pedido inesperado: {metodo} {url}")
 
-    @staticmethod
-    def _publico(i):
-        return {"id": i["id"], "name": i["name"], "mimeType": i["mimeType"], "trashed": False,
-                "webViewLink": f"https://drive.google.com/{'drive/folders' if i['mimeType'] == DR.PASTA_MIME else 'file/d'}/{i['id']}"}
+    def _publico(self, i):
+        out = {"id": i["id"], "name": i["name"], "mimeType": i["mimeType"], "trashed": False,
+               "webViewLink": f"https://drive.google.com/{'drive/folders' if i['mimeType'] == DR.PASTA_MIME else 'file/d'}/{i['id']}"}
+        if i["dados"] is not None:                      # o Drive informa o MD5 do conteúdo de cada arquivo
+            out["md5Checksum"] = "0" * 32 if self.md5_errado else hashlib.md5(i["dados"]).hexdigest()
+        return out
 
     def caminho(self, fid):
         partes, it = [], self.itens[fid]
@@ -206,8 +211,17 @@ class TestFila(BaseDrive):
         sha = self.q("SELECT sha256 FROM fotos")[0][0]
         self.assertTrue(foto["name"].startswith("Morro da Cruz - Foto de Campo - PB01_Rede_TR001 - Execução - 2026-10-15 12h00"), foto["name"])
         self.assertTrue(foto["name"].endswith(f"({sha[:8]}).jpg"))
-        with open(os.path.join(self.fotos, f"{sha}.jpg"), "rb") as f:
-            self.assertEqual(foto["dados"], f.read())                                    # o original, byte a byte
+        self.assertEqual(hashlib.sha256(foto["dados"]).hexdigest(), sha)                 # o original, byte a byte
+        # confirmado pelo MD5 do Google, o original sai do servidor e fica a miniatura (o hash segue no banco)
+        self.assertFalse(os.path.exists(os.path.join(self.fotos, f"{sha}.jpg")))
+        self.assertEqual(self.q("SELECT arquivo, miniatura, md5 FROM fotos_no_drive"),
+                         [(f"{sha}.jpg", f"miniaturas/{sha}.jpg", hashlib.md5(foto["dados"]).hexdigest())])
+        with open(os.path.join(self.fotos, "miniaturas", f"{sha}.jpg"), "rb") as f:
+            mini = f.read()
+        st, servida = eng.get(f"/fotos/{sha}.jpg")                                      # a tela mostra a miniatura
+        self.assertEqual((st, servida), (200, mini))
+        self.assertEqual(eng.get("/api/drive")[1]["contagem"]["fotos_so_no_drive"], 1)
+        self.assertTrue(os.listdir(os.path.join(os.path.dirname(self.fotos), "documentos")))   # a nota continua aqui
         self.assertIn("Nota Fiscal 4321", nota["name"])
         self.assertTrue(nota["name"].endswith(".xml"))
         # a pasta aparece na foto (ficha do trecho) e na nota (compras)
@@ -223,6 +237,31 @@ class TestFila(BaseDrive):
         self.assertEqual(alm.post("/api/drive/processar", {})[1]["enviados"], 2)
         self.assertEqual(len(self.g.arquivos()), 2)
         self.assertEqual(len([i for i in self.g.itens.values() if i["name"] == "Zona01"]), 1)   # pastas também não duplicam
+
+    def test_sem_confirmacao_do_google_o_original_fica(self):
+        eng, alm = self.cliente("eng1"), self.cliente("almox1")
+        self.preparar()
+        self.ligar_google(eng)
+        self.g.md5_errado = True
+        self.assertEqual(alm.post("/api/drive/processar", {})[1]["enviados"], 2)
+        sha = self.q("SELECT sha256 FROM fotos")[0][0]
+        self.assertTrue(os.path.exists(os.path.join(self.fotos, f"{sha}.jpg")))           # sem a mesma cópia, nada sai daqui
+        self.assertEqual(self.q("SELECT COUNT(*) FROM fotos_no_drive"), [(0,)])
+
+    def test_backup_completo_com_a_foto_so_no_drive(self):
+        eng, alm = self.cliente("eng1"), self.cliente("almox1")
+        self.preparar()
+        self.ligar_google(eng)
+        alm.post("/api/drive/processar", {})
+        sha = self.q("SELECT sha256 FROM fotos")[0][0]
+        self.assertEqual(backup.anexos_referenciados(self.db).count(f"fotos/miniaturas/{sha}.jpg"), 1)   # exige a miniatura
+        self.assertNotIn(f"fotos/{sha}.jpg", backup.anexos_referenciados(self.db))
+        destino = os.path.join(os.path.dirname(self.db), "bk")
+        pasta = backup.criar(self.db, destino, self.fotos, trava=False)                  # completo, sem o original
+        det = backup.verificar_detalhado(pasta)
+        self.assertEqual((det["integro"], det["completo"]), (True, True), det)
+        self.assertTrue(os.path.exists(os.path.join(pasta, "fotos", "miniaturas", f"{sha}.jpg")))
+        self.assertEqual(self.q("SELECT validacao IS NOT NULL AND validacao NOT IN ('INVALIDA','ARQUIVO_AUSENTE') FROM fotos"), [(1,)])
 
     def test_sem_rede_fica_na_fila_e_conexao_revogada_desconecta(self):
         eng, alm = self.cliente("eng1"), self.cliente("almox1")

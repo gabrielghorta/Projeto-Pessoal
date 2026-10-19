@@ -18,8 +18,9 @@ import zlib
 
 try:                                                    # opcional: decodificação completa dos pixels
     from PIL import Image as _PIL
+    from PIL import ImageOps as _OPS
 except ImportError:                                     # pragma: no cover - depende do ambiente
-    _PIL = None
+    _PIL = _OPS = None
 
 
 class ImagemInvalida(ValueError):
@@ -136,6 +137,22 @@ def _png_decodifica(d):
     if len(bruto) != esperado:
         raise ImagemInvalida("PNG com quantidade de pixels incompatível com o cabeçalho.")
     return (larg, alt)
+
+
+def miniatura(dados, lado=640, qualidade=70):
+    """JPEG reduzido (lado maior até `lado` px, ~25 KB) para mostrar a foto quando o original fica só no Drive.
+    Sem Pillow devolve None: aí o original continua no servidor."""
+    if _PIL is None:
+        return None
+    try:
+        with _PIL.open(io.BytesIO(dados)) as im:
+            im = _OPS.exif_transpose(im).convert("RGB")   # foto de celular: a orientação vem no EXIF
+            im.thumbnail((lado, lado))
+            saida = io.BytesIO()
+            im.save(saida, "JPEG", quality=qualidade, optimize=True)
+            return saida.getvalue()
+    except (OSError, ValueError):
+        return None
 
 
 def validar(dados):

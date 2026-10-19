@@ -11,6 +11,7 @@
   lista de sites liberados). O consentimento acontece no navegador, em accounts.google.com.
 """
 import base64
+import hashlib
 import json
 import os
 import re
@@ -22,6 +23,7 @@ import urllib.request
 
 import compras as C
 import documentos as D
+import imagens
 import servicos as S
 from servicos import RegraViolada, _agora, _one, _rows, transacao
 
@@ -30,7 +32,7 @@ AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN = "https://oauth2.googleapis.com/token"
 REVOGAR = "https://oauth2.googleapis.com/revoke"
 API = "https://www.googleapis.com/drive/v3"
-UPLOAD = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,webViewLink"
+UPLOAD = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,webViewLink,md5Checksum"
 PASTA_MIME = "application/vnd.google-apps.folder"
 RETORNO = "/drive/retorno"
 PARAM = {"cliente": "drive_cliente_id", "segredo": "drive_cliente_segredo", "token": "drive_token", "conta": "drive_conta",
@@ -261,7 +263,7 @@ class Drive:
 
     def buscar(self, pai, nome, pasta):
         q = f"'{_q(pai)}' in parents and name = '{_q(nome)}' and trashed = false and mimeType {'=' if pasta else '!='} '{PASTA_MIME}'"
-        url = f"{API}/files?" + urllib.parse.urlencode({"q": q, "fields": "files(id,name,webViewLink)", "pageSize": 5,
+        url = f"{API}/files?" + urllib.parse.urlencode({"q": q, "fields": "files(id,name,webViewLink,md5Checksum)", "pageSize": 5,
                                                          "supportsAllDrives": "true", "includeItemsFromAllDrives": "true"})
         fs = self._req("GET", url).get("files") or []
         return fs[0] if fs else None
@@ -425,7 +427,14 @@ def processar(conn, trava, dir_fotos, limite=4, tempo=25):
             break
         with trava:
             env = _one(conn, "SELECT * FROM envios_drive WHERE id=?", eid)
+            so_no_drive = bool(env) and _one(conn, "SELECT 1 FROM fotos_no_drive WHERE envio_id=?", eid)
         if not env or env["status"] != "PENDENTE":
+            continue
+        if so_no_drive:                                 # o original já está só no Drive (conferido ao liberar)
+            with trava:
+                with transacao(conn):
+                    conn.execute("UPDATE envios_drive SET status='ENVIADO', ultimo_erro=NULL WHERE id=?", (eid,))
+            enviados.append(eid)
             continue
         try:
             with open(_caminho_local(env, dir_fotos, dir_docs), "rb") as f:
@@ -458,9 +467,43 @@ def processar(conn, trava, dir_fotos, limite=4, tempo=25):
                              (arq.get("id"), arq.get("webViewLink"), pasta.get("id"), pasta.get("name"), pasta.get("webViewLink"),
                               _agora(), eid))
         enviados.append(eid)
+        if env["origem"] == "FOTO":
+            _liberar_foto(conn, trava, env, arq, dados, dir_fotos)
     with trava:
         pend = conn.execute("SELECT COUNT(*) FROM envios_drive WHERE status='PENDENTE'").fetchone()[0]
     return {"conectado": True, "enviados": len(enviados), "pendentes": pend, "erro": erro}
+
+
+def _liberar_foto(conn, trava, env, arq, dados, dir_fotos):
+    """Libera o disco do servidor: com o Drive confirmando os mesmos bytes (MD5 do Google = MD5 do original, e o SHA-256
+    igual ao registrado), fica uma miniatura e o original sai da pasta. Sem a confirmação ou sem Pillow para a miniatura,
+    o original continua aqui. Notas e laudos (pequenos e fiscais) nunca saem do servidor."""
+    md5 = hashlib.md5(dados).hexdigest()
+    if (arq.get("md5Checksum") or "").lower() != md5 or hashlib.sha256(dados).hexdigest() != env["sha256"]:
+        return False
+    mini = imagens.miniatura(dados)
+    if not mini:
+        return False
+    rel = f"miniaturas/{os.path.splitext(env['arquivo'])[0]}.jpg"
+    destino = os.path.join(dir_fotos, *rel.split("/"))
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
+    with open(destino, "wb") as f:
+        f.write(mini)
+    with trava:
+        with transacao(conn):
+            conn.execute("""INSERT OR IGNORE INTO fotos_no_drive(foto_id, arquivo, envio_id, drive_id, md5, bytes, miniatura, liberado_em)
+                            VALUES (?,?,?,?,?,?,?,?)""", (env["ref_id"], env["arquivo"], env["id"], arq["id"], md5, len(dados), rel, _agora()))
+    try:                                                # registrado antes de apagar: se falhar aqui, o original só fica
+        os.remove(os.path.join(dir_fotos, env["arquivo"]))
+    except OSError:
+        pass
+    return True
+
+
+def miniatura_de(conn, arquivo):
+    """Caminho da miniatura (dentro da pasta de fotos) da foto cujo original ficou só no Drive, ou None."""
+    r = conn.execute("SELECT miniatura FROM fotos_no_drive WHERE arquivo=?", (arquivo,)).fetchone()
+    return r[0] if r else None
 
 
 def _falhou(conn, eid, erro, definitivo):
@@ -487,7 +530,9 @@ def resumo(conn, completo=False):
                                  + (SELECT COUNT(*) FROM documentos d
                                        WHERE NOT EXISTS (SELECT 1 FROM envios_drive e WHERE e.origem='DOCUMENTO' AND e.ref_id=d.id))"""
                           ).fetchone()[0]
-    out["contagem"] = {"enviados": cont.get("ENVIADO", 0), "na_fila": cont.get("PENDENTE", 0) + faltam, "com_erro": cont.get("ERRO", 0)}
+    so_drive = conn.execute("SELECT COUNT(*), COALESCE(SUM(bytes), 0) FROM fotos_no_drive").fetchone()
+    out["contagem"] = {"enviados": cont.get("ENVIADO", 0), "na_fila": cont.get("PENDENTE", 0) + faltam, "com_erro": cont.get("ERRO", 0),
+                       "fotos_so_no_drive": so_drive[0], "bytes_liberados": so_drive[1]}
     out["recentes"] = _rows(conn.execute("""SELECT id, origem, nome, caminho, status, ultimo_erro, drive_link, pasta_nome, pasta_link,
                                                    enviado_em, criado_em FROM envios_drive
                                              WHERE status IN ('ENVIADO','ERRO') ORDER BY COALESCE(enviado_em, criado_em) DESC, id DESC

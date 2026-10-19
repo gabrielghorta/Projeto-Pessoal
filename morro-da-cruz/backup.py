@@ -170,25 +170,36 @@ def _pastas_anexos(dir_fotos):
     return {"fotos": dir_fotos, "documentos": os.path.join(os.path.dirname(os.path.abspath(dir_fotos)), "documentos")}
 
 
+def _so_no_drive(c):
+    """{'fotos/<original>': 'fotos/<miniatura>'} das fotos cujo original ficou só no Drive (esquema v16)."""
+    if not c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fotos_no_drive'").fetchone():
+        return {}
+    return {f"fotos/{a}": f"fotos/{m}" for a, m in c.execute("SELECT arquivo, miniatura FROM fotos_no_drive")}
+
+
 def anexos_referenciados(caminho_db):
-    """Anexos citados no banco, como 'fotos/<arquivo>' e 'documentos/<arquivo>'."""
+    """Anexos citados no banco, como 'fotos/<arquivo>' e 'documentos/<arquivo>'. Da foto com o original só no Drive,
+    o que precisa estar aqui é a miniatura."""
     c = _ler(caminho_db)
     try:
         tabelas = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        return sorted({f"{pasta}/{r[0]}" for pasta, tab in ANEXOS if tab in tabelas
-                       for r in c.execute(f"SELECT arquivo FROM {tab} WHERE arquivo IS NOT NULL")})
+        drive = _so_no_drive(c)
+        return sorted({drive.get(a, a) for a in (f"{pasta}/{r[0]}" for pasta, tab in ANEXOS if tab in tabelas
+                                                 for r in c.execute(f"SELECT arquivo FROM {tab} WHERE arquivo IS NOT NULL"))})
     finally:
         c.close()
 
 
 def hashes_registrados(caminho_db):
-    """{'fotos/<arquivo>': sha256, 'documentos/<arquivo>': sha256} dos anexos com hash registrado no banco."""
+    """{'fotos/<arquivo>': sha256, 'documentos/<arquivo>': sha256} dos anexos com hash registrado no banco e guardados
+    aqui (o original que ficou só no Drive foi conferido pelo MD5 do Google antes de sair; seu SHA-256 segue no banco)."""
     c = _ler(caminho_db)
     try:
-        out = {}
+        out, drive = {}, _so_no_drive(c)
         for pasta, tab in ANEXOS:
             if "sha256" in {r[1] for r in c.execute(f"PRAGMA table_info({tab})")}:
-                out.update({f"{pasta}/{r[0]}": r[1] for r in c.execute(f"SELECT arquivo, sha256 FROM {tab} WHERE sha256 IS NOT NULL")})
+                out.update({f"{pasta}/{r[0]}": r[1] for r in c.execute(f"SELECT arquivo, sha256 FROM {tab} WHERE sha256 IS NOT NULL")
+                            if f"{pasta}/{r[0]}" not in drive})
         return out
     finally:
         c.close()

@@ -8,11 +8,18 @@ O site fala direto com o Google Drive da obra pela **sua conta Google**, conecta
 - **Notas fiscais:** o XML da NF-e, o PDF ou a imagem da nota e os laudos sobem para
   `04_COMPRAS_E_ALMOXARIFADO/01_Notas_Fiscais/<AAAA-MM>` (laudos em `04_Laudos_de_Inspecao`).
 - **Onde ficou:** cada foto (na ficha do trecho) e cada nota (em Compras e notas) mostra a pasta do Drive, com link para
-  a pasta e para o arquivo. A tela Documentos mostra os últimos envios e o que ainda está na fila.
+  a pasta e para o arquivo. Em Administrativo › Usuários e histórico, o painel **Fotos e notas no Google Drive** mostra
+  os últimos envios, o que ainda está na fila e quantas fotos já estão só no Drive.
 - **Planilha-índice:** passa a ser lida pela sua conta, sem precisar deixá-la pública.
 
 **O que não muda:**
-- O arquivo original continua guardado no sistema, com o hash e o backup de sempre. O Drive é a cópia que a equipe abre.
+- **Fotos (esquema v16, 19/10/2026):** quando o Drive confirma que recebeu a foto igual (o MD5 que o Google informa
+  bate com o do original, e o SHA-256 confere com o registrado), o original sai do servidor e fica uma miniatura de
+  ~25 KB em `fotos/miniaturas/`. O SHA-256 do original continua no banco (a foto segue valendo como evidência), a
+  tela mostra a miniatura e o backup passa a exigir a miniatura no lugar do original (tabela `fotos_no_drive`).
+  Sem a confirmação do Google ou sem Pillow para a miniatura, o original fica no servidor. Assim o disco de 512 MB do
+  PythonAnywhere grátis comporta as miniaturas da obra inteira (~8.000 fotos ≈ 200 MB).
+- **Notas fiscais e laudos** continuam também no servidor, com o hash e o backup de sempre (são pequenos e fiscais).
 - Nada é apagado no Drive. Um arquivo que já foi enviado não é enviado duas vezes: o nome leva o começo do hash.
 - Sem conexão, sem internet ou com a autorização revogada, nada se perde. Os arquivos ficam na fila e sobem quando
   a conexão voltar, ou pelo botão **Enviar a fila agora**.
@@ -64,6 +71,9 @@ Os arquivos ficam na sua conta. Para quem usa o sistema abrir os links (document
 - em **Acesso geral**, escolha **Qualquer pessoa com o link** › **Leitor**. Só entra quem tiver o link.
 
 ## 4. Trazer o índice de documentos
+
+> Desde 19/10/2026 a tela Documentos saiu do sistema (decisão do responsável): quem precisa de um documento abre
+> direto no Drive da obra. Os passos abaixo valem só para quem ainda usa a lista pelas rotas `/api/documentos*`.
 
 1. Em Documentos › **Gerenciar a lista de documentos**, cole o link da planilha **Morro da Cruz - Índice de
    Documentos** e clique em **Salvar os links**.

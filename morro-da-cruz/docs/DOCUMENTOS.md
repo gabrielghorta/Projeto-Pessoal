@@ -1,5 +1,10 @@
 # Documentos oficiais: a tela Documentos do sistema
 
+> **Fora do menu desde 19/10/2026 (decisão do responsável).** Quem precisa de um documento abre direto no Google Drive
+> da obra. As planilhas oficiais baixam pela aba **LEV › Baixar planilhas**, e a ligação com o Drive (fotos e notas)
+> fica em **Administrativo › Usuários e histórico**. As rotas `/api/documento*` e a tabela `documentos_obra` continuam
+> no servidor, sem perda de dados, só para Engenharia e Administração.
+
 As planilhas e o mapa que são a base do sistema (BM REV04, BM 03.3.2 REV03, 06.1 REV01, 06.2 REV08, Evidências e o HTML
 REV02, nomes em `config/fontes.json`) já vêm com o programa e aparecem no topo da tela, para baixar direto do servidor.
 Não precisam de link nem de índice.

@@ -847,7 +847,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, dados, mimetypes.guess_type(p)[0] or "application/octet-stream",
                               {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nome)}"})
         if u.path.startswith("/fotos/"):
-            return self._static(DIR_FOTOS, u.path[len("/fotos/"):])
+            rel = u.path[len("/fotos/"):]
+            if not os.path.isfile(os.path.join(DIR_FOTOS, rel)):      # original só no Drive: mostra a miniatura
+                with LOCK:
+                    rel = DR.miniatura_de(CONN, rel) or rel
+            return self._static(DIR_FOTOS, rel)
         return self._static(WEB, u.path.lstrip("/"))
 
     def _ler_corpo(self):

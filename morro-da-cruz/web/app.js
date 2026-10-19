@@ -1193,7 +1193,8 @@ async function carregarDrive() {
   $('#driveEstado').innerHTML = d.conectado
     ? `<span class="chip verde">conectado</span> ${esc(d.conta || 'conta Google')} · ${d.pasta_id ? `<a href="${linkPasta(d.pasta_id)}" target="_blank" rel="noopener">abrir a pasta da obra no Drive</a>` : '<b>falta informar a pasta da obra</b>'}`
     : `<span class="chip amarelo">não conectado</span> ${d.configurado ? 'Falta clicar em Conectar com o Google.' : 'Falta ligar a conta Google da obra.'} As fotos e as notas ficam guardadas aqui e sobem quando a conexão existir.`;
-  $('#driveContagem').textContent = `${nf(c.enviados, 0)} enviados · ${nf(c.na_fila, 0)} na fila · ${nf(c.com_erro, 0)} com erro`;
+  $('#driveContagem').textContent = `${nf(c.enviados, 0)} enviados · ${nf(c.na_fila, 0)} na fila · ${nf(c.com_erro, 0)} com erro`
+    + (c.fotos_so_no_drive ? ` · ${nf(c.fotos_so_no_drive, 0)} foto(s) só no Drive (${tamanho(c.bytes_liberados)} liberados no servidor)` : '');
   $('#driveErro').hidden = !d.ultimo_erro; $('#driveErro').textContent = d.ultimo_erro || '';
   $('#driveRecentes').innerHTML = d.recentes.map(e => `<div class="drive-item">
       <span class="doc-tipo">${e.origem === 'FOTO' ? 'FOTO' : 'NOTA'}</span>

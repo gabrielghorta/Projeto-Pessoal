@@ -962,6 +962,19 @@ CREATE TABLE IF NOT EXISTS envios_drive (
   UNIQUE (origem, ref_id)
 );
 CREATE INDEX IF NOT EXISTS ix_envios_drive ON envios_drive(status, id);
+-- Foto cujo original ficou só no Drive (v16): o servidor apagou o arquivo depois de conferir que o Drive tem os mesmos
+-- bytes (MD5 informado pelo Google = MD5 do original, e o SHA-256 conferido) e guardou uma miniatura na pasta de fotos.
+-- O SHA-256 do original continua em fotos.sha256; o backup exige a miniatura, não mais o original destas fotos.
+CREATE TABLE IF NOT EXISTS fotos_no_drive (
+  foto_id INTEGER PRIMARY KEY REFERENCES fotos(id),
+  arquivo TEXT NOT NULL UNIQUE,        -- nome do original no servidor (<sha256>.<ext>), que já não está na pasta
+  envio_id INTEGER NOT NULL REFERENCES envios_drive(id),
+  drive_id TEXT NOT NULL,
+  md5 TEXT NOT NULL,                   -- conferido com o md5Checksum do Google antes de apagar
+  bytes INTEGER NOT NULL,              -- tamanho do original (o que saiu do disco do servidor)
+  miniatura TEXT NOT NULL,             -- miniaturas/<sha256>.jpg, dentro da pasta de fotos
+  liberado_em TEXT NOT NULL
+);
 
 CREATE INDEX IF NOT EXISTS ix_itens_ativ ON itens_projeto(atividade_id);
 CREATE INDEX IF NOT EXISTS ix_ativ_elem ON atividades(elemento_id);
