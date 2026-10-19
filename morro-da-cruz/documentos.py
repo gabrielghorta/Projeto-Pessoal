@@ -22,10 +22,10 @@ import servicos as S
 from servicos import RegraViolada, _agora, _one, transacao
 
 HOSTS_DRIVE = ("drive.google.com", "docs.google.com")
-MAX_CSV = 5 * 1024 * 1024
-MAX_LINHAS = 5000
+MAX_CSV = 12 * 1024 * 1024
+MAX_LINHAS = 20000
 CAMPOS = ("titulo", "pasta", "tipo", "revisao", "data_documento", "codigo", "nome_anterior", "descricao", "link")
-TAMANHO = {"titulo": 300, "pasta": 300, "tipo": 40, "revisao": 40, "codigo": 200, "nome_anterior": 300, "descricao": 1000}
+TAMANHO = {"titulo": 300, "pasta": 300, "tipo": 120, "revisao": 40, "codigo": 200, "nome_anterior": 300, "descricao": 1000}
 COLUNAS = {   # cabeçalho da planilha-índice (sem acento, minúsculo) → campo
     "titulo": ("nome novo", "novo nome", "titulo", "nome", "nome do arquivo", "arquivo", "documento"),
     "nome_anterior": ("nome antigo", "nome anterior", "nome original"),
@@ -39,8 +39,14 @@ COLUNAS = {   # cabeçalho da planilha-índice (sem acento, minúsculo) → camp
 }
 TIPO_GOOGLE = {"document": "DOC GOOGLE", "spreadsheets": "PLANILHA GOOGLE", "presentation": "APRESENTAÇÃO GOOGLE",
                "folders": "PASTA", "forms": "FORMULÁRIO GOOGLE", "drawings": "DESENHO GOOGLE"}
-EXTENSOES = ("pdf", "dwg", "dxf", "xlsx", "xlsm", "xlsb", "xls", "csv", "docx", "doc", "pptx", "ppt", "jpg", "jpeg", "png",
-             "html", "kmz", "kml", "zip", "rar", "txt", "xml", "mp4")
+EXTENSOES = ("pdf", "dwg", "dxf", "xlsx", "xlsm", "xlsb", "xls", "csv", "ods", "docx", "doc", "odt", "rtf", "pptx", "ppt", "odp",
+             "jpg", "jpeg", "png", "html", "kmz", "kml", "zip", "rar", "7z", "txt", "xml", "json", "mp4", "md")
+# arquivos do Office (e equivalentes) abrem no próprio Google Docs, Planilhas ou Apresentações, sem baixar
+EDITOR_GOOGLE = {**{e: "document" for e in ("doc", "docx", "odt", "rtf")},
+                 **{e: "spreadsheets" for e in ("xls", "xlsx", "xlsm", "ods", "csv")},
+                 **{e: "presentation" for e in ("ppt", "pptx", "odp")}}
+# pastas de trabalho (conversas e tabelas da IA, caches, duplicatas): ficam no Drive, mas fora da lista da obra
+PASTAS_TRABALHO = ("07_IA_CHATGPT_E_CLAUDE", "99_TEMPORARIOS_E_SISTEMA")
 
 
 def _norm(s):
@@ -75,25 +81,50 @@ def analisar_link(link):
     return {"link": link, "drive_id": did, "google": tipo}
 
 
-def link_baixar(link):
-    """Endereço de download direto pelo Drive (None para pasta ou link sem id)."""
+def _extensao(titulo):
+    m = re.search(r"\.([A-Za-z0-9]{2,5})$", str(titulo or "").strip())
+    return m.group(1).lower() if m else None
+
+
+def link_baixar(link, titulo=None):
+    """Download direto pelo Drive (None para pasta ou link sem id). Arquivo do Office aberto pelo Google (link
+    docs.google.com/…?rtpof=true, nome com extensão) baixa o arquivo original; documento nativo do Google é exportado."""
     try:
         a = analisar_link(link)
     except RegraViolada:
         return None
-    did = a["drive_id"]
-    if not did:
+    did, ext = a["drive_id"], _extensao(titulo)
+    if not did or a["google"] == "folders":
         return None
-    return {"file": f"https://drive.google.com/uc?export=download&id={did}",
-            "document": f"https://docs.google.com/document/d/{did}/export?format=pdf",
+    if a["google"] == "file" or ext in EXTENSOES:
+        return f"https://drive.google.com/uc?export=download&id={did}"
+    return {"document": f"https://docs.google.com/document/d/{did}/export?format=docx",
             "spreadsheets": f"https://docs.google.com/spreadsheets/d/{did}/export?format=xlsx",
             "presentation": f"https://docs.google.com/presentation/d/{did}/export/pptx"}.get(a["google"])
 
 
+def link_abrir(link, titulo=None):
+    """Ver na internet, sem baixar: Word/Excel/PowerPoint no Google Docs/Planilhas/Apresentações; PDF, imagem, DWG e
+    o resto na visualização do Drive; pasta e documento nativo do Google, pelo próprio link."""
+    try:
+        a = analisar_link(link)
+    except RegraViolada:
+        return link
+    did, ext = a["drive_id"], _extensao(titulo)
+    if not did or a["google"] == "folders":
+        return a["link"]
+    editor = EDITOR_GOOGLE.get(ext)
+    if editor:
+        return f"https://docs.google.com/{editor}/d/{did}/edit?rtpof=true&usp=drivesdk"
+    if a["google"] == "file" or ext:
+        return f"https://drive.google.com/file/d/{did}/view?usp=drivesdk"
+    return a["link"]
+
+
 def tipo_do_arquivo(titulo, link):
-    m = re.search(r"\.([A-Za-z0-9]{2,5})$", str(titulo or "").strip())
-    if m and m.group(1).lower() in EXTENSOES:
-        return m.group(1).upper()
+    ext = _extensao(titulo)
+    if ext in EXTENSOES:
+        return ext.upper()
     try:
         return TIPO_GOOGLE.get(analisar_link(link)["google"])
     except RegraViolada:
@@ -162,7 +193,9 @@ def _pasta(pasta):
 def _linha(r):
     d = dict(r)
     d["pasta_rotulo"] = pasta_rotulo(d["pasta"])
-    d["baixar"] = link_baixar(d["link"])
+    d["formato"] = tipo_do_arquivo(d["titulo"], d["link"])
+    d["abrir"] = link_abrir(d["link"], d["titulo"])
+    d["baixar"] = link_baixar(d["link"], d["titulo"])
     return d
 
 
@@ -184,7 +217,7 @@ def _validar(campos):
     a = analisar_link(campos.get("link"))
     v["link"], v["drive_id"] = a["link"], a["drive_id"]
     v["data_documento"] = data_iso(campos.get("data_documento"))
-    v["tipo"] = (v["tipo"] or tipo_do_arquivo(v["titulo"], v["link"]) or "").upper() or None
+    v["tipo"] = v["tipo"] or (tipo_do_arquivo(v["titulo"], v["link"]) or "").upper() or None   # do índice: como veio
     v["codigo"] = v["codigo"] or codigo_do_titulo(v["titulo"])
     return v
 
@@ -238,7 +271,7 @@ def retirar(conn, documento_id, por, motivo):
 def ler_csv(texto):
     """Linhas do índice como dicionários de campos. Aceita vírgula, ponto e vírgula ou tabulação."""
     if len(texto or "") > MAX_CSV:
-        raise RegraViolada("Arquivo do índice grande demais (máximo 5 MB).")
+        raise RegraViolada("Arquivo do índice grande demais (máximo 12 MB).")
     texto = (texto or "").lstrip("﻿")
     if not texto.strip():
         raise RegraViolada("O índice está vazio.")
@@ -268,12 +301,21 @@ def ler_csv(texto):
     return out
 
 
-def importar_indice(conn, texto, por, simular=False):
+def pasta_de_trabalho(pasta):
+    return str(pasta or "").strip().split("/")[0].strip() in PASTAS_TRABALHO
+
+
+def importar_indice(conn, texto, por, simular=False, incluir_trabalho=False):
     """Aplica (ou só simula) o índice: novos entram, os já listados (mesmo arquivo) são atualizados, linhas sem link
-    válido são ignoradas com o motivo. Nada sai da lista por não estar no índice."""
+    válido são ignoradas com o motivo. Nada sai da lista por não estar no índice. As pastas de trabalho (IA, caches,
+    temporários) ficam de fora, a não ser que se peça para incluí-las."""
     linhas = ler_csv(texto)
-    novos, atualizados, iguais, ignorados, vistos = [], [], 0, [], {}
+    novos, atualizados, iguais, ignorados, vistos, trabalho = [], [], 0, [], {}, {}
     for n, l in linhas:
+        if not incluir_trabalho and pasta_de_trabalho(l.get("pasta")):
+            topo = str(l.get("pasta")).strip().split("/")[0].strip()
+            trabalho[topo] = trabalho.get(topo, 0) + 1
+            continue
         if not str(l.get("titulo") or "").strip():
             l["titulo"] = l.get("nome_anterior")
         if not str(l.get("pasta") or "").strip():
@@ -299,7 +341,7 @@ def importar_indice(conn, texto, por, simular=False):
     fora = [dict(r) for r in conn.execute("SELECT id, titulo, drive_id, link FROM documentos_obra WHERE ativo=1")
             if (r["drive_id"] or r["link"]) not in ids]
     resumo = {"simulado": bool(simular), "linhas": len(linhas), "novos": len(novos), "atualizados": len(atualizados),
-              "iguais": iguais, "ignorados": ignorados, "fora_do_indice": len(fora),
+              "iguais": iguais, "ignorados": ignorados, "fora_do_indice": len(fora), "pastas_de_trabalho": trabalho,
               "exemplos_fora": [f["titulo"] for f in fora[:20]],
               "exemplos_novos": [v["titulo"] for v in novos[:20]]}
     if simular:
@@ -381,15 +423,15 @@ def baixar_csv(url, tempo=12):
         raise RegraViolada(f"Não consegui acessar a planilha ({getattr(e, 'reason', e)}). Se a hospedagem bloquear o acesso, "
                            "baixe a planilha em CSV e use Importar arquivo.") from None
     if len(dados) > MAX_CSV:
-        raise RegraViolada("Planilha-índice grande demais (máximo 5 MB).")
+        raise RegraViolada("Planilha-índice grande demais (máximo 12 MB).")
     if "html" in tipo.lower():
         raise RegraViolada("A planilha não está aberta para leitura pelo link (o Google pediu login). Compartilhe como "
                            "\"qualquer pessoa com o link pode ver\", ou baixe em CSV e use Importar arquivo.")
     return dados.decode("utf-8-sig", errors="replace")
 
 
-def sincronizar(conn, por, simular=False, baixar=baixar_csv):
+def sincronizar(conn, por, simular=False, baixar=baixar_csv, incluir_trabalho=False):
     url = S.parametro(conn, "documentos_indice_url")
     if not url:
         raise RegraViolada("Cole primeiro o link da planilha-índice em Pasta e índice.")
-    return importar_indice(conn, baixar(url_csv_do_indice(url)), por, simular=simular)
+    return importar_indice(conn, baixar(url_csv_do_indice(url)), por, simular=simular, incluir_trabalho=incluir_trabalho)

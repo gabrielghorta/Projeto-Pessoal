@@ -1066,6 +1066,11 @@ def preparar_v14(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v15(conn):
+    """Esquema v14 → v15: fila de envio das fotos e dos anexos das notas para o Google Drive. Só acréscimos."""
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

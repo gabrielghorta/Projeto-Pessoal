@@ -616,7 +616,7 @@ function renderNotas() {
     }
     return `<div class="registro"><div><b>NF ${esc(n.numero)}${n.serie ? '/' + esc(n.serie) : ''} · ${esc(n.fornecedor || '')}</b>
       <span><span class="chip ${st[1]}">${esc(st[0])}</span> <small>${esc(n.origem)} · emissão ${esc(n.data_emissao || '')} · ${brl(n.valor_total)} · reg. ${esc(n.registrada_por || '')}${n.conferida_por ? ' · conf. ' + esc(n.conferida_por) : ''}</small>
-      ${['A_CONFERIR', 'CONFERIDA'].includes(n.status) && pode('receber') && !n.itens.some(i => i.recebido > 0) ? ` <button type="button" class="btn" data-cancelar-nf="${n.id}">Cancelar</button>` : ''}</span></div>${corpo}</div>`;
+      ${['A_CONFERIR', 'CONFERIDA'].includes(n.status) && pode('receber') && !n.itens.some(i => i.recebido > 0) ? ` <button type="button" class="btn" data-cancelar-nf="${n.id}">Cancelar</button>` : ''}</span></div>${htmlDrive(n.drive)}${corpo}</div>`;
   }).join('') || '<div class="vazio">Nenhuma nota no fluxo novo.</div>';
   $$('.conf-nf').forEach(box => {
     const sel = $('[data-c=pedido]', box);
@@ -644,13 +644,13 @@ $('#fPedido').addEventListener('submit', async ev => {
 $('#fXml').addEventListener('submit', async ev => {
   ev.preventDefault(); const arq = ev.target.arquivo.files[0];
   const r = await acao(async () => api('/api/nf/importar-xml', { conteudo_b64: await lerOriginal(arq), nome: arq.name }), 'NF-e importada: confira as linhas antes de receber.').catch(() => null);
-  if (r) { ev.target.reset(); carregarCompras(); }
+  if (r) { ev.target.reset(); carregarCompras(); driveEmSegundoPlano(carregarCompras); }
 });
 $('#fNfDig').addEventListener('submit', async ev => {
   ev.preventDefault(); const o = formObj(ev.target), arq = ev.target.arquivo.files[0];
   const r = await acao(async () => api('/api/nf/digitar', { numero: o.numero, data_emissao: o.data_emissao, fornecedor_id: o.fornecedor_id, chave: o.chave,
     linhas: lerItens(ev.target, 'nfdig'), documento_b64: await lerOriginal(arq), documento_tipo: arq.type === 'application/pdf' ? 'NF_PDF' : 'NF_IMAGEM', documento_nome: arq.name }), 'Nota registrada: outra pessoa confere contra o anexo.').catch(() => null);
-  if (r) { ev.target.reset(); $('.editor-itens[data-itens=nfdig]').innerHTML = ''; carregarCompras(); }
+  if (r) { ev.target.reset(); $('.editor-itens[data-itens=nfdig]').innerHTML = ''; carregarCompras(); driveEmSegundoPlano(carregarCompras); }
 });
 $('#fTransf').addEventListener('submit', async ev => {
   ev.preventDefault();
@@ -676,7 +676,8 @@ document.addEventListener('click', async ev => {
     const itens = $$('tr[data-ni]', card).map(tr => ({ nf_item_id: tr.dataset.ni, quantidade: +($('[data-entrega]', tr) || { value: 0 }).value })).filter(i => i.quantidade > 0);
     r = await acao(() => api('/api/recebimento', { nf_id: q('[data-receber]').dataset.receber, data: hoje(), itens, documento: $('[data-doc-entrega]', card).value }), 'Entrega registrada em quarentena.').catch(() => null); }
   else if (q('[data-inspecionar]')) { const l = q('.lin-insp'), o = Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value]));
-    r = await acao(() => api('/api/inspecao', { recebimento_item_id: l.dataset.ri, ...o, data: hoje() }), 'Inspeção registrada: o aceito entrou no estoque.').catch(() => null); }
+    r = await acao(() => api('/api/inspecao', { recebimento_item_id: l.dataset.ri, ...o, data: hoje() }), 'Inspeção registrada: o aceito entrou no estoque.').catch(() => null);
+    if (r) driveEmSegundoPlano(); }
   else if (q('[data-devolver]')) { const qt = prompt('Quantidade a devolver ao fornecedor:'); if (!qt) return; const motivo = prompt('Motivo:'); if (!motivo) return; const doc = prompt('Documento (NF de devolução):') || null;
     r = await acao(() => api('/api/devolucao-fornecedor', { nf_item_id: q('[data-devolver]').dataset.devolver, data: hoje(), quantidade: qt, motivo, documento: doc }), 'Devolução registrada (saiu do estoque).').catch(() => null); }
   else if (q('[data-cancelar-nf]')) { const motivo = prompt('Motivo do cancelamento da nota:'); if (!motivo) return;
@@ -817,7 +818,7 @@ function renderFotos() {
     + (CAMPO.tipo !== 'TRECHO' && !d.fotos_faltando.includes('SINALIZACAO') ? ' <small>(sinalização herdada do trecho da área)</small>' : '')
     : '<span class="chip verde">Fotos obrigatórias completas</span>';
   $('#fotoLista').innerHTML = d.fotos.map(f => `<figure class="foto-carimbo"><img src="/fotos/${encodeURIComponent(f.arquivo)}" alt="${esc(f.categoria)}"><span class="carimbo">${esc(f.carimbo)}</span>
-    <figcaption>${esc(f.categoria)} · ${esc(f.data_hora)} <small>(data: ${esc(f.origem_data || '—')}${f.origem_gps ? ' · GPS: ' + esc(f.origem_gps) : ''}${f.sha256 ? ' · sha256 ' + esc(f.sha256.slice(0, 12)) + '…' : ''})</small></figcaption></figure>`).join('');
+    <figcaption>${esc(f.categoria)} · ${esc(f.data_hora)} <small>(data: ${esc(f.origem_data || '—')}${f.origem_gps ? ' · GPS: ' + esc(f.origem_gps) : ''}${f.sha256 ? ' · sha256 ' + esc(f.sha256.slice(0, 12)) + '…' : ''})</small>${htmlDrive(f.drive)}</figcaption></figure>`).join('');
 }
 $('#apPrevisto').addEventListener('click', async () => {
   if (!CAMPO) return toast('Selecione o trecho/nó.', 'erro');
@@ -899,6 +900,7 @@ $('#fFoto').addEventListener('submit', async ev => {
   const b64 = await lerOriginal(arq);
   await acao(() => api('/api/foto', { alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id, categoria: cat, conteudo_b64: b64, data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon }), 'Foto original enviada (hash registrado).').catch(() => null);
   f.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id);
+  driveEmSegundoPlano(() => CAMPO && selecionarCampo(CAMPO.tipo, CAMPO.id));
 });
 
 /* ---------------------------------------------------------------- 4. esteira de cadastro */
@@ -1162,9 +1164,82 @@ async function carregarDocumentos() {
   $('#docPastasLista').innerHTML = r.pastas.map(p => `<option value="${esc(p)}">`).join('');
   renderDocumentos();
   carregarPlanilhas();
+  carregarDrive();
 }
 // planilhas e mapa do projeto que vêm com o sistema (config/fontes.json): baixam do próprio servidor, sem Drive
 const tamanho = b => b >= 1048576 ? `${nf(b / 1048576, 1)} MB` : `${nf(Math.max(1, Math.round(b / 1024)), 0)} KB`;
+/* ---------------------------------------------------------------- Google Drive conectado: fotos e notas sobem sozinhas */
+let DRIVE = null, DRIVE_EM_CURSO = false;
+const htmlDrive = e => !e ? '' : e.status === 'ENVIADO'
+  ? `<div class="no-drive">No Drive: <a href="${esc(e.pasta_link || '#')}" target="_blank" rel="noopener">${esc(e.caminho)}</a> · <a href="${esc(e.drive_link || '#')}" target="_blank" rel="noopener">abrir</a></div>`
+  : e.status === 'ERRO' ? `<div class="no-drive erro">Drive: não enviado (${esc(e.ultimo_erro || 'erro')})</div>`
+    : `<div class="no-drive">Drive: na fila para ${esc(e.caminho)}</div>`;
+// depois de salvar uma foto ou uma nota, o servidor sobe a fila para o Drive; a tela não espera
+async function driveEmSegundoPlano(depois) {
+  if (DRIVE_EM_CURSO) return;
+  DRIVE_EM_CURSO = true;
+  try {
+    const r = await api('/api/drive/processar', {});
+    if (r && r.enviados && depois) depois();
+    if (TELA === 'docs') carregarDrive();
+  } catch (_) { /* sem conexão agora: a fila sobe na próxima vez */ } finally { DRIVE_EM_CURSO = false; }
+}
+const linkPasta = id => `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
+async function carregarDrive() {
+  const d = await api('/api/drive').catch(() => null); if (!d) return;
+  DRIVE = d;
+  const c = d.contagem;
+  $('#driveEstado').innerHTML = d.conectado
+    ? `<span class="chip verde">conectado</span> ${esc(d.conta || 'conta Google')} · ${d.pasta_id ? `<a href="${linkPasta(d.pasta_id)}" target="_blank" rel="noopener">abrir a pasta da obra no Drive</a>` : '<b>falta informar a pasta da obra</b>'}`
+    : `<span class="chip amarelo">não conectado</span> ${d.configurado ? 'Falta clicar em Conectar com o Google.' : 'Falta ligar a conta Google da obra.'} As fotos e as notas ficam guardadas aqui e sobem quando a conexão existir.`;
+  $('#driveContagem').textContent = `${nf(c.enviados, 0)} enviados · ${nf(c.na_fila, 0)} na fila · ${nf(c.com_erro, 0)} com erro`;
+  $('#driveErro').hidden = !d.ultimo_erro; $('#driveErro').textContent = d.ultimo_erro || '';
+  $('#driveRecentes').innerHTML = d.recentes.map(e => `<div class="drive-item">
+      <span class="doc-tipo">${e.origem === 'FOTO' ? 'FOTO' : 'NOTA'}</span>
+      <span><b>${e.drive_link ? `<a href="${esc(e.drive_link)}" target="_blank" rel="noopener">${esc(e.nome)}</a>` : esc(e.nome)}</b>
+        <small>Pasta: ${e.pasta_link ? `<a href="${esc(e.pasta_link)}" target="_blank" rel="noopener">${esc(e.caminho)}</a>` : esc(e.caminho)}${e.status === 'ERRO' ? ` · <span class="chip vermelho">não enviado</span> ${esc(e.ultimo_erro || '')}` : ''}</small></span>
+      ${e.status === 'ERRO' && pode('documentos') ? `<button type="button" class="btn" data-drive-reenviar="${e.id}">Tentar de novo</button>` : ''}</div>`).join('');
+  $('#driveEnviar').hidden = !d.conectado || !c.na_fila;
+  $('#driveGerenciar').hidden = !pode('documentos');
+  if (pode('documentos')) {
+    const f = $('#fDrive');
+    f.cliente_id.value = d.cliente_id || '';
+    f.cliente_segredo.placeholder = d.tem_segredo ? 'guardado (em branco mantém o atual)' : 'cole o segredo do cliente';
+    if (!f.pasta_url.value && d.pasta_id) f.pasta_url.value = linkPasta(d.pasta_id);
+    $('#driveRetorno').textContent = location.origin + d.retorno;
+    $('#driveConectar').disabled = !d.configurado;
+    $('#driveConectar').textContent = d.conectado ? 'Conectar de novo' : 'Conectar com o Google';
+    $('#driveDesconectar').hidden = $('#driveTestar').hidden = !d.conectado;
+    if (!d.conectado && !d.configurado) $('#driveGerenciar').open = true;
+  }
+}
+$('#fDrive').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const r = await acao(() => api('/api/drive/config', formObj(ev.target)), 'Dados do Google salvos.').catch(() => null);
+  if (r) { ev.target.cliente_segredo.value = ''; carregarDrive(); }
+});
+$('#driveConectar').addEventListener('click', async () => {
+  const r = await acao(() => api('/api/drive/conectar', {})).catch(() => null);
+  if (r && r.url) location.href = r.url;            // a página do Google pede a sua conta e a permissão do Drive
+});
+$('#driveTestar').addEventListener('click', async () => {
+  const r = await acao(() => api('/api/drive/testar', {})).catch(() => null);
+  if (r) toast(`Pasta encontrada no Drive: ${r.pasta} (conta ${r.conta}).`, 'ok');
+});
+$('#driveDesconectar').addEventListener('click', async () => {
+  if (!confirm('Desconectar a conta Google? O que já foi enviado continua no Drive; os próximos arquivos ficam na fila.')) return;
+  const r = await acao(() => api('/api/drive/desconectar', {}), 'Google Drive desconectado.').catch(() => null);
+  if (r) carregarDrive();
+});
+$('#driveEnviar').addEventListener('click', async () => { $('#driveEnviar').disabled = true; await driveEmSegundoPlano(); $('#driveEnviar').disabled = false; carregarDrive(); });
+$('#driveCopiar').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText($('#driveRetorno').textContent); toast('Endereço copiado.', 'ok'); } catch (_) { toast('Selecione e copie o endereço.', ''); }
+});
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-drive-reenviar]'); if (!b) return;
+  const r = await acao(() => api('/api/drive/reenviar', { envio_id: +b.dataset.driveReenviar })).catch(() => null);
+  if (r) { await driveEmSegundoPlano(); carregarDrive(); }
+});
 async function carregarPlanilhas() {
   const ls = await api('/api/planilhas').catch(() => []);
   $('#painelPlanilhas').hidden = !ls.length;
@@ -1175,7 +1250,7 @@ async function carregarPlanilhas() {
 function renderDocumentos() {
   if (!DOCS) return;
   const q = semAcento($('#docBusca').value).trim();
-  const achou = d => !q || semAcento([d.titulo, d.codigo, d.nome_anterior, d.descricao, d.pasta_rotulo, d.tipo, d.revisao].join(' ')).includes(q);
+  const achou = d => !q || semAcento([d.titulo, d.codigo, d.nome_anterior, d.descricao, d.pasta_rotulo, d.pasta, d.tipo, d.formato, d.revisao].join(' ')).includes(q);
   const base = DOCS.documentos.filter(achou);
   const area = d => d.pasta_rotulo.split(' / ')[0], sub = d => d.pasta_rotulo.split(' / ')[1] || '';
   const contar = (lista, f) => lista.reduce((m, d) => (m[f(d)] = (m[f(d)] || 0) + 1, m), {});
@@ -1196,10 +1271,10 @@ function renderDocumentos() {
   if (!lista.length) { $('#docLista').innerHTML = '<div class="vazio" style="padding:12px">Nenhum documento com esse nome. Tente parte do nome ou do código, como 06.2, BM ou PB07.</div>'; return; }
   const mostrar = lista.slice(0, 500);
   $('#docLista').innerHTML = `<table><thead><tr><th>Documento</th><th>Pasta</th><th>Revisão</th><th>Data</th><th></th></tr></thead><tbody>${mostrar.map(d => `<tr>
-    <td><span class="doc-tipo">${esc(d.tipo || 'ARQ.')}</span><a href="${esc(d.link)}" target="_blank" rel="noopener">${esc(d.titulo)}</a>
-      ${d.codigo || d.nome_anterior ? `<br><small class="vazio" style="padding:0">${d.codigo ? 'código ' + esc(d.codigo) : ''}${d.codigo && d.nome_anterior ? '; ' : ''}${d.nome_anterior ? 'antes: ' + esc(d.nome_anterior) : ''}</small>` : ''}</td>
-    <td>${esc(d.pasta_rotulo)}</td><td>${esc(d.revisao || '—')}</td><td>${dataBR(d.data_documento)}</td>
-    <td style="white-space:nowrap"><a class="btn" href="${esc(d.link)}" target="_blank" rel="noopener">Abrir</a>
+    <td><span class="doc-tipo">${esc(d.formato || 'ARQ.')}</span><a href="${esc(d.abrir || d.link)}" target="_blank" rel="noopener">${esc(d.titulo)}</a>
+      ${d.tipo && d.tipo !== d.formato || d.codigo || d.nome_anterior ? `<br><small class="vazio" style="padding:0">${[d.tipo && d.tipo !== d.formato ? esc(d.tipo) : '', d.codigo ? 'código ' + esc(d.codigo) : '', d.nome_anterior ? 'antes: ' + esc(d.nome_anterior) : ''].filter(Boolean).join(' · ')}</small>` : ''}</td>
+    <td title="${esc(d.pasta)}">${esc(d.pasta_rotulo)}</td><td>${esc(d.revisao || '—')}</td><td>${dataBR(d.data_documento)}</td>
+    <td style="white-space:nowrap"><a class="btn" href="${esc(d.abrir || d.link)}" target="_blank" rel="noopener" title="Ver na internet (Word e Excel abrem no Google Docs e no Planilhas)">Abrir</a>
       ${d.baixar ? `<a class="btn" href="${esc(d.baixar)}" target="_blank" rel="noopener">Baixar</a>` : ''}
       ${editar ? `<button type="button" class="btn" data-doc-editar="${d.id}">Editar</button> <button type="button" class="btn" data-doc-retirar="${d.id}">Retirar</button>` : ''}</td></tr>`).join('')}</tbody></table>
     ${lista.length > mostrar.length ? `<p class="vazio" style="margin:6px 8px">Mostrando 500 de ${lista.length}. Use a busca ou as pastas para afinar.</p>` : ''}`;
@@ -1208,6 +1283,7 @@ function renderPreviaDocs(r, aplicar) {
   const ign = r.ignorados || [];
   $('#docPrevia').innerHTML = `<div class="aviso ${r.simulado ? 'info' : 'sugestao'}"><b>${r.simulado ? 'Prévia: nada foi gravado ainda.' : 'Índice importado.'}</b><br>
     ${r.linhas} linhas lidas: ${r.novos} novos, ${r.atualizados} atualizados, ${r.iguais} sem mudança e ${ign.length} ignorados.
+    ${Object.keys(r.pastas_de_trabalho || {}).length ? `<br>Ficaram de fora as pastas de trabalho: ${Object.entries(r.pastas_de_trabalho).map(([k, v]) => `${nf(v, 0)} arquivos de ${esc(k)}`).join(', ')}. Para trazê-las também, marque a opção abaixo e veja de novo.` : ''}
     ${r.fora_do_indice ? `<br>${r.fora_do_indice} documento(s) da lista não aparecem no índice. Continuam na lista; retire à mão se for o caso.` : ''}
     ${ign.length ? `<details><summary>Ver os ignorados</summary><ul>${ign.slice(0, 50).map(i => `<li>Linha ${i.linha}: ${esc(i.titulo || 'sem nome')}: ${esc(i.motivo)}</li>`).join('')}</ul></details>` : ''}
     ${r.simulado && (r.novos || r.atualizados) ? `<div class="acoes" style="margin-top:8px"><button type="button" class="btn prim" id="docAplicar">Aplicar: ${r.novos} novos e ${r.atualizados} atualizados</button></div>` : ''}</div>`;
@@ -1240,16 +1316,17 @@ $('#fDocConfig').addEventListener('submit', async ev => {
   if (r) carregarDocumentos();
 });
 $('#docSincPrevia').addEventListener('click', async () => {
-  const r = await acao(() => api('/api/documentos/sincronizar', { simular: true })).catch(() => null);
-  if (r) renderPreviaDocs(r, () => api('/api/documentos/sincronizar', { simular: false }));
+  const incluir_trabalho = $('#docIncluirTrabalho').checked;
+  const r = await acao(() => api('/api/documentos/sincronizar', { simular: true, incluir_trabalho })).catch(() => null);
+  if (r) renderPreviaDocs(r, () => api('/api/documentos/sincronizar', { simular: false, incluir_trabalho }));
 });
 $('#fDocCsv').addEventListener('submit', async ev => {
   ev.preventDefault();
   const arq = ev.target.arquivo.files[0]; if (!arq) return;
-  if (arq.size > 5 * 1024 * 1024) { toast('Arquivo grande demais (máximo 5 MB).', 'erro'); return; }
-  const csv = await lerTextoArquivo(arq);
-  const r = await acao(() => api('/api/documentos/importar', { csv, simular: true })).catch(() => null);
-  if (r) renderPreviaDocs(r, () => api('/api/documentos/importar', { csv, simular: false }));
+  if (arq.size > 12 * 1024 * 1024) { toast('Arquivo grande demais (máximo 12 MB).', 'erro'); return; }
+  const csv = await lerTextoArquivo(arq), incluir_trabalho = $('#docIncluirTrabalho').checked;
+  const r = await acao(() => api('/api/documentos/importar', { csv, simular: true, incluir_trabalho })).catch(() => null);
+  if (r) renderPreviaDocs(r, () => api('/api/documentos/importar', { csv, simular: false, incluir_trabalho }));
 });
 $('#fDoc').addEventListener('submit', async ev => {
   ev.preventDefault(); const o = formObj(ev.target); const editando = !!o.documento_id;
@@ -1322,5 +1399,6 @@ async function iniciar() {
   $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id;
   abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });
+  setTimeout(() => driveEmSegundoPlano(), 4000);   // o que ficou na fila (sem rede, sem conexão) sobe agora
 }
 iniciar();

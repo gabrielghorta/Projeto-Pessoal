@@ -14,6 +14,13 @@ data e código original. Nada é enviado nem copiado para o servidor.
 - Nada é apagado. Retirar da lista exige o motivo, registra quem e quando, e o arquivo continua no Drive.
 - Toda alteração fica no histórico (Administrativo › Usuários e histórico, objeto `DOCUMENTO`).
 
+Com o **Google Drive conectado** (`docs/GOOGLE_DRIVE.md`), a planilha-índice é lida pela conta da obra e não precisa
+ser pública, e as fotos de campo e os anexos das notas sobem sozinhos para a pasta da obra.
+
+Cada documento tem dois botões. **Abrir** mostra o arquivo na internet: Word e Excel no Google Docs e no Planilhas; PDF,
+imagem e DWG na visualização do Drive. **Baixar** baixa o original. As pastas de trabalho (`07_IA_CHATGPT_E_CLAUDE`,
+`99_TEMPORARIOS_E_SISTEMA`) ficam fora da lista, a não ser que se marque a opção na importação.
+
 ## Como colocar os documentos
 
 1. Organize a pasta do Drive e crie a planilha-índice. O prompt para o ChatGPT faz isso e cria a planilha
@@ -52,6 +59,6 @@ A ordem das colunas não importa. Vírgula, ponto e vírgula ou tabulação serv
 
 ## Banco
 
-Esquema v14: tabela `documentos_obra`, só acréscimo. No PythonAnywhere, cole de novo o comando de instalação e clique
+Esquema v14: tabela `documentos_obra`, só acréscimo. Esquema v15: fila `envios_drive` do envio para o Drive. No PythonAnywhere, cole de novo o comando de instalação e clique
 em **Reload**: o site migra sozinho no primeiro acesso, depois de um backup verificado. No computador do escritório,
 rode `python importar.py` (simulação) e depois `python importar.py --aplicar`, com o servidor parado.

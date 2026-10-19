@@ -27,6 +27,7 @@ import caminhos
 import backup
 import compras as C
 import documentos as D
+import drive as DR
 import medicao as M
 import planejamento as P
 import relatorios as RL
@@ -114,6 +115,9 @@ def r_detalhe(q, c):
     d = S.detalhe(c, q["tipo"], q["id"])
     d["programacoes"] = [dict(r) for r in c.execute(
         "SELECT * FROM programacoes WHERE alvo_tipo=? AND alvo_id=? ORDER BY data DESC, id DESC LIMIT 15", (d["alvo_tipo"], d["id"]))]
+    no_drive = DR.por_ref(c, "FOTO", [f["id"] for f in d.get("fotos") or []])
+    for f in d.get("fotos") or []:
+        f["drive"] = no_drive.get(f["id"])
     return d
 
 
@@ -421,7 +425,8 @@ def p_documento_retirar(b, c):
 
 
 def p_documentos_importar(b, c):
-    return D.importar_indice(c, b.get("csv") or "", b["por"], simular=bool(b.get("simular")))
+    return D.importar_indice(c, b.get("csv") or "", b["por"], simular=bool(b.get("simular")),
+                             incluir_trabalho=bool(b.get("incluir_trabalho")))
 
 
 def p_documentos_config(b, c):
@@ -430,7 +435,32 @@ def p_documentos_config(b, c):
 
 
 def p_documentos_sincronizar(b, c):
-    return D.sincronizar(c, b["por"], simular=bool(b.get("simular")))
+    baixar = (lambda url: DR.exportar_indice(c, url)) if DR.obter_config(c)["conectado"] else D.baixar_csv
+    return D.sincronizar(c, b["por"], simular=bool(b.get("simular")), incluir_trabalho=bool(b.get("incluir_trabalho")),
+                         baixar=baixar)
+
+
+# ------------------------------------------------------------------ Google Drive conectado (v15)
+def p_drive_config(b, c):
+    DR.salvar_config(c, b.get("cliente_id"), b.get("cliente_segredo"), b.get("pasta_url"), b["por"])
+    return {"ok": True}
+
+
+def p_drive_desconectar(b, c):
+    DR.desconectar(c, b["por"])
+    return {"ok": True}
+
+
+def p_drive_reenviar(b, c):
+    DR.reenviar(c, int(b["envio_id"]))
+    return {"ok": True}
+
+
+ROTAS_DRIVE = {"/api/drive/config": p_drive_config, "/api/drive/desconectar": p_drive_desconectar,
+               "/api/drive/reenviar": p_drive_reenviar, "/api/drive/testar": lambda b, c: DR.testar(c)}
+# rotas do Drive tratadas à parte: precisam do endereço do pedido (conectar) ou fazem rede fora da trava (processar)
+ROTAS_DRIVE_ESPECIAIS = ("/api/drive/conectar", "/api/drive/processar")
+_DRIVE_OCUPADO = threading.Lock()
 
 
 ROTAS_DOCUMENTOS = {"/api/documento": p_documento, "/api/documento/retirar": p_documento_retirar,
@@ -444,7 +474,11 @@ def _c(fn):
 
 
 def r_compras(q, c):
-    return C.painel(c)
+    p = C.painel(c)
+    no_drive = DR.por_ref(c, "DOCUMENTO", [n.get("documento_id") for n in p.get("notas") or []])
+    for n in p.get("notas") or []:
+        n["drive"] = no_drive.get(n.get("documento_id"))
+    return p
 
 
 def r_inventarios(q, c):
@@ -534,7 +568,8 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios,
        "/api/documentos": r_documentos, "/api/mapa/geral": r_mapa_geral, "/api/planilhas": r_planilhas}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
-GET_USUARIO = {"/api/auditoria": r_auditoria}       # recebem o usuário da sessão
+GET_USUARIO = {"/api/auditoria": r_auditoria,
+               "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"])}       # recebem o usuário da sessão
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
@@ -548,6 +583,7 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/ocorrencia": p_ocorrencia, "/api/ocorrencia/resolver": p_ocorrencia_resolver}
 POST.update({rota: fn for rota, (_, _, fn) in ROTAS_COMPRAS.items()})
 POST.update(ROTAS_DOCUMENTOS)
+POST.update(ROTAS_DRIVE)
 POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar,
              "/api/medicao/conferir": p_medicao_conferir})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
@@ -577,6 +613,8 @@ AUTOR.update({"/api/programacao": ("por",), "/api/programacao/encerrar": ("por",
 AUTOR.update({rota: campos for rota, (_, campos, _) in ROTAS_COMPRAS.items()})
 PERMISSAO.update({rota: "documentos" for rota in ROTAS_DOCUMENTOS})
 AUTOR.update({rota: ("por",) for rota in ROTAS_DOCUMENTOS})
+PERMISSAO.update({rota: "documentos" for rota in ROTAS_DRIVE})
+AUTOR.update({rota: ("por",) for rota in ROTAS_DRIVE})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
 
@@ -686,6 +724,8 @@ class Handler(BaseHTTPRequestHandler):
         with LOCK:
             sem = not A.ha_usuarios(CONN)
             usuario = None if sem else self._usuario()
+        if u.path == DR.RETORNO:
+            return self._drive_retorno(q)
         if u.path == "/configurar":
             if not self._local():
                 return self._send(403, "A configuração do acesso só pode ser feita no computador do programa.",
@@ -758,7 +798,7 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         rota = u.path
         if rota not in POST and rota not in POST_USUARIO and rota not in ("/api/login", "/api/logout", "/api/configurar-acesso",
-                                                                          "/api/entrar-local"):
+                                                                          "/api/entrar-local", *ROTAS_DRIVE_ESPECIAIS):
             return self._send(404, {"erro": "rota inexistente"})
         if self.headers.get("X-MC") != "1":            # só a própria aplicação grava (proteção contra CSRF)
             return self._send(403, {"erro": "Requisição recusada: origem não reconhecida."})
@@ -784,7 +824,73 @@ class Handler(BaseHTTPRequestHandler):
         if backup.em_manutencao(os.path.dirname(os.path.abspath(DB_PATH))):
             return self._send(503, {"erro": "Manutenção em andamento (backup, restauração ou importação): gravações "
                                             "suspensas. Tente de novo quando terminar."})
+        if rota in ROTAS_DRIVE_ESPECIAIS:
+            return self._drive_post(rota)
         self._gravar(rota, body)
+
+    def _drive_post(self, rota):
+        with LOCK:
+            usuario = self._usuario()
+        if not usuario:
+            return self._send(401, {"erro": "Sessão encerrada: entre de novo."})
+        if rota == "/api/drive/conectar":
+            esquema = "https" if NUVEM or self._https() else "http"
+            retorno = f"{esquema}://{self.headers.get('Host', '')}{DR.RETORNO}"
+            with LOCK:
+                try:
+                    A.exigir(usuario, "documentos")
+                    url = DR.iniciar_conexao(CONN, retorno, usuario["login"])
+                except A.AcessoNegado as e:
+                    A.auditar(CONN, usuario, "POST", rota, e.status, None, str(e))
+                    return self._send(e.status, {"erro": str(e)})
+                except R.RegraViolada as e:
+                    return self._send(422, {"erro": str(e)})
+                A.auditar(CONN, usuario, "POST", rota, 200, {"retorno": retorno}, "conexão com o Google iniciada")
+            return self._send(200, {"url": url, "retorno": retorno})
+        # /api/drive/processar: qualquer pessoa logada dispara (a foto que ela acabou de enviar sobe para o Drive)
+        if not _DRIVE_OCUPADO.acquire(blocking=False):
+            return self._send(200, {"ocupado": True})
+        try:
+            r = DR.processar(CONN, LOCK, DIR_FOTOS, limite=4, tempo=25)
+        except Exception as e:  # noqa: BLE001 — o envio nunca derruba o servidor; o erro aparece na tela Documentos
+            LOG.exception("falha ao enviar para o Drive")
+            r = {"erro": f"Erro interno no envio para o Drive: {e}"}
+        finally:
+            _DRIVE_OCUPADO.release()
+        return self._send(200, r)
+
+    def _drive_retorno(self, q):
+        """Volta do consentimento do Google. O cookie de sessão (SameSite=Strict) não vem nesta navegação: quem prova a
+        origem é o 'state', guardado no banco ao clicar em Conectar e válido uma vez só."""
+        erro = None
+        with LOCK:
+            try:
+                reg = DR.consumir_estado(CONN, q.get("state"))
+                cr = DR._credenciais(CONN)
+            except R.RegraViolada as e:
+                erro = str(e)
+        if erro:                                        # fora da trava: _pagina_retorno grava o erro com a trava
+            return self._pagina_retorno(erro)
+        if q.get("error"):
+            return self._pagina_retorno(f"O Google não autorizou ({q['error']}).")
+        try:
+            tokens = DR.trocar_codigo(cr, q.get("code", ""), reg["retorno"])
+        except (R.RegraViolada, DR.SemConexao) as e:
+            return self._pagina_retorno(str(e))
+        with LOCK:
+            conta = DR.guardar_conexao(CONN, tokens)
+            A.auditar(CONN, None, "GET", DR.RETORNO, 200, None, f"Google Drive conectado: {conta}", login=reg.get("login"))
+        return self._pagina_retorno(None)
+
+    def _pagina_retorno(self, erro):
+        if erro:
+            with LOCK:
+                with S.transacao(CONN):
+                    D._gravar_parametro(CONN, DR.PARAM["erro"], erro)
+        msg = "Google Drive conectado. Voltando ao sistema…" if not erro else "Não deu para conectar. Voltando ao sistema…"
+        html = (f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="1;url=/#docs">'
+                f'<title>Morro da Cruz</title><p style="font:16px system-ui;padding:24px">{msg}</p>')
+        return self._send(200, html, "text/html; charset=utf-8")
 
     def _login_post(self, body):
         with LOCK:

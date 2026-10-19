@@ -1,6 +1,6 @@
 # Implantação, operação e recuperação
 
-CT 10.239/2026 · 18/10/2026 · esquema v14 (v14: documentos oficiais, `docs/DOCUMENTOS.md`)
+CT 10.239/2026 · 19/10/2026 · esquema v15 (v14: documentos oficiais, `docs/DOCUMENTOS.md`; v15: envio para o Google Drive, `docs/GOOGLE_DRIVE.md`)
 
 Este é o procedimento para pôr o sistema em uso no computador da obra, operá-lo, fazer backup e recuperar.
 

@@ -117,6 +117,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v13(conn)
         if 0 < versao < 14:
             I.preparar_v14(conn)
+        if 0 < versao < 15:
+            I.preparar_v15(conn)
         S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar

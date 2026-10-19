@@ -150,7 +150,15 @@ fica no alvo do check-in de hoje. Nada sem posição no projeto ganha coordenada
 A tela **Documentos** começa pelas planilhas e pelo mapa que já vêm com o sistema (BM REV04, BM 03.3.2 REV03, 06.1 REV01,
 06.2 REV08, Evidências e o HTML REV02): baixam do próprio servidor, com login, sem Drive. Abaixo fica a lista dos arquivos
 oficiais no Google Drive, da qual o sistema guarda só o link. Essa lista vem da planilha-índice da pasta (pelo link ou em
-CSV, sempre com prévia) ou do cadastro na própria tela. Como colocar os documentos: `docs/DOCUMENTOS.md`.
+CSV, sempre com prévia) ou do cadastro na própria tela. **Abrir** mostra o arquivo na internet (Word e Excel no Google
+Docs e no Planilhas) e **Baixar** baixa o original. Como colocar os documentos: `docs/DOCUMENTOS.md`.
+
+## Google Drive conectado
+
+Com a conta Google da obra conectada pelo site (`drive.py`, esquema v15), as fotos de campo e os anexos das notas fiscais
+sobem sozinhos para a pasta da obra, em subpastas por trecho e por mês, e o app mostra a pasta de cada um. O original
+continua no servidor. A planilha-índice é lida pela mesma conta. Passo a passo (Google Cloud e conexão):
+`docs/GOOGLE_DRIVE.md`.
 
 ## Mapa técnico (Dados da obra)
 

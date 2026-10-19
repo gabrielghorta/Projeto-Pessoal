@@ -941,6 +941,28 @@ CREATE TABLE IF NOT EXISTS documentos_obra (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_documentos_drive ON documentos_obra(drive_id) WHERE drive_id IS NOT NULL AND ativo=1;
 
+-- ---------------------------------------------------------------- envio para o Google Drive (v15)
+-- Cada foto de campo e cada anexo de nota fiscal (XML, PDF, imagem, laudo) entra na fila e sobe para a pasta da obra
+-- no Drive, pela conta Google ligada em Documentos. O arquivo original continua no servidor (backup e hash): o Drive
+-- é a cópia que a equipe abre. Nada é apagado no Drive nem aqui; o envio repetido reaproveita o arquivo já enviado.
+CREATE TABLE IF NOT EXISTS envios_drive (
+  id INTEGER PRIMARY KEY,
+  origem TEXT NOT NULL CHECK (origem IN ('FOTO','DOCUMENTO')),
+  ref_id INTEGER NOT NULL,             -- fotos.id ou documentos.id
+  sha256 TEXT NOT NULL,
+  arquivo TEXT NOT NULL,               -- nome no servidor (<hash>.<ext>)
+  nome TEXT NOT NULL,                  -- nome claro no Drive
+  caminho TEXT NOT NULL,               -- pastas a partir da pasta da obra (03_EXECUCAO_DE_CAMPO/01_Fotos_por_Trecho/Zona01/…)
+  mime TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDENTE' CHECK (status IN ('PENDENTE','ENVIADO','ERRO')),
+  tentativas INTEGER NOT NULL DEFAULT 0,
+  ultimo_erro TEXT,
+  drive_id TEXT, drive_link TEXT, pasta_id TEXT, pasta_nome TEXT, pasta_link TEXT,
+  criado_em TEXT NOT NULL, enviado_em TEXT,
+  UNIQUE (origem, ref_id)
+);
+CREATE INDEX IF NOT EXISTS ix_envios_drive ON envios_drive(status, id);
+
 CREATE INDEX IF NOT EXISTS ix_itens_ativ ON itens_projeto(atividade_id);
 CREATE INDEX IF NOT EXISTS ix_ativ_elem ON atividades(elemento_id);
 CREATE INDEX IF NOT EXISTS ix_avisos_item ON avisos_origem(item_id);

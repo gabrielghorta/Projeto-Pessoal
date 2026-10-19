@@ -168,6 +168,13 @@ td input { width: 100%; padding: 6px 8px; min-height: 34px; }
 .pastas-docs button[aria-pressed="true"] { background: var(--laranja); border-color: var(--laranja); color: var(--sobre-laranja); }
 .pastas-docs button small { font-weight: 400; opacity: .8; }
 .doc-tipo { display: inline-block; min-width: 46px; text-align: center; padding: 2px 6px; border-radius: 6px; font-size: 12px; font-weight: 700; background: var(--chip); color: var(--suave); margin-right: 8px; }
+.lista-drive { display: grid; gap: 6px; margin-top: 10px; }
+.drive-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--borda); border-radius: var(--raio-p); }
+.drive-item > span:nth-child(2) { min-width: 0; flex: 1; }
+.drive-item b { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.drive-item small { display: block; color: var(--suave); font-size: 13px; overflow-wrap: anywhere; }
+.no-drive { margin-top: 4px; font-size: 12px; color: var(--suave); overflow-wrap: anywhere; }
+.no-drive.erro { color: var(--vermelho); }
 .lista-arquivos { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
 .arquivo { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--borda); border-radius: var(--raio-p); color: var(--texto); text-decoration: none; }
 .arquivo:hover { border-color: var(--azul); filter: none; }

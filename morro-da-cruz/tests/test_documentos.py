@@ -14,9 +14,9 @@ import importacao as I  # noqa: E402
 import servicos as S  # noqa: E402
 from test_acesso import BaseHTTP  # noqa: E402
 
-ARQ = "https://drive.google.com/file/d/1BQu30yKifa-gsjNhwNZkhvegEaRxjMZS/view?usp=drivesdk"
-ARQ2 = "https://drive.google.com/file/d/13uRTuNM9FAbJK2au_7cA8JPKNl_BYapg/view?usp=drivesdk"
-PASTA = "https://drive.google.com/drive/folders/1nGKsSSnvP2vjqNXJIIi5_ADMhNO1vVap?usp=drive_link"
+ARQ = "https://drive.google.com/file/d/1Arquivo061Ficticio0000000000000/view?usp=drivesdk"
+ARQ2 = "https://drive.google.com/file/d/1Arquivo062Ficticio0000000000000/view?usp=drivesdk"
+PASTA = "https://drive.google.com/drive/folders/1PastaDaObraFicticia00000000000?usp=drive_link"
 PLANILHA = "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/edit#gid=42"
 INDICE = ("nome antigo;nome novo;pasta;tipo;revisão;data;link;observação\n"
           "06.1 - LEV_DMC_MORRO_DA_CRUZ_REDES_REV01_13-10-26.xlsx;"
@@ -44,17 +44,17 @@ class BaseDoc(unittest.TestCase):
 
 class TestLinkECampos(unittest.TestCase):
     def test_so_aceita_link_https_do_google_drive(self):
-        self.assertEqual(D.analisar_link(ARQ)["drive_id"], "1BQu30yKifa-gsjNhwNZkhvegEaRxjMZS")
+        self.assertEqual(D.analisar_link(ARQ)["drive_id"], "1Arquivo061Ficticio0000000000000")
         self.assertEqual(D.analisar_link(PASTA)["google"], "folders")
-        self.assertEqual(D.analisar_link("https://drive.google.com/open?id=1BQu30yKifa-gsjNhwNZkhvegEaRxjMZS")["google"], "file")
+        self.assertEqual(D.analisar_link("https://drive.google.com/open?id=1Arquivo061Ficticio0000000000000")["google"], "file")
         self.assertEqual(D.analisar_link(PLANILHA)["google"], "spreadsheets")
-        for ruim in ("http://drive.google.com/file/d/1BQu30yKifa-gsjNhwNZkhvegEaRxjMZS/view", "https://drive.google.com.evil.com/x",
+        for ruim in ("http://drive.google.com/file/d/1Arquivo061Ficticio0000000000000/view", "https://drive.google.com.evil.com/x",
                      "javascript:alert(1)", "https://exemplo.com/arquivo.pdf", ""):
             with self.assertRaisesRegex(S.RegraViolada, "link do Google Drive"):
                 D.analisar_link(ruim)
 
     def test_download_direto_por_tipo_de_item(self):
-        self.assertEqual(D.link_baixar(ARQ), "https://drive.google.com/uc?export=download&id=1BQu30yKifa-gsjNhwNZkhvegEaRxjMZS")
+        self.assertEqual(D.link_baixar(ARQ), "https://drive.google.com/uc?export=download&id=1Arquivo061Ficticio0000000000000")
         self.assertTrue(D.link_baixar(PLANILHA).endswith("/export?format=xlsx"))
         self.assertIsNone(D.link_baixar(PASTA))
 
@@ -101,7 +101,7 @@ class TestIndice(BaseDoc):
                          [(4, True), (5, True)])
         r = D.importar_indice(self.c, INDICE, "eng1")
         self.assertEqual((r["novos"], self.n("origem='INDICE'")), (2, 2))
-        d = self.c.execute("SELECT * FROM documentos_obra WHERE drive_id=?", ("13uRTuNM9FAbJK2au_7cA8JPKNl_BYapg",)).fetchone()
+        d = self.c.execute("SELECT * FROM documentos_obra WHERE drive_id=?", ("1Arquivo062Ficticio0000000000000",)).fetchone()
         self.assertEqual((d["tipo"], d["codigo"], d["data_documento"], d["nome_anterior"][:4], d["descricao"]),
                          ("XLSM", "06.2", "2026-10-13", "06.2", "tem macros"))
         so_um = INDICE.splitlines()[0] + "\n" + INDICE.splitlines()[1].replace("Rev 01;2026", "Rev 02;2026") + "\n"
@@ -109,7 +109,7 @@ class TestIndice(BaseDoc):
         self.assertEqual((r["novos"], r["atualizados"], r["fora_do_indice"]), (0, 1, 1))
         self.assertEqual(self.n("ativo=1"), 2)                              # quem saiu do índice continua na lista
         self.assertEqual(self.c.execute("SELECT revisao, alterado_por FROM documentos_obra WHERE drive_id=?",
-                                        ("1BQu30yKifa-gsjNhwNZkhvegEaRxjMZS",)).fetchone()[:], ("Rev 02", "eng2"))
+                                        ("1Arquivo061Ficticio0000000000000",)).fetchone()[:], ("Rev 02", "eng2"))
         self.assertEqual(D.obter_config(self.c)["ultima_importacao"]["atualizados"], 1)
 
     def test_colunas_obrigatorias(self):
@@ -123,7 +123,7 @@ class TestIndice(BaseDoc):
                          "https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/export?format=csv&gid=42")
         self.assertIn("/pub?output=csv", D.url_csv_do_indice("https://docs.google.com/spreadsheets/d/e/2PACX-1vAbCdEfGhIjKl/pubhtml"))
         with self.assertRaisesRegex(S.RegraViolada, "planilha Google"):
-            D.url_csv_do_indice("https://drive.google.com/file/d/1BQu30yKifa-gsjNhwNZkhvegEaRxjMZS/view")
+            D.url_csv_do_indice("https://drive.google.com/file/d/1Arquivo061Ficticio0000000000000/view")
         h = D._SoGoogle()
         with self.assertRaises(urllib.error.HTTPError):
             h.redirect_request(None, None, 302, "Found", {}, "https://evil.example.com/x.csv")
@@ -143,6 +143,21 @@ class TestIndice(BaseDoc):
         self.c.execute("DROP TABLE documentos_obra")
         I.preparar_v14(self.c)
         self.assertEqual(self.n(), 0)
+
+
+class TestIndiceGrande(BaseDoc):
+    def test_indice_inteiro_da_pasta_e_pastas_de_trabalho(self):
+        linhas = ["nome antigo,nome novo,pasta,tipo,revisão,data,link,observação"]
+        for i in range(6500):                 # o índice real tem 6.690 linhas
+            pasta = "99_TEMPORARIOS_E_SISTEMA/Pastas_de_Trabalho_IA/cache" if i % 2 else "01_DOCUMENTOS_OFICIAIS/03_Quantitativos"
+            linhas.append(f"a{i}.pdf,Documento {i}.pdf,{pasta},Planilha de Quantitativos,,,https://drive.google.com/file/d/1Arquivo{i:08d}xx/view,")
+        texto = "\n".join(linhas)
+        r = D.importar_indice(self.c, texto, "eng1", simular=True)
+        self.assertEqual((r["linhas"], r["novos"], r["pastas_de_trabalho"]), (6500, 3250, {"99_TEMPORARIOS_E_SISTEMA": 3250}))
+        r = D.importar_indice(self.c, texto, "eng1", incluir_trabalho=True)
+        self.assertEqual((r["novos"], self.n("ativo=1")), (6500, 6500))
+        d = D.listar(self.c)["documentos"][0]
+        self.assertEqual((d["tipo"], d["formato"]), ("Planilha de Quantitativos", "PDF"))   # tipo do documento, como veio
 
 
 class TestDocumentosHTTP(BaseHTTP):

@@ -512,6 +512,25 @@
       <p class="vazio" style="margin:0 0 8px">Já estão no sistema e são a base dos números da obra. Baixam direto daqui, sem Drive.</p>
       <div id="planilhasLista" class="lista-arquivos"></div>
     </div>
+    <div class="painel" id="painelDrive" style="margin-top:16px">
+      <h3>Fotos e notas no Google Drive</h3>
+      <p class="vazio" style="margin:0 0 8px">Cada foto de campo e cada anexo de nota fiscal sobe sozinho para a pasta da obra no Drive, numa subpasta por trecho ou por mês. O nome da pasta aparece junto de cada foto e de cada nota. O original continua guardado no sistema.</p>
+      <div id="driveEstado"></div>
+      <div class="acoes" style="margin-top:8px"><span id="driveContagem"></span>
+        <button type="button" class="btn" id="driveEnviar" hidden>Enviar a fila agora</button></div>
+      <div id="driveErro" class="aviso problema" hidden></div>
+      <div id="driveRecentes" class="lista-drive"></div>
+      <details id="driveGerenciar" hidden style="margin-top:12px"><summary><b>Ligar a conta Google da obra</b>: ID e segredo do cliente, pasta e conexão</summary>
+        <form id="fDrive" data-perm="documentos" style="margin-top:10px">
+          <p class="vazio" style="margin:0">Passo a passo em <code>docs/GOOGLE_DRIVE.md</code>. No Google Cloud, em <b>URIs de redirecionamento autorizados</b>, cole este endereço: <b id="driveRetorno"></b> <button type="button" class="btn-texto" id="driveCopiar">copiar</button></p>
+          <div class="linha"><label>ID do cliente<input name="cliente_id" placeholder="….apps.googleusercontent.com" autocomplete="off"></label>
+            <label>Segredo do cliente<input name="cliente_segredo" type="password" autocomplete="new-password"></label></div>
+          <label>Pasta da obra no Drive<input name="pasta_url" placeholder="https://drive.google.com/drive/folders/…"></label>
+          <div class="acoes"><button class="btn">Salvar</button><button type="button" class="btn prim" id="driveConectar">Conectar com o Google</button>
+            <button type="button" class="btn" id="driveTestar" hidden>Testar a pasta</button><button type="button" class="btn" id="driveDesconectar" hidden>Desconectar</button></div>
+        </form>
+      </details>
+    </div>
     <div class="painel" style="margin-top:16px">
       <h3>Documentos no Google Drive</h3>
       <div class="acoes" style="justify-content:space-between;align-items:flex-end">
@@ -531,7 +550,7 @@
             <h3 style="margin:0">1. Pasta e planilha-índice</h3>
             <label>Link da pasta da obra no Drive<input name="pasta_url" placeholder="https://drive.google.com/drive/folders/…"></label>
             <label>Link da planilha-índice<input name="indice_url" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
-            <small class="vazio">A planilha precisa estar compartilhada como "qualquer pessoa com o link pode ver". Colunas lidas: nome antigo, nome novo, pasta, tipo, revisão, data, link e observação (nome novo e link são obrigatórias).</small>
+            <small class="vazio">Com o Google Drive conectado (no quadro acima), a planilha é lida pela sua conta e não precisa ser pública; o Drive lê a primeira aba. Sem a conexão, ela precisa estar compartilhada como "qualquer pessoa com o link pode ver". Colunas lidas: nome antigo, nome novo, pasta, tipo, revisão, data, link e observação (nome novo e link são obrigatórias).</small>
             <div class="acoes"><button class="btn">Salvar os links</button><button type="button" class="btn azul" id="docSincPrevia">Ver o que muda pelo índice</button></div>
           </form>
           <form id="fDocCsv" data-perm="documentos">
@@ -539,6 +558,7 @@
             <label>Arquivo CSV do índice (no Google Planilhas: Arquivo › Fazer download › CSV)<input type="file" name="arquivo" accept=".csv,.tsv,.txt,text/csv" required></label>
             <div class="acoes"><button class="btn azul">Ver o que muda</button></div>
           </form>
+          <label class="check"><input type="checkbox" id="docIncluirTrabalho"> Incluir também as pastas de trabalho (07_IA_CHATGPT_E_CLAUDE e 99_TEMPORARIOS_E_SISTEMA)</label>
           <div id="docPrevia"></div>
         </div>
         <form id="fDoc" data-perm="documentos">
