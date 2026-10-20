@@ -190,6 +190,12 @@ Pontas **sem nó** na 06.1:
   * Os 19 nós de grau 2 só com redução não juntam.
   * Nenhum JUNTAR tem troca de DE ou material.
   * As 28 caixas e tês com par alinhado (DF, MV, VM, NÓ56.x) são rejeitadas pelo orçamento de peças.
+* **Revisão de código independente:** achou 5 defeitos (3 médios e 2 baixos), todos corrigidos e com teste:
+  * Esc antes de o mapa carregar quebrava a seleção do Mapa iluminado;
+  * a atualização só do `.exe` deixava a obra sem o arquivo de decisões;
+  * um erro de digitação no arquivo derrubava a visão geral;
+  * a junção cortada de um anel contava como aplicada;
+  * o sentido do trecho físico virava com uma extensão nova.
 * **Revisão cega por imagem:**
   * Um revisor independente olhou 31 recortes de 10 zonas sem ver as decisões: cruzamentos, passagens, conexões rejeitadas, emendas sem nó, divisas, MND e tês sem nó.
   * Concordou em juntar ou não juntar nos 31: 17 JUNTAR, 13 NAO_JUNTAR e 1 DUVIDA. A única diferença é o J-100, que ficou em DUVIDA aqui e ele marcou NAO_JUNTAR; nos dois casos a linha não junta.
@@ -235,12 +241,16 @@ Pontas **sem nó** na 06.1:
 * **O que o sistema usa:** só lê o arquivo e usa apenas JUNTAR.
 * **O que o sistema recusa:** uma junção que não bate com o banco (trecho que não existe mais, ponta em outro nó, troca de DE) é ignorada e vira pendência DECISAO_DESATUALIZADA.
 * **Quando regerar:** depois de uma revisão nova da 06.1, da 06.2 ou do mapa, rode `python ferramentas/topologia/diagnostico.py --gravar`. A ferramenta mantém o `id` de cada junção e **toda decisão com `revisao` preenchida**.
+* **Erro de digitação ao revisar** (vírgula sobrando, ponta escrita como lista): nada para.
+  * O sistema continua com a última versão boa que leu e mostra a pendência ARQUIVO_DE_DECISOES_INVALIDO até o arquivo ser corrigido.
+  * Uma junção com a ponta em formato errado é recusada e vira DECISAO_DESATUALIZADA.
+* **Programa para Windows:** o arquivo vai embutido no executável. Numa obra em que só o `.exe` foi trocado, a pasta `config/` não tem `topologia.json`, e então vale o arquivo que veio com o programa.
 * **Por que um arquivo revisável:** se o sistema decidisse sozinho a cada leitura do mapa, um desenho novo mudaria em silêncio o que é trecho físico, e com isso os metros lançados.
 
 ## 6. Interface
 
 * `topologia.trechos_fisicos(conn)`: lista de trechos físicos. Cada um tem `id` = `TF-` + o número do menor `trechos.id` entre os membros (ex.: TF-00337), `no_ini`, `no_fim`, `extensao_m`, `de_mm`, `material`, `metodologias`, `frentes`, `membros` [`trecho_id`, `ponto`, `ordem`, `offset_m`, `extensao_m`, `sentido`], `juncoes` [`id`, `no`, `tipo`, `decisao`, `posicao_m`] e `texto` (frase para a ficha). Uma linha sem junção vira um trecho físico de um membro (offset 0, sentido 1).
-* **Sentido da cadeia:** o da 06.1 no membro mais longo (empate: menor `id`). Regra estável enquanto os membros não mudam. O caso B sai de NÓ9.1 até VRP-15, com os dois membros em +1.
+* **Sentido da cadeia:** o da 06.1 no membro de menor `id`, o mesmo que dá o `id` TF-. Id e sentido só mudam se os membros mudarem; uma extensão corrigida não vira o trecho físico. O caso B sai de NÓ9.1 até VRP-15, com os dois membros em +1.
 * `fisico_do_trecho(conn, trecho_id)`, `para_linhas(fisico, ini_m, fim_m)`, `para_fisico(fisico, trecho_id, ini_m, fim_m)` e `pendencias(conn)`.
   * Conversão: com sentido +1, local = [x − offset, y − offset]; com −1, [ext − (y − offset), ext − (x − offset)].
   * Os valores são cortados em [0, ext] e arredondados ao mm.
