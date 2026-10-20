@@ -105,27 +105,25 @@
 
   // ---- pontas no centro do nó: corrige DADOS no lugar (o HTML não muda) e as linhas já desenhadas
   function encaixar(corr) {
+    const pts = a => { let s = ''; for (let k = 0; k < a.length; k += 2) s += a[k] + ',' + a[k + 1] + ' '; return s; };
+    const troca = new Map();                  // trecho → {pontos de antes: pontos de depois} (o mesmo texto que a REV02 desenha)
     Object.entries(corr).forEach(([id, lista]) => {
       const dz = id === 'GERAL' ? DADOS.visaoGeral : PB_DADOS[id]; if (!dz) return;
-      const por = new Map(dz.tr.map(t => [t.i, t]));
+      const por = new Map(dz.tr.map(t => [t.i, t])), antes = new Map();
       lista.forEach(([i, k, ponta, cortar, x, y]) => {
         const p = por.has(i) && por.get(i).p[k]; if (!p || p.length < 2) return;
+        if (!antes.has(p)) antes.set(p, [i, pts(p)]);
         const c = Math.max(0, Math.min(cortar, p.length / 2 - 1));
         if (ponta === 0) p.splice(0, 2 * c, x, y); else p.splice(p.length - 2 * c, 2 * c, x, y);
       });
+      antes.forEach(([i, velho], p) => { if (!troca.has(i)) troca.set(i, {}); troca.get(i)[velho] = pts(p); });
     });
-    const svg = document.querySelector('#stage svg'); if (!svg) return;
-    const cur = svg.classList.contains('overview-svg') ? 'GERAL' : ((document.querySelector('#pblist button.cur') || {}).dataset || {}).pb;
-    const dz = cur === 'GERAL' ? DADOS.visaoGeral : PB_DADOS[cur]; if (!dz) return;
-    const por = new Map(dz.tr.map(t => [t.i, t]));
-    const pts = a => { let s = ''; for (let k = 0; k < a.length; k += 2) s += a[k] + ',' + a[k + 1] + ' '; return s; };
-    [['polyline.tr[data-pipe]', 'pipe'], ['polyline.hit[data-t]', 't']].forEach(([q, atr]) => {
-      const parte = new Map();                // a k-ésima linha de um trecho no desenho é a parte k da polilinha
-      svg.querySelectorAll(q).forEach(pl => {
-        const i = +pl.dataset[atr], k = parte.get(i) || 0; parte.set(i, k + 1);
-        const t = por.get(i); if (t && t.p[k]) pl.setAttribute('points', pts(t.p[k]));
-      });
+    const svg = document.querySelector('#stage svg'); if (!svg) return;   // as linhas já desenhadas (próximos desenhos já saem certos)
+    svg.querySelectorAll('polyline.tr[data-pipe], polyline.hit[data-t]').forEach(pl => {
+      const t = troca.get(+(pl.dataset.pipe ?? pl.dataset.t)), novo = t && t[pl.getAttribute('points')];
+      if (novo) pl.setAttribute('points', novo);
     });
+    window.dispatchEvent(new Event('resize'));      // a REV02 redesenha a seleção com a ponta nova
   }
 
   // ---- trecho físico: as outras linhas acendem junto com a selecionada e o painel diz o trecho inteiro
