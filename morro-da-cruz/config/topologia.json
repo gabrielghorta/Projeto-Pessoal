@@ -1,0 +1,6074 @@
+{
+ "versao": 1,
+ "gerado_em": "2026-10-20",
+ "gerado_por": "ferramentas/topologia/diagnostico.py --gravar",
+ "fontes": {
+  "redes": "06.1 - LEV_DMC_MORRO_DA_CRUZ_REDES_REV01_13-10-26.xlsx",
+  "conexoes": "06.2 - LEV_DMC_MORRO_DA_CRUZ_CONEXÕES_REV08_13-10-26.xlsm",
+  "mapa": "PLANTAS_TRECHOS_E_NOS_MORRO_DA_CRUZ_REV02_EQUIPES.html"
+ },
+ "como_revisar": "Cada junção liga duas pontas de linhas da 06.1 que NÃO terminam numa conexão. JUNTAR = o sistema trata as duas linhas como um só trecho físico; NAO_JUNTAR = conexão de verdade; DUVIDA = pergunta ao responsável (não junta). Para corrigir: troque \"decisao\", explique em \"motivo\" e preencha \"revisao\": {\"por\": \"nome\", \"em\": \"AAAA-MM-DD\"}. A ferramenta, ao gerar de novo, mantém toda decisão com \"revisao\" preenchida.",
+ "tipos": {
+  "CRUZAMENTO": "o tubo passa por outra rede com o semicírculo do pulo, no nome de um nó que não é dele",
+  "PASSAGEM": "o tubo passa ao lado de um nó (de outra rede paralela), sem peça para ele",
+  "CONEXAO": "candidato rejeitado: as peças do nó ligam este par (luva, redução, tê, válvula)",
+  "DIVISA_ZONA": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente",
+  "LIMITE_MND": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método",
+  "PONTA_SEM_NO": "duas pontas sem nó na tabela que se encontram: emenda do mesmo tubo",
+  "JUNCAO_SEM_NO": "três ou mais tubos se encontram sem nó na tabela (tê que falta na 06.2)"
+ },
+ "resumo": {
+  "pontas_por_classe": {
+   "NO_NO": 2249,
+   "DESLOCADA": 318,
+   "NAO_CHEGA": 130,
+   "DIVISA_ZONA": 72,
+   "PONTA_SEM_NO": 62,
+   "PASSAGEM": 16,
+   "LIMITE_MND": 10,
+   "JUNCAO_SEM_NO": 6,
+   "CRUZAMENTO": 4,
+   "PASSA_DO_NO": 2,
+   "LONGE_DO_NO": 2,
+   "DESENHO_INCOMPLETO": 1
+  },
+  "juncoes_por_tipo_e_decisao": {
+   "DIVISA_ZONA JUNTAR": 36,
+   "CONEXAO NAO_JUNTAR": 28,
+   "PONTA_SEM_NO JUNTAR": 27,
+   "PASSAGEM JUNTAR": 8,
+   "LIMITE_MND JUNTAR": 5,
+   "CRUZAMENTO JUNTAR": 2,
+   "JUNCAO_SEM_NO NAO_JUNTAR": 2,
+   "PONTA_SEM_NO DUVIDA": 2
+  },
+  "juncoes_por_decisao": {
+   "JUNTAR": 78,
+   "NAO_JUNTAR": 30,
+   "DUVIDA": 2
+  },
+  "trechos_fisicos": {
+   "linhas_06_1": 1436,
+   "trechos_fisicos": 1358,
+   "com_mais_de_uma_linha": 48,
+   "linhas_em_cadeias": 126
+  }
+ },
+ "juncoes": [
+  {
+   "tipo": "CRUZAMENTO",
+   "no": "Zona03_PB08_Rede_NÓ113.1",
+   "utm": [
+    203342.563,
+    8237881.808
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona03_PB08_Rede_TR006",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 293.47
+    },
+    {
+     "trecho": "Zona03_PB08_Rede_TR007",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 2.51
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 5 pontas e as peças ligam 3: as 3 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,54 m do marcador do nó, com o semicírculo do pulo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      true,
+      true
+     ],
+     "giro_graus": [
+      264,
+      334
+     ],
+     "linha_que_cruza": "Zona03_PB08_Rede_TR011",
+     "afastamento_do_no_m": [
+      1.543,
+      1.566
+     ],
+     "folga_entre_pontas_m": 0.061,
+     "angulo_graus": 178.2
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 5,
+     "capacidade": 3,
+     "sobra": 2,
+     "resumo": "1× LUVA 110, 1× REDUÇÃO 160X110, 1× TÊ 90º 110",
+     "outras_pontas": [
+      "Zona03_PB08_Rede_TR003:fim",
+      "Zona03_PB08_Rede_TR004:ini",
+      "Zona03_PB08_Rede_TR011:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona03_PB08_Rede_NÓ113.1 A Zona03_PB08_CH_VRP-15; INCLUI 1,62 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ113.1: anel de ponta/toco)"
+    }
+   },
+   "id": "J-001",
+   "revisao": null
+  },
+  {
+   "tipo": "CRUZAMENTO",
+   "no": "Zona06_PB14_Rede_NÓ56.12",
+   "utm": [
+    203662.613,
+    8236885.223
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB14_Rede_TR004",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 6.56
+    },
+    {
+     "trecho": "Zona06_PB14_Rede_TR012",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 207.89
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 5 pontas e as peças ligam 3: as 3 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,25 m do marcador do nó, com o semicírculo do pulo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      true,
+      true
+     ],
+     "giro_graus": [
+      269,
+      184
+     ],
+     "linha_que_cruza": "Zona06_PB14_Rede_TR003",
+     "afastamento_do_no_m": [
+      1.251,
+      1.251
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.1
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 5,
+     "capacidade": 3,
+     "sobra": 2,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona06_PB14_Rede_TR002:fim",
+      "Zona06_PB14_Rede_TR003:ini",
+      "Zona06_PB14_Rede_TR008:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona06_PB14_Rede_NÓ9.5 A Zona06_PB14_Rede_NÓ56.12; INCLUI 0,80 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ56.12: anel de ponta/toco)"
+    }
+   },
+   "id": "J-002",
+   "revisao": null
+  },
+  {
+   "tipo": "PASSAGEM",
+   "no": "Zona02_PB10_CH_MV-02",
+   "utm": [
+    202802.112,
+    8237433.838
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Adutora_TR004",
+     "lado": "ini",
+     "de": 280,
+     "extensao_m": 217.08
+    },
+    {
+     "trecho": "Zona02_PB10_Adutora_TR001",
+     "lado": "fim",
+     "de": 280,
+     "extensao_m": 11.6
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 4 pontas e as peças ligam 2: as 2 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,34 m do marcador do nó, ao lado do nó, sem semicírculo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      1.343,
+      1.343
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.1
+    },
+    "continuidade": {
+     "de": 280,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 4,
+     "capacidade": 2,
+     "sobra": 2,
+     "resumo": "2× LUVA 90, 1× LUVA DE CORRER 80, 1× MEDIDOR DE VAZÃO 80, 2× REDUÇÃO 160X90, 4× TOCO 80, 1× TUBO 80, 1× TUBO F/P L=0,35 M 80, 2× VÁLVULA GAVETA 80",
+     "outras_pontas": [
+      "Zona02_PB10_Rede_TR004:fim",
+      "Zona02_PB10_Rede_TR007:ini"
+     ]
+    },
+    "nome": {
+     "tipo_no": "MV",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-003",
+   "revisao": null
+  },
+  {
+   "tipo": "PASSAGEM",
+   "no": "Zona11_PB23_Rede_NÓ11.3",
+   "utm": [
+    204121.274,
+    8235925.534
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB23_Rede_TR060",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 43.8
+    },
+    {
+     "trecho": "Zona11_PB23_Rede_TR065",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 1.98
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 4 pontas e as peças ligam 2: as 2 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,48 m do marcador do nó, ao lado do nó, sem semicírculo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      1.481,
+      1.481
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.8
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 4,
+     "capacidade": 2,
+     "sobra": 2,
+     "resumo": "1× CURVA DE 90º 225",
+     "outras_pontas": [
+      "Zona11_PB23_Rede_TR059:ini",
+      "Zona11_PB23_Rede_TR070:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-004",
+   "revisao": null
+  },
+  {
+   "tipo": "PASSAGEM",
+   "no": "Zona11_PB23_Rede_NÓ11.4",
+   "utm": [
+    204217.364,
+    8235916.874
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB23_Rede_TR058",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 75.61
+    },
+    {
+     "trecho": "Zona11_PB23_Rede_TR071",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 1.5
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 4 pontas e as peças ligam 2: as 2 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,49 m do marcador do nó, ao lado do nó, sem semicírculo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      1.494,
+      1.494
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.2
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 4,
+     "capacidade": 2,
+     "sobra": 2,
+     "resumo": "1× CURVA DE 90º 225",
+     "outras_pontas": [
+      "Zona11_PB23_Rede_TR057:ini",
+      "Zona11_PB23_Rede_TR066:ini"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-005",
+   "revisao": null
+  },
+  {
+   "tipo": "PASSAGEM",
+   "no": "Zona11_PB23_Rede_NÓ9.2",
+   "utm": [
+    204110.096,
+    8235969.43
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB23_Rede_TR051",
+     "lado": "ini",
+     "de": 225,
+     "extensao_m": 93.31
+    },
+    {
+     "trecho": "Zona11_PB23_Rede_TR053",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 1.51
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 4 pontas e as peças ligam 2: as 2 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,49 m do marcador do nó, ao lado do nó, sem semicírculo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      1.495,
+      1.495
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.4
+    },
+    "continuidade": {
+     "de": 225,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 4,
+     "capacidade": 2,
+     "sobra": 2,
+     "resumo": "1× CURVA DE 90º 160",
+     "outras_pontas": [
+      "Zona11_PB23_Rede_TR052:ini",
+      "Zona11_PB23_Rede_TR060:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-006",
+   "revisao": null
+  },
+  {
+   "tipo": "PASSAGEM",
+   "no": "Zona11_PB23_Rede_NÓ9.4",
+   "utm": [
+    204200.93,
+    8235990.658
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB23_Rede_TR049",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 1.54
+    },
+    {
+     "trecho": "Zona11_PB23_Rede_TR057",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 75.59
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 4 pontas e as peças ligam 2: as 2 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,48 m do marcador do nó, ao lado do nó, sem semicírculo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      1.484,
+      1.484
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.4
+    },
+    "continuidade": {
+     "de": 225,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 4,
+     "capacidade": 2,
+     "sobra": 2,
+     "resumo": "1× CURVA DE 90º 160",
+     "outras_pontas": [
+      "Zona11_PB23_Rede_TR052:fim",
+      "Zona11_PB23_Rede_TR058:ini"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona11_PB23_Rede_NÓ11.4 A Zona11_PB23_Rede_NÓ9.4; INCLUI 0,02 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ11.4: anel de ponta/toco)"
+    }
+   },
+   "id": "J-007",
+   "revisao": null
+  },
+  {
+   "tipo": "PASSAGEM",
+   "no": "Zona11_PB23_Rede_NÓ9.6",
+   "utm": [
+    204255.34,
+    8235925.324
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB23_Rede_TR064",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 1.5
+    },
+    {
+     "trecho": "Zona11_PB23_Rede_TR068",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 11.77
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 4 pontas e as peças ligam 2: as 2 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,52 m do marcador do nó, ao lado do nó, sem semicírculo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      1.519,
+      1.519
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.9
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 4,
+     "capacidade": 2,
+     "sobra": 2,
+     "resumo": "1× CURVA DE 90º 160",
+     "outras_pontas": [
+      "Zona11_PB23_Rede_TR067:fim",
+      "Zona11_PB23_Rede_TR069:ini"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-008",
+   "revisao": null
+  },
+  {
+   "tipo": "PASSAGEM",
+   "no": "Zona11_PB24_Rede_NÓ60.1",
+   "utm": [
+    204471.145,
+    8235970.071
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB23_Rede_TR061",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 221.56
+    },
+    {
+     "trecho": "Zona11_PB24_Rede_TR040",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 94.8
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 5 pontas e as peças ligam 3: as 3 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,57 m do marcador do nó, ao lado do nó, sem semicírculo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      1.57,
+      1.57
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.4
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 5,
+     "capacidade": 3,
+     "sobra": 2,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X90, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona11_PB24_Rede_TR038:ini",
+      "Zona11_PB24_Rede_TR039:ini",
+      "Zona11_PB24_Rede_TR041:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona11_PB23_Rede_NÓ9.7 A Zona11_PB24_Rede_NÓ60.1; INCLUI 1,50 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ9.7: anel de ponta/toco)"
+    }
+   },
+   "id": "J-009",
+   "revisao": null
+  },
+  {
+   "tipo": "PASSAGEM",
+   "no": "Zona11_PB24_Rede_NÓ65.1",
+   "utm": [
+    204562.097,
+    8235996.709
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB24_Rede_TR037",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 5.49
+    },
+    {
+     "trecho": "Zona11_PB24_Rede_TR040",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 94.8
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "chegam 4 pontas e as peças ligam 2: as 2 outras pontas usam todas as peças e não sobra peça para este tubo, que passa reto a 1,59 m do marcador do nó, ao lado do nó, sem semicírculo",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      1.589,
+      1.589
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 4,
+     "capacidade": 2,
+     "sobra": 2,
+     "resumo": "1× CURVA DE 90º 63, 1× REDUÇÃO 160X63",
+     "outras_pontas": [
+      "Zona11_PB24_Rede_TR033:fim",
+      "Zona11_PB24_Rede_TR039:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-010",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona01_PB01_Rede_DF-33",
+   "utm": [
+    203438.198,
+    8239193.8
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona01_PB01_Rede_TR002",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 75.07
+    },
+    {
+     "trecho": "Zona01_PB01_Rede_TR005",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 50.68
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      13
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.545,
+      0.545
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 167.9
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-011",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona01_PB05_Rede_NÓ56.4",
+   "utm": [
+    203327.631,
+    8238260.653
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona01_PB05_Rede_TR005",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 23.93
+    },
+    {
+     "trecho": "Zona01_PB05_Rede_TR006",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 40.75
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona01_PB02_Rede_TR055",
+     "afastamento_do_no_m": [
+      0.529,
+      0.529
+     ],
+     "folga_entre_pontas_m": 0.029,
+     "angulo_graus": 179.4
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona01_PB02_Rede_TR055:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-012",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona02_PB07_Rede_DF-25",
+   "utm": [
+    202687.738,
+    8237812.48
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Rede_TR009",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 0.96
+    },
+    {
+     "trecho": "Zona02_PB07_Rede_TR011",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 2.77
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.635,
+      0.635
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-013",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona02_PB07_Rede_NÓ56.7",
+   "utm": [
+    202875.848,
+    8237618.658
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Rede_TR042",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 38.45
+    },
+    {
+     "trecho": "Zona02_PB07_Rede_TR049",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 26.3
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona02_PB07_Rede_TR039",
+     "afastamento_do_no_m": [
+      0.553,
+      0.553
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.8
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona02_PB07_Rede_TR039:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona02_PB07_Rede_NÓ56.7 A Zona02_PB07_Rede_NÓ56.8; INCLUI 0,05 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ56.8: anel de ponta/toco)"
+    }
+   },
+   "id": "J-014",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona02_PB10_CH_MV-02",
+   "utm": [
+    202800.595,
+    8237432.535
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB10_Rede_TR004",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 14.46
+    },
+    {
+     "trecho": "Zona02_PB10_Rede_TR007",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 12.86
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 2 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.664,
+      0.664
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.8
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 4,
+     "capacidade": 2,
+     "sobra": 2,
+     "resumo": "2× LUVA 90, 1× LUVA DE CORRER 80, 1× MEDIDOR DE VAZÃO 80, 2× REDUÇÃO 160X90, 4× TOCO 80, 1× TUBO 80, 1× TUBO F/P L=0,35 M 80, 2× VÁLVULA GAVETA 80",
+     "outras_pontas": [
+      "Zona02_PB07_Adutora_TR004:ini",
+      "Zona02_PB10_Adutora_TR001:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "MV",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-015",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona03_PB05_Rede_DF-45",
+   "utm": [
+    203604.902,
+    8238088.212
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona03_PB05_Rede_TR002",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 6.81
+    },
+    {
+     "trecho": "Zona03_PB05_Rede_TR004",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 105.53
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.75,
+      0.75
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 180.0
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": "TRECHO DE Zona03_PB05_Rede_DF-45 A Zona03_PB05_Rede_NÓ54.8; INCLUI 4,06 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ54.8: anel de ponta/toco)"
+    }
+   },
+   "id": "J-016",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona03_PB05_Rede_NÓ56.2",
+   "utm": [
+    203152.791,
+    8238009.184
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona03_PB05_Rede_TR011",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 78.86
+    },
+    {
+     "trecho": "Zona03_PB05_Rede_TR017",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 54.6
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona03_PB05_Rede_TR015",
+     "afastamento_do_no_m": [
+      0.603,
+      0.603
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona03_PB05_Rede_TR015:ini"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-017",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona03_PB06_Rede_DF-34",
+   "utm": [
+    203905.733,
+    8238307.233
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona03_PB06_Rede_TR001",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 1.31
+    },
+    {
+     "trecho": "Zona03_PB06_Rede_TR003",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 125.95
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.516,
+      0.516
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.7
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-018",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona04_PB01_Rede_NÓ56.2",
+   "utm": [
+    203614.87,
+    8238862.304
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona04_PB01_Rede_TR002",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 53.76
+    },
+    {
+     "trecho": "Zona04_PB02_Rede_TR001",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 200.08
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      47,
+      0
+     ],
+     "linha_que_cruza": "Zona04_PB01_Rede_TR004",
+     "afastamento_do_no_m": [
+      0.502,
+      0.502
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.4
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona04_PB01_Rede_TR004:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-019",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona04_PB06_Rede_DF-35",
+   "utm": [
+    203803.893,
+    8238307.9
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona04_PB05_Rede_TR024",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 268.53
+    },
+    {
+     "trecho": "Zona04_PB06_Rede_TR003",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 7.02
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.524,
+      0.524
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-020",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona05_PB07_Rede_DF-43",
+   "utm": [
+    202901.008,
+    8237632.826
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB07_Rede_TR006",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 4.2
+    },
+    {
+     "trecho": "Zona05_PB07_Rede_TR008",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 105.75
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.57,
+      0.57
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.4
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": "TRECHO DE Zona05_PB07_Rede_DF-43 A Zona05_PB07_Rede_NÓ54.10; INCLUI 7,05 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ54.10: anel de ponta/toco)"
+    }
+   },
+   "id": "J-021",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona05_PB08_Rede_DF-21",
+   "utm": [
+    203604.96,
+    8237860.224
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB08_Rede_TR003",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 6.14
+    },
+    {
+     "trecho": "Zona05_PB08_Rede_TR004",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 37.79
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.753,
+      0.753
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.8
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-022",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona05_PB10_Rede_NÓ56.2",
+   "utm": [
+    202827.717,
+    8237415.277
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB10_Rede_TR003",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 109.1
+    },
+    {
+     "trecho": "Zona05_PB10_Rede_TR006",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 60.44
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona05_PB10_Rede_TR004",
+     "afastamento_do_no_m": [
+      0.565,
+      0.592
+     ],
+     "folga_entre_pontas_m": 0.175,
+     "angulo_graus": 180.0
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona05_PB10_Rede_TR004:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona05_PB07_Rede_NÓ56.1 A Zona05_PB10_Rede_NÓ56.2; INCLUI 0,18 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ56.2: anel de ponta/toco)"
+    }
+   },
+   "id": "J-023",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona06_PB09_Rede_DF-20",
+   "utm": [
+    204289.527,
+    8237493.397
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB09_Rede_TR001",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 8.53
+    },
+    {
+     "trecho": "Zona06_PB12_Rede_TR002",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 71.28
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.746,
+      0.76
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-024",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona07_PB15_Rede_DF-14",
+   "utm": [
+    203959.854,
+    8236750.654
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB15_Rede_TR021",
+     "lado": "ini",
+     "de": 90,
+     "extensao_m": 1.14
+    },
+    {
+     "trecho": "Zona07_PB15_Rede_TR027",
+     "lado": "fim",
+     "de": 90,
+     "extensao_m": 127.42
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.586,
+      0.586
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.3
+    },
+    "continuidade": {
+     "de": 90,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-025",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona07_PB15_Rede_DF-15",
+   "utm": [
+    204061.873,
+    8236806.546
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB15_Rede_TR013",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 87.9
+    },
+    {
+     "trecho": "Zona07_PB15_Rede_TR018",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 82.22
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.844,
+      0.844
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.7
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": "TRECHO DE Zona07_PB15_Rede_DF-15 A Zona07_PB15_Rede_NÓ54.4; INCLUI 4,00 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ54.4: anel de ponta/toco)"
+    }
+   },
+   "id": "J-026",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona07_PB17_Rede_NÓ56.2",
+   "utm": [
+    203772.832,
+    8236391.248
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB17_Rede_TR020",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 28.68
+    },
+    {
+     "trecho": "Zona07_PB18_Rede_TR045",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 101.37
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona07_PB17_Rede_TR018",
+     "afastamento_do_no_m": [
+      0.509,
+      0.501
+     ],
+     "folga_entre_pontas_m": 0.089,
+     "angulo_graus": 175.1
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona07_PB17_Rede_TR018:ini"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona07_PB17_Rede_NÓ56.2 A Zona07_PB18_Rede_NÓ56.1; INCLUI 0,25 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ56.2, NÓ56.1: anel de ponta/toco)"
+    }
+   },
+   "id": "J-027",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona09_PB14_CH_MV-07",
+   "utm": [
+    203525.246,
+    8236701.207
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB14_Rede_TR003",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 2.78
+    },
+    {
+     "trecho": "Zona09_PB14_Rede_TR032",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 5.6
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 2 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      3,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.68,
+      0.68
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 176.7
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 2,
+     "sobra": 0,
+     "resumo": "2× LUVA 90, 1× LUVA DE CORRER 80, 1× MEDIDOR DE VAZÃO 80, 2× REDUÇÃO 160X90, 4× TOCO 80, 1× TUBO 80, 1× TUBO F/P L=0,35 M 80, 2× VÁLVULA GAVETA 80",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "MV",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-028",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona09_PB14_CH_MV-09",
+   "utm": [
+    203512.577,
+    8236718.364
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB14_Rede_TR024",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 5.17
+    },
+    {
+     "trecho": "Zona09_PB14_Rede_TR027",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 7.61
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 2 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.767,
+      0.767
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 2,
+     "sobra": 0,
+     "resumo": "2× LUVA 90, 1× LUVA DE CORRER 80, 1× MEDIDOR DE VAZÃO 80, 2× REDUÇÃO 160X90, 4× TOCO 80, 1× TUBO 80, 1× TUBO F/P L=0,35 M 80, 2× VÁLVULA GAVETA 80",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "MV",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-029",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona09_PB14_Rede_NÓ57.5",
+   "utm": [
+    203489.109,
+    8236776.141
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB14_Rede_TR010",
+     "lado": "fim",
+     "de": 90,
+     "extensao_m": 47.36
+    },
+    {
+     "trecho": "Zona09_PB14_Rede_TR015",
+     "lado": "ini",
+     "de": 90,
+     "extensao_m": 38.6
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona09_PB14_Rede_TR014",
+     "afastamento_do_no_m": [
+      0.538,
+      0.538
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 170.3
+    },
+    "continuidade": {
+     "de": 90,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 90, 1× REDUÇÃO 90X63, 1× TÊ 90º 90",
+     "outras_pontas": [
+      "Zona09_PB14_Rede_TR014:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-030",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona10_PB11_Rede_DF-16",
+   "utm": [
+    203354.163,
+    8237364.666
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona10_PB11_Rede_TR001",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 133.29
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR009",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 307.77
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.667,
+      0.667
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": "TRECHO DE Zona10_PB11_Rede_NÓ1.2 A Zona10_PB11_Rede_DF-16; INCLUI 0,51 M DE TUBO DESENHADO NO PRÓPRIO NÓ (nó: anel de ponta/toco)"
+    }
+   },
+   "id": "J-031",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona10_PB14_CH_MV-10",
+   "utm": [
+    203494.632,
+    8236879.939
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona10_PB14_Rede_TR019",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 2.5
+    },
+    {
+     "trecho": "Zona10_PB14_Rede_TR020",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 10.38
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 2 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.574,
+      0.574
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.2
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 2,
+     "sobra": 0,
+     "resumo": "2× LUVA 90, 1× LUVA DE CORRER 80, 1× MEDIDOR DE VAZÃO 80, 2× REDUÇÃO 160X90, 4× TOCO 80, 1× TUBO 80, 1× TUBO F/P L=0,35 M 80, 2× VÁLVULA GAVETA 80",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "MV",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-032",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona10_PB14_Rede_NÓ56.3",
+   "utm": [
+    203477.88,
+    8237005.702
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona10_PB14_Rede_TR002",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 43.09
+    },
+    {
+     "trecho": "Zona10_PB14_Rede_TR007",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 49.3
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona10_PB14_Rede_TR005",
+     "afastamento_do_no_m": [
+      0.528,
+      0.516
+     ],
+     "folga_entre_pontas_m": 0.121,
+     "angulo_graus": 179.0
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona10_PB14_Rede_TR005:ini"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona10_PB14_Rede_NÓ56.5 A Zona10_PB14_Rede_NÓ56.3; INCLUI 0,12 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ56.3: anel de ponta/toco)"
+    }
+   },
+   "id": "J-033",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona10_PB14_Rede_NÓ56.5",
+   "utm": [
+    203494.88,
+    8236959.737
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona10_PB14_Rede_TR007",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 49.3
+    },
+    {
+     "trecho": "Zona10_PB14_Rede_TR011",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 37.08
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona10_PB14_Rede_TR008",
+     "afastamento_do_no_m": [
+      0.516,
+      0.516
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 177.6
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 160, 1× REDUÇÃO 160X63, 1× TÊ 90º 160",
+     "outras_pontas": [
+      "Zona10_PB14_Rede_TR008:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona10_PB14_Rede_NÓ56.5 A Zona10_PB14_Rede_NÓ56.3; INCLUI 0,12 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ56.3: anel de ponta/toco)"
+    }
+   },
+   "id": "J-034",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona11_PB22_Rede_DF-44",
+   "utm": [
+    203364.079,
+    8235960.971
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB22_Rede_TR018",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 26.11
+    },
+    {
+     "trecho": "Zona11_PB22_Rede_TR019",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 11.16
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.715,
+      0.715
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.8
+    },
+    "continuidade": {
+     "de": 63,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 3,
+     "sobra": -1,
+     "resumo": "2× LUVA 63, 0.71× TUBO 63, 1× TÊ 90º 63, 1× VÁLVULA GAVETA 50",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "DF",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-035",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona11_PB23_Rede_NÓ57.2",
+   "utm": [
+    204249.01,
+    8235951.051
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB23_Rede_TR054",
+     "lado": "fim",
+     "de": 90,
+     "extensao_m": 35.93
+    },
+    {
+     "trecho": "Zona11_PB23_Rede_TR063",
+     "lado": "ini",
+     "de": 90,
+     "extensao_m": 25.0
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.81,
+      0.81
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 180.0
+    },
+    "continuidade": {
+     "de": 90,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 90, 1× REDUÇÃO 90X63, 1× TÊ 90º 90",
+     "outras_pontas": [
+      "Zona11_PB23_Rede_TR056:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": null
+    }
+   },
+   "id": "J-036",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona11_PB23_Rede_NÓ57.3",
+   "utm": [
+    204358.739,
+    8236206.946
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB23_Rede_TR001",
+     "lado": "fim",
+     "de": 90,
+     "extensao_m": 41.47
+    },
+    {
+     "trecho": "Zona11_PB23_Rede_TR014",
+     "lado": "ini",
+     "de": 90,
+     "extensao_m": 35.03
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 3 ponta(s) e chegam 3: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": "Zona11_PB23_Rede_TR018",
+     "afastamento_do_no_m": [
+      0.569,
+      0.577
+     ],
+     "folga_entre_pontas_m": 0.086,
+     "angulo_graus": 159.5
+    },
+    "continuidade": {
+     "de": 90,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 3,
+     "capacidade": 3,
+     "sobra": 0,
+     "resumo": "1× LUVA 90, 1× REDUÇÃO 90X63, 1× TÊ 90º 90",
+     "outras_pontas": [
+      "Zona11_PB23_Rede_TR018:fim"
+     ]
+    },
+    "nome": {
+     "tipo_no": "NÓ",
+     "observacao_06_1": "TRECHO DE Zona11_PB18_Rede_NÓ57.3 A Zona11_PB23_Rede_NÓ57.3; INCLUI 0,09 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ57.3: anel de ponta/toco)"
+    }
+   },
+   "id": "J-037",
+   "revisao": null
+  },
+  {
+   "tipo": "CONEXAO",
+   "no": "Zona11_PB24_CH_VM-11.3",
+   "utm": [
+    204571.526,
+    8236000.546
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB24_Rede_TR031",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 309.25
+    },
+    {
+     "trecho": "Zona11_PB24_Rede_TR035",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 4.58
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "as peças do nó ligam 2 ponta(s) e chegam 2: sobra peça para este par, então é conexão (luva, redução, tê ou válvula)",
+   "sinais": {
+    "geometria": {
+     "arco": [
+      false,
+      false
+     ],
+     "giro_graus": [
+      0,
+      0
+     ],
+     "linha_que_cruza": null,
+     "afastamento_do_no_m": [
+      0.778,
+      0.778
+     ],
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": 160,
+     "material": "PEAD",
+     "metodologias": [
+      "VCA"
+     ]
+    },
+    "pecas": {
+     "pontas_no_no": 2,
+     "capacidade": 2,
+     "sobra": 0,
+     "resumo": "2× LUVA 160, 1× VÁLVULA GAVETA 150",
+     "outras_pontas": []
+    },
+    "nome": {
+     "tipo_no": "VM",
+     "observacao_06_1": "TRECHO DE Zona11_PB24_Rede_NÓ60.2 A Zona11_PB24_CH_VM-11.3; INCLUI 0,36 M DE TUBO DESENHADO NO PRÓPRIO NÓ (NÓ60.2: anel de ponta/toco)"
+    }
+   },
+   "id": "J-038",
+   "revisao": null
+  },
+  {
+   "tipo": "LIMITE_MND",
+   "no": "LIMITE DA TRAVESSIA MND",
+   "utm": [
+    202707.734,
+    8237982.998
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB04_Rede_TR036",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 17.95
+    },
+    {
+     "trecho": "Zona02_PB04_Rede_TR044",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 205.73
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 223,68 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.4
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "MND",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona02",
+      "Zona02"
+     ]
+    },
+    "nome": {
+     "trecho_original": "223,68 m"
+    }
+   },
+   "id": "J-039",
+   "revisao": null
+  },
+  {
+   "tipo": "LIMITE_MND",
+   "no": "LIMITE DA TRAVESSIA MND",
+   "utm": [
+    202648.89,
+    8236798.73
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB13_Rede_TR011",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 13.16
+    },
+    {
+     "trecho": "Zona09_PB13_Rede_TR012",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 110.83
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 123,99 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 177.8
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "MND"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona09"
+     ]
+    },
+    "nome": {
+     "trecho_original": "123,99 m"
+    }
+   },
+   "id": "J-040",
+   "revisao": null
+  },
+  {
+   "tipo": "LIMITE_MND",
+   "no": "LIMITE DA TRAVESSIA MND",
+   "utm": [
+    202679.856,
+    8236528.82
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB16_Rede_TR002",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 54.36
+    },
+    {
+     "trecho": "Zona09_PB16_Rede_TR003",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 114.0
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 434,19 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.1
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "MND",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona09"
+     ]
+    },
+    "nome": {
+     "trecho_original": "434,19 m"
+    }
+   },
+   "id": "J-041",
+   "revisao": null
+  },
+  {
+   "tipo": "LIMITE_MND",
+   "no": "LIMITE DA TRAVESSIA MND",
+   "utm": [
+    202625.539,
+    8236531.024
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB16_Rede_TR002",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 54.36
+    },
+    {
+     "trecho": "Zona09_PB16_Rede_TR011",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 265.83
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 434,19 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 145.0
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "MND",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona09"
+     ]
+    },
+    "nome": {
+     "trecho_original": "434,19 m"
+    }
+   },
+   "id": "J-042",
+   "revisao": null
+  },
+  {
+   "tipo": "LIMITE_MND",
+   "no": "LIMITE DA TRAVESSIA MND",
+   "utm": [
+    202693.298,
+    8236280.0
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB16_Rede_TR021",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 108.12
+    },
+    {
+     "trecho": "Zona09_PB16_Rede_TR024",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 293.92
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 402,04 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 180.0
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "MND",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona09"
+     ]
+    },
+    "nome": {
+     "trecho_original": "402,04 m"
+    }
+   },
+   "id": "J-043",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203197.466,
+    8238084.798
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona01_PB05_Rede_TR015",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 80.35
+    },
+    {
+     "trecho": "Zona02_PB05_Rede_TR001",
+     "lado": "ini",
+     "de": 225,
+     "extensao_m": 8.61
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 88,97 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 177.8
+    },
+    "continuidade": {
+     "de": [
+      225,
+      225
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona01",
+      "Zona02"
+     ]
+    },
+    "nome": {
+     "trecho_original": "88,97 m"
+    }
+   },
+   "id": "J-044",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203033.978,
+    8237873.778
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB05_Rede_TR005",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 230.28
+    },
+    {
+     "trecho": "Zona03_PB07_Rede_TR003",
+     "lado": "ini",
+     "de": 225,
+     "extensao_m": 14.98
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 326,73 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 177.1
+    },
+    "continuidade": {
+     "de": [
+      225,
+      225
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona02",
+      "Zona03"
+     ]
+    },
+    "nome": {
+     "trecho_original": "326,73 m"
+    }
+   },
+   "id": "J-045",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203023.661,
+    8237862.936
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Rede_TR005",
+     "lado": "ini",
+     "de": 225,
+     "extensao_m": 35.68
+    },
+    {
+     "trecho": "Zona03_PB07_Rede_TR003",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 14.98
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 326,73 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 177.9
+    },
+    "continuidade": {
+     "de": [
+      225,
+      225
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona02",
+      "Zona03"
+     ]
+    },
+    "nome": {
+     "trecho_original": "326,73 m"
+    }
+   },
+   "id": "J-046",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203003.526,
+    8237833.61
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Rede_TR005",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 35.68
+    },
+    {
+     "trecho": "Zona03_PB07_Rede_TR006",
+     "lado": "ini",
+     "de": 225,
+     "extensao_m": 11.41
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 326,73 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.2
+    },
+    "continuidade": {
+     "de": [
+      225,
+      225
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona02",
+      "Zona03"
+     ]
+    },
+    "nome": {
+     "trecho_original": "326,73 m"
+    }
+   },
+   "id": "J-047",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    202997.869,
+    8237823.706
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Rede_TR012",
+     "lado": "ini",
+     "de": 225,
+     "extensao_m": 34.38
+    },
+    {
+     "trecho": "Zona03_PB07_Rede_TR006",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 11.41
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 326,73 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 173.6
+    },
+    "continuidade": {
+     "de": [
+      225,
+      225
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona02",
+      "Zona03"
+     ]
+    },
+    "nome": {
+     "trecho_original": "326,73 m"
+    }
+   },
+   "id": "J-048",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    202981.781,
+    8237783.63
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Rede_TR026",
+     "lado": "fim",
+     "de": 250,
+     "extensao_m": 94.91
+    },
+    {
+     "trecho": "Zona03_PB07_Rede_TR001",
+     "lado": "ini",
+     "de": 250,
+     "extensao_m": 366.89
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 461,80 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": [
+      250,
+      250
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona02",
+      "Zona03"
+     ]
+    },
+    "nome": {
+     "trecho_original": "461,80 m"
+    }
+   },
+   "id": "J-049",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    202926.123,
+    8237692.588
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Rede_TR033",
+     "lado": "fim",
+     "de": 250,
+     "extensao_m": 3.31
+    },
+    {
+     "trecho": "Zona05_PB07_Rede_TR016",
+     "lado": "ini",
+     "de": 250,
+     "extensao_m": 379.18
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 412,13 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.4
+    },
+    "continuidade": {
+     "de": [
+      250,
+      250
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona02",
+      "Zona05"
+     ]
+    },
+    "nome": {
+     "trecho_original": "412,13 m"
+    }
+   },
+   "id": "J-050",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    202809.671,
+    8237425.037
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB10_Adutora_TR001",
+     "lado": "ini",
+     "de": 280,
+     "extensao_m": 11.6
+    },
+    {
+     "trecho": "Zona08_PB10_Adutora_TR001",
+     "lado": "fim",
+     "de": 280,
+     "extensao_m": 10.66
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 22,27 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 180.0
+    },
+    "continuidade": {
+     "de": [
+      280,
+      280
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": "22,27 m"
+    }
+   },
+   "id": "J-051",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203079.037,
+    8237681.381
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona03_PB07_Rede_TR022",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 122.85
+    },
+    {
+     "trecho": "Zona05_PB07_Rede_TR003",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 40.61
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 332,12 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.4
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona03",
+      "Zona05"
+     ]
+    },
+    "nome": {
+     "trecho_original": "332,12 m"
+    }
+   },
+   "id": "J-052",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203119.169,
+    8237675.312
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona03_PB08_Rede_TR036",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 168.66
+    },
+    {
+     "trecho": "Zona05_PB07_Rede_TR003",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 40.61
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 332,12 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 174.2
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona03",
+      "Zona05"
+     ]
+    },
+    "nome": {
+     "trecho_original": "332,12 m"
+    }
+   },
+   "id": "J-053",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203545.244,
+    8237622.061
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona03_PB08_Rede_TR041",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 3.59
+    },
+    {
+     "trecho": "Zona05_PB08_Rede_TR027",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 40.4
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 43,98 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 176.3
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona03",
+      "Zona05"
+     ]
+    },
+    "nome": {
+     "trecho_original": "43,98 m"
+    }
+   },
+   "id": "J-054",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    202859.501,
+    8237376.551
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB07_Rede_TR016",
+     "lado": "fim",
+     "de": 250,
+     "extensao_m": 379.18
+    },
+    {
+     "trecho": "Zona08_PB10_Rede_TR004",
+     "lado": "ini",
+     "de": 250,
+     "extensao_m": 6.74
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 412,13 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.5
+    },
+    "continuidade": {
+     "de": [
+      250,
+      250
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona05",
+      "Zona08"
+     ]
+    },
+    "nome": {
+     "trecho_original": "412,13 m"
+    }
+   },
+   "id": "J-055",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203267.706,
+    8237395.831
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB08_Rede_TR046",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 281.84
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR004",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 149.69
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 427,48 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.6
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona05",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "427,48 m"
+    }
+   },
+   "id": "J-056",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    202864.128,
+    8237371.645
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB10_Rede_TR008",
+     "lado": "ini",
+     "de": 250,
+     "extensao_m": 22.9
+    },
+    {
+     "trecho": "Zona08_PB10_Rede_TR004",
+     "lado": "fim",
+     "de": 250,
+     "extensao_m": 6.74
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 412,13 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.2
+    },
+    "continuidade": {
+     "de": [
+      250,
+      250
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona05",
+      "Zona08"
+     ]
+    },
+    "nome": {
+     "trecho_original": "412,13 m"
+    }
+   },
+   "id": "J-057",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    202888.661,
+    8237349.941
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB10_Rede_TR012",
+     "lado": "fim",
+     "de": 250,
+     "extensao_m": 4.94
+    },
+    {
+     "trecho": "Zona10_PB10_Rede_TR005",
+     "lado": "ini",
+     "de": 250,
+     "extensao_m": 19.38
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 24,33 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.0
+    },
+    "continuidade": {
+     "de": [
+      250,
+      250
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona05",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "24,33 m"
+    }
+   },
+   "id": "J-058",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203220.061,
+    8237403.308
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB11_Rede_TR006",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 75.04
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR002",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 69.1
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 140,20 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.7
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona05",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "140,20 m"
+    }
+   },
+   "id": "J-059",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203633.214,
+    8237227.852
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona05_PB11_Rede_TR026",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 3.07
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR058",
+     "lado": "ini",
+     "de": 225,
+     "extensao_m": 332.49
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 534,48 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 132.3
+    },
+    "continuidade": {
+     "de": [
+      225,
+      225
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona05",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "534,48 m"
+    }
+   },
+   "id": "J-060",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    204289.896,
+    8236989.623
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB12_Adutora_TR002",
+     "lado": "ini",
+     "de": 315,
+     "extensao_m": 419.47
+    },
+    {
+     "trecho": "Zona07_PB15_Adutora_TR001",
+     "lado": "fim",
+     "de": 315,
+     "extensao_m": 296.99
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 716,45 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 177.0
+    },
+    "continuidade": {
+     "de": [
+      315,
+      315
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": "716,45 m"
+    }
+   },
+   "id": "J-061",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203678.306,
+    8236908.896
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB14_Rede_TR007",
+     "lado": "ini",
+     "de": 225,
+     "extensao_m": 198.93
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR058",
+     "lado": "fim",
+     "de": 225,
+     "extensao_m": 332.49
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 534,48 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 151.1
+    },
+    "continuidade": {
+     "de": [
+      225,
+      225
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "534,48 m"
+    }
+   },
+   "id": "J-062",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203768.004,
+    8236641.592
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB14_Rede_TR025",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 182.62
+    },
+    {
+     "trecho": "Zona07_PB18_Rede_TR006",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 3.45
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 251,66 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 160.4
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": "251,66 m"
+    }
+   },
+   "id": "J-063",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    204226.825,
+    8237002.348
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB15_Rede_TR014",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 21.61
+    },
+    {
+     "trecho": "Zona07_PB15_Rede_TR002",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 56.33
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 77,94 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": "77,94 m"
+    }
+   },
+   "id": "J-064",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203905.324,
+    8236711.675
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB15_Rede_TR030",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 67.76
+    },
+    {
+     "trecho": "Zona07_PB15_Rede_TR037",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 62.84
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 130,60 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.1
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": "130,60 m"
+    }
+   },
+   "id": "J-065",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203770.326,
+    8236639.039
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB18_Rede_TR001",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 28.95
+    },
+    {
+     "trecho": "Zona07_PB18_Rede_TR006",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 3.45
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 251,66 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.7
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": "251,66 m"
+    }
+   },
+   "id": "J-066",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203790.691,
+    8236625.843
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB18_Rede_TR001",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 28.95
+    },
+    {
+     "trecho": "Zona07_PB18_Rede_TR008",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 36.64
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 251,66 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 150.9
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": "251,66 m"
+    }
+   },
+   "id": "J-067",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203521.453,
+    8236693.335
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB17_Adutora_TR001",
+     "lado": "ini",
+     "de": 500,
+     "extensao_m": 539.54
+    },
+    {
+     "trecho": "Zona09_PB14_Adutora_TR004",
+     "lado": "fim",
+     "de": 500,
+     "extensao_m": 18.96
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 571,48 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.3
+    },
+    "continuidade": {
+     "de": [
+      500,
+      500
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": "571,48 m"
+    }
+   },
+   "id": "J-068",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203797.961,
+    8236281.073
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB17_Adutora_TR001",
+     "lado": "fim",
+     "de": 500,
+     "extensao_m": 539.54
+    },
+    {
+     "trecho": "Zona11_PB17_Adutora_TR001",
+     "lado": "ini",
+     "de": 500,
+     "extensao_m": 13.13
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 571,48 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 176.3
+    },
+    "continuidade": {
+     "de": [
+      500,
+      500
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": "571,48 m"
+    }
+   },
+   "id": "J-069",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203803.711,
+    8236279.579
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB18_Adutora_TR001",
+     "lado": "fim",
+     "de": 400,
+     "extensao_m": 593.72
+    },
+    {
+     "trecho": "Zona11_PB17_Adutora_TR002",
+     "lado": "ini",
+     "de": 400,
+     "extensao_m": 15.21
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 608,92 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 180.0
+    },
+    "continuidade": {
+     "de": [
+      400,
+      400
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": "608,92 m"
+    }
+   },
+   "id": "J-070",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203163.54,
+    8237138.645
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB11_Rede_TR001",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 46.56
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR035",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 17.05
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 540,44 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 167.5
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "540,44 m"
+    }
+   },
+   "id": "J-071",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203206.269,
+    8237120.704
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB11_Rede_TR001",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 46.56
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR052",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 111.62
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 540,44 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "540,44 m"
+    }
+   },
+   "id": "J-072",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203316.544,
+    8237108.663
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB11_Rede_TR004",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 41.55
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR052",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 111.62
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 540,44 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.8
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "540,44 m"
+    }
+   },
+   "id": "J-073",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203358.088,
+    8237108.166
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB11_Rede_TR004",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 41.55
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR054",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 90.23
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 540,44 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.9
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "540,44 m"
+    }
+   },
+   "id": "J-074",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203434.988,
+    8237076.942
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB11_Rede_TR008",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 37.71
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR054",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 90.23
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 540,44 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 178.4
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "540,44 m"
+    }
+   },
+   "id": "J-075",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203454.517,
+    8237044.683
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB11_Rede_TR008",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 37.71
+    },
+    {
+     "trecho": "Zona10_PB14_Rede_TR001",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 43.53
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 540,44 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.4
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "540,44 m"
+    }
+   },
+   "id": "J-076",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203518.352,
+    8236726.58
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB14_Adutora_TR001",
+     "lado": "ini",
+     "de": 355,
+     "extensao_m": 13.65
+    },
+    {
+     "trecho": "Zona10_PB14_Adutora_TR002",
+     "lado": "fim",
+     "de": 355,
+     "extensao_m": 132.17
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 145,82 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 165.2
+    },
+    "continuidade": {
+     "de": [
+      355,
+      355
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": "145,82 m"
+    }
+   },
+   "id": "J-077",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203474.05,
+    8237005.837
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB14_Rede_TR002",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 6.78
+    },
+    {
+     "trecho": "Zona10_PB14_Rede_TR001",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 43.53
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 540,44 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.7
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "540,44 m"
+    }
+   },
+   "id": "J-078",
+   "revisao": null
+  },
+  {
+   "tipo": "DIVISA_ZONA",
+   "no": "DIVISA DE ZONA",
+   "utm": [
+    203476.872,
+    8236999.667
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB14_Rede_TR002",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 6.78
+    },
+    {
+     "trecho": "Zona10_PB14_Rede_TR015",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 145.41
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 dividiu o tubo na divisa de zona: muda só a frente (trecho original entre pontos da rede: 540,44 m)",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0,
+     "angulo_graus": 179.8
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": "540,44 m"
+    }
+   },
+   "id": "J-079",
+   "revisao": null
+  },
+  {
+   "tipo": "JUNCAO_SEM_NO",
+   "no": "JUNÇÃO SEM NÓ NA TABELA",
+   "utm": [
+    203303.269,
+    8238215.787
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona04_PB05_Rede_TR020",
+     "lado": "fim",
+     "de": 160,
+     "extensao_m": 72.98
+    },
+    {
+     "trecho": "Zona04_PB05_Rede_TR027",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 27.04
+    },
+    {
+     "trecho": "Zona04_PB05_Rede_TR031",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 117.53
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "3 tubos se encontram sem nó na 06.2 (DE 160, 160, 63): é um tê que falta na tabela de conexões, não emenda de um tubo só",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0
+    }
+   },
+   "id": "J-080",
+   "revisao": null
+  },
+  {
+   "tipo": "JUNCAO_SEM_NO",
+   "no": "JUNÇÃO SEM NÓ NA TABELA",
+   "utm": [
+    203972.893,
+    8237303.33
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB12_Rede_TR017",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 63.57
+    },
+    {
+     "trecho": "Zona06_PB12_Rede_TR022",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 38.8
+    },
+    {
+     "trecho": "Zona06_PB12_Rede_TR024",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 18.85
+    }
+   ],
+   "decisao": "NAO_JUNTAR",
+   "motivo": "3 tubos se encontram sem nó na 06.2 (DE 63, 63, 63): é um tê que falta na tabela de conexões, não emenda de um tubo só",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.0
+    }
+   },
+   "id": "J-081",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202903.517,
+    8237657.481
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Adutora_TR001",
+     "lado": "ini",
+     "de": 280,
+     "extensao_m": 157.36
+    },
+    {
+     "trecho": "Zona02_PB07_Adutora_TR002",
+     "lado": "fim",
+     "de": 280,
+     "extensao_m": 9.11
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,02 m uma da outra e a linha segue (180°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.016,
+     "angulo_graus": 179.7
+    },
+    "continuidade": {
+     "de": [
+      280,
+      280
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-082",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202899.113,
+    8237649.402
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Adutora_TR002",
+     "lado": "ini",
+     "de": 280,
+     "extensao_m": 9.11
+    },
+    {
+     "trecho": "Zona02_PB07_Adutora_TR003",
+     "lado": "fim",
+     "de": 280,
+     "extensao_m": 38.44
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,17 m uma da outra e a linha segue (175°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.167,
+     "angulo_graus": 175.1
+    },
+    "continuidade": {
+     "de": [
+      280,
+      280
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-083",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202877.489,
+    8237617.515
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Adutora_TR003",
+     "lado": "ini",
+     "de": 280,
+     "extensao_m": 38.44
+    },
+    {
+     "trecho": "Zona02_PB07_Adutora_TR004",
+     "lado": "fim",
+     "de": 280,
+     "extensao_m": 217.08
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,01 m uma da outra e a linha segue (180°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.009,
+     "angulo_graus": 179.7
+    },
+    "continuidade": {
+     "de": [
+      280,
+      280
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "ADUTORA",
+      "ADUTORA"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-084",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202577.144,
+    8237603.302
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona02_PB07_Rede_TR048",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 21.43
+    },
+    {
+     "trecho": "Zona02_PB07_Rede_TR051",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 60.2
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,01 m uma da outra e a linha segue (177°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.014,
+     "angulo_graus": 176.9
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona02",
+      "Zona02"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-085",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203793.836,
+    8238191.37
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona03_PB06_Rede_TR002",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 161.66
+    },
+    {
+     "trecho": "Zona03_PB06_Rede_TR006",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 86.24
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,71 m uma da outra e a linha segue (173°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.712,
+     "angulo_graus": 173.1
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona03",
+      "Zona03"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-086",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203759.488,
+    8238591.577
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona04_PB03_Rede_TR013",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 48.17
+    },
+    {
+     "trecho": "Zona04_PB03_Rede_TR017",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 250.74
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,36 m uma da outra e a linha segue (178°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.361,
+     "angulo_graus": 177.8
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona04",
+      "Zona04"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-087",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203882.315,
+    8237021.042
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB12_Rede_TR046",
+     "lado": "ini",
+     "de": 110,
+     "extensao_m": 350.83
+    },
+    {
+     "trecho": "Zona06_PB15_Rede_TR011",
+     "lado": "fim",
+     "de": 110,
+     "extensao_m": 12.87
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,01 m uma da outra e a linha segue (180°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.013,
+     "angulo_graus": 179.7
+    },
+    "continuidade": {
+     "de": [
+      110,
+      110
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona06"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-088",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203597.142,
+    8236823.244
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB14_Rede_TR010",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 2.92
+    },
+    {
+     "trecho": "Zona06_PB14_Rede_TR014",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 70.42
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,07 m uma da outra e a linha segue (167°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.069,
+     "angulo_graus": 166.9
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona06"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-089",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203643.596,
+    8236773.706
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB14_Rede_TR014",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 70.42
+    },
+    {
+     "trecho": "Zona06_PB14_Rede_TR025",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 182.62
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,03 m uma da outra e a linha segue (179°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.025,
+     "angulo_graus": 179.3
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona06"
+     ]
+    },
+    "nome": {
+     "trecho_original": "251,66 m"
+    }
+   },
+   "id": "J-090",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203871.434,
+    8237014.191
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona06_PB15_Rede_TR011",
+     "lado": "ini",
+     "de": 110,
+     "extensao_m": 12.87
+    },
+    {
+     "trecho": "Zona06_PB15_Rede_TR015",
+     "lado": "fim",
+     "de": 110,
+     "extensao_m": 103.31
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,03 m uma da outra e a linha segue (179°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.028,
+     "angulo_graus": 179.2
+    },
+    "continuidade": {
+     "de": [
+      110,
+      110
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona06",
+      "Zona06"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-091",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203676.966,
+    8236684.493
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB14_Rede_TR008",
+     "lado": "fim",
+     "de": 90,
+     "extensao_m": 6.66
+    },
+    {
+     "trecho": "Zona07_PB14_Rede_TR011",
+     "lado": "fim",
+     "de": 90,
+     "extensao_m": 55.2
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,02 m uma da outra e a linha segue (173°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.017,
+     "angulo_graus": 173.1
+    },
+    "continuidade": {
+     "de": [
+      90,
+      90
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-092",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203632.306,
+    8236652.245
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB14_Rede_TR011",
+     "lado": "ini",
+     "de": 90,
+     "extensao_m": 55.2
+    },
+    {
+     "trecho": "Zona07_PB14_Rede_TR013",
+     "lado": "ini",
+     "de": 90,
+     "extensao_m": 83.86
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,01 m uma da outra e a linha segue (180°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.009,
+     "angulo_graus": 180.0
+    },
+    "continuidade": {
+     "de": [
+      90,
+      90
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-093",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    204281.345,
+    8236988.248
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB15_Rede_TR002",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 56.33
+    },
+    {
+     "trecho": "Zona07_PB15_Rede_TR004",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 4.05
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,05 m uma da outra e a linha segue (152°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.046,
+     "angulo_graus": 151.7
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": "77,94 m"
+    }
+   },
+   "id": "J-094",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    204041.639,
+    8236721.756
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB15_Rede_TR019",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 121.81
+    },
+    {
+     "trecho": "Zona07_PB15_Rede_TR026",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 10.69
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,02 m uma da outra e a linha segue (177°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.019,
+     "angulo_graus": 176.9
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-095",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203669.269,
+    8236580.747
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB17_Rede_TR001",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 32.81
+    },
+    {
+     "trecho": "Zona07_PB17_Rede_TR005",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 33.65
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,13 m uma da outra e a linha segue (175°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.134,
+     "angulo_graus": 174.9
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-096",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203713.63,
+    8236421.918
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB17_Rede_TR015",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 108.87
+    },
+    {
+     "trecho": "Zona07_PB17_Rede_TR017",
+     "lado": "ini",
+     "de": 160,
+     "extensao_m": 38.27
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,11 m uma da outra e a linha segue (174°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.106,
+     "angulo_graus": 174.1
+    },
+    "continuidade": {
+     "de": [
+      160,
+      160
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-097",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    204389.489,
+    8236615.615
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB18_Rede_TR004",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 91.46
+    },
+    {
+     "trecho": "Zona07_PB19_Rede_TR019",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 65.48
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,00 m uma da outra e a linha segue (158°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.003,
+     "angulo_graus": 158.4
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-098",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    204442.569,
+    8236608.933
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB19_Rede_TR016",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 26.18
+    },
+    {
+     "trecho": "Zona07_PB19_Rede_TR019",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 65.48
+    }
+   ],
+   "decisao": "DUVIDA",
+   "motivo": "pontas sem nó a 1,00 m uma da outra, ângulo de 141°: pode ser emenda do mesmo tubo, vão no desenho ou peça que falta na 06.2",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 1.001,
+     "angulo_graus": 141.1
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-099",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    204959.431,
+    8236618.805
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona07_PB19_Rede_TR017",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 6.0
+    },
+    {
+     "trecho": "Zona07_PB19_Rede_TR018",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 1.99
+    }
+   ],
+   "decisao": "DUVIDA",
+   "motivo": "pontas sem nó a 0,17 m uma da outra, ângulo de 50°: pode ser emenda do mesmo tubo, vão no desenho ou peça que falta na 06.2",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.171,
+     "angulo_graus": 49.8
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona07",
+      "Zona07"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-100",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202836.65,
+    8237272.151
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona08_PB10_Rede_TR015",
+     "lado": "ini",
+     "de": 90,
+     "extensao_m": 97.96
+    },
+    {
+     "trecho": "Zona08_PB10_Rede_TR018",
+     "lado": "fim",
+     "de": 90,
+     "extensao_m": 114.53
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,01 m uma da outra e a linha segue (179°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.01,
+     "angulo_graus": 178.7
+    },
+    "continuidade": {
+     "de": [
+      90,
+      90
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona08",
+      "Zona08"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-101",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202898.774,
+    8237206.298
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona08_PB10_Rede_TR024",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 23.34
+    },
+    {
+     "trecho": "Zona08_PB10_Rede_TR032",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 113.62
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,02 m uma da outra e a linha segue (179°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.016,
+     "angulo_graus": 179.0
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona08",
+      "Zona08"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-102",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202661.322,
+    8236801.12
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB13_Rede_TR010",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 202.76
+    },
+    {
+     "trecho": "Zona09_PB13_Rede_TR011",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 13.16
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 1,00 m uma da outra e a linha segue (179°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.999,
+     "angulo_graus": 179.1
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona09"
+     ]
+    },
+    "nome": {
+     "trecho_original": "123,99 m"
+    }
+   },
+   "id": "J-103",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202793.816,
+    8236525.303
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB16_Rede_TR003",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 114.0
+    },
+    {
+     "trecho": "Zona09_PB16_Rede_TR004",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 133.51
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,04 m uma da outra e a linha segue (178°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.036,
+     "angulo_graus": 178.5
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona09"
+     ]
+    },
+    "nome": {
+     "trecho_original": "434,19 m"
+    }
+   },
+   "id": "J-104",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    202789.364,
+    8236240.475
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB16_Rede_TR026",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 219.59
+    },
+    {
+     "trecho": "Zona09_PB16_Rede_TR028",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 114.81
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,00 m uma da outra e a linha segue (180°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.002,
+     "angulo_graus": 180.0
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona09"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-105",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203433.65,
+    8236141.487
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona09_PB22_Rede_TR002",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 32.58
+    },
+    {
+     "trecho": "Zona09_PB22_Rede_TR004",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 161.54
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,02 m uma da outra e a linha segue (178°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.024,
+     "angulo_graus": 178.4
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona09",
+      "Zona09"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-106",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203629.576,
+    8237111.821
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona10_PB11_Rede_TR039",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 120.93
+    },
+    {
+     "trecho": "Zona10_PB11_Rede_TR048",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 10.59
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,09 m uma da outra e a linha segue (161°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.09,
+     "angulo_graus": 161.2
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona10",
+      "Zona10"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-107",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    204172.987,
+    8236317.785
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB18_Rede_TR014",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 149.68
+    },
+    {
+     "trecho": "Zona11_PB18_Rede_TR027",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 115.61
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,01 m uma da outra e a linha segue (179°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.01,
+     "angulo_graus": 178.7
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona11",
+      "Zona11"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-108",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    204851.805,
+    8236631.899
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB19_Rede_TR001",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 12.47
+    },
+    {
+     "trecho": "Zona11_PB19_Rede_TR003",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 36.62
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,05 m uma da outra e a linha segue (178°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.048,
+     "angulo_graus": 178.3
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona11",
+      "Zona11"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-109",
+   "revisao": null
+  },
+  {
+   "tipo": "PONTA_SEM_NO",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "utm": [
+    203459.764,
+    8235904.68
+   ],
+   "pontas": [
+    {
+     "trecho": "Zona11_PB22_Rede_TR017",
+     "lado": "ini",
+     "de": 63,
+     "extensao_m": 173.68
+    },
+    {
+     "trecho": "Zona11_PB22_Rede_TR026",
+     "lado": "fim",
+     "de": 63,
+     "extensao_m": 68.36
+    }
+   ],
+   "decisao": "JUNTAR",
+   "motivo": "a 06.1 cortou o tubo sem nó: as pontas estão a 0,06 m uma da outra e a linha segue (149°); nas pranchas o tubo é contínuo",
+   "sinais": {
+    "geometria": {
+     "folga_entre_pontas_m": 0.064,
+     "angulo_graus": 148.9
+    },
+    "continuidade": {
+     "de": [
+      63,
+      63
+     ],
+     "metodologias": [
+      "VCA",
+      "VCA"
+     ],
+     "frentes": [
+      "Zona11",
+      "Zona11"
+     ]
+    },
+    "nome": {
+     "trecho_original": null
+    }
+   },
+   "id": "J-110",
+   "revisao": null
+  }
+ ],
+ "pendencias": [
+  {
+   "tipo": "PECAS_A_MENOS",
+   "no": "Zona03_PB08_CH_VM-5.4",
+   "detalhe": "VM-5.4: chegam 3 pontas de tubo e as peças da 06.2 ligam 2 (2× LUVA 125, 1× VÁLVULA GAVETA 100); nenhum tubo passa reto afastado do nó"
+  },
+  {
+   "tipo": "TE_SEM_NO",
+   "no": "JUNÇÃO SEM NÓ NA TABELA",
+   "utm": [
+    203303.269,
+    8238215.787
+   ],
+   "detalhe": "3 tubos se encontram sem nó na 06.2: Zona04_PB05_Rede_TR020, Zona04_PB05_Rede_TR027, Zona04_PB05_Rede_TR031"
+  },
+  {
+   "tipo": "TE_SEM_NO",
+   "no": "JUNÇÃO SEM NÓ NA TABELA",
+   "utm": [
+    203972.893,
+    8237303.33
+   ],
+   "detalhe": "3 tubos se encontram sem nó na 06.2: Zona06_PB12_Rede_TR017, Zona06_PB12_Rede_TR022, Zona06_PB12_Rede_TR024"
+  },
+  {
+   "tipo": "PONTA_FORA_DO_NO",
+   "trecho": "Zona07_PB19_Rede_TR019",
+   "lado": "fim",
+   "no": "PONTA SEM NÓ NA TABELA",
+   "classe": "DESENHO_INCOMPLETO",
+   "detalhe": "o desenho para a 5,44 m da ponta que a 06.1 dá para o trecho"
+  },
+  {
+   "tipo": "PONTA_FORA_DO_NO",
+   "trecho": "Zona11_PB23_Rede_TR081",
+   "lado": "ini",
+   "no": "Zona11_PB23_Rede_NÓ11.1",
+   "classe": "LONGE_DO_NO",
+   "detalhe": "o desenho termina a 6,69 m de Zona11_PB23_Rede_NÓ11.1: longe demais para encaixar sem conferir a planta"
+  },
+  {
+   "tipo": "PONTA_FORA_DO_NO",
+   "trecho": "Zona11_PB25_Rede_TR001",
+   "lado": "fim",
+   "no": "Zona11_PB23_Rede_NÓ11.1",
+   "classe": "LONGE_DO_NO",
+   "detalhe": "o desenho termina a 15,07 m de Zona11_PB23_Rede_NÓ11.1: longe demais para encaixar sem conferir a planta"
+  },
+  {
+   "tipo": "PRANCHA_DESLOCADA",
+   "prancha": "PB25",
+   "detalhe": "o desenho vetorial da PB25 no HTML está deslocado 37,8 m dos nós (o quadro e a imagem estão certos); na visão geral aparecem cópias fora do lugar de Zona11_PB22_Rede_TR031, Zona11_PB22_Rede_TR032, Zona11_PB25_Rede_TR001"
+  },
+  {
+   "tipo": "TRECHO_ISOLADO",
+   "trecho": "Zona11_PB23_Adutora_TR006",
+   "detalhe": "Zona11_PB23_Adutora_TR006 (2.4 m, DE 500) não toca nenhum nó nem outro trecho (o mais perto está a 32,4 m)"
+  }
+ ]
+}
