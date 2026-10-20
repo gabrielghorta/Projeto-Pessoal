@@ -89,6 +89,80 @@ class Conversao(unittest.TestCase):
                 self.assertEqual(TP.para_linhas(self.F, ini, fim), [p])
 
 
+class TopologiaSintetica(unittest.TestCase):
+    """Banco mínimo em memória: anel de junções, sentido estável e arquivo de decisões editado com erro."""
+
+    def setUp(self):
+        self.raiz = tempfile.mkdtemp(prefix="topologia_sint_")
+        self.c = sqlite3.connect(":memory:")
+        self.c.execute("CREATE TABLE trechos (id TEXT, ponto TEXT, vigente INTEGER, no_ini TEXT, no_fim TEXT, extensao_m REAL, "
+                       "de_mm REAL, material TEXT, metodologia TEXT, frente_id TEXT)")
+        self.c.execute("CREATE TABLE atividades (nomenclatura TEXT, vigente INTEGER)")
+        self.c.executemany("INSERT INTO atividades VALUES (?, 1)", [("N0",), ("N9",), ("X",)])
+        self.antigo = TP.CONFIG, TP.CONFIG_PROGRAMA
+        TP.CONFIG = TP.CONFIG_PROGRAMA = os.path.join(self.raiz, "topologia.json")
+        TP._CACHE.clear()
+
+    def tearDown(self):
+        TP.CONFIG, TP.CONFIG_PROGRAMA = self.antigo
+        _limpar_caches()
+        self.c.close()
+        shutil.rmtree(self.raiz)
+
+    def trechos(self, linhas):
+        self.c.execute("DELETE FROM trechos")
+        self.c.executemany("INSERT INTO trechos VALUES (?, ?, 1, ?, ?, ?, 160, 'PEAD', 'VCA', 'Zona01')", linhas)
+        TP._CACHE.clear()
+
+    def decisoes(self, juncoes, texto=None):
+        with open(TP.CONFIG, "w", encoding="utf-8") as f:
+            f.write(texto if texto is not None else json.dumps({"juncoes": juncoes, "pendencias": []}))
+        TP._CACHE.clear()                                # gravações no mesmo segundo têm a mesma data de modificação
+
+    @staticmethod
+    def j(ident, a, la, b, lb, tipo="DIVISA_ZONA", no="DIVISA DE ZONA"):
+        return {"id": ident, "tipo": tipo, "no": no, "decisao": "JUNTAR",
+                "pontas": [{"trecho": a, "lado": la}, {"trecho": b, "lado": lb}]}
+
+    def test_anel_a_juncao_cortada_nao_conta_nem_vira_ponta_sem_conexao(self):
+        d = "DIVISA DE ZONA"
+        self.trechos([("TR-00001", "A", d, d, 10), ("TR-00002", "B", d, d, 20), ("TR-00003", "C", d, d, 30)])
+        self.decisoes([self.j("J1", "A", "fim", "B", "ini"), self.j("J2", "B", "fim", "C", "ini"),
+                       self.j("J3", "C", "fim", "A", "ini")])
+        fis = TP.trechos_fisicos(self.c)
+        self.assertEqual([(len(f["membros"]), len(f["juncoes"])) for f in fis], [(3, 2)])
+        self.assertEqual(TP.resumo(self.c)["juncoes_aplicadas"], 2)
+        tipos = [p["tipo"] for p in TP.pendencias(self.c)]
+        self.assertIn("CADEIA_EM_ANEL", tipos)
+        self.assertNotIn("PONTA_SEM_CONEXAO", tipos)
+
+    def test_sentido_nao_vira_com_mudanca_de_extensao(self):
+        jx = [self.j("J1", "A", "fim", "B", "fim", tipo="CRUZAMENTO", no="X")]
+        vistos = []
+        for ext_b in (49.99, 50.01):                     # B passa a ser o mais longo: nada muda no trecho físico
+            self.trechos([("TR-00001", "A", "N0", "X", 50.0), ("TR-00002", "B", "N9", "X", ext_b)])
+            self.decisoes(jx)
+            f = TP.fisico_do_trecho(self.c, "TR-00001")
+            vistos.append((f["id"], f["no_ini"], f["no_fim"], [(m["ponto"], m["sentido"]) for m in f["membros"]],
+                           TP.para_linhas(f, 0, 10)))
+        self.assertEqual(vistos[0], vistos[1])
+        self.assertEqual(vistos[0][:4], ("TF-00001", "N0", "N9", [("A", 1), ("B", -1)]))
+
+    def test_arquivo_com_erro_vale_a_ultima_versao_boa(self):
+        self.trechos([("TR-00001", "A", "N0", "X", 50.0), ("TR-00002", "B", "N9", "X", 40.0)])
+        self.decisoes([self.j("J1", "A", "fim", "B", "fim", tipo="CRUZAMENTO", no="X")])
+        self.assertEqual(len(TP.trechos_fisicos(self.c)), 1)
+        self.decisoes(None, texto='{"juncoes": [ {"id": "J1",, } ]')               # erro de digitação na revisão
+        self.assertEqual(len(TP.trechos_fisicos(self.c)), 1)                     # continua valendo a versão boa
+        self.assertEqual(TP.pontas_nao_conexao(), {("A", "fim"): "CRUZAMENTO", ("B", "fim"): "CRUZAMENTO"})
+        self.assertIn("ARQUIVO_DE_DECISOES_INVALIDO", [p["tipo"] for p in TP.pendencias(self.c)])
+        self.decisoes([{"id": "J2", "tipo": "CRUZAMENTO", "no": "X", "decisao": "JUNTAR", "pontas": [["A", "fim"], ["B", "fim"]]},
+                       "não é junção"])                                              # formato errado: recusa sem cair
+        self.assertEqual(len(TP.trechos_fisicos(self.c)), 2)
+        self.assertEqual(TP.pontas_nao_conexao(), {})
+        self.assertIn("DECISAO_DESATUALIZADA", [p["tipo"] for p in TP.pendencias(self.c)])
+
+
 @unittest.skipUnless(TEM_DADOS, "planilhas oficiais ou mapa REV02 ausentes")
 class TopologiaReal(unittest.TestCase):
     @classmethod
@@ -202,14 +276,42 @@ class TopologiaReal(unittest.TestCase):
             _limpar_caches()
 
     def test_sem_arquivo_de_decisoes_cada_linha_e_um_trecho_fisico(self):
-        antigo = TP.CONFIG
+        antigo = TP.CONFIG, TP.CONFIG_PROGRAMA
         try:
-            TP.CONFIG = os.path.join(self.raiz, "nao_existe.json")
+            TP.CONFIG = TP.CONFIG_PROGRAMA = os.path.join(self.raiz, "nao_existe.json")
             TP._CACHE.clear()
             fis = TP.trechos_fisicos(self.c)
             self.assertEqual(len(fis), 1436)
             self.assertTrue(all(len(f["membros"]) == 1 and f["membros"][0]["sentido"] == 1 for f in fis))
             self.assertIn("SEM_ARQUIVO_DE_DECISOES", [p["tipo"] for p in TP.pendencias(self.c)])
+        finally:
+            TP.CONFIG, TP.CONFIG_PROGRAMA = antigo
+            _limpar_caches()
+
+    def test_executavel_atualizado_sem_o_arquivo_usa_o_do_programa(self):
+        """Obra instalada antes desta versão: só o .exe foi trocado e config/ não tem topologia.json."""
+        antigo = TP.CONFIG
+        try:
+            TP.CONFIG = os.path.join(self.raiz, "pasta_da_obra_sem_o_arquivo.json")      # CONFIG_PROGRAMA: o do repositório
+            _limpar_caches()
+            self.assertEqual(TP.fisico_do_trecho(self.c, self.id[TR007])["extensao_m"], 295.98)
+            self.assertEqual(self.ponta(TR007, "fim")["acao"], "NAO_ENCAIXAR")             # o desenho não puxa o pulo
+        finally:
+            TP.CONFIG = antigo
+            _limpar_caches()
+
+    def test_arquivo_de_decisoes_com_erro_nao_derruba_o_mapa(self):
+        p = os.path.join(self.raiz, "topologia_com_erro.json")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write('{"juncoes": [{"id": "J-1",, "decisao": "JUNTAR"}]}')                  # vírgula sobrando
+        antigo = TP.CONFIG
+        try:
+            TP.CONFIG = p
+            _limpar_caches()
+            self.assertEqual(len(MG.geometria(MAPA)["trechos"]), 1436)                     # o traçado continua
+            self.assertEqual(len(TP.trechos_fisicos(self.c)), 1436)
+            self.assertIn("ARQUIVO_DE_DECISOES_INVALIDO", [x["tipo"] for x in TP.pendencias(self.c)])
+            self.assertEqual(server.r_topologia({}, self.c)["resumo"]["juncoes_aplicadas"], 0)
         finally:
             TP.CONFIG = antigo
             _limpar_caches()
@@ -233,9 +335,9 @@ class TopologiaReal(unittest.TestCase):
                     self.assertEqual(TP.para_fisico(f, meio[0]["trecho_id"], meio[0]["ini_m"], meio[0]["fim_m"]),
                                      (round(ini + 0.25, 3), round(fim - 0.25, 3)))
             self.assertAlmostEqual(pos, f["extensao_m"], places=2)
-            # a cadeia segue a 06.1 do membro mais longo
-            longo = min(f["membros"], key=lambda m: (-m["extensao_m"], m["trecho_id"]))
-            self.assertEqual(longo["sentido"], 1)
+            # a cadeia segue a 06.1 do membro de menor id, o mesmo que dá o id TF-
+            ancora = min(f["membros"], key=lambda m: m["trecho_id"])
+            self.assertEqual((ancora["sentido"], f["id"]), (1, "TF-" + ancora["trecho_id"].split("-")[1]))
 
     # ---------------------------------------------------------------- números do diagnóstico (fixados)
     def test_numeros_do_diagnostico(self):

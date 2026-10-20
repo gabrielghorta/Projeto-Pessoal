@@ -346,7 +346,7 @@ def cadeias(banco, cfg_caminho):
     try:
         fis = TP.trechos_fisicos(conn)
         pend = TP.pendencias(conn)
-        res = TP.resumo(conn)
+        res = dict(TP.resumo(conn), arquivo="config/topologia.json")   # não o caminho temporário desta rodada
     finally:
         conn.close()
         TP.CONFIG = antigo

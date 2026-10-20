@@ -12,7 +12,8 @@ O resultado fica em cache pela data de modificação do arquivo e por uma impres
 
 Conversão de metros (0 do trecho físico no seu no_ini; 0 de cada linha no no_ini da linha):
   sentido +1: local = [x − offset, y − offset];  sentido −1: local = [ext − (y − offset), ext − (x − offset)],
-  cortado em [0, ext] e arredondado ao mm. Sentido da cadeia: o da 06.1 no seu membro mais longo (empate: menor id).
+  cortado em [0, ext] e arredondado ao mm. Sentido da cadeia: o da 06.1 no membro de menor id, o mesmo que dá o id
+  TF-; id e sentido só mudam se os membros mudarem.
 
 * trechos_fisicos(conn) / fisico_do_trecho(conn, trecho_id) → trechos físicos (interface da Nota de Serviço)
 * para_linhas(fisico, ini_m, fim_m) / para_fisico(fisico, trecho_id, ini_m, fim_m) → conversão de intervalos
@@ -27,6 +28,9 @@ import threading
 import caminhos
 
 CONFIG = os.path.join(caminhos.PASTA, "config", "topologia.json")
+# o executável traz o arquivo embutido: numa obra em que só o .exe foi trocado, config/ já existia sem ele e vale o do
+# programa (rodando pelo código, é o mesmo arquivo)
+CONFIG_PROGRAMA = os.path.join(caminhos.RECURSOS, "config", "topologia.json")
 TOL_M = 1e-3                                   # o mesmo R.TOL_M: posições ao milímetro
 JUNTAR, NAO_JUNTAR, DUVIDA = "JUNTAR", "NAO_JUNTAR", "DUVIDA"
 # pontas que a 06.1 deixa sem nó (colunas BP/BQ): texto da 06.1 → tipo de junção
@@ -41,6 +45,7 @@ FRASE = {"DIVISA_ZONA": "na divisa de zona o tubo continua (muda só a frente)",
 
 _TRAVA = threading.Lock()
 _CACHE = {}
+_VALIDO = {}                                   # último arquivo de decisões lido sem erro, por caminho
 
 
 def _f(v):
@@ -51,17 +56,35 @@ def _mm(v):
     return round(v + 0.0, 3)
 
 
+def _arquivo(caminho=None):
+    if caminho:
+        return caminho
+    return CONFIG_PROGRAMA if not os.path.exists(CONFIG) and os.path.exists(CONFIG_PROGRAMA) else CONFIG
+
+
 def _ler_config(caminho=None):
-    """config/topologia.json (ou vazio, se não existir): {"juncoes": [...], "pendencias": [...], ...}."""
-    p = caminho or CONFIG
+    """config/topologia.json (ou vazio, se não existir): {"juncoes": [...], "pendencias": [...], ...}.
+    O arquivo é editado à mão: se não abrir (vírgula sobrando, lista trocada), vale a última versão boa lida neste
+    processo e a falha vira pendência (ARQUIVO_DE_DECISOES_INVALIDO); nada para de funcionar."""
+    p = _arquivo(caminho)
     if not os.path.exists(p):
         return {"juncoes": [], "pendencias": [], "ausente": True}
-    with open(p, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(p, encoding="utf-8") as f:
+            cfg = json.load(f)
+        if not isinstance(cfg, dict) or not isinstance(cfg.get("juncoes", []), list) \
+                or not isinstance(cfg.get("pendencias", []), list):
+            raise ValueError('o arquivo precisa ser um objeto com as listas "juncoes" e "pendencias"')
+    except (OSError, ValueError) as e:
+        out = dict(_VALIDO.get(os.path.abspath(p)) or {"juncoes": [], "pendencias": []})
+        out["invalido"] = str(e)
+        return out
+    _VALIDO[os.path.abspath(p)] = cfg
+    return cfg
 
 
 def _chave_config(caminho=None):
-    p = caminho or CONFIG
+    p = _arquivo(caminho)
     return (os.path.abspath(p), os.path.getmtime(p)) if os.path.exists(p) else (os.path.abspath(p), None)
 
 
@@ -90,11 +113,13 @@ def _nf(v):
 
 def _validar(juncao, por_ponto):
     """Pontas de uma junção JUNTAR conferidas com o banco: [(trecho, lado), (trecho, lado)] ou o motivo da recusa."""
-    pontas = juncao.get("pontas") or []
+    pontas = juncao.get("pontas") if isinstance(juncao.get("pontas"), list) else []
     if len(pontas) != 2:
         return None, "a junção JUNTAR precisa de exatamente duas pontas"
     out = []
     for p in pontas:
+        if not isinstance(p, dict):
+            return None, 'ponta escrita fora do formato {"trecho": ..., "lado": "ini" ou "fim"}'
         t = por_ponto.get(p.get("trecho"))
         lado = p.get("lado")
         if t is None:
@@ -120,9 +145,9 @@ def _validar(juncao, por_ponto):
 def _montar(trechos, cfg):
     por_ponto = {t["ponto"]: t for t in trechos}
     por_id = {t["id"]: t for t in trechos}
-    elo, avisos, usadas = {}, [], []
+    elo, avisos, usadas, cortadas = {}, [], [], set()
     for j in cfg.get("juncoes") or []:
-        if j.get("decisao") != JUNTAR:
+        if not isinstance(j, dict) or j.get("decisao") != JUNTAR:
             continue
         pontas, motivo = _validar(j, por_ponto)
         if motivo:
@@ -137,7 +162,6 @@ def _montar(trechos, cfg):
             continue
         elo[ka] = (kb, j)
         elo[kb] = (ka, j)
-        usadas.append(j)
     fisicos, de_trecho, vistos = [], {}, set()
     for t in trechos:
         if t["id"] in vistos:
@@ -160,21 +184,23 @@ def _montar(trechos, cfg):
             if (atual, saida) not in elo:
                 break
             (prox, lp), j = elo[(atual, saida)]
-            if prox in vistos:
+            if prox in vistos:                            # a junção que fecha o anel fica de fora (e as pontas dela)
+                cortadas |= {(atual, saida), (prox, lp)}
                 break
             juncoes.append(j)
             atual, entrada = prox, lp
+        usadas += juncoes
         fisicos.append(_fisico(membros, juncoes))
     fisicos.sort(key=lambda f: f["id"])
     for f in fisicos:
         for m in f["membros"]:
             de_trecho[m["trecho_id"]] = f
-    return fisicos, de_trecho, avisos, usadas
+    return fisicos, de_trecho, avisos, usadas, cortadas
 
 
 def _fisico(membros, juncoes):
-    longo = min(membros, key=lambda m: (-_f(m[0]["extensao_m"]), m[0]["id"]))
-    if longo[1] == -1:                                  # a cadeia segue a 06.1 do membro mais longo
+    ancora = min(membros, key=lambda m: m[0]["id"])     # o membro de menor id dá o id TF- e o sentido: os dois só
+    if ancora[1] == -1:                                 # mudam se os membros mudarem (nunca por uma extensão nova)
         membros = [(t, -s) for t, s in reversed(membros)]
         juncoes = list(reversed(juncoes))
     out, pos = [], 0.0
@@ -204,11 +230,11 @@ def _texto(f):
     if len(ms) == 1:
         return f"Trecho físico de uma linha só: {_curto(ms[0]['ponto'])}, {_nf(f['extensao_m'])} m."
     partes = [m["ponto"].split("_") for m in ms]
-    k = 1                                               # TR007; PB07 Adutora TR001 quando o número se repete
-    while k < 3 and len({tuple(p[-k:]) for p in partes}) < len(partes):
-        k += 2
-    zona = len({p[0] for p in partes}) > 1
-    nome = lambda p: " ".join(([p.split("_")[0]] if zona else []) + p.split("_")[-k:])
+    zona = len({p[0] for p in partes}) > 1              # Zona09 TR001 + Zona10 TR001 quando a cadeia muda de zona
+    formas = (lambda p: p[-1:], lambda p: [p[1], p[-1]], lambda p: p[1:])   # TR007 → PB07 TR001 → PB07 Adutora TR001
+    rotulo = lambda p, forma: " ".join(([p[0]] if zona else []) + forma(p))
+    forma = next((fm for fm in formas if len({rotulo(p, fm) for p in partes}) == len(partes)), formas[-1])
+    nome = lambda ponto: rotulo(ponto.split("_"), forma)
     grupos = {}
     for j in f["juncoes"]:
         grupos.setdefault(j["tipo"], []).append(_curto(j["no"]))
@@ -233,16 +259,16 @@ def _estado(conn, cfg_caminho=None):
     with _TRAVA:
         if _CACHE.get("chave") != chave:
             cfg = _ler_config(cfg_caminho)
-            fisicos, de_trecho, avisos, usadas = _montar(trechos, cfg)
+            fisicos, de_trecho, avisos, usadas, cortadas = _montar(trechos, cfg)
             _CACHE.clear()
             _CACHE.update(chave=chave, cfg=cfg, fisicos=fisicos, de_trecho=de_trecho, avisos=avisos, usadas=usadas,
-                          trechos=trechos)
+                          cortadas=cortadas, trechos=trechos)
         return _CACHE
 
 
 def trechos_fisicos(conn):
     """Todos os trechos físicos (conexão → conexão) dos trechos vigentes:
-    [{"id": "TF-<número do menor trechos.id entre os membros>",     # estável enquanto os membros não mudam
+    [{"id": "TF-<número do menor trechos.id entre os membros>",     # id e sentido estáveis enquanto os membros não mudam
       "no_ini": str, "no_fim": str,                                 # conexões reais nas pontas (texto da 06.1)
       "extensao_m": float,                                          # soma das extensões da 06.1
       "de_mm": int, "material": str, "metodologias": [..], "frentes": [..],
@@ -295,10 +321,14 @@ def pendencias(conn):
     if cfg.get("ausente"):
         out.append({"tipo": "SEM_ARQUIVO_DE_DECISOES", "detalhe": "config/topologia.json não existe: cada linha da "
                      "06.1 é um trecho físico separado"})
+    if cfg.get("invalido"):
+        out.append({"tipo": "ARQUIVO_DE_DECISOES_INVALIDO",
+                    "detalhe": (f"config/topologia.json não abre ({cfg['invalido']}): vale a última versão boa lida pelo "
+                                "sistema (ou nenhuma junção, se não houver) até o arquivo ser corrigido")})
     for j in cfg.get("juncoes") or []:
-        if j.get("decisao") == DUVIDA:
+        if isinstance(j, dict) and j.get("decisao") == DUVIDA:
             out.append({"tipo": "DECISAO_EM_DUVIDA", "juncao": j.get("id"), "no": j.get("no"),
-                        "trechos": [p.get("trecho") for p in j.get("pontas") or []],
+                        "trechos": [p.get("trecho") for p in j.get("pontas") or [] if isinstance(p, dict)],
                         "detalhe": f"{j.get('tipo')}: {j.get('motivo') or 'decisão do responsável pendente'}"})
     out += [dict(a) for a in est["avisos"]]
     nomes = {r[0] for r in conn.execute("SELECT nomenclatura FROM atividades WHERE vigente = 1")}
@@ -311,13 +341,13 @@ def pendencias(conn):
         for lado in ("ini", "fim"):
             no = t["no_" + lado]
             if no in SEM_NO:
-                if (t["id"], lado) in livres:
+                if (t["id"], lado) in livres and (t["id"], lado) not in est["cortadas"]:
                     out.append({"tipo": "PONTA_SEM_CONEXAO", "trecho": t["ponto"], "lado": lado, "no": no,
                                 "detalhe": f"o trecho físico termina em '{no}' (a 06.2 não tem conexão nesse ponto)"})
             elif no and no not in nomes:
                 out.append({"tipo": "NO_INEXISTENTE", "trecho": t["ponto"], "lado": lado, "no": no,
                             "detalhe": f"{no} não existe na 06.2 vigente"})
-    out += [dict(p) for p in cfg.get("pendencias") or []]
+    out += [dict(p) for p in cfg.get("pendencias") or [] if isinstance(p, dict)]
     return out
 
 
@@ -327,6 +357,8 @@ def resumo(conn):
     multi = [f for f in fis if len(f["membros"]) > 1]
     por_tipo, por_decisao = {}, {}
     for j in est["cfg"].get("juncoes") or []:
+        if not isinstance(j, dict):
+            continue
         por_tipo.setdefault(j.get("tipo"), {}).setdefault(j.get("decisao"), 0)
         por_tipo[j.get("tipo")][j.get("decisao")] += 1
         por_decisao[j.get("decisao")] = por_decisao.get(j.get("decisao"), 0) + 1
@@ -334,7 +366,7 @@ def resumo(conn):
             "linhas_em_cadeias": sum(len(f["membros"]) for f in multi),
             "extensao_m": _mm(sum(f["extensao_m"] for f in fis)), "juncoes_por_tipo": por_tipo,
             "juncoes_por_decisao": por_decisao, "juncoes_aplicadas": len(est["usadas"]),
-            "arquivo": os.path.relpath(CONFIG, caminhos.PASTA), "gerado_em": est["cfg"].get("gerado_em")}
+            "arquivo": os.path.relpath(_arquivo(), caminhos.PASTA), "gerado_em": est["cfg"].get("gerado_em")}
 
 
 def consulta(conn, trecho_id=None):
@@ -364,9 +396,10 @@ def pontas_nao_conexao(caminho=None):
     cfg = _ler_config(caminho)
     out = {}
     for j in cfg.get("juncoes") or []:
-        if j.get("tipo") in NO_NOME and j.get("decisao") in (JUNTAR, DUVIDA):
-            for p in j.get("pontas") or []:
-                out[(p.get("trecho"), p.get("lado"))] = j.get("tipo")
+        if isinstance(j, dict) and j.get("tipo") in NO_NOME and j.get("decisao") in (JUNTAR, DUVIDA):
+            for p in j.get("pontas") if isinstance(j.get("pontas"), list) else []:
+                if isinstance(p, dict):
+                    out[(p.get("trecho"), p.get("lado"))] = j.get("tipo")
     return out
 
 

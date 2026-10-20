@@ -487,7 +487,7 @@
    "DUVIDA": 2
   },
   "juncoes_aplicadas": 78,
-  "arquivo": "../../../../tmp/topologia_cfg_n3qvdxob/topologia.json",
+  "arquivo": "config/topologia.json",
   "gerado_em": "2026-10-20"
  },
  "conferencia_cadeias": {

@@ -263,8 +263,12 @@ def _derivados(caminho):
     c = _ler(caminho)
     chave = topologia.chave_config()
     if c.get("derivados_chave") != chave or "pontas" not in c:
+        try:
+            nao_conexao = topologia.pontas_nao_conexao()
+        except Exception:  # noqa: BLE001 — o arquivo de decisões é editado à mão: o traçado não pode cair por causa dele
+            nao_conexao = {}
         c.pop("geometria", None)
-        c["pontas"], c["correcoes"] = _calcular(c["dados"], desenhos(caminho), topologia.pontas_nao_conexao())
+        c["pontas"], c["correcoes"] = _calcular(c["dados"], desenhos(caminho), nao_conexao)
         c["derivados_chave"] = chave
     return c
 

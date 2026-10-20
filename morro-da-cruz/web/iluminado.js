@@ -358,7 +358,7 @@ const nomeCurto = n => String(n || '').split('_').pop();          // Zona03_PB06
 const FOTO_NOME = { SINALIZACAO: 'sinalização', EXECUCAO: 'execução', CONCLUIDO: 'concluído' };
 // o trecho tocado e, se ele faz parte de um trecho físico (cruzamento, divisa de zona…), as outras linhas dele
 function marcarSelecao() {
-  const ix = indexar(GERAL), t = ILU.sel && ILU.sel.tipo === 'TRECHO' && ix.trecho.get(ILU.sel.nome);
+  const ix = ILU.sel && ILU.sel.tipo === 'TRECHO' && GERAL ? indexar(GERAL) : null, t = ix && ix.trecho.get(ILU.sel.nome);
   const outros = t && ILU.sel.fisico ? ILU.sel.fisico.membros.map(m => ix.trecho.get(m.ponto)).filter(x => x && x !== t) : [];
   $('#iluSel').innerHTML = !t ? '' : (outros.length ? `<path class="ilu-sel" stroke-opacity=".55" d="${caminho(outros.flatMap(x => x.p))}"/>` : '')
     + `<path class="ilu-sel" stroke-opacity=".9" d="${caminho(t.p)}"/>`;
