@@ -8,6 +8,7 @@ python ferramentas/topologia/diagnostico.py --gravar   # ... e regrava config/to
 python ferramentas/topologia/diagnostico.py --banco dados/morro_da_cruz.db   # usa um banco já carregado
 python ferramentas/topologia/recortes.py               # uma imagem por junção, em saida/recortes/
 python ferramentas/topologia/recortes.py --cego        # sem a decisão no título (revisão independente)
+python ferramentas/topologia/recortes.py --tipo PASSAGEM  # só as passagens, para a engenharia conferir
 python ferramentas/topologia/recortes.py --no Zona03_PB08_Rede_NÓ113.1
 ```
 
