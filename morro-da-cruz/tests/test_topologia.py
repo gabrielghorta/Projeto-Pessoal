@@ -268,6 +268,9 @@ class TopologiaReal(unittest.TestCase):
         pend = Counter(p["tipo"] for p in TP.pendencias(self.c))
         self.assertEqual(pend["DECISAO_EM_DUVIDA"], 2)
         self.assertEqual(pend["DECISAO_DESATUALIZADA"] + pend["DECISAO_EM_CONFLITO"] + pend["NO_INEXISTENTE"], 0)
+        self.assertEqual((pend["PONTA_SEM_CONEXAO"], pend["PONTA_FORA_DO_NO"], pend["TE_SEM_NO"], pend["PECAS_A_MENOS"],
+                          pend["PRANCHA_DESLOCADA"], pend["TRECHO_ISOLADO"], pend["CONEXAO_NO_MEIO_DA_LINHA"]),
+                         (15, 3, 2, 1, 1, 1, 29))
 
     def test_arquivo_de_decisoes_bate_com_a_ferramenta(self):
         """config/topologia.json é o que ferramentas/topologia gera hoje (fora as decisões revisadas à mão)."""

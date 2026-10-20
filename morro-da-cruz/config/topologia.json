@@ -6069,6 +6069,238 @@
    "tipo": "TRECHO_ISOLADO",
    "trecho": "Zona11_PB23_Adutora_TR006",
    "detalhe": "Zona11_PB23_Adutora_TR006 (2.4 m, DE 500) não toca nenhum nó nem outro trecho (o mais perto está a 32,4 m)"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona04_PB02_CH_VTF-22",
+   "trecho": "Zona04_PB02_Rede_TR019",
+   "posicao_m": 31.24,
+   "extensao_m": 39.5,
+   "detalhe": "VTF-22 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 31,24 m da ponta inicial de Zona04_PB02_Rede_TR019 (39,50 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona01_PB02_CH_VTF-23",
+   "trecho": "Zona01_PB02_Rede_TR035",
+   "posicao_m": 13.72,
+   "extensao_m": 25.62,
+   "detalhe": "VTF-23 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 225X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 13,72 m da ponta inicial de Zona01_PB02_Rede_TR035 (25,62 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona04_PB03_Rede_NÓ1.1",
+   "trecho": "Zona04_PB03_Rede_TR008",
+   "posicao_m": 49.77,
+   "extensao_m": 53.99,
+   "detalhe": "NÓ1.1 (1× LUVA 63, 1× TÊ 90º 63) fica a 49,77 m da ponta inicial de Zona04_PB03_Rede_TR008 (53,99 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona04_PB05_CH_VTF-21",
+   "trecho": "Zona04_PB05_Rede_TR027",
+   "posicao_m": 19.36,
+   "extensao_m": 27.04,
+   "detalhe": "VTF-21 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 19,36 m da ponta inicial de Zona04_PB05_Rede_TR027 (27,04 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona01_PB05_CH_VTF-24",
+   "trecho": "Zona01_PB05_Rede_TR011",
+   "posicao_m": 6.43,
+   "extensao_m": 10.64,
+   "detalhe": "VTF-24 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 6,43 m da ponta inicial de Zona01_PB05_Rede_TR011 (10,64 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona02_PB07_Rede_NÓ1.4",
+   "trecho": "Zona02_PB07_Rede_TR051",
+   "posicao_m": 59.58,
+   "extensao_m": 60.2,
+   "detalhe": "NÓ1.4 (1× LUVA 63, 1× TÊ 90º 63) fica a 59,58 m da ponta inicial de Zona02_PB07_Rede_TR051 (60,20 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona03_PB07_CH_HID-02",
+   "trecho": "Zona03_PB07_Rede_TR022",
+   "posicao_m": 72.9,
+   "extensao_m": 122.85,
+   "detalhe": "HID-02 (1× CURVA DE 90º 100X80, 1× HIDRANTE - HCCM 100, 1× TOCO 80, 1× VÁLVULA GAVETA 80) fica a 72,90 m da ponta inicial de Zona03_PB07_Rede_TR022 (122,85 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona02_PB07_CH_VTF-20",
+   "trecho": "Zona02_PB07_Rede_TR010",
+   "posicao_m": 12.97,
+   "extensao_m": 19.33,
+   "detalhe": "VTF-20 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 12,97 m da ponta inicial de Zona02_PB07_Rede_TR010 (19,33 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona05_PB08_Rede_NÓ107.2",
+   "trecho": "Zona05_PB08_Rede_TR030",
+   "posicao_m": 5.71,
+   "extensao_m": 6.2,
+   "detalhe": "NÓ107.2 (1× LUVA 110, 1× REDUÇÃO 110X63, 1× TÊ 90º 110) fica a 5,71 m da ponta inicial de Zona05_PB08_Rede_TR030 (6,20 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona03_PB08_CH_VTF-19",
+   "trecho": "Zona03_PB08_Rede_TR035",
+   "posicao_m": null,
+   "extensao_m": 186.75,
+   "detalhe": "VTF-19 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 250X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica no meio (linha desenhada em mais de uma prancha) de Zona03_PB08_Rede_TR035 (186,75 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona08_PB10_Rede_NÓ1.5",
+   "trecho": "Zona08_PB10_Rede_TR016",
+   "posicao_m": 0.46,
+   "extensao_m": 159.21,
+   "detalhe": "NÓ1.5 (1× LUVA 63, 1× TÊ 90º 63) fica a 0,46 m da ponta inicial de Zona08_PB10_Rede_TR016 (159,21 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona10_PB10_CH_VTF-14",
+   "trecho": "Zona10_PB10_Rede_TR017",
+   "posicao_m": null,
+   "extensao_m": 29.09,
+   "detalhe": "VTF-14 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica no meio (linha desenhada em mais de uma prancha) de Zona10_PB10_Rede_TR017 (29,09 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona05_PB10_CH_VTF-15",
+   "trecho": "Zona05_PB10_Rede_TR005",
+   "posicao_m": 80.26,
+   "extensao_m": 98.53,
+   "detalhe": "VTF-15 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 63X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 80,26 m da ponta inicial de Zona05_PB10_Rede_TR005 (98,53 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona02_PB10_CH_VTF-17",
+   "trecho": "Zona02_PB10_Rede_TR007",
+   "posicao_m": 6.44,
+   "extensao_m": 12.86,
+   "detalhe": "VTF-17 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 280X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 6,44 m da ponta inicial de Zona02_PB10_Rede_TR007 (12,86 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona08_PB10_CH_VTF-25",
+   "trecho": "Zona08_PB10_Rede_TR037",
+   "posicao_m": 10.49,
+   "extensao_m": 22.2,
+   "detalhe": "VTF-25 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 10,49 m da ponta inicial de Zona08_PB10_Rede_TR037 (22,20 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona09_PB11_CH_VTF-09",
+   "trecho": "Zona09_PB14_Rede_TR003",
+   "posicao_m": null,
+   "extensao_m": 210.93,
+   "detalhe": "VTF-09 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 90X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica no meio (linha desenhada em mais de uma prancha) de Zona09_PB14_Rede_TR003 (210,93 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona10_PB11_CH_VTF-13",
+   "trecho": "Zona10_PB11_Rede_TR050",
+   "posicao_m": 27.93,
+   "extensao_m": 54.75,
+   "detalhe": "VTF-13 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 27,93 m da ponta inicial de Zona10_PB11_Rede_TR050 (54,75 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona08_PB13_Rede_NÓ2.3",
+   "trecho": "Zona08_PB13_Rede_TR009",
+   "posicao_m": 0.46,
+   "extensao_m": 47.72,
+   "detalhe": "NÓ2.3 (1× CURVA DE 90º 63) fica a 0,46 m da ponta inicial de Zona08_PB13_Rede_TR009 (47,72 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona06_PB14_CH_VTF-07",
+   "trecho": "Zona06_PB14_Rede_TR019",
+   "posicao_m": 3.19,
+   "extensao_m": 8.22,
+   "detalhe": "VTF-07 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 3,19 m da ponta inicial de Zona06_PB14_Rede_TR019 (8,22 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona09_PB14_CH_VTF-08",
+   "trecho": "Zona09_PB14_Rede_TR025",
+   "posicao_m": 11.89,
+   "extensao_m": 56.42,
+   "detalhe": "VTF-08 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 11,89 m da ponta inicial de Zona09_PB14_Rede_TR025 (56,42 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona06_PB14_CH_VTF-11",
+   "trecho": "Zona06_PB14_Rede_TR007",
+   "posicao_m": 186.92,
+   "extensao_m": 198.93,
+   "detalhe": "VTF-11 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 225X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 186,92 m da ponta inicial de Zona06_PB14_Rede_TR007 (198,93 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona06_PB15_CH_VTF-10",
+   "trecho": "Zona06_PB15_Rede_TR010",
+   "posicao_m": 17.56,
+   "extensao_m": 49.76,
+   "detalhe": "VTF-10 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 17,56 m da ponta inicial de Zona06_PB15_Rede_TR010 (49,76 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona07_PB18_CH_VTF-05",
+   "trecho": "Zona07_PB18_Rede_TR052",
+   "posicao_m": 10.88,
+   "extensao_m": 22.07,
+   "detalhe": "VTF-05 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 10,88 m da ponta inicial de Zona07_PB18_Rede_TR052 (22,07 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona07_PB18_CH_VTF-06",
+   "trecho": "Zona07_PB18_Rede_TR045",
+   "posicao_m": null,
+   "extensao_m": 101.37,
+   "detalhe": "VTF-06 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica no meio (linha desenhada em mais de uma prancha) de Zona07_PB18_Rede_TR045 (101,37 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona07_PB19_CH_VTF-26",
+   "trecho": "Zona07_PB19_Rede_TR019",
+   "posicao_m": 7.84,
+   "extensao_m": 65.48,
+   "detalhe": "VTF-26 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 63X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 7,84 m da ponta inicial de Zona07_PB19_Rede_TR019 (65,48 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona11_PB22_CH_VTF-01",
+   "trecho": "Zona11_PB25_Rede_TR001",
+   "posicao_m": null,
+   "extensao_m": 45.92,
+   "detalhe": "VTF-01 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 225X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica no meio (linha desenhada em mais de uma prancha) de Zona11_PB25_Rede_TR001 (45,92 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona09_PB22_CH_VTF-04",
+   "trecho": "Zona09_PB22_Rede_TR003",
+   "posicao_m": null,
+   "extensao_m": 42.32,
+   "detalhe": "VTF-04 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 110X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica no meio (linha desenhada em mais de uma prancha) de Zona09_PB22_Rede_TR003 (42,32 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona11_PB23_CH_VTF-02",
+   "trecho": "Zona11_PB23_Rede_TR073",
+   "posicao_m": 8.21,
+   "extensao_m": 34.69,
+   "detalhe": "VTF-02 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 225X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 8,21 m da ponta inicial de Zona11_PB23_Rede_TR073 (34,69 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
+  },
+  {
+   "tipo": "CONEXAO_NO_MEIO_DA_LINHA",
+   "no": "Zona11_PB24_CH_VTF-03",
+   "trecho": "Zona11_PB24_Rede_TR031",
+   "posicao_m": 298.21,
+   "extensao_m": 309.25,
+   "detalhe": "VTF-03 (1× LUVA 63, 1× TÊ DE SELA TOP LOAD 160X63, 1× VENTOSA 50, 1× VÁLVULA BORBOLETA 50) fica a 298,21 m da ponta inicial de Zona11_PB24_Rede_TR031 (309,25 m), que passa por ele sem terminar ali: a Nota de Serviço corta o tubo nesse ponto"
   }
  ]
 }

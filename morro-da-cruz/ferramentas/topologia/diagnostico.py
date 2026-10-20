@@ -256,6 +256,50 @@ def pendencias_desenho(base, lista):
     return out
 
 
+def conexoes_no_meio(base):
+    """O inverso do cruzamento: nó ou caixa com peça sobrando (tê de ventosa, hidrante…) em cima de uma linha da 06.1
+    que passa por ele sem terminar ali. A Nota de Serviço corta o tubo nesse ponto; a 06.1, não. Posição em metros ao
+    longo do desenho, a partir da ponta inicial da linha (no_ini)."""
+    out = []
+    for eid, el in sorted(base.elementos.items()):
+        grau = len(base.pontas_el.get(eid, []))
+        if not el["utm"] or B.portas(base.pecas.get(eid, [])) < grau + 2:      # sem as 2 bocas de passagem de um tê
+            continue
+        terminam = {t["id"] for t, _ in base.pontas_el.get(eid, [])}
+        for t in base.trechos:
+            if t["id"] in terminam or min(math.dist(el["utm"], base.utm_ponta(t, l)) for l in ("ini", "fim")) <= 0.3:
+                continue                                      # o nó está na ponta da linha: não é o meio dela
+            partes = base.partes_utm(t["ponto"])
+            if not partes or min(abs(x - el["utm"][0]) for p in partes for x, _ in p) > 60:
+                continue
+            ini = base.poli_da_ponta(t, "ini")                # a parte que começa no no_ini da linha
+            melhor = None
+            for p in ([ini] if len(partes) == 1 else partes):
+                acum, comp = 0.0, sum(math.dist(a, c) for a, c in zip(p, p[1:]))
+                for a, c in zip(p, p[1:]):
+                    seg = math.dist(a, c)
+                    d = B.dist_ponto_segmento(el["utm"], a, c)
+                    f = max(0.0, min(1.0, ((el["utm"][0] - a[0]) * (c[0] - a[0]) + (el["utm"][1] - a[1]) * (c[1] - a[1]))
+                                     / max(seg * seg, 1e-12)))
+                    if d <= 0.5 and (melhor is None or d < melhor[0]):
+                        melhor = (d, acum + seg * f if len(partes) == 1 else None, comp)
+                    acum += seg
+            if melhor and melhor[1] is not None and not 0.3 < melhor[1] < melhor[2] - 0.3:
+                continue                                      # cai na ponta do desenho, não no meio da linha
+            if melhor and melhor[1] is None and min(math.dist(el["utm"], base.utm_ponta(t, l)) for l in ("ini", "fim")) <= 0.5:
+                continue
+            if melhor:
+                onde = (f"a {_m(melhor[1])} m da ponta inicial de" if melhor[1] is not None
+                        else "no meio (linha desenhada em mais de uma prancha) de")
+                out.append({"tipo": "CONEXAO_NO_MEIO_DA_LINHA", "no": el["noms"][0], "trecho": t["ponto"],
+                            "posicao_m": round(melhor[1], 2) if melhor[1] is not None else None,
+                            "extensao_m": t["extensao_m"],
+                            "detalhe": (f"{el['numero']} ({B.resumo_pecas(base.pecas.get(eid, []))}) fica {onde} "
+                                        f"{t['ponto']} ({_m(t['extensao_m'])} m), que passa por ele sem terminar ali: a Nota "
+                                        "de Serviço corta o tubo nesse ponto")})
+    return out
+
+
 def gravar_config(juncoes, pend, resumo, caminho):
     antigo = None
     if os.path.exists(caminho):
@@ -345,7 +389,7 @@ def main(argv=None):
         cfg_tmp = os.path.join(tmp or tempfile.mkdtemp(prefix="topologia_cfg_"), "topologia.json")
         resumo_j = {"juncoes": dict(Counter(f"{j['tipo']} {j['decisao']}" for j in juncoes))}
         lista_prev, _ = pontas(base, juncoes)
-        pend_all = pend + pendencias_desenho(base, lista_prev)
+        pend_all = pend + pendencias_desenho(base, lista_prev) + conexoes_no_meio(base)
         if os.path.exists(CONFIG):
             shutil.copy(CONFIG, cfg_tmp)
         cfg = gravar_config(juncoes, pend_all, resumo_j, cfg_tmp)  # ids e revisões preservados

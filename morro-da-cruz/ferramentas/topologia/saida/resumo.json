@@ -487,7 +487,7 @@
    "DUVIDA": 2
   },
   "juncoes_aplicadas": 78,
-  "arquivo": "../../../../tmp/topologia_cfg_60_bsn6p/topologia.json",
+  "arquivo": "../../../../tmp/topologia_cfg_n3qvdxob/topologia.json",
   "gerado_em": "2026-10-20"
  },
  "conferencia_cadeias": {
@@ -499,6 +499,7 @@
   "grupos_no_mesmo_trecho_fisico": 23
  },
  "pendencias_do_sistema": {
+  "CONEXAO_NO_MEIO_DA_LINHA": 29,
   "PONTA_SEM_CONEXAO": 15,
   "PONTA_FORA_DO_NO": 3,
   "DECISAO_EM_DUVIDA": 2,
@@ -508,6 +509,7 @@
   "TRECHO_ISOLADO": 1
  },
  "pendencias_da_ferramenta": {
+  "CONEXAO_NO_MEIO_DA_LINHA": 29,
   "PONTA_FORA_DO_NO": 3,
   "TE_SEM_NO": 2,
   "PECAS_A_MENOS": 1,
