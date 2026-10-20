@@ -4,6 +4,7 @@ Obra da rede de água do Morro da Cruz (CT 10239/2026, Caesb × Ankara). Este do
 
 * o diagnóstico das pontas dos trechos e das junções que não são conexão;
 * a regra adotada e os casos em dúvida;
+* as decisões do responsável pela obra (seção 9);
 * como revisar `config/topologia.json`;
 * uma proposta, ainda não implementada, de uso do trecho físico no Lançamento do dia e na Nota de Serviço.
 
@@ -209,6 +210,7 @@ Pontas **sem nó** na 06.1:
 * **Decisões em DUVIDA:**
   * **J-099:** Zona07_PB19_Rede_TR016 (fim) + Zona07_PB19_Rede_TR019 (início). Pontas sem nó a 1,00 m, com ângulo de 141°. A prancha mostra um vão de ~1 m na linha laranja.
   * **J-100:** Zona07_PB19_Rede_TR017 (6,00 m) + Zona07_PB19_Rede_TR018 (1,99 m), junto do NÓ54.9. Ângulo de 50°: os dois formam um quadradinho desenhado na camada da rede, que parece símbolo e não tubo.
+* **Passagens a conferir (8, `PASSAGEM_A_CONFERIR`):** J-003 a J-010. Já entram juntas no trecho físico e saem da lista quando a engenharia olha o recorte e preenche `revisao` (seção 5).
 * **Desenho:**
   * Zona11_PB23_Rede_TR081 (início, 6,69 m do NÓ11.1).
   * Zona11_PB25_Rede_TR001 (fim, 15,07 m do NÓ11.1).
@@ -225,6 +227,9 @@ Pontas **sem nó** na 06.1:
   * Zona11_PB23_Adutora_TR006 (as duas pontas);
   * Zona11_PB23_Rede_TR077 (ponta de 9,44 m de DE 225);
   * Zona11_PB23_Rede_TR080 (fim do DE 225, a 6,64 m do início da adutora).
+* **Quem resolve (seção 9):**
+  * os 2 tês sem nó, a VM-5.4, o J-099 e o J-100: a projetista, na 06.2. Na PB19 (J-099 e J-100), a topografia olha antes em campo;
+  * as 29 conexões no meio da linha: a projetista corta as linhas na próxima revisão da 06.1, sem segurar nada até lá.
 
 ## 5. Como revisar `config/topologia.json`
 
@@ -238,6 +243,9 @@ Pontas **sem nó** na 06.1:
   2. Explique em `motivo`.
   3. Preencha `"revisao": {"por": "nome", "em": "AAAA-MM-DD"}`.
   4. Faça commit. O histórico fica no Git.
+* **Para marcar como conferida, sem mudar a decisão:** preencha só `revisao`.
+  * É o caso das 8 passagens (J-003 a J-010). A engenharia olha uma vez o recorte de cada uma (`python ferramentas/topologia/recortes.py --tipo PASSAGEM`) e, se o tubo for contínuo, preenche `revisao`.
+  * Enquanto `revisao` estiver vazia, a junção já vale como JUNTAR e aparece na pendência PASSAGEM_A_CONFERIR.
 * **O que o sistema usa:** só lê o arquivo e usa apenas JUNTAR.
 * **O que o sistema recusa:** uma junção que não bate com o banco (trecho que não existe mais, ponta em outro nó, troca de DE) é ignorada e vira pendência DECISAO_DESATUALIZADA.
 * **Quando regerar:** depois de uma revisão nova da 06.1, da 06.2 ou do mapa, rode `python ferramentas/topologia/diagnostico.py --gravar`. A ferramenta mantém o `id` de cada junção e **toda decisão com `revisao` preenchida**.
@@ -277,7 +285,11 @@ Pontas **sem nó** na 06.1:
   * A equipe ou a NS informa um intervalo no trecho físico, de estaca a estaca, com 0 no `no_ini`. Se a NS vier no sentido contrário, troca-se x por ext − x.
   * `para_linhas` devolve um intervalo por linha da 06.1.
   * A NS casa cada segmento (conexão → conexão, DE, extensão) com um trecho físico pelos nós das pontas. A extensão serve de conferência: a diferença vira alerta, nunca ajuste silencioso.
-  * **Conexão no meio de uma linha (2.4.1):** quando a NS termina um segmento numa ventosa ou num tê que a 06.1 não cortou, o segmento vira um intervalo do trecho físico. Ex.: do NÓ1.4 até o NÓ1.5 = [0; 0,46] m do TR016. A posição da pendência serve de ponto de partida, e quem manda é a estaca da NS.
+  * **Conexão no meio de uma linha (2.4.1, decidido na seção 9):** a NS termina o segmento na ventosa ou no tê que a 06.1 não cortou, e o lançamento fica como um intervalo da linha: de 0 até a posição da conexão e dela até o fim. Ex.: do NÓ1.4 até o NÓ1.5 = [0; 0,46] m do TR016. A posição da pendência serve de ponto de partida, e quem manda é a estaca da NS.
+  * **Divisa de zona e MND dentro do trecho físico (decidido na seção 9):**
+    * cada membro mantém a sua zona, e a equipe que lança fica como executora em todos os membros;
+    * escavação e reaterro nunca vão para o membro MND, que recebe só ASSENTADO e CADASTRO_CAMPO. Hoje `servicos` já recusa vala em trecho MND; a conversão deixa o membro MND fora dessas etapas, para não recusar o lançamento inteiro;
+    * se a NS indicar o início ou o fim do MND, esse ponto fica no meio do trecho físico e não é conexão.
 * **Gravação:**
   * `servicos.apontar` é chamado **uma vez por membro, na mesma requisição e na mesma transação**: ou grava todos, ou nenhum.
   * Cada chamada leva o intervalo local da linha, e `intervalos_execucao` continua com 0 no `no_ini` de cada linha.
@@ -285,25 +297,26 @@ Pontas **sem nó** na 06.1:
 * **"100 % concluído":** é calculado por trecho físico. Fica concluído quando todos os membros estão cobertos. Mostra "TR007 + TR006: 295,98 de 295,98 m" e marca os membros juntos no mapa.
 * **OK interno, medição e BM:** continuam **por linha da 06.1**, porque o BM é por linha. O OK do trecho físico é a soma dos OKs dos membros, e a tela sugere dar o OK nos membros juntos.
 
-## 9. Perguntas ao responsável pela obra (com a recomendação)
+## 9. Decisões do responsável pela obra (20/10/2026)
 
-1. **Divisa de zona e limite da travessia MND também formam um único trecho físico?**
-   * Recomendo que sim, e já está aplicado nas 36 + 5 junções.
-   * O tubo é o mesmo; mudam só a frente ou o método.
-   * O BM, a frente e o método continuam por linha da 06.1.
-2. **Tubo que passa ao lado de um nó de outra rede, sem semicírculo, também é o mesmo trecho?**
-   * São 8 casos: a Zona11 PB23/PB24 e a Adutora DE 280 na MV-02.
-   * Recomendo que sim, e já está aplicado: as peças do nó se explicam pelos outros tubos e não sobra nenhuma para ele.
-3. **Ventosa, hidrante ou tê sobre uma linha que a 06.1 não cortou (29 casos) é fim de trecho físico?**
-   * Recomendo tratar como conexão: a Nota de Serviço corta ali.
-   * Sem mexer na 06.1 agora, a NS usa um intervalo da linha (seção 8).
-   * Na próxima revisão da 06.1, a projetista corta essas linhas.
-4. **Pedir à projetista a revisão da 06.2 nos pontos que não fecham?**
-   * Os pontos são:
-     * os 2 tês sem nó (Zona04_PB05 TR020/TR027/TR031 e Zona06_PB12 TR017/TR022/TR024);
-     * a VM-5.4 (peças DE 125 sem tubo DE 125);
-     * as duas dúvidas da Zona07_PB19: o vão entre TR016 e TR019 e o quadradinho TR017/TR018 junto do NÓ54.9.
-   * Recomendo que sim. Até lá, esses pontos não se juntam e aparecem nas pendências.
+1. **Divisa de zona e limite MND formam um só trecho físico: sim** (aplicado nas 36 + 5 junções).
+   * Ali não há peça: o tubo segue, e o trecho só termina em conexão. A NS também vai de conexão a conexão, por cima desses pontos.
+   * Continuam como estão:
+     * o BM e a medição, por linha da 06.1, porque o MND usa outros itens;
+     * a zona de cada pedaço; quem lança o serviço fica como executor;
+     * escavação e reaterro nunca são lançados no pedaço MND.
+   * Se a NS indicar o início ou o fim do MND, esse ponto fica no meio do trecho; não é conexão.
+2. **Tubo que passa ao lado de um nó de outra rede, sem semicírculo: é o mesmo trecho** (aplicado nas 8 passagens).
+   * O semicírculo é só o jeito de desenhar. O que decide é que as peças do nó já estão usadas pelos outros tubos.
+   * Sem semicírculo, o risco de faltar uma peça na 06.2 é maior. Por isso a engenharia olha os 8 recortes uma vez e marca as junções como conferidas em `config/topologia.json` (seção 5). Até lá, elas ficam na pendência PASSAGEM_A_CONFERIR.
+3. **Ventosa, hidrante ou tê sobre uma linha que a 06.1 não cortou (29 casos): é conexão.**
+   * Há um tê ali, então o tubo é cortado e emendado. Na NS, o segmento termina ali.
+   * O sistema registra cada parte como um intervalo da linha da 06.1: de 0 até a posição da conexão e dela até o fim. A 06.1 fica como está para o BM.
+   * O corte vai para a próxima revisão da 06.1, sem segurar nada esperando por ela. Até lá, os pontos ficam na pendência CONEXAO_NO_MEIO_DA_LINHA, com a posição.
+4. **Pedir à projetista a revisão da 06.2 onde ela não fecha: sim.**
+   * Vale para os 2 tês sem nó, a VM-5.4 e as duas dúvidas da PB19: J-099 (TR016 + TR019) e J-100 (TR017 + TR018).
+   * A 06.2 dá a quantidade de peças do BM, e por isso a correção tem de ser na fonte. Na PB19 é mais rápido pedir à topografia que olhe em campo.
+   * Até resolver, esses pontos não se juntam e ficam nas pendências, que é o lado seguro.
 
 ## 10. Como rodar
 
@@ -311,6 +324,7 @@ Pontas **sem nó** na 06.1:
 python ferramentas/topologia/diagnostico.py            # mede e grava os CSVs em ferramentas/topologia/saida/
 python ferramentas/topologia/diagnostico.py --gravar   # ... e regrava config/topologia.json (mantém as revisões)
 python ferramentas/topologia/recortes.py               # uma imagem por junção (saida/recortes/, fora do Git)
+python ferramentas/topologia/recortes.py --tipo PASSAGEM  # só as 8 passagens, para a engenharia conferir
 python ferramentas/topologia/recortes.py --no Zona03_PB08_Rede_NÓ113.1
 python -m unittest tests.test_topologia -v
 ```
