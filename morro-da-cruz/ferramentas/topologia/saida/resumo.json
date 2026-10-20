@@ -501,6 +501,7 @@
  "pendencias_do_sistema": {
   "CONEXAO_NO_MEIO_DA_LINHA": 29,
   "PONTA_SEM_CONEXAO": 15,
+  "PASSAGEM_A_CONFERIR": 8,
   "PONTA_FORA_DO_NO": 3,
   "DECISAO_EM_DUVIDA": 2,
   "TE_SEM_NO": 2,

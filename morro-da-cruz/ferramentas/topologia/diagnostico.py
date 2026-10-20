@@ -316,8 +316,9 @@ def gravar_config(juncoes, pend, resumo, caminho):
         "como_revisar": ("Cada junção liga duas pontas de linhas da 06.1 que NÃO terminam numa conexão. JUNTAR = o "
                          "sistema trata as duas linhas como um só trecho físico; NAO_JUNTAR = conexão de verdade; DUVIDA = "
                          "pergunta ao responsável (não junta). Para corrigir: troque \"decisao\", explique em \"motivo\" e "
-                         "preencha \"revisao\": {\"por\": \"nome\", \"em\": \"AAAA-MM-DD\"}. A ferramenta, ao gerar de novo, "
-                         "mantém toda decisão com \"revisao\" preenchida."),
+                         "preencha \"revisao\": {\"por\": \"nome\", \"em\": \"AAAA-MM-DD\"}. Para marcar como conferida "
+                         "sem mudar a decisão, preencha só \"revisao\" (as PASSAGEM ficam na pendência PASSAGEM_A_CONFERIR "
+                         "até isso). A ferramenta, ao gerar de novo, mantém toda decisão com \"revisao\" preenchida."),
         "tipos": {"CRUZAMENTO": "o tubo passa por outra rede com o semicírculo do pulo, no nome de um nó que não é dele",
                   "PASSAGEM": "o tubo passa ao lado de um nó (de outra rede paralela), sem peça para ele",
                   "CONEXAO": "candidato rejeitado: as peças do nó ligam este par (luva, redução, tê, válvula)",

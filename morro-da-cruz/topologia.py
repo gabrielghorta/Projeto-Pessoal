@@ -314,8 +314,9 @@ def para_fisico(fisico, trecho_id, ini_m, fim_m):
 
 
 def pendencias(conn):
-    """Pontas fora do nó (do arquivo de decisões), nós inexistentes, pontas sem conexão, decisões em DUVIDA e
-    decisões que não batem com o banco. Cada item: {"tipo", "detalhe", e "trecho"/"lado"/"no"/"juncao" quando houver}."""
+    """Pontas fora do nó (do arquivo de decisões), nós inexistentes, pontas sem conexão, decisões em DUVIDA, passagens
+    ainda não conferidas e decisões que não batem com o banco. Cada item: {"tipo", "detalhe", e
+    "trecho"/"lado"/"no"/"juncao" quando houver}."""
     est = _estado(conn)
     cfg, out = est["cfg"], []
     if cfg.get("ausente"):
@@ -326,10 +327,16 @@ def pendencias(conn):
                     "detalhe": (f"config/topologia.json não abre ({cfg['invalido']}): vale a última versão boa lida pelo "
                                 "sistema (ou nenhuma junção, se não houver) até o arquivo ser corrigido")})
     for j in cfg.get("juncoes") or []:
-        if isinstance(j, dict) and j.get("decisao") == DUVIDA:
-            out.append({"tipo": "DECISAO_EM_DUVIDA", "juncao": j.get("id"), "no": j.get("no"),
-                        "trechos": [p.get("trecho") for p in j.get("pontas") or [] if isinstance(p, dict)],
+        if not isinstance(j, dict):
+            continue
+        trechos = [p.get("trecho") for p in j.get("pontas") or [] if isinstance(p, dict)]
+        if j.get("decisao") == DUVIDA:
+            out.append({"tipo": "DECISAO_EM_DUVIDA", "juncao": j.get("id"), "no": j.get("no"), "trechos": trechos,
                         "detalhe": f"{j.get('tipo')}: {j.get('motivo') or 'decisão do responsável pendente'}"})
+        elif j.get("tipo") == "PASSAGEM" and j.get("decisao") == JUNTAR and not j.get("revisao"):
+            out.append({"tipo": "PASSAGEM_A_CONFERIR", "juncao": j.get("id"), "no": j.get("no"), "trechos": trechos,
+                        "detalhe": "tubo ao lado do nó, sem semicírculo: já entra junto no trecho físico; a engenharia "
+                                   "olha o recorte uma vez e preenche \"revisao\" na junção"})
     out += [dict(a) for a in est["avisos"]]
     nomes = {r[0] for r in conn.execute("SELECT nomenclatura FROM atividades WHERE vigente = 1")}
     livres = set()

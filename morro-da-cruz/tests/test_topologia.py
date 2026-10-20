@@ -162,6 +162,16 @@ class TopologiaSintetica(unittest.TestCase):
         self.assertEqual(TP.pontas_nao_conexao(), {})
         self.assertIn("DECISAO_DESATUALIZADA", [p["tipo"] for p in TP.pendencias(self.c)])
 
+    def test_passagem_fica_a_conferir_ate_a_revisao(self):
+        """Tubo ao lado do nó sem semicírculo: junta já, e fica na lista até a engenharia preencher "revisao"."""
+        self.trechos([("TR-00001", "A", "N0", "X", 50.0), ("TR-00002", "B", "N9", "X", 40.0)])
+        jx = self.j("J1", "A", "fim", "B", "fim", tipo="PASSAGEM", no="X")
+        for revisao, esperado in ((None, [("J1", ["A", "B"])]), ({"por": "Engenharia", "em": "2026-10-21"}, [])):
+            self.decisoes([dict(jx, revisao=revisao)])
+            self.assertEqual(len(TP.trechos_fisicos(self.c)), 1)
+            self.assertEqual([(p["juncao"], p["trechos"]) for p in TP.pendencias(self.c)
+                              if p["tipo"] == "PASSAGEM_A_CONFERIR"], esperado)
+
 
 @unittest.skipUnless(TEM_DADOS, "planilhas oficiais ou mapa REV02 ausentes")
 class TopologiaReal(unittest.TestCase):
@@ -373,6 +383,8 @@ class TopologiaReal(unittest.TestCase):
         self.assertEqual((pend["PONTA_SEM_CONEXAO"], pend["PONTA_FORA_DO_NO"], pend["TE_SEM_NO"], pend["PECAS_A_MENOS"],
                           pend["PRANCHA_DESLOCADA"], pend["TRECHO_ISOLADO"], pend["CONEXAO_NO_MEIO_DA_LINHA"]),
                          (15, 3, 2, 1, 1, 1, 29))
+        self.assertEqual([p["juncao"] for p in TP.pendencias(self.c) if p["tipo"] == "PASSAGEM_A_CONFERIR"],
+                         [f"J-{n:03d}" for n in range(3, 11)])           # as 8 passagens, até a engenharia conferir
 
     def test_arquivo_de_decisoes_bate_com_a_ferramenta(self):
         """config/topologia.json é o que ferramentas/topologia gera hoje (fora as decisões revisadas à mão)."""

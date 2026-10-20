@@ -7,7 +7,7 @@
   "conexoes": "06.2 - LEV_DMC_MORRO_DA_CRUZ_CONEXÕES_REV08_13-10-26.xlsm",
   "mapa": "PLANTAS_TRECHOS_E_NOS_MORRO_DA_CRUZ_REV02_EQUIPES.html"
  },
- "como_revisar": "Cada junção liga duas pontas de linhas da 06.1 que NÃO terminam numa conexão. JUNTAR = o sistema trata as duas linhas como um só trecho físico; NAO_JUNTAR = conexão de verdade; DUVIDA = pergunta ao responsável (não junta). Para corrigir: troque \"decisao\", explique em \"motivo\" e preencha \"revisao\": {\"por\": \"nome\", \"em\": \"AAAA-MM-DD\"}. A ferramenta, ao gerar de novo, mantém toda decisão com \"revisao\" preenchida.",
+ "como_revisar": "Cada junção liga duas pontas de linhas da 06.1 que NÃO terminam numa conexão. JUNTAR = o sistema trata as duas linhas como um só trecho físico; NAO_JUNTAR = conexão de verdade; DUVIDA = pergunta ao responsável (não junta). Para corrigir: troque \"decisao\", explique em \"motivo\" e preencha \"revisao\": {\"por\": \"nome\", \"em\": \"AAAA-MM-DD\"}. Para marcar como conferida sem mudar a decisão, preencha só \"revisao\" (as PASSAGEM ficam na pendência PASSAGEM_A_CONFERIR até isso). A ferramenta, ao gerar de novo, mantém toda decisão com \"revisao\" preenchida.",
  "tipos": {
   "CRUZAMENTO": "o tubo passa por outra rede com o semicírculo do pulo, no nome de um nó que não é dele",
   "PASSAGEM": "o tubo passa ao lado de um nó (de outra rede paralela), sem peça para ele",
