@@ -1,10 +1,19 @@
 /* Camada "Mapa Iluminado" injetada pelo servidor no HTML PLANTAS_..._REV02_EQUIPES.
  * Não altera o motor gráfico da REV02: lê o mesmo DADOS, recolore as polylines já desenhadas
- * (polyline.tr[data-pipe], [data-e]) e conversa com a tela principal por postMessage. */
+ * (polyline.tr[data-pipe], [data-e]) e conversa com a tela principal por postMessage.
+ * Topologia (/api/topologia?desenho=1): a ponta de cada trecho vai para o centro do nó em todos os desenhos (lei da
+ * obra: todo trecho termina numa conexão; as pontas de cruzamento e de passagem ficam como estão) e, ao tocar num
+ * trecho que faz parte de um trecho físico, as outras linhas dele também acendem e o painel diz de onde até onde vai. */
 (function () {
   'use strict';
   if (typeof DADOS === 'undefined') return;
   const T = DADOS.trechos, E = DADOS.els;
+  const PB_DADOS = Object.fromEntries((DADOS.pbs || []).map(p => [p.id, p]));
+  const IDX_T = new Map(T.map((t, i) => [t.R, i]));
+  const FIS = new Map();                      // nome visível → trecho físico com mais de uma linha
+  let SEL = null;                             // trecho selecionado (nome visível)
+  try { const [, k, v] = decodeURIComponent(location.hash.slice(1)).split('/'); if (k === 't') SEL = v; } catch (_) { /* sem seleção */ }
+  const escH = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const COR = { NAO_EXECUTADO: '#9AA3AE', EM_EXECUCAO: '#F08C00', CONCLUIDO_MES: '#D62828', OK_FISCAL: '#0F9D58', MEDIDO_ANTERIOR: '#E8B10A' };
   const PIOR = ['CONCLUIDO_MES', 'EM_EXECUCAO', 'OK_FISCAL', 'MEDIDO_ANTERIOR', 'NAO_EXECUTADO'];
   // miolo branco sobre a linha = execução ainda não verificada (conferência interna Ankara, não é aprovação Caesb)
@@ -91,6 +100,69 @@
     leg.innerHTML = `<b>${c.nome}</b>` + c.legenda.map(([cor, txt]) => `<div><i style="${cor ? 'background:' + cor : 'background:#5B6675;outline:2px dashed #fff;outline-offset:-3px'}"></i>${txt}</div>`).join('');
     if (camada === 'andamento') marcarVerificacao(svg); else svg.querySelectorAll('.mc-verif').forEach(p => p.remove());
     desenharPins(svg);
+    marcarFisico(svg);
+  }
+
+  // ---- pontas no centro do nó: corrige DADOS no lugar (o HTML não muda) e as linhas já desenhadas
+  function encaixar(corr) {
+    Object.entries(corr).forEach(([id, lista]) => {
+      const dz = id === 'GERAL' ? DADOS.visaoGeral : PB_DADOS[id]; if (!dz) return;
+      const por = new Map(dz.tr.map(t => [t.i, t]));
+      lista.forEach(([i, k, ponta, cortar, x, y]) => {
+        const p = por.has(i) && por.get(i).p[k]; if (!p || p.length < 2) return;
+        const c = Math.max(0, Math.min(cortar, p.length / 2 - 1));
+        if (ponta === 0) p.splice(0, 2 * c, x, y); else p.splice(p.length - 2 * c, 2 * c, x, y);
+      });
+    });
+    const svg = document.querySelector('#stage svg'); if (!svg) return;
+    const cur = svg.classList.contains('overview-svg') ? 'GERAL' : ((document.querySelector('#pblist button.cur') || {}).dataset || {}).pb;
+    const dz = cur === 'GERAL' ? DADOS.visaoGeral : PB_DADOS[cur]; if (!dz) return;
+    const por = new Map(dz.tr.map(t => [t.i, t]));
+    const pts = a => { let s = ''; for (let k = 0; k < a.length; k += 2) s += a[k] + ',' + a[k + 1] + ' '; return s; };
+    [['polyline.tr[data-pipe]', 'pipe'], ['polyline.hit[data-t]', 't']].forEach(([q, atr]) => {
+      const parte = new Map();                // a k-ésima linha de um trecho no desenho é a parte k da polilinha
+      svg.querySelectorAll(q).forEach(pl => {
+        const i = +pl.dataset[atr], k = parte.get(i) || 0; parte.set(i, k + 1);
+        const t = por.get(i); if (t && t.p[k]) pl.setAttribute('points', pts(t.p[k]));
+      });
+    });
+  }
+
+  // ---- trecho físico: as outras linhas acendem junto com a selecionada e o painel diz o trecho inteiro
+  function marcarFisico(svg) {
+    svg.querySelectorAll('.mc-fisico').forEach(g => g.remove());
+    const f = SEL && FIS.get(SEL); if (!f) return;
+    const NS = 'http://www.w3.org/2000/svg', g = document.createElementNS(NS, 'g');
+    g.setAttribute('class', 'mc-fisico');
+    f.membros.filter(n => n !== SEL).forEach(n => svg.querySelectorAll(`polyline.tr[data-pipe="${IDX_T.get(n)}"]`).forEach(pl => {
+      [['#fff', '10px', '.75'], [pl.getAttribute('stroke'), '5px', '1']].forEach(([cor, larg, op]) => {
+        const o = document.createElementNS(NS, 'polyline');
+        o.setAttribute('class', 'selt'); o.setAttribute('points', pl.getAttribute('points'));
+        o.setAttribute('stroke', cor); o.setAttribute('stroke-width', larg); o.setAttribute('stroke-opacity', op);
+        g.appendChild(o);
+      });
+    }));
+    const gsel = svg.querySelector('#gsel');
+    if (gsel) svg.insertBefore(g, gsel); else svg.appendChild(g);
+  }
+  function textoFisico() {
+    const det = document.getElementById('det'); if (!det) return;
+    det.querySelectorAll('.mc-fisico-txt').forEach(x => x.remove());
+    const f = SEL && FIS.get(SEL); if (!f) return;
+    const div = document.createElement('div');
+    div.className = 'sec mc-fisico-txt';
+    div.innerHTML = `<h4>Trecho físico</h4><div style="color:var(--ink)">${escH(f.texto.replace(/^Trecho físico:\s*/, ''))}</div>`;
+    const hd = det.querySelector('.hd');
+    if (hd) hd.after(div); else det.prepend(div);
+  }
+  async function topologia() {
+    try {
+      const r = await fetch('/api/topologia?desenho=1'); if (!r.ok) return;
+      const t = await r.json();
+      (t.fisicos || []).forEach(f => f.membros.forEach(n => FIS.set(n, f)));
+      encaixar(t.correcoes || {});
+    } catch (_) { /* sem topologia: o desenho fica como no HTML */ }
+    aplicar(); textoFisico();
   }
 
   function marcarVerificacao(svg) {
@@ -148,6 +220,10 @@
     rs(s, t, url);
     try {
       const [, k, v] = decodeURIComponent(String(url || '').replace(/^#/, '')).split('/');
+      SEL = k === 't' ? v : null;
+      const svg = document.querySelector('#stage svg');
+      if (svg) marcarFisico(svg);
+      textoFisico();
       let msg = null;
       if (k === 't') msg = { alvo_tipo: 'TRECHO', alvo_id: v };
       else if (k === 'e') { const e = E.find(x => x.k === v); if (e && e.noms && e.noms.length) msg = { alvo_tipo: 'CONJUNTO', alvo_id: e.noms[0] }; }
@@ -169,5 +245,6 @@
   });
 
   recarregar();
+  topologia();
   setInterval(recarregar, 60000);
 })();

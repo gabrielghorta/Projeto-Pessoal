@@ -356,18 +356,24 @@ $('#iluTrilha').addEventListener('click', ev => { if (ev.target.closest('[data-i
 /* ---- ficha do trecho (ou do nó) tocado no mapa */
 const nomeCurto = n => String(n || '').split('_').pop();          // Zona03_PB06_Rede_TR014 → TR014
 const FOTO_NOME = { SINALIZACAO: 'sinalização', EXECUCAO: 'execução', CONCLUIDO: 'concluído' };
+// o trecho tocado e, se ele faz parte de um trecho físico (cruzamento, divisa de zona…), as outras linhas dele
 function marcarSelecao() {
-  const t = ILU.sel && ILU.sel.tipo === 'TRECHO' && indexar(GERAL).trecho.get(ILU.sel.nome);
-  $('#iluSel').innerHTML = t ? `<path class="ilu-sel" stroke-opacity=".9" d="${caminho(t.p)}"/>` : '';
+  const ix = indexar(GERAL), t = ILU.sel && ILU.sel.tipo === 'TRECHO' && ix.trecho.get(ILU.sel.nome);
+  const outros = t && ILU.sel.fisico ? ILU.sel.fisico.membros.map(m => ix.trecho.get(m.ponto)).filter(x => x && x !== t) : [];
+  $('#iluSel').innerHTML = !t ? '' : (outros.length ? `<path class="ilu-sel" stroke-opacity=".55" d="${caminho(outros.flatMap(x => x.p))}"/>` : '')
+    + `<path class="ilu-sel" stroke-opacity=".9" d="${caminho(t.p)}"/>`;
 }
 function fecharFicha() { ILU.sel = null; $('#iluFicha').hidden = true; marcarSelecao(); }
 async function abrirFicha(tipo, nome) {
   ILU.sel = { tipo, nome }; marcarSelecao();
   const f = $('#iluFicha'); f.hidden = false;
   f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button><h2>${esc(nomeCurto(nome))}</h2><p class="vazio">Carregando…</p>`;
-  const d = await api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(nome)}`).catch(e => ({ erro: e.message }));
+  const [d, topo] = await Promise.all([api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(nome)}`).catch(e => ({ erro: e.message })),
+    tipo === 'TRECHO' ? api(`/api/topologia?trecho=${encodeURIComponent(nome)}`).catch(() => null) : null]);
   if (!ILU.sel || ILU.sel.nome !== nome) return;
   if (d.erro) { f.querySelector('.vazio').textContent = d.erro; return; }
+  const fis = topo && topo.trecho_fisico && topo.trecho_fisico.membros.length > 1 ? topo.trecho_fisico : null;
+  ILU.sel.fisico = fis; marcarSelecao();
   const t = indexar(GERAL).trecho.get(nome), s = SITU_ID[t && t.s ? t.s : ILU.est ? situacao(ILU.est, nome) : 'nao'];
   const ex = d.execucao, faltam = d.fotos_faltando || [];
   const pend = (d.pendencias || []).length;
@@ -375,6 +381,7 @@ async function abrirFicha(tipo, nome) {
     ['Zona e planta', `${esc(nomeZona(t ? zonaDoTrecho(t) : d.frente_id))} · ${esc(d.pb || (t && t.pb) || '')}`],
     ['Extensão', `${nf(d.extensao_m)} m`], ['Tubo', `DE ${esc(d.de_mm)} · ${esc(d.material || '')} · ${esc(d.metodologia || '')}`],
     ['Pontas', `${esc(curto(d.no_ini))} → ${esc(curto(d.no_fim))}`],
+    ...(fis ? [['Trecho físico', esc(fis.texto.replace(/^Trecho físico:\s*/, ''))]] : []),
     ['Executado', ex ? `${nf(ex.metros_executados)} m assentados · ${nf(ex.metros_reaterrados)} m reaterrados` : 'nada lançado'],
     ['Fotos', faltam.length ? `faltam ${faltam.map(c => FOTO_NOME[c] || esc(c)).join(', ')}` : ex ? 'completas' : '—'],
     ['Pendências', pend ? `${pend} aberta${pend > 1 ? 's' : ''}` : 'nenhuma'],
