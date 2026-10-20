@@ -1,0 +1,517 @@
+{
+ "coordenadas": {
+  "GERAL": {
+   "unidades_por_metro": 0.7,
+   "nos": 1188,
+   "residuo_m": {
+    "mediana": 0.0057,
+    "p95": 0.0084,
+    "max": 0.0104
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB01": {
+   "unidades_por_metro": 2.834644,
+   "nos": 48,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.0019,
+    "max": 0.0023
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB02": {
+   "unidades_por_metro": 2.834647,
+   "nos": 71,
+   "residuo_m": {
+    "mediana": 0.0012,
+    "p95": 0.002,
+    "max": 0.0024
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB03": {
+   "unidades_por_metro": 2.834648,
+   "nos": 21,
+   "residuo_m": {
+    "mediana": 0.0012,
+    "p95": 0.0017,
+    "max": 0.0018
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB04": {
+   "unidades_por_metro": 2.83464,
+   "nos": 41,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.0021,
+    "max": 0.0022
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB05": {
+   "unidades_por_metro": 2.834642,
+   "nos": 83,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.002,
+    "max": 0.0022
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB06": {
+   "unidades_por_metro": 2.834644,
+   "nos": 21,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.0022,
+    "max": 0.0022
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB07": {
+   "unidades_por_metro": 2.834645,
+   "nos": 91,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.002,
+    "max": 0.0026
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB08": {
+   "unidades_por_metro": 2.834648,
+   "nos": 79,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.0022,
+    "max": 0.0024
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB09": {
+   "unidades_por_metro": 2.834629,
+   "nos": 10,
+   "residuo_m": {
+    "mediana": 0.001,
+    "p95": 0.0014,
+    "max": 0.0016
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB10": {
+   "unidades_por_metro": 2.834644,
+   "nos": 84,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.002,
+    "max": 0.0025
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB11": {
+   "unidades_por_metro": 2.834644,
+   "nos": 79,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.0022,
+    "max": 0.0023
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB12": {
+   "unidades_por_metro": 2.834646,
+   "nos": 47,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.002,
+    "max": 0.0022
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB13": {
+   "unidades_por_metro": 2.834647,
+   "nos": 34,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.002,
+    "max": 0.0022
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB14": {
+   "unidades_por_metro": 2.834643,
+   "nos": 94,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.0021,
+    "max": 0.0025
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB15": {
+   "unidades_por_metro": 2.834645,
+   "nos": 62,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.0023,
+    "max": 0.0026
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB16": {
+   "unidades_por_metro": 2.83465,
+   "nos": 26,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.0019,
+    "max": 0.0021
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB17": {
+   "unidades_por_metro": 2.834646,
+   "nos": 40,
+   "residuo_m": {
+    "mediana": 0.0015,
+    "p95": 0.002,
+    "max": 0.002
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB18": {
+   "unidades_por_metro": 2.834644,
+   "nos": 83,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.0021,
+    "max": 0.0023
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB19": {
+   "unidades_por_metro": 2.834641,
+   "nos": 37,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.0021,
+    "max": 0.0023
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB20": {
+   "unidades_por_metro": 2.834642,
+   "nos": 18,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.0017,
+    "max": 0.002
+   },
+   "rotacao_graus": -90.0
+  },
+  "PB21": {
+   "unidades_por_metro": 2.834666,
+   "nos": 10,
+   "residuo_m": {
+    "mediana": 0.0008,
+    "p95": 0.0015,
+    "max": 0.0019
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB22": {
+   "unidades_por_metro": 2.834648,
+   "nos": 52,
+   "residuo_m": {
+    "mediana": 0.0013,
+    "p95": 0.0019,
+    "max": 0.0021
+   },
+   "rotacao_graus": 0.0
+  },
+  "PB23": {
+   "unidades_por_metro": 2.834642,
+   "nos": 73,
+   "residuo_m": {
+    "mediana": 0.0014,
+    "p95": 0.0021,
+    "max": 0.0025
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB24": {
+   "unidades_por_metro": 2.834644,
+   "nos": 35,
+   "residuo_m": {
+    "mediana": 0.0015,
+    "p95": 0.002,
+    "max": 0.0024
+   },
+   "rotacao_graus": -0.0
+  },
+  "PB25": {
+   "unidades_por_metro": 2.847982,
+   "nos": 2,
+   "residuo_m": {
+    "mediana": 37.8489,
+    "p95": 37.8483,
+    "max": 37.8489
+   },
+   "rotacao_graus": 0.0
+  }
+ },
+ "dados_06_1": {
+  "linhas": 1436,
+  "por_tipo": {
+   "Rede": 1400,
+   "Adutora": 36
+  },
+  "por_metodologia": {
+   "VCA": 1432,
+   "MND": 4
+  },
+  "materiais": [
+   "PEAD"
+  ],
+  "extensao_m": 110686.03,
+  "de_mm": [
+   63,
+   90,
+   110,
+   125,
+   160,
+   225,
+   250,
+   280,
+   315,
+   355,
+   400,
+   500
+  ],
+  "pontas_sem_no": {
+   "DIVISA DE ZONA": 72,
+   "LIMITE DA TRAVESSIA MND": 10,
+   "PONTA SEM NÓ NA TABELA": 63,
+   "JUNÇÃO SEM NÓ NA TABELA": 6
+  },
+  "pontas_sem_no_total": 151,
+  "trechos_com_ponta_sem_no": 122,
+  "trechos_divididos": {
+   "DIVISA DE ZONA": 55,
+   "LIMITE DA TRAVESSIA MND": 9
+  },
+  "numeros_distintos_nas_pontas": 328,
+  "numeros_repetidos_entre_pbs": 145,
+  "numeros_de_NO_distintos": 231,
+  "no1_1_combinacoes": 23,
+  "pontas_com_prefixo_de_no_diferente": 234,
+  "pares_paralelos_mesmas_pontas": [
+   [
+    "Zona03_PB08_Rede_TR024",
+    "Zona03_PB08_Rede_TR026"
+   ],
+   [
+    "Zona06_PB15_Rede_TR003",
+    "Zona06_PB15_Rede_TR005"
+   ],
+   [
+    "Zona11_PB23_Rede_TR057",
+    "Zona11_PB23_Rede_TR058"
+   ],
+   [
+    "Zona11_PB24_Rede_TR039",
+    "Zona11_PB24_Rede_TR040"
+   ]
+  ],
+  "nos_de_grau_2": 329,
+  "grau_2_ambas_chegam_ou_ambas_saem": 57
+ },
+ "linhas_06_1": 1436,
+ "pontas": 2872,
+ "pontas_por_classe": {
+  "NO_NO": 2249,
+  "DESLOCADA": 318,
+  "NAO_CHEGA": 130,
+  "DIVISA_ZONA": 72,
+  "PONTA_SEM_NO": 62,
+  "PASSAGEM": 16,
+  "LIMITE_MND": 10,
+  "JUNCAO_SEM_NO": 6,
+  "CRUZAMENTO": 4,
+  "PASSA_DO_NO": 2,
+  "LONGE_DO_NO": 2,
+  "DESENHO_INCOMPLETO": 1
+ },
+ "pontas_por_acao": {
+  "NADA": 2249,
+  "ESTENDER_ATE_NO": 448,
+  "MANTER_SEM_NO": 150,
+  "NAO_ENCAIXAR": 20,
+  "PENDENCIA_DESENHO": 3,
+  "APARAR": 2
+ },
+ "distancia_ponta_no_visao_geral": {
+  "> 0,10 m": 472,
+  "> 0,5 m": 164,
+  "> 1 m": 55,
+  "> 3 m": 2
+ },
+ "distancia_ponta_no_fora_juncoes": {
+  "> 0,10 m": 396,
+  "> 0,5 m": 88,
+  "> 1 m": 35,
+  "> 3 m": 2
+ },
+ "pranchas_x_visao_geral": {
+  "pontas_comparadas": 2719,
+  "diferenca_max_m": 0.201,
+  "acima_de_5cm": 2
+ },
+ "correcoes_por_desenho": {
+  "GERAL": 450,
+  "PB01": 22,
+  "PB02": 24,
+  "PB03": 10,
+  "PB04": 6,
+  "PB05": 41,
+  "PB06": 9,
+  "PB07": 34,
+  "PB08": 15,
+  "PB09": 3,
+  "PB10": 37,
+  "PB11": 30,
+  "PB12": 7,
+  "PB13": 19,
+  "PB14": 54,
+  "PB15": 31,
+  "PB16": 7,
+  "PB17": 19,
+  "PB18": 31,
+  "PB19": 9,
+  "PB20": 5,
+  "PB21": 1,
+  "PB22": 17,
+  "PB23": 30,
+  "PB24": 12
+ },
+ "hipotese_anel": {
+  "pontas_com_no": 2721,
+  "no_no_ate_10cm": 2253,
+  "fora_do_no": 468,
+  "tubo_no_proprio_no_ponta_ate_10cm_do_no": 287,
+  "tubo_no_proprio_no_pontas_medidas": 386,
+  "mediana_fora_m": 0.425,
+  "maximo_m": 1.58,
+  "entre_1_3_e_1_7_m": 36,
+  "das_quais_pontas_que_passam_pelo_no": 18,
+  "acima_de_1_6_m": 0,
+  "histograma_10cm": {
+   "0,1-0,2": 66,
+   "0,2-0,3": 51,
+   "0,3-0,4": 83,
+   "0,4-0,5": 98,
+   "0,5-0,6": 56,
+   "0,6-0,7": 16,
+   "0,7-0,8": 31,
+   "0,8-0,9": 4,
+   "0,9-1,0": 10,
+   "1,0-1,1": 7,
+   "1,1-1,2": 5,
+   "1,2-1,3": 5,
+   "1,3-1,4": 8,
+   "1,4-1,5": 11,
+   "1,5-1,6": 17
+  },
+  "trechos_com_tubo_no_proprio_no": 410
+ },
+ "comprimento_desenhado": {
+  "trechos_numa_parte": 1172,
+  "desenho_x_L_acima_de_5cm": 320,
+  "desenho_x_Lg_acima_de_5cm": 19,
+  "max_desenho_x_Lg_m": 5.447,
+  "trechos_com_Lx": 410,
+  "soma_Lx_m": 888.89,
+  "max_Lx_m": 8.4,
+  "soma_L_m": 110686.03,
+  "soma_Lg_m": 109797.14
+ },
+ "juncoes_por_tipo_e_decisao": {
+  "DIVISA_ZONA JUNTAR": 36,
+  "CONEXAO NAO_JUNTAR": 28,
+  "PONTA_SEM_NO JUNTAR": 27,
+  "PASSAGEM JUNTAR": 8,
+  "LIMITE_MND JUNTAR": 5,
+  "CRUZAMENTO JUNTAR": 2,
+  "JUNCAO_SEM_NO NAO_JUNTAR": 2,
+  "PONTA_SEM_NO DUVIDA": 2
+ },
+ "juncoes_por_decisao": {
+  "JUNTAR": 78,
+  "NAO_JUNTAR": 30,
+  "DUVIDA": 2
+ },
+ "trechos_fisicos": {
+  "linhas_06_1": 1436,
+  "trechos_fisicos": 1358,
+  "com_mais_de_uma_linha": 48,
+  "linhas_em_cadeias": 126,
+  "extensao_m": 110686.03,
+  "juncoes_por_tipo": {
+   "CRUZAMENTO": {
+    "JUNTAR": 2
+   },
+   "PASSAGEM": {
+    "JUNTAR": 8
+   },
+   "CONEXAO": {
+    "NAO_JUNTAR": 28
+   },
+   "LIMITE_MND": {
+    "JUNTAR": 5
+   },
+   "DIVISA_ZONA": {
+    "JUNTAR": 36
+   },
+   "JUNCAO_SEM_NO": {
+    "NAO_JUNTAR": 2
+   },
+   "PONTA_SEM_NO": {
+    "JUNTAR": 27,
+    "DUVIDA": 2
+   }
+  },
+  "juncoes_por_decisao": {
+   "JUNTAR": 78,
+   "NAO_JUNTAR": 30,
+   "DUVIDA": 2
+  },
+  "juncoes_aplicadas": 78,
+  "arquivo": "../../../../tmp/topologia_cfg_60_bsn6p/topologia.json",
+  "gerado_em": "2026-10-20"
+ },
+ "conferencia_cadeias": {
+  "linhas_em_exatamente_um_trecho_fisico": 1436,
+  "linhas_06_1": 1436,
+  "soma_06_1_m": 110686.03,
+  "soma_trechos_fisicos_m": 110686.03,
+  "grupos_trecho_original_06_1": 23,
+  "grupos_no_mesmo_trecho_fisico": 23
+ },
+ "pendencias_do_sistema": {
+  "PONTA_SEM_CONEXAO": 15,
+  "PONTA_FORA_DO_NO": 3,
+  "DECISAO_EM_DUVIDA": 2,
+  "TE_SEM_NO": 2,
+  "PECAS_A_MENOS": 1,
+  "PRANCHA_DESLOCADA": 1,
+  "TRECHO_ISOLADO": 1
+ },
+ "pendencias_da_ferramenta": {
+  "PONTA_FORA_DO_NO": 3,
+  "TE_SEM_NO": 2,
+  "PECAS_A_MENOS": 1,
+  "PRANCHA_DESLOCADA": 1,
+  "TRECHO_ISOLADO": 1
+ }
+}
