@@ -27,4 +27,4 @@ Saídas:
 * `pontas_fora_do_no.csv`: as pontas que não estão no nó.
 * `resumo.json`: os números do diagnóstico.
 
-O `pontas.csv` completo (2.872 pontas) e os recortes ficam fora do Git, na pasta de trabalho do Drive `07_IA_CHATGPT_E_CLAUDE/topologia_trechos_2026-10-20`.
+O `pontas.csv` completo (2.872 pontas) fica fora do Git, na pasta de trabalho do Drive `07_IA_CHATGPT_E_CLAUDE/topologia_trechos_2026-10-20`, dentro de `pontas_completo.zip`. Os recortes também ficam fora do Git e se geram de novo com `recortes.py`.

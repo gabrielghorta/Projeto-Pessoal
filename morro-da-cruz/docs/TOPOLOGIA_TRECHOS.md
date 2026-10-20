@@ -315,4 +315,4 @@ python ferramentas/topologia/recortes.py --no Zona03_PB08_Rede_NÓ113.1
 python -m unittest tests.test_topologia -v
 ```
 
-O `pontas.csv` completo e os recortes ficam na pasta de trabalho do Drive: `07_IA_CHATGPT_E_CLAUDE/topologia_trechos_2026-10-20`.
+O `pontas.csv` completo fica na pasta de trabalho do Drive, `07_IA_CHATGPT_E_CLAUDE/topologia_trechos_2026-10-20`, dentro de `pontas_completo.zip`. Os recortes ficam fora do Git e se geram de novo com `recortes.py`.
