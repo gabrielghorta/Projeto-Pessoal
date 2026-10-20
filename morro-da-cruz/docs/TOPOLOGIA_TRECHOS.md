@@ -275,7 +275,27 @@ Pontas **sem nó** na 06.1:
 * **"100 % concluído":** é calculado por trecho físico. Fica concluído quando todos os membros estão cobertos. Mostra "TR007 + TR006: 295,98 de 295,98 m" e marca os membros juntos no mapa.
 * **OK interno, medição e BM:** continuam **por linha da 06.1**, porque o BM é por linha. O OK do trecho físico é a soma dos OKs dos membros, e a tela sugere dar o OK nos membros juntos.
 
-## 9. Como rodar
+## 9. Perguntas ao responsável pela obra (com a recomendação)
+
+1. **Divisa de zona e limite da travessia MND também formam um único trecho físico?**
+   * Recomendo que sim, e já está aplicado nas 36 + 5 junções.
+   * O tubo é o mesmo; mudam só a frente ou o método.
+   * O BM, a frente e o método continuam por linha da 06.1.
+2. **Tubo que passa ao lado de um nó de outra rede, sem semicírculo, também é o mesmo trecho?**
+   * São 8 casos: a Zona11 PB23/PB24 e a Adutora DE 280 na MV-02.
+   * Recomendo que sim, e já está aplicado: as peças do nó se explicam pelos outros tubos e não sobra nenhuma para ele.
+3. **Ventosa, hidrante ou tê sobre uma linha que a 06.1 não cortou (29 casos) é fim de trecho físico?**
+   * Recomendo tratar como conexão: a Nota de Serviço corta ali.
+   * Sem mexer na 06.1 agora, a NS usa um intervalo da linha (seção 8).
+   * Na próxima revisão da 06.1, a projetista corta essas linhas.
+4. **Pedir à projetista a revisão da 06.2 nos pontos que não fecham?**
+   * Os pontos são:
+     * os 2 tês sem nó (Zona04_PB05 TR020/TR027/TR031 e Zona06_PB12 TR017/TR022/TR024);
+     * a VM-5.4 (peças DE 125 sem tubo DE 125);
+     * as duas dúvidas da Zona07_PB19: o vão entre TR016 e TR019 e o quadradinho TR017/TR018 junto do NÓ54.9.
+   * Recomendo que sim. Até lá, esses pontos não se juntam e aparecem nas pendências.
+
+## 10. Como rodar
 
 ```
 python ferramentas/topologia/diagnostico.py            # mede e grava os CSVs em ferramentas/topologia/saida/
