@@ -26,6 +26,8 @@ import acesso as A
 import caminhos
 import backup
 import compras as C
+import cronograma as CR
+import dados_obra as DO
 import diario as DI
 import documentos as D
 import drive as DR
@@ -463,6 +465,52 @@ def p_cadastro_campo(b, c):
                                              b.get("referencia"), b.get("por"))}
 
 
+# ------------------------------------------------------------------ Planejamento: Dados da obra (mapa) e cronograma do Project
+def r_dados_obra_selecao(q, c):
+    return DO.selecao(c, q.get("linhas"), q.get("nos"), q.get("data") or None, q.get("equipe") or None)
+
+
+def r_dados_obra_estado(q, c):
+    return DO.estado(c, q.get("data") or None)
+
+
+def p_dados_obra_programar(b, c):
+    return DO.programar(c, b.get("linhas"), b.get("nos"), b.get("equipe_id"), b.get("servico"), b.get("data_ini"),
+                        b.get("data_fim"), b["por"], b.get("dias_semana"), b.get("obs"))
+
+
+def p_dados_obra_cancelar(b, c):
+    return {"canceladas": DO.cancelar_lote(c, b.get("lote"), b.get("motivo"), b["por"], b.get("a_partir_de"))}
+
+
+def p_dados_obra_liberar(b, c):
+    return DO.liberar(c, b.get("data"), b.get("equipe_id"), b.get("linhas"), b.get("nos"), b.get("materiais") or [], b["por"],
+                      b.get("funcionarios") or [], b.get("maquinas") or [])
+
+
+def p_dados_obra_reservar(b, c):
+    return DO.reservar(c, b.get("data"), b.get("equipe_id"), b.get("linhas"), b.get("nos"), b.get("materiais") or [], b["por"])
+
+
+def r_cronograma(q, c):
+    return CR.consultar(c)
+
+
+def p_cronograma(b, c):
+    return CR.importar(c, b.get("conteudo_b64"), b.get("nome"), b["por"])
+
+
+def r_quarentena(q, c):
+    return C.a_inspecionar(c)
+
+
+ROTAS_PLANEJAMENTO = {"/api/dados-obra/programar": ("planejar", p_dados_obra_programar),
+                      "/api/dados-obra/cancelar-lote": ("planejar", p_dados_obra_cancelar),
+                      "/api/dados-obra/liberar": ("almox", p_dados_obra_liberar),
+                      "/api/dados-obra/reservar": ("almox", p_dados_obra_reservar),
+                      "/api/cronograma": ("planejar", p_cronograma)}
+
+
 # ------------------------------------------------------------------ documentos oficiais (links do Google Drive)
 def r_documentos(q, c):
     return D.listar(c)
@@ -631,7 +679,9 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/documentos": r_documentos, "/api/mapa/geral": r_mapa_geral, "/api/planilhas": r_planilhas,
        "/api/interferencias": r_interferencias, "/api/lev/cronograma": r_lev_cronograma, "/api/lev/bm": r_lev_bm,
        "/api/lev/redes": r_lev_redes, "/api/lev/conexoes": r_lev_conexoes, "/api/topologia": r_topologia,
-       "/api/topografia": r_topografia, "/api/cadastro-campo": r_cadastro_campo}
+       "/api/topografia": r_topografia, "/api/cadastro-campo": r_cadastro_campo,
+       "/api/dados-obra/selecao": r_dados_obra_selecao, "/api/dados-obra/estado": r_dados_obra_estado,
+       "/api/cronograma": r_cronograma, "/api/almox/quarentena": r_quarentena}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"])}       # recebem o usuário da sessão
@@ -652,6 +702,7 @@ POST.update(ROTAS_DOCUMENTOS)
 POST.update(ROTAS_DRIVE)
 POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar,
              "/api/medicao/conferir": p_medicao_conferir})
+POST.update({rota: fn for rota, (_, fn) in ROTAS_PLANEJAMENTO.items()})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
 PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
@@ -677,6 +728,8 @@ PERMISSAO.update({"/api/programacao": "planejar", "/api/programacao/encerrar": "
 AUTOR.update({"/api/programacao": ("por",), "/api/programacao/encerrar": ("por",), "/api/medicao/conferir": ("por",),
               "/api/medicao/fechar": ("por",)})
 AUTOR.update({rota: campos for rota, (_, campos, _) in ROTAS_COMPRAS.items()})
+PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_PLANEJAMENTO.items()})
+AUTOR.update({rota: ("por",) for rota in ROTAS_PLANEJAMENTO})
 PERMISSAO.update({rota: "documentos" for rota in ROTAS_DOCUMENTOS})
 AUTOR.update({rota: ("por",) for rota in ROTAS_DOCUMENTOS})
 PERMISSAO.update({rota: "documentos" for rota in ROTAS_DRIVE})
@@ -686,7 +739,7 @@ assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral"}
 _CAMPO = ("campo", "diario", "interferencias")
 _ALMOX = ("almox", "ponto", "equipes")                  # a tela de Equipes e a de Check-in também montam o almoxarifado
-TELA_GET = {"/api/equipe": ("equipes", "ponto") + _CAMPO, "/api/estoque": _ALMOX + ("compras", "prog"),
+TELA_GET = {"/api/equipe": ("equipes", "ponto", "mapa") + _CAMPO, "/api/estoque": _ALMOX + ("compras", "prog", "mapa"),
             "/api/compat-caesb": _ALMOX, "/api/nfs": _ALMOX, "/api/movimentos": _ALMOX, "/api/reservas": _ALMOX,
             "/api/consumo": _ALMOX, "/api/checkins": ("ponto",) + _CAMPO, "/api/histograma": ("equipes",) + _CAMPO,
             "/api/compras": ("compras",), "/api/inventarios": ("compras",), "/api/reservas-vencidas": ("compras",),
@@ -696,6 +749,8 @@ TELA_GET = {"/api/equipe": ("equipes", "ponto") + _CAMPO, "/api/estoque": _ALMOX
             "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa"),
             "/api/diario": ("diario",), "/api/interferencias": ("interferencias",), "/api/topografia": ("topografia",),
             "/api/cadastro-campo": ("cadastro_campo",), "/api/topologia": ("mapa", "iluminado"),
+            "/api/dados-obra/selecao": ("mapa",), "/api/dados-obra/estado": ("mapa",), "/api/cronograma": ("cronograma", "mapa"),
+            "/api/almox/quarentena": ("almox", "compras"),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
 TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",)}   # downloads (/arquivos/: LEV)

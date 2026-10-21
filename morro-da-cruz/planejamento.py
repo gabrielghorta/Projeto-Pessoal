@@ -129,13 +129,37 @@ def faltantes(conn, ini, fim, frente=None):
     return out
 
 
-def camadas_mapa(conn, hoje=None, dias=7):
-    """Por nome visível (objetos vigentes): planejado (próximos dias), material disponibilizado, cadastro e pendências."""
-    hoje = hoje or date.today().isoformat()
-    ate = (date.fromisoformat(hoje) + timedelta(days=dias)).isoformat()
+def nomes_vigentes(conn):
+    """{(alvo_tipo, id estável): nome visível} dos trechos e atividades vigentes."""
     nomes = {("TRECHO", r[0]): r[1] for r in conn.execute("SELECT id, ponto FROM trechos WHERE vigente=1")}
     nomes.update({("ATIVIDADE", r[0]): r[1] for r in conn.execute(
         "SELECT a.id, a.nomenclatura FROM atividades a JOIN elementos e ON e.id=a.elemento_id WHERE a.vigente=1 AND e.vigente=1")})
+    return nomes
+
+
+def em_campo(conn, data=None, nomes=None):
+    """Onde cada equipe está no dia: o alvo do check-in aberto e os alvos das programações que esse check-in realizou
+    (a liberação de material pelo mapa do Dados da obra cobre vários trechos de uma vez).
+    {nome visível: {"equipe": id, "checkin_id": id}}."""
+    data = data or date.today().isoformat()
+    nomes = nomes if nomes is not None else nomes_vigentes(conn)
+    out = {}
+    for cid, eq, tipo, aid in conn.execute("SELECT id, equipe_id, alvo_tipo, alvo_id FROM checkins WHERE encerrado=0 AND data=? "
+                                           "ORDER BY id", (data,)).fetchall():
+        alvos = ([(tipo, aid)] if aid else []) + [tuple(r) for r in conn.execute(
+            "SELECT alvo_tipo, alvo_id FROM programacoes WHERE checkin_id=? ORDER BY id", (cid,))]
+        for a in alvos:
+            if a in nomes:
+                out.setdefault(nomes[a], {"equipe": eq, "checkin_id": cid})
+    return out
+
+
+def camadas_mapa(conn, hoje=None, dias=7):
+    """Por nome visível (objetos vigentes): planejado (próximos dias), material disponibilizado, cadastro, pendências,
+    liberação topográfica e onde cada equipe está hoje (em_campo)."""
+    hoje = hoje or date.today().isoformat()
+    ate = (date.fromisoformat(hoje) + timedelta(days=dias)).isoformat()
+    nomes = nomes_vigentes(conn)
     planejado = {}
     for p in _rows(conn.execute("SELECT * FROM programacoes WHERE status='PLANEJADA' AND data BETWEEN ? AND ? ORDER BY data",
                                 (hoje, ate))):
@@ -185,7 +209,7 @@ def camadas_mapa(conn, hoje=None, dias=7):
         if n:
             liberado[n] = "TOTAL" if r[1] >= (ext.get(r[0]) or 0) - 0.01 else "PARCIAL"
     return {"planejado": planejado, "material": material, "cadastro": cadastro, "pendencias": pend, "liberado": liberado,
-            "hoje": hoje, "ate": ate}
+            "em_campo": em_campo(conn, hoje, nomes), "hoje": hoje, "ate": ate}
 
 
 def _levantamentos(conn):

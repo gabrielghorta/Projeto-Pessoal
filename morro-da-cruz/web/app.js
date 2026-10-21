@@ -123,12 +123,11 @@ async function acao(fn, okMsg) {
 window.addEventListener('unhandledrejection', ev => { if (ev.reason && ev.reason.exibido) ev.preventDefault(); });
 const formObj = f => Object.fromEntries(new FormData(f).entries());
 
-/* ---------------------------------------------------------------- tema (escuro por padrão; o mapa REV02 acompanha) */
+/* ---------------------------------------------------------------- tema (escuro por padrão) */
 function aplicarTema(t) {
   document.documentElement.dataset.tema = t;
   $('#temaBtn').textContent = t === 'claro' ? 'Tema escuro' : 'Tema claro';
   try { localStorage.setItem('mc-tema', t); } catch (_) { /* sem storage */ }
-  try { $('#mapaFrame').contentWindow.postMessage({ tipo: 'mc-tema', tema: t }, location.origin); } catch (_) { /* mapa ausente */ }
 }
 $('#temaBtn').addEventListener('click', () => aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'escuro' : 'claro'));
 aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escuro');
@@ -143,19 +142,20 @@ const TELAS = {
   interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
   topografia: { titulo: 'Topografia', grupo: 'grupo-campo', carregar: () => carregarTopografia() },
   cadastro_campo: { titulo: 'Cadastro de campo', grupo: 'grupo-campo', carregar: () => carregarCadCampo() },
-  almox: { titulo: 'Estoque e movimentos', grupo: 'grupo-almox', carregar: () => carregarAlmox() },
-  ponto: { titulo: 'Check-in e check-out', grupo: 'grupo-almox', carregar: () => carregarAlmox() },
-  compras: { titulo: 'Compras e notas', grupo: 'grupo-almox', carregar: () => carregarCompras() },
+  mapa: { titulo: 'Dados da obra', grupo: 'planejamento', carregar: () => carregarDadosObra() },
+  prog: { titulo: 'Programação das equipes', grupo: 'planejamento', carregar: () => carregarProg() },
+  cronograma: { titulo: 'Cronograma da obra', grupo: 'planejamento', carregar: () => carregarCronograma() },
+  almox: { titulo: 'Estoque e movimentos', grupo: 'planejamento', carregar: () => carregarAlmox() },
+  compras: { titulo: 'Compras e notas', grupo: 'planejamento', carregar: () => carregarCompras() },
+  ponto: { titulo: 'Check-in e check-out', grupo: 'planejamento', carregar: () => carregarAlmox() },
   equipes: { titulo: 'Equipes', grupo: 'administrativo', carregar: () => carregarAlmox() },
-  prog: { titulo: 'Planejamento', grupo: 'administrativo', carregar: () => carregarProg() },
-  mapa: { titulo: 'Dados da obra', grupo: 'administrativo', carregar: () => carregarMapa() },
   esteira: { titulo: 'Cadastro', grupo: 'administrativo', carregar: () => carregarEsteira() },
   relatorios: { titulo: 'Relatórios', grupo: 'administrativo', carregar: () => carregarRelatorios() },
   admin: { titulo: 'Usuários e histórico', grupo: 'administrativo', carregar: () => carregarAdmin() },
   lev: { titulo: 'LEV', grupo: 'administrativo', carregar: () => carregarLev() },
   medicao: { titulo: 'Medição', grupo: 'administrativo', carregar: () => carregarMedicoes() },
 };
-const GRUPOS = { 'grupo-campo': 'Execução', 'grupo-almox': 'Almoxarifado', administrativo: 'Administrativo' };
+const GRUPOS = { 'grupo-campo': 'Execução', planejamento: 'Planejamento', administrativo: 'Administrativo' };
 // telas que o perfil abre (config/perfis.json); o servidor confere de novo em cada consulta
 const podeTela = id => id === 'inicio' || !!(USUARIO && USUARIO.telas.includes(id));
 const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeTela(t));
@@ -210,17 +210,17 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
   'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: lançamento do dia, diário, interferências e, das equipes terceirizadas, topografia e cadastro de campo.' },
-  'grupo-almox': { nome: 'Almoxarifado', desc: 'Estoque e movimentos, check-in e check-out das equipes, compras e notas fiscais.' },
-  administrativo: { nome: 'Administrativo', desc: 'Equipes, planejamento, dados da obra, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
+  planejamento: { nome: 'Planejamento', desc: 'O mapa do Dados da obra (programar as equipes, liberar o material do dia e receber a devolução), a programação, o cronograma do Project, o estoque com o aceite do material, compras e notas e o check-in.' },
+  administrativo: { nome: 'Administrativo', desc: 'Equipes, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
 };
 // a ordem do Menu segue o trabalho de cada perfil; o que o perfil não abre fica de fora
 const MENU_PERFIL = {
-  ENGENHARIA: ['iluminado', 'administrativo', 'grupo-almox', 'grupo-campo'],
-  ADMINISTRACAO: ['iluminado', 'administrativo', 'grupo-almox', 'grupo-campo'],
-  ALMOXARIFADO: ['grupo-almox', 'grupo-campo', 'iluminado'], CADASTRO: ['grupo-campo', 'administrativo', 'iluminado'],
+  ENGENHARIA: ['iluminado', 'administrativo', 'planejamento', 'grupo-campo'],
+  ADMINISTRACAO: ['iluminado', 'administrativo', 'planejamento', 'grupo-campo'],
+  ALMOXARIFADO: ['planejamento', 'grupo-campo', 'iluminado'], CADASTRO: ['grupo-campo', 'administrativo', 'iluminado'],
   TOPOGRAFIA: ['grupo-campo', 'iluminado'],
 };
-const ORDEM_MENU = ['iluminado', 'administrativo', 'grupo-almox', 'grupo-campo'];
+const ORDEM_MENU = ['iluminado', 'administrativo', 'planejamento', 'grupo-campo'];
 const abreModo = id => GRUPOS[id] ? telasDoGrupo(id).length > 0 : podeTela(id);
 let MENU_FOCO = null;
 const iniciais = n => (String(n || '').replace(/\(.*?\)/g, '').replace(/[^\p{L}\s]/gu, '').trim().split(/\s+/).filter(Boolean)
@@ -287,9 +287,7 @@ async function carregarMapa() {
     ['Trechos', nf(r.trechos)], ['Nós e caixas', nf(r.elementos)], ['Validados (OK interno)', nf(r.ok_fiscal)], ['Contrato (cl. 3.1)', brl(r.valor_contrato)],
   ].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join('') +
     (r.itens_pendentes ? `<div class="kpi" style="border-top-color:var(--vermelho)"><span>Itens 06.2 sem quantidade/unidade com fonte</span><b>${nf(r.itens_pendentes)}</b></div>` : '');
-  const fr = $('#mapaFrame');
-  if (fr.src.endsWith('about:blank')) fr.src = '/mapa/';
-  const est = await api('/api/mapa/estado' + (MEDICAO_ATUAL ? '?medicao=' + MEDICAO_ATUAL : ''));
+  const est = await estadoMapa(true);
   $('#pins').innerHTML = est.pins.length ? est.pins.map(p => `<div class="acoes" style="margin-bottom:6px">📍 <b>${esc(p.equipe)}</b> <button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(curto(p.alvo_id))}</button></div>`).join('')
     : '<span class="vazio">Nenhum check-in aberto hoje.</span>';
   $('#semPosicao').innerHTML = est.sem_posicao.map(e => `<div style="margin-bottom:6px"><b>${esc(e.numero)}</b> <span class="chip ${String(e.status_posicao || '').startsWith('PROV') ? 'amarelo' : 'vermelho'}">${esc(e.status_posicao || 'sem posição')}</span><br><small>${esc(e.nomenclaturas)}</small></div>`).join('');
@@ -307,17 +305,9 @@ document.addEventListener('click', ev => {
 });
 ligarBusca($('#fiscBusca'), r => mostrarFiscal(r.tipo, r.id));
 $('#selFrente').addEventListener('change', carregarMapa);
-let FISCAL_ATUAL = null;
-window.addEventListener('message', ev => {   // seleção vinda do mapa REV02 (camada mapa_iluminado.js)
-  if (ev.origin !== location.origin || !ev.data || ev.data.tipo !== 'mc-selecao') return;
-  const a = FISCAL_ATUAL;                   // eco da própria seleção (painel → mapa → painel): não redesenha
-  if (a && [a.nome, a.id].includes(ev.data.alvo_id) && Date.now() - a.t < 4000) return;
-  mostrarFiscal(ev.data.alvo_tipo, ev.data.alvo_id);
-});
 
 async function mostrarFiscal(tipo, id) {
   const d = await acao(() => api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(id)}`));
-  FISCAL_ATUAL = { id: d.id, nome: d.nome, t: Date.now() };
   const ex = d.execucao, st = d.fotos_faltando;
   const linhas = tipo === 'TRECHO' ? [
     ['Frente / equipe', `${esc(d.frente_id)} · ${esc(d.equipe)}`], ['Extensão', nf(d.extensao_m) + ' m'], ['DE', `${d.de_mm} mm · ${esc(d.material)} · ${esc(d.metodologia)}`],
@@ -378,11 +368,10 @@ async function mostrarFiscal(tipo, id) {
     await acao(() => api('/api/recomposicao', { alvo_tipo: tipo, alvo_id: id, tipo: $('#recTipo').value, quantidade: $('#recQtd').value, data: hoje() }), 'Recomposição lançada (gaveta 4).');
     mostrarFiscal(tipo, id);
   });
-  try { $('#mapaFrame').contentWindow.postMessage({ tipo: 'mc-focar', alvo_tipo: tipo, alvo_id: d.nome }, location.origin); } catch (_) { /* mapa ausente */ }
+  if (TELA === 'mapa') plnFocar(tipo, d.nome);                    // o mapa do Dados da obra vai até o trecho
 }
-function recarregarCamadaMapa() {
-  try { $('#mapaFrame').contentWindow.postMessage({ tipo: 'mc-recarregar' }, location.origin); } catch (_) { /* mapa ausente */ }
-}
+// depois de um registro (OK interno, check-in…) o mapa do Dados da obra e o Mapa iluminado relêem a situação
+function recarregarCamadaMapa() { plnRecarregar(); }
 
 /* ---------------------------------------------------------------- 2. almoxarifado & equipes */
 async function carregarAlmox() {
@@ -392,6 +381,7 @@ async function carregarAlmox() {
   $$('.selMaterialAnkara').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade === 'ANKARA').map(opt).join(''));
   $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
+  if (podeTela('almox') || podeTela('compras')) renderAceite(await api('/api/almox/quarentena'));
   const res = await api('/api/reservas');
   $('#reservasLista').innerHTML = res.length ? `<table><thead><tr><th>Dia</th><th>Equipe</th><th>Material</th><th class="n">Qtd.</th><th></th></tr></thead><tbody>${res.map(r => `<tr><td>${esc(r.data)}</td><td>${esc(r.equipe_id)}</td><td>${esc(r.material_id)}</td><td class="n">${nf(r.quantidade, 3)}</td><td><button class="btn" data-cancelar-reserva="${r.id}">Cancelar</button></td></tr>`).join('')}</tbody></table>` : '<span class="vazio">Nenhuma reserva ativa.</span>';
   const cons = await api('/api/consumo');
@@ -412,6 +402,25 @@ async function carregarAlmox() {
   if (!$('#hIni').value) { $('#hIni').value = hoje().slice(0, 8) + '01'; $('#hFim').value = hoje(); }
   carregarHistograma();
 }
+// aceite ou recusa do material entregue (quarentena do fluxo de compras): o mesmo registro da tela Compras e notas
+function renderAceite(itens) {
+  $('#aceiteLista').className = itens.length ? '' : 'vazio';
+  $('#aceiteLista').innerHTML = itens.length ? itens.map(r => `<div class="linha lin-aceite" data-ri="${r.id}">
+      <span><b>${esc(r.material_id)}</b> · ${nf(r.quantidade, 3)} ${esc(r.unidade || '')}<br><small>${esc((r.descricao || '').slice(0, 80))} · NF ${esc(r.numero)}${r.fornecedor ? ' · ' + esc(r.fornecedor) : ''} · entregue em ${esc(r.data)}</small></span>
+      <label>Aceito<input data-k="aceito" type="number" step="any" min="0" value="${r.quantidade}"></label>
+      <label>Recusado<input data-k="recusado" type="number" step="any" min="0" value="0"></label>
+      <label>Laudo ou inspeção<input data-k="laudo" placeholder="nº do laudo ou quem conferiu"></label>
+      <label>Motivo da recusa<input data-k="motivo_recusa"></label>
+      ${pode('receber') ? `<div class="acoes"><button type="button" class="btn prim" data-aceite="${r.id}">Registrar</button></div>` : ''}</div>`).join('')
+    : 'Nada aguardando o aceite.';
+}
+$('#aceiteLista').addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-aceite]'); if (!b) return;
+  const l = b.closest('.lin-aceite'), o = Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value]));
+  const r = await acao(() => api('/api/inspecao', { recebimento_item_id: l.dataset.ri, ...o, data: hoje() }),
+    +o.recusado > 0 ? 'Inspeção registrada: o aceito entrou no estoque e o recusado ficou de fora.' : 'Material aceito: entrou no estoque.').catch(() => null);
+  if (r) { carregarAlmox(); driveEmSegundoPlano(); }
+});
 function renderEstoque() {
   const f = $('#estFiltro').value, so = $('#estSaldo').checked;
   const lst = MATERIAIS.filter(m => (!f || m.propriedade === f) && (!so || m.saldo_almox || m.custodia || m.quarentena || m.reservado));
@@ -1663,7 +1672,7 @@ function aplicarPermissoes() {
   $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO;
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
-  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Execução; o almoxarife, também o Almoxarifado
+  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Execução; o almoxarife, também o Planejamento
   $$('.rail-item[data-tela]').forEach(b => { b.hidden = !podeTela(b.dataset.tela); });
   $$('button.rail-grupo').forEach(b => { b.hidden = $(`.rail-sub[data-grupo="${b.dataset.grupo}"]`).hidden = !telasDoGrupo(b.dataset.grupo).length; });
   $$('.rail-itens .rail-div').forEach(d => {                    // divisória sem nada visível depois dela some

@@ -2,6 +2,26 @@
 
 CT 10.239/2026 · 17/10/2026 · esquema v12 · plano: `docs/PLANO_ENTREGA_COMPLETA.md` §D
 
+## Atualização de 21/10/2026: grupo Planejamento, mapa do Dados da obra e cronograma (D-75 a D-77)
+
+**Grupo Planejamento** (antes Almoxarifado): Dados da obra, Programação das equipes, Cronograma da obra, Estoque e movimentos (com o aceite ou a recusa do material entregue, o mesmo da inspeção em Compras e notas), Compras e notas, Check-in e check-out.
+
+**Dados da obra** (`web/planejamento.js`, `dados_obra.py`) é um mapa próprio sobre o traçado do REV02 (o mesmo visor do Mapa iluminado); o mapa técnico REV02 continua abrindo à parte, pelo botão da tela.
+
+| Ação | Como funciona | Grava em |
+|---|---|---|
+| Escolher trechos | Toque escolhe um; Ctrl + clique (ou o botão "Juntar trechos") junta vários. Cada linha traz o trecho físico inteiro (`topologia.py`); o nó que liga dois trechos escolhidos entra sozinho; outro nó entra se for tocado (com o mapa aproximado). | — (`GET /api/dados-obra/selecao`) |
+| Programar | Equipe, serviço, de/até e os dias da semana de trabalho: uma programação por alvo (linha ou nó) e por dia, com o mesmo carimbo de criação (o lote). A igual já existente é mantida. "Cancelar o que falta" cancela as PLANEJADAS do lote a partir de hoje, com motivo. | `programacoes` |
+| Liberar material | Sugestão do projeto: tubo da 06.1 pelo que falta assentar e as peças dos nós (06.2 → BM Vertical), menos o que já está com a equipe e limitada ao que há no almoxarifado. Abre o check-in da equipe (alvo = primeira linha) ou soma ao check-in aberto do mesmo dia; as programações do dia da equipe para a seleção ficam REALIZADAS por esse check-in. | `checkins`, `movimentos` (CUSTODIA), `programacoes` |
+| Reservar | Para um dia que ainda não chegou: reserva para a equipe (o check-in daquele dia consome). | `reservas` |
+| Devolução | O check-out de sempre, por material: devolvido, perda (com motivo) e o que fica com a equipe; o resto conta como aplicado. | `movimentos` (APLICADO/SOBRA/PERDA) |
+
+**Cores do mapa:** sem programação (cinza tracejado), liberado pela topografia (azul-claro), concluído (branco), começado sem equipe no dia (laranja tracejado), programado para os próximos dias (amarelo tracejado), programado para o dia (amarelo), equipe trabalhando no dia (laranja, com o pino da equipe). O que se faz aqui alimenta o Mapa iluminado: a camada `em_campo` (`planejamento.em_campo`) acende como "em execução" os trechos cobertos pelo check-in aberto do dia.
+
+**Cronograma da obra** (`cronograma.py`): o XML do Project (Arquivo › Salvar como › Formato XML), ou a planilha .xlsx/.csv exportada. O `.mpp` é recusado com a instrução. O arquivo fica como veio em `documentos/cronograma/` (com `cronograma.json` e `historico.json`); a tela mostra as tarefas em barras (filtros por texto, frente, em andamento, próximas 2 semanas, atrasadas e ligadas a trechos), o % do Project e, nas tarefas que citam trechos, o assentado registrado no sistema.
+
+**Testes:** `tests/test_dados_obra.py` (9) e `tests/test_cronograma.py` (5).
+
 ## Finalidade operacional
 
 | Novo | Para que serve | O que não é |
@@ -12,7 +32,7 @@ CT 10.239/2026 · 17/10/2026 · esquema v12 · plano: `docs/PLANO_ENTREGA_COMPLE
 | **Filtro por frente** (11 zonas, Adutora, CH) | Ver os números de uma frente. | — |
 | **Camadas do mapa** | Andamento, Planejado (7 dias), Material, Informado × verificado, Cadastro e Pendências, todas calculadas no servidor **só a partir dos registros efetivos**. | "Verificado" e "conforme" são conferência interna Ankara (azul). O verde fica para o OK interno (já identificado como "não é aprovação Caesb") e para a decisão da Caesb registrada pelo memorando ESET. |
 
-## Camadas (seletor dentro do mapa, com legenda própria)
+## Camadas do mapa técnico REV02 (aberto à parte desde 21/10/2026)
 
 | Camada | Cores |
 |---|---|
