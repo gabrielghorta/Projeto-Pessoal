@@ -662,29 +662,36 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
             conn.execute("INSERT INTO checkin_presencas VALUES (?, 'FUNCIONARIO', ?)", (cid, f))
         for m in maquinas:
             conn.execute("INSERT INTO checkin_presencas VALUES (?, 'MAQUINA', ?)", (cid, m))
-        for it in materiais:
-            q = float(it["quantidade"])
-            if q <= 0:
-                continue
-            mat = _one(conn, "SELECT * FROM materiais WHERE id=?", it["material_id"])
-            if not mat:
-                raise RegraViolada(f"Material '{it['material_id']}' não cadastrado.")
-            if mat["propriedade"] == "CONSUMO":
-                raise RegraViolada(f"{mat['descricao']}: material de consumo não sai por requisição de equipe.")
-            propria = reservado(conn, mat["id"], equipe_id, data)
-            livre = disponivel(conn, mat["id"]) + propria          # a reserva da própria equipe pode ser usada
-            if livre + TOL < q:
-                raise RegraViolada(f"Disponível insuficiente de {mat['descricao']}: {livre:g} {mat['unidade']} "
-                                   f"(inclui a reserva da {equipe_id} para {data}; reservas de outras equipes não são usadas).")
-            conn.execute(
-                """INSERT INTO movimentos(data,material_id,tipo,quantidade,equipe_id,alvo_tipo,alvo_id,checkin_id)
-                   VALUES (?,?,'CUSTODIA',?,?,?,?,?)""", (data, mat["id"], q, equipe_id, tipo, ref, cid))
-            if propria:
-                obs = "retirada menor que a reserva; restante liberado" if q + TOL < propria else None
-                conn.execute("UPDATE reservas SET status='ATENDIDA', checkin_id=?, encerrada_em=?, motivo=? "
-                             "WHERE material_id=? AND equipe_id=? AND data=? AND status='ATIVA'",
-                             (cid, _agora(), obs, mat["id"], equipe_id, data))
+        retirar_materiais(conn, cid, data, equipe_id, tipo, ref, materiais)
     return cid
+
+
+def retirar_materiais(conn, checkin_id, data, equipe_id, alvo_tipo, alvo_id, materiais):
+    """Retirada do almoxarifado para a sessão (check-in) da equipe no dia: consome primeiro a reserva da própria
+    equipe para o dia; o restante precisa caber no disponível. Usada no check-in e na liberação pelo mapa (Dados da
+    obra), que soma material ao check-in aberto do mesmo dia. Chame dentro de uma transação."""
+    for it in materiais:
+        q = float(it["quantidade"])
+        if q <= 0:
+            continue
+        mat = _one(conn, "SELECT * FROM materiais WHERE id=?", it["material_id"])
+        if not mat:
+            raise RegraViolada(f"Material '{it['material_id']}' não cadastrado.")
+        if mat["propriedade"] == "CONSUMO":
+            raise RegraViolada(f"{mat['descricao']}: material de consumo não sai por requisição de equipe.")
+        propria = reservado(conn, mat["id"], equipe_id, data)
+        livre = disponivel(conn, mat["id"]) + propria          # a reserva da própria equipe pode ser usada
+        if livre + TOL < q:
+            raise RegraViolada(f"Disponível insuficiente de {mat['descricao']}: {livre:g} {mat['unidade']} "
+                               f"(inclui a reserva da {equipe_id} para {data}; reservas de outras equipes não são usadas).")
+        conn.execute(
+            """INSERT INTO movimentos(data,material_id,tipo,quantidade,equipe_id,alvo_tipo,alvo_id,checkin_id)
+               VALUES (?,?,'CUSTODIA',?,?,?,?,?)""", (data, mat["id"], q, equipe_id, alvo_tipo, alvo_id, checkin_id))
+        if propria:
+            obs = "retirada menor que a reserva; restante liberado" if q + TOL < propria else None
+            conn.execute("UPDATE reservas SET status='ATENDIDA', checkin_id=?, encerrada_em=?, motivo=? "
+                         "WHERE material_id=? AND equipe_id=? AND data=? AND status='ATIVA'",
+                         (checkin_id, _agora(), obs, mat["id"], equipe_id, data))
 
 
 def checkout(conn, checkin_id, itens):

@@ -1,18 +1,20 @@
 /* Traçado real da rede para a tela inicial e para o Mapa iluminado.
- * A geometria vem da visão geral do HTML REV02 (/api/mapa/geral: satélite, zonas oficiais, trechos, nós) e a situação
+ * A geometria vem da visão geral do HTML REV02 (/api/mapa/geral: zonas oficiais, trechos, nós) e a situação
  * de cada trecho vem só dos registros do banco (/api/mapa/estado). Nenhuma coordenada é criada aqui: o que não tem
  * posição no projeto não aparece no mapa (continua na bandeja do Dados da obra). */
 
 /* ---------------------------------------------------------------- dados compartilhados */
-let GERAL = null, GERAL_P = null, ESTADO_MAPA = null, ESTADO_EM = 0;
+let GERAL = null, GERAL_P = null, ESTADO_MAPA = null, ESTADO_EM = 0, ESTADO_P = null;
 function obterGeral() {
   if (!GERAL_P) GERAL_P = api('/api/mapa/geral').then(g => (GERAL = g)).catch(e => { GERAL_P = null; throw e; });
   return GERAL_P;
 }
+// a situação do mapa é lida uma vez por pedido: telas que pedem juntas (Dados da obra) dividem a mesma resposta
 async function estadoMapa(novo) {
   if (novo || !ESTADO_MAPA || Date.now() - ESTADO_EM > 30000) {
-    ESTADO_MAPA = await api('/api/mapa/estado' + (MEDICAO_ATUAL ? '?medicao=' + MEDICAO_ATUAL : ''));
-    ESTADO_EM = Date.now();
+    if (!ESTADO_P) ESTADO_P = api('/api/mapa/estado' + (MEDICAO_ATUAL ? '?medicao=' + MEDICAO_ATUAL : ''))
+      .then(e => { ESTADO_MAPA = e; ESTADO_EM = Date.now(); return e; }).finally(() => { ESTADO_P = null; });
+    return ESTADO_P;
   }
   return ESTADO_MAPA;
 }
@@ -108,15 +110,17 @@ function situacao(est, nome) {
   if ((cam.cadastro || {})[nome] === '6_APROVADO') return 'cadastrado';
   if (st === 'OK_FISCAL' || st === 'MEDIDO_ANTERIOR') return 'cadastro';
   if (st === 'CONCLUIDO_MES') return 'aguarda';
-  if (st === 'EM_EXECUCAO') return 'execucao';
+  if (st === 'EM_EXECUCAO' || (cam.em_campo || {})[nome]) return 'execucao';     // equipe com check-in hoje no trecho (Dados da obra)
   if ((cam.liberado || {})[nome]) return 'liberado';
   return 'nao';
 }
-const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null,
-  vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true }, fundo: 'escura' };
-// satélite escurecido por padrão: as cores da situação aparecem por cima, como no mapa do projeto
-const FUNDOS = { escura: ['Escura', 'brightness(.42) saturate(.5)'], clara: ['Clara', 'brightness(.85)'], sem: ['Sem satélite', ''] };
-try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') || '{}')); ILU.fundo = FUNDOS[localStorage.getItem('mc-ilu-fundo')] ? localStorage.getItem('mc-ilu-fundo') : 'escura'; } catch (_) { /* sem storage */ }
+// o visor (arrastar, aproximar, clique) serve a este mapa e ao do Dados da obra (planejamento.js): cada um passa o seu
+// contexto com svg(), caixa(), desenhar(px, zoom) e clique(alvo, ev)
+const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
+  vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true },
+  svg: () => $('#iluSvg'), caixa: () => $('#ilu'), desenhar: desenharIlu, clique: alvo => cliqueNoMapa(alvo) };
+// sem as plantas baixas por baixo (pedido do responsável em 21/10/2026): a divisão por PB fica só no Dados da obra
+try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') || '{}')); } catch (_) { /* sem storage */ }
 const iluSvg = () => $('#iluSvg');
 
 async function carregarIluminado() {
@@ -135,13 +139,8 @@ function montarIluminado(g) {
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}"/>`).join('')
     + g.zonas.map(z => `<polyline class="ilu-zl" points="${pontos(z.p)} ${z.p[0]},${z.p[1]}"/>`).join('');
   const hits = g.trechos.map((t, i) => `<path class="ilu-hit" data-i="${i}" d="${caminho(t.p)}"/>`).join('');
-  svg.innerHTML = `<g id="iluSat"><image id="iluSatImg" href="/mapa/geral.webp?v=${g.versao}" x="0" y="0" width="${g.w}" height="${g.h}" preserveAspectRatio="none"/></g>
-    <g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluHits">${hits}</g>
+  svg.innerHTML = `<g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluHits">${hits}</g>
     <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="iluPins"></g>`;
-  $('#iluSatImg').addEventListener('error', () => {      // sem Pillow no servidor: as 25 PBs, uma a uma, na mesma posição
-    $('#iluSat').innerHTML = g.imagens.map(im => `<image href="/mapa/pb/${esc(im.id)}.webp?v=${g.versao}" width="${im.w}" height="${im.h}" preserveAspectRatio="none" transform="matrix(${im.m.join(' ')})"/>`).join('');
-    aplicarCamadas();
-  }, { once: true });
   ILU.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   ILU.vb = null; ajustarAspecto();
   ligarGestos(svg);
@@ -151,22 +150,23 @@ function montarIluminado(g) {
 }
 
 // a área visível acompanha a proporção da tela: arrastar e aproximar usam a mesma escala nos dois eixos
-function ajustarAspecto() {
-  const r = iluSvg().getBoundingClientRect(); if (!r.width || !r.height) return;
-  const [x0, y0, x1, y1] = ILU.vb ? [ILU.vb[0], ILU.vb[1], ILU.vb[0] + ILU.vb[2], ILU.vb[1] + ILU.vb[3]] : ILU.base;
-  ILU.vb = encaixar([x0, y0, x1, y1], r.width / r.height);
-  desenharVista();
+function ajustarAspecto(ctx = ILU) {
+  const r = ctx.svg().getBoundingClientRect(); if (!r.width || !r.height) return;
+  const [x0, y0, x1, y1] = ctx.vb ? [ctx.vb[0], ctx.vb[1], ctx.vb[0] + ctx.vb[2], ctx.vb[1] + ctx.vb[3]] : ctx.base;
+  ctx.vb = encaixar([x0, y0, x1, y1], r.width / r.height);
+  desenharVista(ctx);
 }
 function encaixar([x0, y0, x1, y1], asp) {
   let w = x1 - x0, h = y1 - y0; const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   if (w / h > asp) h = w / asp; else w = h * asp;
   return [cx - w / 2, cy - h / 2, w, h];
 }
-function desenharVista() {
-  const svg = iluSvg(), [x, y, w, h] = ILU.vb;
+function desenharVista(ctx = ILU) {
+  const svg = ctx.svg(), [x, y, w, h] = ctx.vb;
   svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
-  const px = w / (svg.getBoundingClientRect().width || 1);   // unidades do mapa por pixel
-  const zoom = (ILU.base[2] - ILU.base[0]) / w;
+  ctx.desenhar(w / (svg.getBoundingClientRect().width || 1), (ctx.base[2] - ctx.base[0]) / w);   // unidades do mapa por pixel e zoom
+}
+function desenharIlu(px, zoom) {
   $('#iluLinhas').style.strokeWidth = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)) + 'px';
   $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
   $$('#iluPins .ilu-pin').forEach(p => {
@@ -177,40 +177,39 @@ function desenharVista() {
   const tr = $('#iluTrilha');
   tr.innerHTML = ILU.zona ? `<button type="button" data-ilu-tudo>Obra inteira</button> › ${esc(nomeZona(ILU.zona))}` : zoom > 1.15 ? '<button type="button" data-ilu-tudo>Ver a obra inteira</button>' : 'Obra inteira';
 }
-let ANIM = 0;
-function irPara(alvo, animar = true) {
-  const r = iluSvg().getBoundingClientRect();
-  const fim = encaixar(alvo, r.width / r.height), ini = ILU.vb.slice();
+function irPara(alvo, animar = true, ctx = ILU) {
+  const r = ctx.svg().getBoundingClientRect();
+  const fim = encaixar(alvo, r.width / r.height), ini = ctx.vb.slice();
   const reduzir = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  cancelAnimationFrame(ANIM);
-  if (!animar || reduzir) { ILU.vb = fim; return desenharVista(); }
+  cancelAnimationFrame(ctx.anim);
+  if (!animar || reduzir) { ctx.vb = fim; return desenharVista(ctx); }
   const t0 = performance.now(), dur = 520;
   const passo = t => {
     const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-    ILU.vb = ini.map((v, i) => v + (fim[i] - v) * e); desenharVista();
-    if (k < 1) ANIM = requestAnimationFrame(passo);
+    ctx.vb = ini.map((v, i) => v + (fim[i] - v) * e); desenharVista(ctx);
+    if (k < 1) ctx.anim = requestAnimationFrame(passo);
   };
-  ANIM = requestAnimationFrame(passo);
+  ctx.anim = requestAnimationFrame(passo);
 }
-function zoomEm(fator, cx, cy) {
-  const [x, y, w, h] = ILU.vb, larg = ILU.base[2] - ILU.base[0];
+function zoomEm(fator, cx, cy, ctx = ILU) {
+  const [x, y, w, h] = ctx.vb, larg = ctx.base[2] - ctx.base[0];
   const nw = Math.max(larg / 60, Math.min(larg * 1.6, w * fator)); const k = nw / w;
   if (cx == null) { cx = x + w / 2; cy = y + h / 2; }
-  ILU.vb = [cx - (cx - x) * k, cy - (cy - y) * k, w * k, h * k];
-  desenharVista();
+  ctx.vb = [cx - (cx - x) * k, cy - (cy - y) * k, w * k, h * k];
+  desenharVista(ctx);
 }
-function pontoDoMapa(ev) {
-  const r = iluSvg().getBoundingClientRect(), [x, y, w, h] = ILU.vb;
+function pontoDoMapa(ev, ctx = ILU) {
+  const r = ctx.svg().getBoundingClientRect(), [x, y, w, h] = ctx.vb;
   return [x + (ev.clientX - r.left) / r.width * w, y + (ev.clientY - r.top) / r.height * h];
 }
 
 // arrastar para mover, roda/pinça para aproximar; toque sem arrastar = clique (trecho, pino ou zona)
-function ligarGestos(svg) {
+function ligarGestos(svg, ctx = ILU) {
   const dedos = new Map(); let inicio = null, arrastou = false, pinca = null;
   svg.addEventListener('pointerdown', ev => {
     dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
-    if (dedos.size === 1) { inicio = { x: ev.clientX, y: ev.clientY, vb: ILU.vb.slice(), alvo: ev.target }; arrastou = false; }
-    if (dedos.size === 2) { const [a, b] = [...dedos.values()]; pinca = { d: Math.hypot(a.x - b.x, a.y - b.y), vb: ILU.vb.slice() }; arrastou = true; }
+    if (dedos.size === 1) { inicio = { x: ev.clientX, y: ev.clientY, vb: ctx.vb.slice(), alvo: ev.target }; arrastou = false; }
+    if (dedos.size === 2) { const [a, b] = [...dedos.values()]; pinca = { d: Math.hypot(a.x - b.x, a.y - b.y), vb: ctx.vb.slice() }; arrastou = true; }
   });
   svg.addEventListener('pointermove', ev => {
     if (!dedos.has(ev.pointerId)) return;
@@ -218,28 +217,28 @@ function ligarGestos(svg) {
     const r = svg.getBoundingClientRect();
     if (dedos.size === 2 && pinca) {
       const [a, b] = [...dedos.values()], d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-      ILU.vb = pinca.vb.slice(); zoomEm(pinca.d / d, ...pontoDoMapa({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }));
+      ctx.vb = pinca.vb.slice(); zoomEm(pinca.d / d, ...pontoDoMapa({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }, ctx), ctx);
       return;
     }
     if (!inicio) return;
     const dx = ev.clientX - inicio.x, dy = ev.clientY - inicio.y;
     if (!arrastou && Math.hypot(dx, dy) < 5) return;
-    if (!arrastou) { arrastou = true; svg.setPointerCapture(ev.pointerId); $('#ilu').classList.add('arrastando'); }
+    if (!arrastou) { arrastou = true; svg.setPointerCapture(ev.pointerId); ctx.caixa().classList.add('arrastando'); }
     const k = inicio.vb[2] / r.width;
-    ILU.vb = [inicio.vb[0] - dx * k, inicio.vb[1] - dy * k, inicio.vb[2], inicio.vb[3]];
-    desenharVista();
+    ctx.vb = [inicio.vb[0] - dx * k, inicio.vb[1] - dy * k, inicio.vb[2], inicio.vb[3]];
+    desenharVista(ctx);
   });
   const soltar = ev => {
     dedos.delete(ev.pointerId);
     if (dedos.size < 2) pinca = null;
     if (dedos.size) return;
-    $('#ilu').classList.remove('arrastando');
-    if (inicio && !arrastou && ev.type === 'pointerup') cliqueNoMapa(inicio.alvo);
+    ctx.caixa().classList.remove('arrastando');
+    if (inicio && !arrastou && ev.type === 'pointerup') ctx.clique(inicio.alvo, ev);
     inicio = null;
   };
   svg.addEventListener('pointerup', soltar);
   svg.addEventListener('pointercancel', soltar);
-  svg.addEventListener('wheel', ev => { ev.preventDefault(); zoomEm(Math.pow(1.0018, ev.deltaY), ...pontoDoMapa(ev)); }, { passive: false });
+  svg.addEventListener('wheel', ev => { ev.preventDefault(); zoomEm(Math.pow(1.0018, ev.deltaY), ...pontoDoMapa(ev, ctx), ctx); }, { passive: false });
 }
 function cliqueNoMapa(alvo) {
   fecharPop();
@@ -280,15 +279,13 @@ function desenharPins() {
 }
 const equipeNome = id => ((RESUMO && RESUMO.equipes) || []).find(e => e.id === id)?.nome || id;
 function aplicarCamadas() {
-  $('#iluSat').style.display = ILU.fundo === 'sem' ? 'none' : '';
-  $('#iluSat').style.filter = FUNDOS[ILU.fundo][1];
   $('#iluZonas').style.display = ILU.cam.zonas ? '' : 'none';
   $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.38 : 0.08) : 0.26));
   $('#iluNomes').style.display = ILU.cam.nomes ? '' : 'none';
   $('#iluPins').style.display = ILU.cam.equipes ? '' : 'none';
   $$('#iluLinhas .ilu-tr').forEach(p => p.style.display = ILU.vis[p.dataset.situ] ? '' : 'none');
   if (GERAL && GERAL.trechos[0] && GERAL.trechos[0].s) $$('#iluHits .ilu-hit').forEach(h => h.style.display = ILU.vis[GERAL.trechos[+h.dataset.i].s] ? '' : 'none');
-  try { localStorage.setItem('mc-ilu-camadas', JSON.stringify(ILU.cam)); localStorage.setItem('mc-ilu-fundo', ILU.fundo); } catch (_) { /* sem storage */ }
+  try { localStorage.setItem('mc-ilu-camadas', JSON.stringify(ILU.cam)); } catch (_) { /* sem storage */ }
 }
 
 /* ---- janelas das ferramentas: Situação, Zonas, Equipes e Camadas */
@@ -328,9 +325,7 @@ function abrirPop(nome, recarregar) {
   }
   if (nome === 'camadas') {
     const ch = (k, rot) => `<button type="button" class="ilu-linha" data-camada="${k}" aria-pressed="${ILU.cam[k]}"><span>${ILU.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`;
-    pop.innerHTML = '<h3>Fundo de satélite</h3><div class="ilu-fundos">' + Object.entries(FUNDOS).map(([k, [rot]]) =>
-      `<button type="button" class="ilu-fundo" data-fundo="${k}" aria-pressed="${ILU.fundo === k}">${rot}</button>`).join('') + '</div>'
-      + '<h3 style="margin-top:14px">Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes');
+    pop.innerHTML = '<h3>Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes');
   }
 }
 function fecharPop() {
@@ -344,7 +339,6 @@ $('#iluFerr').addEventListener('click', ev => {
   const z = ev.target.closest('[data-zona]'); if (z) { fecharPop(); return z.dataset.zona ? focarZona(z.dataset.zona) : verTudo(); }
   const e = ev.target.closest('[data-ir]'); if (e) { fecharPop(); return focarAlvo(e.dataset.irTipo, e.dataset.ir); }
   const c = ev.target.closest('[data-camada]'); if (c) { ILU.cam[c.dataset.camada] = !ILU.cam[c.dataset.camada]; aplicarCamadas(); return abrirPop('camadas', true); }
-  const fu = ev.target.closest('[data-fundo]'); if (fu) { ILU.fundo = fu.dataset.fundo; aplicarCamadas(); return abrirPop('camadas', true); }
 });
 document.addEventListener('pointerdown', ev => { if (ILU.pop && !ev.target.closest('.ilu-bloco')) fecharPop(); });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && TELA === 'iluminado') { fecharPop(); fecharFicha(); } });

@@ -677,3 +677,14 @@ def painel(conn):
         "pedidos": [situacao_pedido(conn, r[0]) for r in conn.execute("SELECT id FROM pedidos_compra ORDER BY id DESC LIMIT 200")],
         "notas": nfs,
     }
+
+
+def a_inspecionar(conn):
+    """Material entregue ainda em quarentena (fluxo de compras), de todas as notas: o que o almoxarife aceita ou recusa
+    na inspeção (também na tela Estoque e movimentos)."""
+    return _rows(conn.execute(
+        """SELECT ri.id, ri.quantidade, ni.material_id, m.descricao, m.unidade, r.data, r.documento, nf.id nf_id, nf.numero,
+                  nf.serie, nf.fornecedor
+           FROM recebimento_itens ri JOIN recebimentos r ON r.id=ri.recebimento_id JOIN nf_itens ni ON ni.id=ri.nf_item_id
+           JOIN notas_fiscais nf ON nf.id=r.nf_id LEFT JOIN materiais m ON m.id=ni.material_id
+           WHERE ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes) ORDER BY r.data, ri.id"""))
