@@ -1076,6 +1076,26 @@ def preparar_v16(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v17(conn):
+    """Esquema v16 → v17: o cadastro de campo da equipe terceirizada é registrado à parte (sem apontamento) e
+    precisa de retificação própria. O CHECK de retificacoes_intervalos.ref_tipo ganha 'CADASTRO_CAMPO'; como o CHECK
+    não muda por ALTER, a tabela é recriada e TODAS as linhas copiadas (conferido) antes de descartar a antiga. Com
+    legacy_alter_table=ON as referências de intervalos_execucao e apontamentos continuam no nome da tabela."""
+    sql = (conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='retificacoes_intervalos'").fetchone() or [""])[0]
+    if sql and "CADASTRO_CAMPO" not in sql:
+        antes = conn.execute("SELECT COUNT(*) FROM retificacoes_intervalos").fetchone()[0]
+        conn.execute("ALTER TABLE retificacoes_intervalos RENAME TO retificacoes_intervalos_v16")
+        S.aplicar_esquema(conn)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(retificacoes_intervalos_v16)")]
+        lista = ", ".join(cols)
+        conn.execute(f"INSERT INTO retificacoes_intervalos({lista}) SELECT {lista} FROM retificacoes_intervalos_v16")
+        depois = conn.execute("SELECT COUNT(*) FROM retificacoes_intervalos").fetchone()[0]
+        if depois != antes:
+            raise RuntimeError(f"Migração v17: retificações copiadas {depois} ≠ {antes}; nada foi alterado.")
+        conn.execute("DROP TABLE retificacoes_intervalos_v16")
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

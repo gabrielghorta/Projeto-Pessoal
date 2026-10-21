@@ -38,6 +38,7 @@ import link
 import mapa_geral as MG
 import regras as R
 import servicos as S
+import terceirizadas as TZ
 import topologia as TP
 
 BASE = caminhos.PASTA
@@ -448,6 +449,20 @@ def r_interferencias(q, c):
                              q.get("ini"), q.get("fim"))
 
 
+# ------------------------------------------------------------------ topografia e cadastro de campo (terceirizadas)
+def r_topografia(q, c):
+    return TZ.topografia(c, q.get("frente") or None)
+
+
+def r_cadastro_campo(q, c):
+    return TZ.cadastro_campo(c, q.get("frente") or None)
+
+
+def p_cadastro_campo(b, c):
+    return {"id": S.registrar_cadastro_campo(c, b["trecho_id"], b.get("ini_m"), b.get("fim_m"), b.get("data"),
+                                             b.get("referencia"), b.get("por"))}
+
+
 # ------------------------------------------------------------------ documentos oficiais (links do Google Drive)
 def r_documentos(q, c):
     return D.listar(c)
@@ -615,7 +630,8 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios,
        "/api/documentos": r_documentos, "/api/mapa/geral": r_mapa_geral, "/api/planilhas": r_planilhas,
        "/api/interferencias": r_interferencias, "/api/lev/cronograma": r_lev_cronograma, "/api/lev/bm": r_lev_bm,
-       "/api/lev/redes": r_lev_redes, "/api/lev/conexoes": r_lev_conexoes, "/api/topologia": r_topologia}
+       "/api/lev/redes": r_lev_redes, "/api/lev/conexoes": r_lev_conexoes, "/api/topologia": r_topologia,
+       "/api/topografia": r_topografia, "/api/cadastro-campo": r_cadastro_campo}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"])}       # recebem o usuário da sessão
@@ -629,7 +645,8 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
         "/api/reserva/cancelar": p_reserva_cancelar, "/api/liberacao": _etapa("LIBERACAO_TOPOGRAFICA"),
         "/api/escavacao": _etapa("ESCAVADO"), "/api/etapa-complementar/anular": p_etapa_anular,
-        "/api/ocorrencia": p_ocorrencia, "/api/ocorrencia/resolver": p_ocorrencia_resolver}
+        "/api/ocorrencia": p_ocorrencia, "/api/ocorrencia/resolver": p_ocorrencia_resolver,
+        "/api/cadastro-campo": p_cadastro_campo}
 POST.update({rota: fn for rota, (_, _, fn) in ROTAS_COMPRAS.items()})
 POST.update(ROTAS_DOCUMENTOS)
 POST.update(ROTAS_DRIVE)
@@ -646,7 +663,7 @@ PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/mov
              "/api/solda": "campo", "/api/solda/verificar": "verificar", "/api/reserva": "almox",
              "/api/reserva/cancelar": "almox", "/api/usuarios": "usuarios", "/api/senha": None,
              "/api/liberacao": "topografia", "/api/escavacao": "campo", "/api/etapa-complementar/anular": "retificar_campo",
-             "/api/ocorrencia": "campo", "/api/ocorrencia/resolver": "verificar"}
+             "/api/ocorrencia": "campo", "/api/ocorrencia/resolver": "verificar", "/api/cadastro-campo": "cadastro_campo"}
 # campos de autoria: o servidor grava o usuário da sessão, nunca o nome digitado no navegador
 AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "/api/retificar": ("responsavel",),
          "/api/reserva": ("responsavel",), "/api/apontamento": ("informado_por",), "/api/solda": ("informado_por",),
@@ -654,7 +671,7 @@ AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "
          "/api/legado/conciliar": ("responsavel",), "/api/intervalos/retificar": ("responsavel",),
          "/api/cadastro/conferencia": ("revisor",), "/api/ok-fiscal": ("usuario",),
          "/api/liberacao": ("registrado_por",), "/api/escavacao": ("registrado_por",), "/api/etapa-complementar/anular": ("por",),
-         "/api/ocorrencia": ("aberta_por",), "/api/ocorrencia/resolver": ("por",)}
+         "/api/ocorrencia": ("aberta_por",), "/api/ocorrencia/resolver": ("por",), "/api/cadastro-campo": ("por",)}
 PERMISSAO.update({rota: perm for rota, (perm, _, _) in ROTAS_COMPRAS.items()})
 PERMISSAO.update({"/api/programacao": "planejar", "/api/programacao/encerrar": "planejar", "/api/medicao/conferir": "medicao"})
 AUTOR.update({"/api/programacao": ("por",), "/api/programacao/encerrar": ("por",), "/api/medicao/conferir": ("por",),
@@ -673,12 +690,12 @@ TELA_GET = {"/api/equipe": ("equipes", "ponto") + _CAMPO, "/api/estoque": _ALMOX
             "/api/compat-caesb": _ALMOX, "/api/nfs": _ALMOX, "/api/movimentos": _ALMOX, "/api/reservas": _ALMOX,
             "/api/consumo": _ALMOX, "/api/checkins": ("ponto",) + _CAMPO, "/api/histograma": ("equipes",) + _CAMPO,
             "/api/compras": ("compras",), "/api/inventarios": ("compras",), "/api/reservas-vencidas": ("compras",),
-            "/api/programacoes": ("prog", "almox") + _CAMPO, "/api/ocorrencias": _CAMPO + ("mapa",),
+            "/api/programacoes": ("prog", "almox") + _CAMPO, "/api/ocorrencias": _CAMPO + ("mapa", "topografia", "cadastro_campo"),
             "/api/esteira": ("esteira",), "/api/relatorios": ("relatorios",), "/api/medicoes": ("medicao",),
             "/api/medicao": ("medicao",), "/api/medicao/elegibilidade": ("medicao",), "/api/planilhas": ("lev",),
             "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa"),
-            "/api/diario": ("diario",), "/api/interferencias": ("interferencias",),
-            "/api/topologia": ("mapa", "iluminado"),
+            "/api/diario": ("diario",), "/api/interferencias": ("interferencias",), "/api/topografia": ("topografia",),
+            "/api/cadastro-campo": ("cadastro_campo",), "/api/topologia": ("mapa", "iluminado"),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
 TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",)}   # downloads (/arquivos/: LEV)
@@ -1023,6 +1040,10 @@ class Handler(BaseHTTPRequestHandler):
             original = json.loads(json.dumps(body))
             try:
                 A.exigir(usuario, PERMISSAO[rota])
+                if rota == "/api/apontamento" and "cadastro_campo" not in usuario["permissoes"] and any(
+                        isinstance(i, dict) and i.get("etapa") == "CADASTRO_CAMPO" for i in body.get("intervalos") or []):
+                    raise A.AcessoNegado("O cadastro de campo é feito por equipe terceirizada e registrado pela engenharia "
+                                         "na aba Cadastro de campo, não no lançamento do dia.", 403)
                 if usuario["restrito_a_equipe"] and body.get("equipe_id") not in (None, "", usuario["equipe_id"]):
                     raise A.AcessoNegado(f"Seu usuário lança só para a equipe {usuario['equipe_id']}.", 403)
                 for campo in AUTOR.get(rota, ()):

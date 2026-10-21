@@ -393,7 +393,7 @@ async function abrirFicha(tipo, nome) {
     ${tipo === 'TRECHO' ? `<span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(s.nome)}</span>` : ''}
     ${d.retirado ? '<div class="aviso problema">Retirado da revisão vigente do projeto: só consulta.</div>' : ''}
     <dl>${linhas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-    <div class="acoes">${pode('campo') && !d.retirado ? `<button type="button" class="btn prim" data-ficha-campo>Lançar no campo</button>` : ''}
+    <div class="acoes">${pode('campo') && !d.retirado ? `<button type="button" class="btn prim" data-ficha-campo>Lançar avanço</button>` : ''}
       <button type="button" class="btn" data-ficha-completa>Ver a ficha completa</button></div>
     <p class="vazio" style="font-size:13px">${esc(d.nome || nome)}</p>`;
   f.dataset.tipo = tipo; f.dataset.id = d.id;

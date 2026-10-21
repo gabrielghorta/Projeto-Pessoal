@@ -494,15 +494,15 @@ CREATE TABLE IF NOT EXISTS intervalos_execucao (
   CHECK (fim_m > ini_m)
 );
 
--- Retificação de intervalos (v8): corrige a posição/extensão/data dos intervalos de UM apontamento ou de UMA
--- conciliação do legado. Aplicação integral ou recusa: o conjunto resultante do trecho precisa continuar coerente
+-- Retificação de intervalos (v8): corrige a posição/extensão/data dos intervalos de UM apontamento, de UMA
+-- conciliação do legado ou (v17) de UM cadastro de campo registrado à parte pela engenharia (equipe terceirizada). Aplicação integral ou recusa: o conjunto resultante do trecho precisa continuar coerente
 -- (sem sobreposição; reaterro e cadastro de campo com assentamento até a data). Os originais ficam anulados, não
 -- apagados; o apontamento original fica substituído (fora das somas) e o novo traz as quantidades corrigidas.
 CREATE TABLE IF NOT EXISTS retificacoes_intervalos (
   id INTEGER PRIMARY KEY,
   trecho_id TEXT NOT NULL REFERENCES trechos(id),
-  ref_tipo TEXT NOT NULL CHECK (ref_tipo IN ('APONTAMENTO','CONCILIACAO')),
-  ref_id INTEGER NOT NULL,             -- apontamento ou conciliação retificados
+  ref_tipo TEXT NOT NULL CHECK (ref_tipo IN ('APONTAMENTO','CONCILIACAO','CADASTRO_CAMPO')),
+  ref_id INTEGER NOT NULL,             -- apontamento, conciliação ou cadastro de campo avulso (id do intervalo) retificados
   novo_apontamento_id INTEGER REFERENCES apontamentos(id),
   motivo TEXT NOT NULL,
   responsavel TEXT NOT NULL,
