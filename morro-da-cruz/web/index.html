@@ -48,8 +48,8 @@
       </div>
       <button type="button" class="rail-item rail-grupo" data-grupo="grupo-campo" title="Execução"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Execução</span></button>
       <div class="rail-sub" data-grupo="grupo-campo">
-        <button type="button" class="rail-item sub" data-tela="campo" title="Lançamento do dia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg><span class="rail-rot">Lançamento do dia</span></button>
-        <button type="button" class="rail-item sub" data-tela="diario" title="Diário de campo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><span class="rail-rot">Diário de campo</span></button>
+        <button type="button" class="rail-item sub" data-tela="campo" title="Nota do dia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg><span class="rail-rot">Nota do dia</span></button>
+        <button type="button" class="rail-item sub" data-tela="diario" title="Diário de obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><span class="rail-rot">Diário de obra</span></button>
         <button type="button" class="rail-item sub" data-tela="interferencias" title="Interferências"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></svg><span class="rail-rot">Interferências</span></button>
         <button type="button" class="rail-item sub" data-tela="notas" title="Notas de serviço"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3"/></svg><span class="rail-rot">Notas de serviço</span></button>
         <button type="button" class="rail-item sub" data-tela="topografia" title="Topografia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg><span class="rail-rot">Topografia</span></button>
@@ -123,13 +123,68 @@
     </div>
   </section>
 
-  <!-- ======================================================= CAMPO -->
+  <!-- ======================================================= EXECUÇÃO: NOTA DO DIA (a equipe envia a NS executada e o croqui) -->
   <section class="aba" id="aba-campo">
-    <header class="cab-tela"><h1>Lançamento do dia</h1><p>Metros do dia, soldas, clima, fotos e ocorrências de cada trecho.</p></header>
+    <header class="cab-tela"><h1>Nota do dia</h1><p>Envie a nota de serviço do que a equipe executou e o croqui. O sistema lê a nota, acha os trechos e lança sozinho; o que ele não tiver certeza vai para a engenharia conferir.</p></header>
     <div class="grade-2">
-      <div class="painel">
-        <h3>Apontamento</h3>
-        <form id="fApont" data-perm="campo">
+      <div style="display:grid;gap:16px;min-width:0;align-content:start">
+        <form class="painel nota-dia" id="fNd" data-perm="campo">
+          <label>Equipe<select id="ndEquipe" required></select></label>
+          <label>Nota de serviço do dia (PDF)<input type="file" name="pdf" accept="application/pdf,.pdf" required></label>
+          <label>Croqui (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
+          <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
+          <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
+          <details><summary>Planilha da nota (.xlsx, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label></details>
+          <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
+          <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
+        </form>
+        <div class="painel" id="ndResultado" hidden aria-live="polite"></div>
+      </div>
+      <div style="display:grid;gap:16px;min-width:0;align-content:start">
+        <div class="painel"><h3>Notas enviadas</h3><div id="ndEnviadas"></div></div>
+        <div class="painel"><h3>Notas de serviço da zona</h3><p class="vazio" style="margin:0 0 6px">O plano do serviço (nota e croqui) enviado pela engenharia.</p><div id="ndServico"></div></div>
+      </div>
+    </div>
+    <details class="painel" id="ndOutros" style="margin-top:16px"><summary>Outros registros do dia (opcional): soldas e fotos</summary>
+      <div class="grade-2" style="margin-top:10px">
+        <div style="min-width:0">
+          <label>Trecho / nó / caixa das soldas e fotos
+            <div class="busca"><input id="ndAlvo" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
+          <div id="ndAlvoInfo" class="vazio">Escolha o trecho ou o nó.</div>
+        </div>
+        <div class="painel" style="min-width:0">
+          <h3>Fotos obrigatórias</h3>
+          <div id="fotoPend" class="vazio">Selecione o trecho/nó.</div>
+          <form id="fFoto" data-perm="campo" style="margin-top:10px">
+            <label>Categoria<select name="categoria">
+              <option value="SINALIZACAO">1. Placa de sinalização / segurança da via</option>
+              <option value="EXECUCAO">2. Executando o serviço / vala aberta</option>
+              <option value="CONCLUIDO">3. Serviço concluído / reaterrado</option>
+            </select></label>
+            <label>Foto<input type="file" name="arquivo" accept="image/*" capture="environment" required></label>
+            <p class="vazio" style="margin:0">O arquivo ORIGINAL é guardado sem alteração, com hash SHA-256. Data e GPS vêm do EXIF da foto; sem EXIF, do aparelho/navegador (a origem fica registrada). O carimbo é exibido sobre a foto.</p>
+            <div class="acoes"><button class="btn prim">Enviar foto original</button></div>
+          </form>
+          <div class="fotos" id="fotoLista" style="margin-top:12px"></div>
+          <h3 style="margin-top:16px">Soldas — informadas × verificadas</h3>
+          <form id="fSolda" data-perm="campo" class="form">
+            <div class="linha">
+              <label>Tipo<select name="tipo"><option value="ELETROFUSAO">Eletrofusão</option><option value="TOPO">Topo</option></select></label>
+              <label>Quantidade<input type="number" min="1" step="1" name="quantidade" required></label>
+              <label>Posição (m, opcional)<input type="number" step="any" min="0" name="posicao_m"></label>
+            </div>
+            <label>Soldador<input name="soldador" required></label>
+            <div class="acoes"><button class="btn prim">Registrar soldas</button></div>
+          </form>
+          <div id="soldas" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </details>
+    <details class="painel" id="ndExcecao" style="margin-top:16px"><summary>Sem nota de serviço (exceção)</summary>
+      <div style="margin-top:10px">
+        <h3>Apontamento à mão</h3>
+        <p class="vazio" style="margin:0 0 8px">Só para a engenharia e a administração, quando não há nota do dia. O motivo fica guardado junto do apontamento.</p>
+        <form id="fApont" data-perm="lancar_sem_ns">
           <div class="linha">
             <label>Data<input type="date" name="data" required></label>
             <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
@@ -138,6 +193,7 @@
             <label>Clima — manhã<select name="MANHA" class="selClima" required></select></label>
             <label>Clima — tarde<select name="TARDE" class="selClima" required></select></label>
           </div>
+          <label>Por que sem a nota do dia (obrigatório para trecho)<input name="motivo_sem_ns" placeholder="ex.: a nota do dia molhou; lançado pela caderneta do encarregado"></label>
           <label>Trecho / nó / caixa
             <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div>
           </label>
@@ -153,47 +209,24 @@
           <div id="apQuant"></div>
         </form>
       </div>
-      <div class="painel">
-        <h3>Fotos obrigatórias</h3>
-        <div id="fotoPend" class="vazio">Selecione o trecho/nó.</div>
-        <form id="fFoto" data-perm="campo" style="margin-top:10px">
-          <label>Categoria<select name="categoria">
-            <option value="SINALIZACAO">1. Placa de sinalização / segurança da via</option>
-            <option value="EXECUCAO">2. Executando o serviço / vala aberta</option>
-            <option value="CONCLUIDO">3. Serviço concluído / reaterrado</option>
-          </select></label>
-          <label>Foto<input type="file" name="arquivo" accept="image/*" capture="environment" required></label>
-          <p class="vazio" style="margin:0">O arquivo ORIGINAL é guardado sem alteração, com hash SHA-256. Data e GPS vêm do EXIF da foto; sem EXIF, do aparelho/navegador (a origem fica registrada). O carimbo é exibido sobre a foto.</p>
-          <div class="acoes"><button class="btn prim">Enviar foto original</button></div>
-        </form>
-        <div class="fotos" id="fotoLista" style="margin-top:12px"></div>
-        <h3 style="margin-top:16px">Soldas — informadas × verificadas</h3>
-        <form id="fSolda" data-perm="campo" class="form">
-          <div class="linha">
-            <label>Tipo<select name="tipo"><option value="ELETROFUSAO">Eletrofusão</option><option value="TOPO">Topo</option></select></label>
-            <label>Quantidade<input type="number" min="1" step="1" name="quantidade" required></label>
-            <label>Posição (m, opcional)<input type="number" step="any" min="0" name="posicao_m"></label>
-          </div>
-          <label>Soldador<input name="soldador" required></label>
-          <div class="acoes"><button class="btn prim">Registrar soldas</button></div>
-        </form>
-        <div id="soldas" style="margin-top:8px"></div>
-      </div>
-    </div>
+    </details>
   </section>
 
-  <!-- ======================================================= CAMPO: DIÁRIO DE CAMPO -->
+  <!-- ======================================================= EXECUÇÃO: DIÁRIO DE OBRA (montado da NS do dia) -->
   <section class="aba" id="aba-diario">
-    <header class="cab-tela"><h1>Diário de campo</h1><p>O que cada equipe registrou no dia: clima, programação, saída de material, metros, soldas, fotos e ocorrências.</p></header>
+    <header class="cab-tela"><h1>Diário de obra</h1><p>O dia de cada equipe a partir da nota do dia e do croqui: o que o sistema lançou, o que espera a engenharia, programado × executado, clima, pessoas e material, soldas, fotos e ocorrências.</p></header>
     <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
       <label>Dia<input type="date" id="diaData"></label>
       <label>Equipe<select id="diaEquipe"></select></label>
       <button type="button" class="btn" id="diaAnterior">‹ Dia anterior</button>
       <button type="button" class="btn" id="diaProximo">Dia seguinte ›</button>
     </div>
+    <div id="diaAlertas"></div>
     <div class="kpis" id="diaKpis"></div>
+    <div class="painel" style="margin-bottom:16px"><h3>Nota do dia e croqui</h3><div id="diaNs"></div></div>
     <div class="grade-2">
       <div style="display:grid;gap:16px;min-width:0">
+        <div class="painel"><h3>Programado × executado</h3><div id="diaProgExec"></div></div>
         <div class="painel"><h3>Produção do dia</h3><div id="diaProducao"></div></div>
         <div class="painel"><h3>Soldas</h3><div id="diaSoldas"></div></div>
         <div class="painel"><h3>Fotos</h3><div class="fotos" id="diaFotos"></div></div>
@@ -270,6 +303,11 @@
         <div class="acoes"><button class="btn prim">Ler a nota</button></div>
         <p class="vazio" style="margin:0">Ler não grava nada. O PDF e o croqui abrem aqui mesmo, no navegador, antes de registrar.</p>
       </form>
+    </div>
+    <div class="painel" id="nsFilaPainel" style="margin-top:16px" hidden>
+      <h3>NS do dia a conferir</h3>
+      <p class="vazio" style="margin:0 0 6px">O que o sistema não lançou sozinho das notas do dia das equipes. Escolha o trecho (e com ele o sentido) e aceite, ou deixe de fora com o motivo; depois, "Registrar o que foi conferido".</p>
+      <div id="nsFila"></div>
     </div>
     <div class="painel" style="margin-top:16px">
       <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Notas recebidas</h3>

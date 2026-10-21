@@ -587,7 +587,7 @@ TELAS_NS = ("notas", "campo", "diario", "topografia", "cadastro_campo")
 # NS do dia: a equipe (o encarregado só a dele) ou, em nome dela, supervisor, engenharia e administração
 def r_ns_dia(q, c, usuario):
     equipe = usuario["equipe_id"] if usuario["restrito_a_equipe"] else (q.get("equipe") or None)
-    return NS.listar_dia(c, q.get("data") or None, equipe, q.get("fila") == "1")
+    return NS.listar_dia(c, q.get("data") or None, equipe, q.get("fila") == "1", q.get("desde") or None)
 
 
 def p_ns_dia(b, c, usuario):

@@ -1146,14 +1146,15 @@ def resumo_dia(conn, ns_id, lancamento=None):
     ns["avisos"] = sorted({a for s in ns["segmentos"] for a in (s.get("avisos") or []) if a == SEM_ETAPA}) + (
         [f"NS enviada com atraso: {ns['atraso_dias']} dias depois da data da nota"] if ns["atrasada"] else [])
     ns["drive"] = {q: v for q, v in ((q, _drive(conn, [ns[f"{q}_id"]]).get(ns[f"{q}_id"])) for q in ("pdf", "croqui")) if v}
+    ns["croqui_mime"] = (_one(conn, "SELECT mime FROM documentos WHERE id=?", ns["croqui_id"]) or {}).get("mime")
     return ns
 
 
-def listar_dia(conn, data=None, equipe=None, fila=False):
-    """NS do dia vigentes (por dia e equipe) com a situação de cada segmento; `fila`: só as que têm segmento esperando
-    a engenharia, de qualquer dia."""
+def listar_dia(conn, data=None, equipe=None, fila=False, desde=None):
+    """NS do dia vigentes (por dia e equipe, ou desde um dia) com a situação de cada segmento; `fila`: só as que têm
+    segmento esperando a engenharia, de qualquer dia."""
     sql, args = "SELECT id FROM notas_servico WHERE tipo='EXECUCAO' AND status='REGISTRADA'", []
-    for cond, val in (("data=?", data), ("equipe_id=?", equipe)):
+    for cond, val in (("data=?", data), ("equipe_id=?", equipe), ("data>=?", desde)):
         if val:
             sql, args = f"{sql} AND {cond}", args + [val]
     if fila:

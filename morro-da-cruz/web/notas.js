@@ -13,7 +13,7 @@ const NS_DESC = {
 const NS_ETAPA = { TOPOGRAFIA: 'liberação topográfica', CADASTRO: 'cadastro de campo' };
 const NS_SITU = { AUTOMATICO: ['automático', 'azul'], CONFIRMAR: ['confirmar', 'amarelo'], ERRO: ['erro', 'vermelho'],
   SEM_CORRESPONDENCIA: ['sem correspondência', 'vermelho'], CONFIRMADO: ['confirmado', 'azul'], FORA: ['fora', 'cinza'] };
-const NSV = { tipo: 'TOPOGRAFIA', envio: null, leitura: null, decisoes: {}, marcado: {}, filtro: '', anuladas: false };
+const NSV = { tipo: 'TOPOGRAFIA', envio: null, leitura: null, decisoes: {}, marcado: {}, filtro: '', anuladas: false, fila: {} };
 const chipNs = s => `<span class="chip ${(NS_SITU[s] || ['', ''])[1]}">${esc((NS_SITU[s] || [s])[0])}</span>`;
 const mNs = v => v == null ? '—' : nf(v) + ' m';
 const linhaNs = n => String(n || '').split('_').pop();                       // Zona03_PB08_Rede_TR020 → TR020
@@ -27,6 +27,7 @@ async function carregarNotas() {
   nsMarcarTipo();
   $$('#nsFiltro button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.nsFiltro === NSV.filtro)));
   $('#nsAnuladas').checked = NSV.anuladas;
+  nsCarregarFila();
   await nsCarregarLista(NSV.filtro, '#nsLista', { anuladas: NSV.anuladas });
 }
 function nsMarcarTipo() {
@@ -255,3 +256,169 @@ $('#nsFiltro').addEventListener('click', ev => {
   NSV.filtro = b.dataset.nsFiltro; carregarNotas();
 });
 $('#nsAnuladas').addEventListener('change', ev => { NSV.anuladas = ev.target.checked; carregarNotas(); });
+
+/* ---------------------------------------------------------------- NS do dia: o resumo em linguagem simples */
+const ETAPA_DIA = { ASSENTADO: 'assentado', REATERRADO: 'reaterrado', ESCAVADO: 'escavado' };
+const juntarE = l => l.length < 2 ? l.join('') : l.slice(0, -1).join(', ') + ' e ' + l[l.length - 1];
+function htmlLancado(n) {
+  const regs = n.segmentos.flatMap(s => s.registros || []);
+  return Object.keys(ETAPA_DIA).map(e => { const r = regs.filter(x => x.etapa === e);
+    return r.length ? `<li><b>Lançado:</b> ${juntarE(r.map(x => `${esc(linhaNs(x.ponto))} ${nf(x.ini_m)}–${nf(x.fim_m)} m`))} (${ETAPA_DIA[e]})</li>` : ''; }).join('');
+}
+const podeAnularDia = n => n.status === 'REGISTRADA' && (pode('retificar_campo')
+  || (pode('campo') && !n.verificada && (!USUARIO.restrito_a_equipe || n.equipe_id === USUARIO.equipe_id)));
+function htmlNdNota(n) {
+  const fila = n.segmentos.filter(s => s.na_fila), ja = {};
+  n.segmentos.forEach(s => Object.entries((s.agora || {}).ja || {}).forEach(([e, m]) => { ja[e] = (ja[e] || 0) + m; }));
+  const pulado = [...new Set(n.segmentos.flatMap(s => (s.agora || {}).pulado || []))];
+  const onde = [n.zona, n.pb].filter(Boolean).join(' ');
+  return `<div class="registro"><div><b>${esc(n.referencia)} · ${dataBR(n.data)} · equipe ${esc(n.equipe_id)}${onde && onde !== n.equipe_id ? ' · ' + esc(onde) : ''}</b>
+      ${fila.length ? `<span class="chip amarelo">${fila.length} aguardando a engenharia</span>` : '<span class="chip verde">lançada</span>'}</div>
+    <ul class="pend">${htmlLancado(n) || '<li>Nada lançado ainda.</li>'}
+      ${Object.entries(ja).map(([e, m]) => `<li>${nf(m)} m já estavam lançados (${ETAPA_DIA[e]}).</li>`).join('')}
+      ${pulado.map(p => `<li>${esc(p)}.</li>`).join('')}
+      ${fila.map(s => `<li><b>Aguardando a engenharia:</b> ${esc(elNs(s.de))} → ${esc(elNs(s.para))} (${esc(s.motivo || s.pendente || '')})</li>`).join('')}
+      ${(n.avisos || []).map(a => `<li><small>${esc(a[0].toUpperCase() + a.slice(1))}.</small></li>`).join('')}</ul>
+    <small>Enviada por ${esc(n.registrada_por)} em ${dataBR(String(n.registrada_em).slice(0, 10))}</small>
+    <div class="acoes" style="margin-top:6px">${linkNs(n.id, 'pdf', 'Abrir a nota')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Abrir o croqui') : ''}
+      ${podeAnularDia(n) ? `<button type="button" class="btn" data-nd-anular="${n.id}">Anular este envio</button>` : ''}</div></div>`;
+}
+
+/* ---------------------------------------------------------------- Nota do dia (tela campo: o encarregado envia, sem digitar o que fez) */
+const ND = { clima: {} };
+const zonaDaEquipe = eq => /^(Zona\d\d|ADUTORA)$/.test(eq || '') ? eq : '';
+async function carregarNotaDia() {
+  const sel = $('#ndEquipe');
+  if (sel.options.length < 2) sel.innerHTML = '<option value="">Escolha a equipe</option>' + RESUMO.equipes.map(e => `<option value="${esc(e.id)}">${esc(e.nome)}</option>`).join('');
+  if (USUARIO.restrito_a_equipe) { sel.value = USUARIO.equipe_id; sel.disabled = true; }        // o encarregado envia só a dele
+  $$('#fNd [data-turno]').forEach(box => { if (!box.children.length) box.innerHTML = Object.entries(RESUMO.clima)
+    .map(([k, v]) => `<button type="button" data-clima="${esc(k)}" aria-pressed="false">${esc(v)}</button>`).join(''); });
+  $('#ndExcecao').hidden = !pode('lancar_sem_ns');
+  await ndListas();
+}
+async function ndListas() {
+  const eq = $('#ndEquipe').value, q = new URLSearchParams({ desde: somarDia(hoje(), -7) }), z = zonaDaEquipe(eq);
+  if (eq) q.set('equipe', eq);
+  const [env, serv] = await Promise.all([api('/api/ns/dia?' + q).catch(() => null), api('/api/ns?tipo=SERVICO' + (z ? '&zona=' + z : '')).catch(() => null)]);
+  if (env) $('#ndEnviadas').innerHTML = env.slice(0, 10).map(htmlNdNota).join('') || '<p class="vazio">Nenhuma nota enviada nos últimos 7 dias.</p>';
+  if (serv) $('#ndServico').innerHTML = serv.slice(0, 8).map(n => `<div class="registro"><div><b>${esc(n.referencia)} · ${dataBR(n.data)}</b>
+      <span>${esc([n.zona, n.pb].filter(Boolean).join(' '))}</span></div><small>${esc(n.titulo || '')}</small>
+      <div class="acoes" style="margin-top:6px">${linkNs(n.id, 'pdf', 'Abrir a nota')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Abrir o croqui') : ''}</div></div>`).join('')
+    || '<p class="vazio">Nenhuma nota de serviço da zona.</p>';
+}
+$('#ndEquipe').addEventListener('change', ndListas);
+$('#fNd').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-clima]'); if (!b) return;
+  const box = b.closest('[data-turno]');
+  ND.clima[box.dataset.turno] = b.dataset.clima;
+  $$('button', box).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+});
+$('#fNd').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const f = ev.target, eq = $('#ndEquipe').value, pdf = f.pdf.files[0], cro = f.croqui.files[0], pla = f.planilha.files[0];
+  if (!eq) return toast('Escolha a equipe.', 'erro');
+  if (!pdf || !cro) return toast('Escolha a nota do dia (PDF) e o croqui.', 'erro');
+  if (!ND.clima.MANHA || !ND.clima.TARDE) return toast('Toque no clima da manhã e no da tarde.', 'erro');
+  const bt = $('#ndEnviar'); bt.disabled = true; bt.textContent = 'Enviando…';
+  try {
+    const corpo = { equipe_id: eq, pdf_b64: await lerOriginal(pdf), pdf_nome: pdf.name, croqui_b64: await lerOriginal(cro), croqui_nome: cro.name, clima: ND.clima };
+    if (pla) Object.assign(corpo, { planilha_b64: await lerOriginal(pla), planilha_nome: pla.name });
+    const r = await acao(() => api('/api/ns/dia', corpo)).catch(() => null);
+    if (!r) return;
+    toast(r.arquivo_trocado ? 'Arquivo da nota trocado (a versão anterior ficou guardada).'
+      : r.fila.length ? 'Nota enviada: o que deu para lançar foi lançado; o resto aguarda a engenharia.' : 'Nota enviada e lançada.', 'ok');
+    const res = $('#ndResultado'); res.hidden = false; res.innerHTML = `<h3>Resultado do envio</h3>${htmlNdNota(r)}`;
+    f.reset(); $('#ndEquipe').value = eq;
+    ndListas(); recarregarCamadaMapa(); driveEmSegundoPlano();
+  } finally { bt.disabled = false; bt.textContent = 'Enviar a nota do dia'; }
+});
+ligarBusca($('#ndAlvo'), async r => { await selecionarCampo(r.tipo, r.id); $('#ndAlvoInfo').textContent = `Soldas e fotos de ${curto(r.rotulo || r.id)}.`; });
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-nd-anular]'); if (!b) return;
+  const motivo = prompt('Motivo da anulação (o que esta nota lançou também é anulado; nada é apagado):'); if (!motivo || !motivo.trim()) return;
+  const r = await acao(() => api('/api/ns/dia/anular', { ns_id: +b.dataset.ndAnular, motivo: motivo.trim() }), 'Envio anulado.').catch(() => null);
+  if (!r) return;
+  if (TELA === 'campo') { $('#ndResultado').hidden = true; ndListas(); } else if (TELA === 'diario') carregarDiario();
+  recarregarCamadaMapa();
+});
+
+/* ---------------------------------------------------------------- Diário de obra: a NS do dia, o croqui enviado e o croqui do sistema */
+function renderDiarioNs(lista) {
+  $('#diaNs').innerHTML = lista.length ? lista.map(n => `${htmlNdNota(n)}
+    <div class="croqui-par">
+      <figure><figcaption>Croqui enviado</figcaption>${!n.croqui_id ? '<div class="vazio">Sem croqui.</div>'
+        : String(n.croqui_mime || '').startsWith('image/') ? `<img src="/api/ns/arquivo?id=${n.id}&qual=croqui" alt="Croqui enviado com a ${esc(n.referencia)}" loading="lazy">`
+          : `<div class="croqui-pdf">Croqui em PDF. ${linkNs(n.id, 'croqui', 'Abrir o croqui')}</div>`}</figure>
+      <figure><figcaption>Croqui do sistema: os trechos que o sistema entendeu da nota</figcaption>
+        <svg class="croqui-sistema" data-ns="${n.id}" role="img" aria-label="Trechos lançados a partir da ${esc(n.referencia)}"></svg></figure>
+    </div>`).join('') : '<p class="vazio">Nenhuma nota do dia enviada neste dia.</p>';
+  lista.forEach(n => desenharCroquiSistema($(`svg.croqui-sistema[data-ns="${n.id}"]`), n));
+}
+// mapa pequeno com as funções do iluminado.js (obterGeral, indexar, limites, encaixar, caminho): lançado aceso, fila tracejada
+async function desenharCroquiSistema(svg, n) {
+  let g; try { g = await obterGeral(); } catch (_) { return; }
+  if (!svg || g.ausente) return;
+  const ix = indexar(g), regs = n.segmentos.flatMap(s => s.registros || []);
+  const feitos = new Map();
+  regs.forEach(r => { const l = feitos.get(r.ponto) || []; l.push(`${ETAPA_DIA[r.etapa] || r.etapa} ${nf(r.ini_m)}–${nf(r.fim_m)} m`); feitos.set(r.ponto, l); });
+  const fila = new Set(n.segmentos.filter(s => s.na_fila).flatMap(s => (s.linhas || []).map(l => l.ponto)).filter(p => !feitos.has(p)));
+  const linhas = [...feitos.keys(), ...fila].map(p => ix.trecho.get(p)).filter(Boolean);
+  if (!linhas.length) { svg.outerHTML = '<div class="vazio">Nenhum trecho desta nota no mapa.</div>'; return; }
+  const r = svg.getBoundingClientRect(), [x, y, w, h] = encaixar(limites(linhas.flatMap(t => t.p), 0.6), (r.width || 320) / (r.height || 240));
+  const px = w / (r.width || 320), dentro = p => { for (let i = 0; i < p.length; i += 2) if (p[i] >= x && p[i] <= x + w && p[i + 1] >= y && p[i + 1] <= y + h) return true; return false; };
+  svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
+  svg.innerHTML = `<path class="cs-fundo" stroke-width="${1.4 * px}" d="${caminho(g.trechos.filter(t => t.p.some(dentro)).flatMap(t => t.p))}"/>
+    ${[...fila].map(p => ix.trecho.get(p)).filter(Boolean).map(t => `<path class="cs-fila" stroke-width="${3 * px}" stroke-dasharray="${6 * px} ${4 * px}" d="${caminho(t.p)}"><title>${esc(linhaNs(t.n))}: aguardando a engenharia</title></path>`).join('')}
+    ${[...feitos].map(([p, l]) => [ix.trecho.get(p), l]).filter(([t]) => t).map(([t, l]) => `<path class="cs-lancado" stroke-width="${4 * px}" d="${caminho(t.p)}"><title>${esc(linhaNs(t.n))}: ${esc(l.join('; '))}</title></path>`).join('')}`;
+}
+
+/* ---------------------------------------------------------------- Notas de serviço: a fila "NS do dia a conferir" (engenharia) */
+const candTexto = c => `${lugarNs({ linhas: [c.de] })} · ${linhaNs(c.de)} → ${linhaNs(c.para)} · ${nf(c.ini_m)}–${nf(c.fim_m)} m do trecho físico`;
+function htmlFilaSeg(n, s) {
+  const cands = s.situacao === 'CONFIRMAR' && !s.fisico_id ? (s.candidatos || []) : [];
+  const d = (NSV.fila[n.id] || {})[s.ordem];
+  return `<div class="registro" data-fila-ordem="${s.ordem}"><div><span>${s.ordem}. ${esc(elNs(s.de))} → ${esc(elNs(s.para))} · ${mNs(s.metros_ns)} na nota</span> ${chipNs(s.situacao)}</div>
+    <small>${esc(s.motivo || s.pendente || '')}</small>
+    ${cands.map((c, k) => `<label class="check"${c.situacao === 'ERRO' ? ' style="opacity:.55"' : ''}><input type="radio" name="fila${n.id}_${s.ordem}" value="${k}"${c.situacao === 'ERRO' ? ' disabled' : ''}${d && d.candidato === k ? ' checked' : ''}>
+      <span>${esc(candTexto(c))}${c.motivo ? ` <small>(${esc(c.motivo)})</small>` : ''}</span></label>`).join('')}
+    <div class="acoes" style="margin-top:6px">${s.situacao === 'CONFIRMAR' ? `<button type="button" class="btn azul" data-fila-acao="aceitar">${cands.length ? 'Usar o trecho marcado' : 'Aceitar a diferença'}</button>` : ''}
+      ${s.aplicado_m ? '' : '<button type="button" class="btn" data-fila-acao="fora">Deixar de fora</button>'}
+      ${['AUTOMATICO', 'CONFIRMADO'].includes(s.situacao) ? '<small>será tentado de novo ao registrar</small>' : ''}
+      ${d ? `<span class="chip azul">${d.acao === 'FORA' ? 'fica de fora: ' + esc(d.motivo) : 'aceito'}</span>` : ''}</div></div>`;
+}
+async function nsCarregarFila() {
+  const painel = $('#nsFilaPainel'); painel.hidden = !pode('retificar_campo'); if (painel.hidden) return;
+  const lista = await api('/api/ns/dia?fila=1').catch(() => null); if (!lista) return;
+  NSV.filaDados = lista;
+  $('#nsFila').innerHTML = lista.length ? lista.map(n => `<div class="painel" style="margin:8px 0;padding:12px" data-fila-ns="${n.id}">
+      <div class="acoes" style="justify-content:space-between"><b>${esc(n.referencia)} · ${dataBR(n.data)} · ${esc(n.equipe_id)}</b><small>enviada por ${esc(n.registrada_por)}</small></div>
+      ${n.segmentos.filter(s => s.na_fila).map(s => htmlFilaSeg(n, s)).join('')}
+      <div class="acoes" style="margin-top:8px">${linkNs(n.id, 'pdf', 'Abrir a nota')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Abrir o croqui') : ''}
+        <button type="button" class="btn prim" data-fila-registrar="${n.id}">Registrar o que foi conferido</button></div></div>`).join('')
+    : '<p class="vazio">Nenhuma nota do dia esperando a engenharia.</p>';
+}
+$('#nsFila').addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-fila-acao]'), reg = ev.target.closest('[data-fila-registrar]');
+  if (b) {
+    const caixa = b.closest('[data-fila-ns]'), id = +caixa.dataset.filaNs, o = +b.closest('[data-fila-ordem]').dataset.filaOrdem;
+    const dec = NSV.fila[id] = NSV.fila[id] || {};
+    if (b.dataset.filaAcao === 'fora') {
+      const motivo = prompt('Por que este segmento fica de fora?'); if (!motivo || !motivo.trim()) return;
+      dec[o] = { ordem: o, acao: 'FORA', motivo: motivo.trim() };
+    } else {
+      const radio = $(`input[name="fila${id}_${o}"]:checked`, caixa), temRadio = !!$(`input[name="fila${id}_${o}"]`, caixa);
+      if (temRadio && !radio) return toast('Marque um dos trechos possíveis.', 'erro');
+      dec[o] = radio ? { ordem: o, acao: 'ACEITAR', candidato: +radio.value } : { ordem: o, acao: 'ACEITAR' };
+    }
+    const n = NSV.filaDados.find(x => x.id === id), s = n.segmentos.find(x => x.ordem === o);
+    b.closest('[data-fila-ordem]').outerHTML = htmlFilaSeg(n, s);
+    return;
+  }
+  if (!reg) return;
+  const id = +reg.dataset.filaRegistrar;
+  const r = await acao(() => api('/api/ns/dia/conferir', { ns_id: id, decisoes: Object.values(NSV.fila[id] || {}) })).catch(() => null);
+  if (!r) return;
+  delete NSV.fila[id];
+  toast(r.fila.length ? `Registrado. Ainda aguardando: ${r.fila.length} segmento(s).` : 'Registrado: a nota do dia não tem mais nada na fila.', 'ok');
+  carregarNotas(); recarregarCamadaMapa();
+});
