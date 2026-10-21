@@ -103,12 +103,12 @@ def indice(conn):
     por_ponto = {m["ponto"]: (F, m) for F in fis for m in F["membros"]}
     idx, meio = {}, {}
 
-    def add(F, pos, nome, papel):
+    def add(F, pos, nome, papel, **extra):
         k = chave_rede(nome)
         if papel == "MEIO":
             meio.setdefault(F["id"], []).append((round(float(pos), 3), nome))
         if k:
-            idx.setdefault(k, []).append({"F": F, "pos": round(float(pos), 3), "nome": nome, "papel": papel})
+            idx.setdefault(k, []).append({"F": F, "pos": round(float(pos), 3), "nome": nome, "papel": papel, **extra})
 
     for F in fis:
         add(F, 0.0, F["no_ini"], "PONTA")
@@ -118,7 +118,8 @@ def indice(conn):
     for p in TP.pendencias(conn):
         if p.get("tipo") == "CONEXAO_NO_MEIO_DA_LINHA" and p.get("trecho") in por_ponto and p.get("posicao_m") is not None:
             F, m = por_ponto[p["trecho"]]
-            add(F, TP.para_fisico(F, m["trecho_id"], p["posicao_m"], p["posicao_m"])[0], p["no"], "MEIO")
+            add(F, TP.para_fisico(F, m["trecho_id"], p["posicao_m"], p["posicao_m"])[0], p["no"], "MEIO", linha=p["trecho"],
+                pos_linha=p["posicao_m"])
     return {"chaves": idx, "meio": meio}
 
 
@@ -147,7 +148,16 @@ def _entre(c):
     return sorted(out + [(p[0], p[1], "MEIO", None) for p in c.get("meio", ()) if x + R.TOL_M < p[0] < y - R.TOL_M])
 
 
+def _norm_zona_pb(zona, pb):
+    """'3' / 'zona 3' → 'Zona03'; '8' / 'pb8' → 'PB08' (o formulário aceita do jeito que a pessoa escreve)."""
+    z = re.search(r"\d+", str(zona or ""))
+    p = re.search(r"\d+", str(pb or ""))
+    zona = "ADUTORA" if "ADUTORA" in str(zona or "").upper() else (f"Zona{int(z.group()):02d}" if z else None)
+    return zona, (f"PB{int(p.group()):02d}" if p else None)
+
+
 def _contexto(ns, zona=None, pb=None):
+    zona, pb = _norm_zona_pb(zona, pb)
     cab = ns["cabecalho"]
     ctx = L.contexto_zona_pb(cab.get("titulo"), cab.get("localizacao"))
     origem = "NS" if ctx["zona"] or ctx["pb"] else None
@@ -209,11 +219,38 @@ def _candidato(c, ns_m, de_mm):
             "extensao_m": proj, "extensao_fisico_m": F["extensao_m"], "de_mm": F["de_mm"], "metodologias": F["metodologias"],
             "diferenca_m": None if ns_m is None else round(ns_m - proj, 3), "de": c["a"]["nome"], "para": c["b"]["nome"],
             "texto": F["texto"], "linhas": [m["ponto"] for m in F["membros"]],
+            "ponta_a": {k: c["a"].get(k) for k in ("nome", "papel", "linha", "pos_linha")},
+            "ponta_b": {k: c["b"].get(k) for k in ("nome", "papel", "linha", "pos_linha")},
             "pontos_no_meio": [{"posicao_m": round(p - min(x, y), 3), "no": n, "papel": pp, "tipo": t} for p, n, pp, t in _entre(c)]}
 
 
+def _conferir(c, ns_m, de_mm, metodo):
+    """Situação de um candidato sozinho: (situação, motivo, avisos). DE ou método diferente e diferença acima de 5 % são
+    ERRO; diferença entre 0,5 % e 5 % (ou NS sem distância) pede confirmação."""
+    avisos = [f"{_curto(p['nome'])} é conexão no meio do {_curto(p['linha'])} (a {_m(p['pos_linha'])} m do início da linha): "
+              "a 06.1 não corta ali, o intervalo vai até ela" for p in (c["ponta_a"], c["ponta_b"]) if p.get("papel") == "MEIO"]
+    avisos += [f"passa por {_curto(p['no'])} (conexão no meio da linha, a {_m(p['posicao_m'])} m do início do segmento), "
+               "que a NS não lista" for p in c["pontos_no_meio"] if p["papel"] == "MEIO"]
+    if de_mm and int(c["de_mm"] or 0) != int(de_mm):
+        return "ERRO", f"DE {de_mm} na NS × DE {int(c['de_mm'] or 0)} na 06.1", avisos
+    if metodo and len(c["metodologias"]) == 1 and c["metodologias"][0] != metodo:
+        return "ERRO", f"método {metodo} na NS × {c['metodologias'][0]} na 06.1", avisos
+    if len(c["metodologias"]) > 1:
+        avisos.append(f"o trecho físico tem partes em {' e '.join(c['metodologias'])}")
+    if ns_m is None:
+        return "CONFIRMAR", "a NS não tem a distância deste segmento", avisos
+    nivel = _nivel_diferenca(ns_m, c["extensao_m"])
+    dif = f"{_m(ns_m)} m na NS × {_m(c['extensao_m'])} m no projeto ({'+' if ns_m >= c['extensao_m'] else ''}{_m(ns_m - c['extensao_m'])} m)"
+    if nivel == "OK":
+        return "AUTOMATICO", None if abs(ns_m - c["extensao_m"]) < 0.005 else dif, avisos
+    if nivel == "AVISO":
+        return "CONFIRMAR", f"diferença acima de 0,5 %: {dif}", avisos
+    return "ERRO", f"diferença acima de 5 %: {dif}", avisos
+
+
 def _avaliar(s, ls, ns):
-    """Situação do segmento e o candidato escolhido (quando há um só)."""
+    """Situação do segmento e o candidato escolhido (quando há um só). Cada candidato leva a própria situação: a pessoa
+    só pode escolher um que não seja ERRO."""
     a, b = ls[s["i"]], ls[s["j"]]
     ns_m = None if None in (a.get("dist_acumulada"), b.get("dist_acumulada")) else round(b["dist_acumulada"] - a["dist_acumulada"], 3)
     de_mm = b.get("dn_mm") or a.get("dn_mm")
@@ -226,6 +263,8 @@ def _avaliar(s, ls, ns):
         out.update(situacao="SEM_CORRESPONDENCIA", motivo=_sem_correspondencia(s))
         return out
     lista = [_candidato(c, ns_m, de_mm) for c in cands]
+    for c in lista:
+        c["situacao"], c["motivo"], c["avisos"] = _conferir(c, ns_m, de_mm, metodo)
     out["candidatos"] = lista
     mesmo_de = [c for c in lista if not de_mm or int(c["de_mm"] or 0) == int(de_mm)]
     if de_mm and not mesmo_de:
@@ -248,26 +287,8 @@ def _avaliar(s, ls, ns):
             out.update(situacao="CONFIRMAR", motivo=f"{len(lista)} trechos com as mesmas pontas: escolha o trecho")
             return out
     c = out["escolhido"] = lista[0]
-    for p in c["pontos_no_meio"]:
-        if p["papel"] == "MEIO":
-            out["avisos"].append(f"passa por {_curto(p['no'])} (conexão no meio da linha, a {_m(p['posicao_m'])} m do início "
-                                 "do segmento), que a NS não lista")
-    if metodo and len(c["metodologias"]) == 1 and c["metodologias"][0] != metodo:
-        out.update(situacao="ERRO", motivo=f"método {metodo} na NS × {c['metodologias'][0]} na 06.1")
-        return out
-    if len(c["metodologias"]) > 1:
-        out["avisos"].append(f"o trecho físico tem partes em {' e '.join(c['metodologias'])}")
-    if ns_m is None:
-        out.update(situacao="CONFIRMAR", motivo="a NS não tem a distância deste segmento")
-        return out
-    nivel = _nivel_diferenca(ns_m, c["extensao_m"])
-    dif = f"{_m(ns_m)} m na NS × {_m(c['extensao_m'])} m no projeto ({'+' if ns_m >= c['extensao_m'] else ''}{_m(ns_m - c['extensao_m'])} m)"
-    if nivel == "OK":
-        out.update(situacao="AUTOMATICO", motivo=None if abs(ns_m - c["extensao_m"]) < 0.005 else dif)
-    elif nivel == "AVISO":
-        out.update(situacao="CONFIRMAR", motivo=f"diferença acima de 0,5 %: {dif}")
-    else:
-        out.update(situacao="ERRO", motivo=f"diferença acima de 5 %: {dif}")
+    out["avisos"] += c["avisos"]
+    out.update(situacao=c["situacao"], motivo=c["motivo"])
     return out
 
 
@@ -400,9 +421,10 @@ def ler(conn, tipo, pdf_b64, planilha_b64=None, zona=None, pb=None, hoje=None):
     segs = casar(conn, ns, ctx)
     data = ns["cabecalho"].get("data")
     for s in segs:
-        e = s["escolhido"]
-        s["plano"] = plano(conn, tipo, _fisico_por_id(conn, e["fisico_id"]), e["ini_m"], e["fim_m"], data) \
-            if e and tipo in PERMISSAO_TIPO and data else []
+        for c in s["candidatos"]:
+            c["plano"] = plano(conn, tipo, _fisico_por_id(conn, c["fisico_id"]), c["ini_m"], c["fim_m"], data) \
+                if tipo in PERMISSAO_TIPO and data else []
+        s["plano"] = s["escolhido"]["plano"] if s["escolhido"] else []
     por_arquivo, mesma = _ja_registrada(conn, ns, tipo, hashlib.sha256(pdf).hexdigest())
     aviso_tipo = None
     bloco = L.norm_txt(ns["cabecalho"].get("bloco"))
@@ -454,10 +476,14 @@ def _decidir(segs, decisoes, por):
             continue
         if d and d.get("acao") == "ACEITAR" and s["situacao"] == "CONFIRMAR":
             esc = next((c for c in s["candidatos"] if c["fisico_id"] == d.get("fisico_id")), None) \
-                if d.get("fisico_id") else (s["escolhido"] if s["escolhido"] else None)
+                if d.get("fisico_id") else s["escolhido"]
             if esc is None:
                 raise RegraViolada(f"Segmento {s['ordem']}: escolha um dos trechos possíveis.")
-            s.update(situacao="CONFIRMADO", escolhido=esc, confirmado_por=por)
+            if esc.get("situacao") == "ERRO":
+                raise RegraViolada(f"Segmento {s['ordem']}: o trecho escolhido não serve ({esc['motivo']}); escolha outro "
+                                   "ou deixe de fora.")
+            s.update(situacao="CONFIRMADO", escolhido=esc, confirmado_por=por, avisos=s["avisos"] + [
+                a for a in esc.get("avisos") or [] if a not in s["avisos"]])
             continue
         faltam.append(str(s["ordem"]))
     if faltam:
@@ -495,7 +521,8 @@ def _inserir_segmento(conn, ns_id, s, por):
          json.dumps(F["membros"], ensure_ascii=False) if F else None, e and e["sentido"], F and F["extensao_m"],
          e and e["ini_m"], e and e["fim_m"], json.dumps(s["etapas"]) if s.get("etapas") else None, s.get("origem_sentido"),
          s["situacao"], s.get("motivo"),
-         json.dumps([{k: c[k] for k in ("fisico_id", "ini_m", "fim_m", "sentido", "extensao_m", "de", "para", "texto")}
+         json.dumps([{k: c.get(k) for k in ("fisico_id", "ini_m", "fim_m", "sentido", "extensao_m", "de", "para", "texto",
+                                            "situacao", "motivo")}
                      for c in s.get("candidatos") or []], ensure_ascii=False) or None,
          json.dumps(s.get("avisos") or [], ensure_ascii=False), s.get("confirmado_por"),
          _agora() if s.get("confirmado_por") else None, s.get("pendente_m") or 0, s.get("pendente"))).lastrowid

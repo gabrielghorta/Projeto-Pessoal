@@ -372,8 +372,27 @@ class TestCasamento(BaseReal):
         self.assertEqual(sorted(c["fisico_id"] for c in s["candidatos"]), ["TF-00280", "TF-00365"])
         self.assertIn("Zona03 PB05 e Zona03 PB08", s["motivo"])
         self.assertIn("pela extensão, o de Zona03 PB08", s["motivo"])
-        s = self.ler_direto(pdf, pb="PB08")["segmentos"][0]                  # a PB escolhida no formulário resolve
+        s = self.ler_direto(pdf, pb="8")["segmentos"][0]                     # a PB escolhida no formulário resolve
         self.assertEqual((s["situacao"], s["escolhido"]["fisico_id"]), ("AUTOMATICO", "TF-00365"))
+        self.recusa(self.registrar("eng1", "TOPOGRAFIA", pdf), 422, "Confira os segmentos 1")
+        errado = [{"ordem": 1, "acao": "ACEITAR", "fisico_id": "TF-00280"}]          # 6,83 m no projeto × 32,40 m na NS
+        self.recusa(self.registrar("eng1", "TOPOGRAFIA", pdf, decisoes=errado), 422, "o trecho escolhido não serve")
+        r = self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf, decisoes=[{"ordem": 1, "acao": "ACEITAR", "fisico_id": "TF-00365"}]))
+        self.assertEqual((r["segmentos"][0]["situacao"], r["gravado_m"]), ("CONFIRMADO", 32.4))
+        seg = self.c.execute("SELECT fisico_id, candidatos FROM ns_segmentos").fetchone()
+        self.assertEqual(seg["fisico_id"], "TF-00365")
+        self.assertIn('"situacao": "ERRO"', seg["candidatos"])             # o candidato descartado fica guardado, com o motivo
+
+    def test_conexao_no_meio_da_linha_vira_intervalo_da_linha(self):
+        tr = S.alvo(self.c, "TRECHO", "Zona04_PB02_Rede_TR019")             # a VTF-22 fica a 31,24 m, a 06.1 não corta ali
+        pdf = pdf_grupo(["NÓ56.1", "VTF-22 (VENTOSA)", "CH_VM-4.2"], [31.24, 8.26], grupo="REDE ZONA 04 - PB02",
+                        material=f"PEAD-{int(tr['de_mm'])}", titulo='"REDE DE ÁGUA" - ZONA 04 - PB02 - VER CROQUI ANEXO')
+        segs = self.ler_direto(pdf)["segmentos"]
+        self.assertEqual([(s["situacao"], s["escolhido"]["fisico_id"], s["escolhido"]["ini_m"], s["escolhido"]["fim_m"])
+                          for s in segs], [("AUTOMATICO", "TF-00403", 0.0, 31.24), ("AUTOMATICO", "TF-00403", 31.24, 39.5)])
+        self.assertEqual([[(p["ponto"], p["gravar"]) for p in s["plano"]] for s in segs],
+                         [[("Zona04_PB02_Rede_TR019", [[0.0, 31.24]])], [("Zona04_PB02_Rede_TR019", [[31.24, 39.5]])]])
+        self.assertTrue(any("VTF-22 é conexão no meio do TR019" in a for a in segs[0]["avisos"]), segs[0]["avisos"])
 
     def test_diferenca_de_3_por_cento_confirma_e_de_8_por_cento_e_erro(self):
         casos = {1.03: ("CONFIRMAR", "acima de 0,5 %"), 1.08: ("ERRO", "acima de 5 %"), 1.004: ("AUTOMATICO", None)}
