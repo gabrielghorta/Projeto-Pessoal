@@ -243,11 +243,16 @@ class CicloZona01(unittest.TestCase):
         self.ok("enc1", "/api/clima", {"data": D2, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})
         self.recusa("enc1", "/api/apontamento", {"data": D2, "equipe_id": "Zona02", "alvo_tipo": "TRECHO", "alvo_id": TR,
                                                  "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}]}, 403)
+        cad_enc = self.recusa("enc1", "/api/apontamento", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
+                                                           "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 30},
+                                                                          {"etapa": "CADASTRO_CAMPO", "ini_m": 0, "fim_m": 30}]}, 403)
+        self.assertIn("aba Cadastro de campo", cad_enc)                     # o levantamento é da equipe terceirizada
         ap = self.ok("enc1", "/api/apontamento", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                                  "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 30},
-                                                                 {"etapa": "CADASTRO_CAMPO", "ini_m": 0, "fim_m": 30,
-                                                                  "referencia": "caderneta 12"}]})["id"]
+                                                  "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 30}]})["id"]
         type(self).ap1 = ap
+        self.recusa("enc1", "/api/cadastro-campo", {"trecho_id": TR, "ini_m": 0, "fim_m": 30, "data": D2, "referencia": "caderneta 12"}, 403)
+        type(self).cad1 = self.ok("eng1", "/api/cadastro-campo", {"trecho_id": TR, "ini_m": 0, "fim_m": 30, "data": D2,
+                                                                  "referencia": "caderneta 12"})["id"]
         self.recusa("enc1", "/api/apontamento", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
                                                  "intervalos": [{"etapa": "ASSENTADO", "ini_m": 20, "fim_m": 35}]})    # sobreposição
         futuro = self.recusa("enc1", "/api/clima", {"data": FUTURO, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})
@@ -281,12 +286,18 @@ class CicloZona01(unittest.TestCase):
     def test_07_corrigir(self):
         # a retificação substitui os intervalos: a referência do levantamento é informada de novo (não é herdada;
         # sem ela, o detalhe aponta "levantamento sem registro de referência")
-        novos = [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 28},
-                 {"etapa": "CADASTRO_CAMPO", "ini_m": 0, "fim_m": 28, "referencia": "caderneta 12 (corrigida)"}]
+        # o levantamento (registro próprio da engenharia) é corrigido antes: sem isso o assentado não encolhe por baixo dele
         motivo = "trena: 28 m assentados, não 30"
+        novos = [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 28}]
+        self.assertIn(f"cadastro de campo #{self.cad1}", self.recusa("eng1", "/api/intervalos/retificar", {
+            "ref_tipo": "APONTAMENTO", "ref_id": self.ap1, "intervalos": novos, "motivo": motivo, "simular": True}))
+        cad = [{"etapa": "CADASTRO_CAMPO", "ini_m": 0, "fim_m": 28, "referencia": "caderneta 12 (corrigida)"}]
+        self.ok("eng1", "/api/intervalos/retificar", {"ref_tipo": "CADASTRO_CAMPO", "ref_id": self.cad1, "intervalos": cad,
+                                                      "motivo": motivo, "simular": True})
+        self.assertEqual(self.q("SELECT COUNT(*) FROM retificacoes_intervalos")[0][0], 0)        # prévia não grava
+        self.ok("eng1", "/api/intervalos/retificar", {"ref_tipo": "CADASTRO_CAMPO", "ref_id": self.cad1, "intervalos": cad, "motivo": motivo})
         previa = self.ok("eng1", "/api/intervalos/retificar", {"ref_tipo": "APONTAMENTO", "ref_id": self.ap1, "intervalos": novos,
                                                                "motivo": motivo, "simular": True})
-        self.assertEqual(self.q("SELECT COUNT(*) FROM retificacoes_intervalos")[0][0], 0)        # prévia não grava
         self.ok("eng1", "/api/intervalos/retificar", {"ref_tipo": "APONTAMENTO", "ref_id": self.ap1, "intervalos": novos, "motivo": motivo})
         self.assertEqual(self.q("SELECT etapa, fim_m FROM intervalos_execucao WHERE anulado_por IS NULL ORDER BY etapa"),
                          [("ASSENTADO", 28.0), ("CADASTRO_CAMPO", 28.0)])
@@ -312,8 +323,8 @@ class CicloZona01(unittest.TestCase):
         resto = round(self.L - 28, 6)
         self.ok("enc1", "/api/apontamento", {"data": D3, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
                                              "intervalos": [{"etapa": "ASSENTADO", "ini_m": 28, "fim_m": self.L},
-                                                            {"etapa": "CADASTRO_CAMPO", "ini_m": 28, "fim_m": self.L, "referencia": "caderneta 13"},
                                                             {"etapa": "REATERRADO", "ini_m": 0, "fim_m": self.L}]})
+        self.ok("eng1", "/api/cadastro-campo", {"trecho_id": TR, "ini_m": 28, "fim_m": self.L, "data": D3, "referencia": "caderneta 13"})
         self.ok("enc1", "/api/foto", {"alvo_tipo": "TRECHO", "alvo_id": TR, "categoria": "CONCLUIDO", "conteudo_b64": jpeg(),
                                       "data_hora": f"{D3}T16:00:00"})
         self.ok("almox1", "/api/checkout", {"checkin_id": ck, "itens": [

@@ -77,7 +77,7 @@ def diario(conn, data, equipe=None):
     if equipe:                                       # liberação e escavação não têm equipe: só no diário da obra inteira
         liberacoes = []
 
-    equipes = sorted({*clima, *(p["equipe_id"] for p in producao), *(s["equipe_id"] for s in soldas if s["equipe_id"]),
+    equipes = sorted({*clima, *(p["equipe_id"] for p in producao if p["equipe_id"]), *(s["equipe_id"] for s in soldas if s["equipe_id"]),
                       *(c["equipe_id"] for c in checkins), *(p["equipe_id"] for p in programacoes),
                       *(o["equipe_id"] for o in ocorrencias if o["equipe_id"])})
     metros = {e: round(sum(p["metros"] for p in producao if p["etapa"] == e), 2) for e in ETAPAS}

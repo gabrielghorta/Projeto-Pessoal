@@ -33,8 +33,9 @@ function htmlEtapas(iv) {
   return `<table><thead><tr><th>Etapa</th><th class="n">Informado (m)</th><th class="n">Verificado (m)</th><th>Feito (m)</th><th>Lacunas (m)</th></tr></thead><tbody>
     ${Object.entries(iv.etapas).map(([e, v]) => `<tr><td>${esc(e)}</td><td class="n">${nf(v.metros)}</td><td class="n">${nf(v.verificado_m)}</td><td>${faixa(v.cobertura)}</td><td>${faixa(v.lacunas)}</td></tr>`).join('')}</tbody></table>`;
 }
+const ROT_REGISTRO = { APONTAMENTO: 'Apontamento', CONCILIACAO: 'Conciliação do legado', CADASTRO_CAMPO: 'Cadastro de campo (terceirizada)' };
 function htmlRegistros(iv, editavel) {
-  return iv.registros.map(g => `<div class="registro"><div><b>${g.ref_tipo === 'CONCILIACAO' ? 'Conciliação do legado' : 'Apontamento'} #${g.ref_id}</b>
+  return iv.registros.map(g => `<div class="registro"><div><b>${ROT_REGISTRO[g.ref_tipo] || esc(g.ref_tipo)} #${g.ref_id}</b>
       ${editavel ? `<button type="button" class="btn" data-retificar-ref="${g.ref_tipo}|${g.ref_id}">Retificar</button>` : ''}</div>
     ${g.intervalos.map(i => `<div><small>${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m · ${esc(i.data)} · ${esc(i.origem)}${i.informado_por ? ' · ' + esc(i.informado_por) : ''}${i.referencia ? ' · registro: ' + esc(i.referencia) : ''}</small>
       ${i.verificado_em ? `<span class="chip azul">verificado · ${esc(i.verificado_por)}</span>` : editavel ? `<button type="button" class="btn" data-verificar-intervalo="${i.id}">Verificar</button>` : '<span class="chip amarelo">sem verificação</span>'}</div>`).join('')}</div>`).join('')
@@ -44,7 +45,7 @@ function htmlHistorico(iv) {
   if (!iv.retificacoes.length && !iv.anulados.length && !iv.conciliacoes.length) return '';
   return `<details><summary>Histórico: ${iv.conciliacoes.length} conciliação(ões), ${iv.retificacoes.length} retificação(ões), ${iv.anulados.length} intervalo(s) anulado(s)</summary>
     ${iv.conciliacoes.map(c => `<div><small>Conciliação #${c.id} · ${esc(String(c.em).slice(0, 10))} · ${esc(c.responsavel)} · ${nf(c.metros_assentado)} m assentados / ${nf(c.metros_reaterrado)} m reaterrados — ${esc(c.motivo)}</small></div>`).join('')}
-    ${iv.retificacoes.map(r => `<div><small>Retificação #${r.id} · ${esc(String(r.em).slice(0, 10))} · ${esc(r.responsavel)} · ${r.ref_tipo === 'CONCILIACAO' ? 'conciliação' : 'apontamento'} #${r.ref_id}${r.novo_apontamento_id ? ' → apontamento #' + r.novo_apontamento_id : ''} — ${esc(r.motivo)}</small></div>`).join('')}
+    ${iv.retificacoes.map(r => `<div><small>Retificação #${r.id} · ${esc(String(r.em).slice(0, 10))} · ${esc(r.responsavel)} · ${(ROT_REGISTRO[r.ref_tipo] || r.ref_tipo).toLowerCase()} #${r.ref_id}${r.novo_apontamento_id ? ' → apontamento #' + r.novo_apontamento_id : ''} — ${esc(r.motivo)}</small></div>`).join('')}
     ${iv.anulados.map(i => `<div style="opacity:.6;text-decoration:line-through"><small>${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m · ${esc(i.data)} · ${esc(i.origem)}${i.verificado_por ? ' · verificado por ' + esc(i.verificado_por) : ''} (anulado pela retificação #${i.anulado_por})</small></div>`).join('')}</details>`;
 }
 const htmlPendencias = ps => ps && ps.length ? `<ul class="pend">${ps.map(p => `<li><span class="chip ${NIVEL[p.nivel]}">${esc(p.nivel.toLowerCase())}</span> <b>${esc(p.area)}:</b> ${esc(p.texto)}</li>`).join('')}</ul>`
@@ -54,13 +55,27 @@ const htmlFases = fs => (fs || []).map(f => `<div class="fase"><b>${esc(f.nome)}
     ${f.pendencias.length ? `<ul class="pendencias">${f.pendencias.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}</div>`).join('');
 const FOTO_OK = v => v && !['INVALIDA', 'ARQUIVO_AUSENTE'].includes(v);
 const ROT_ETAPA = { LIBERACAO_TOPOGRAFICA: 'Liberação topográfica', ESCAVADO: 'Escavado (vala aberta)' };
-function htmlComplementar(c, editavel) {
+function htmlComplementar(c, editavel, etapas = Object.keys(ROT_ETAPA)) {
   if (!c) return '';
   return `<table style="margin-top:4px"><thead><tr><th>Etapa</th><th class="n">Metros</th><th>Feito (m)</th></tr></thead><tbody>
-    ${Object.keys(ROT_ETAPA).map(e => `<tr><td>${ROT_ETAPA[e]}</td><td class="n">${nf(c[e].metros)}</td><td>${faixa(c[e].cobertura)}</td></tr>`).join('')}</tbody></table>
-    ${Object.keys(ROT_ETAPA).flatMap(e => c[e].registros).map(r => `<div><small>${esc(ROT_ETAPA[r.etapa])} ${nf(r.ini_m)}–${nf(r.fim_m)} m · ${esc(r.data)} · ${esc(r.registrado_por)}${r.referencia ? ' · ' + esc(r.referencia) : ''}</small>
+    ${etapas.map(e => `<tr><td>${ROT_ETAPA[e]}</td><td class="n">${nf(c[e].metros)}</td><td>${faixa(c[e].cobertura)}</td></tr>`).join('')}</tbody></table>
+    ${etapas.flatMap(e => c[e].registros).map(r => `<div><small>${esc(ROT_ETAPA[r.etapa])} ${nf(r.ini_m)}–${nf(r.fim_m)} m · ${esc(r.data)} · ${esc(r.registrado_por)}${r.referencia ? ' · ' + esc(r.referencia) : ''}</small>
       ${editavel ? `<button type="button" class="btn" data-anular-etapa="${r.id}">Anular</button>` : ''}</div>`).join('')}
-    ${c.anulados.length ? `<details><summary>${c.anulados.length} registro(s) anulado(s)</summary>${c.anulados.map(r => `<div style="opacity:.6;text-decoration:line-through"><small>${esc(ROT_ETAPA[r.etapa])} ${nf(r.ini_m)}–${nf(r.fim_m)} m · ${esc(r.data)} — ${esc(r.anulado_motivo)} (${esc(r.anulado_por)})</small></div>`).join('')}</details>` : ''}`;
+    ${c.anulados.filter(r => etapas.includes(r.etapa)).length ? `<details><summary>${c.anulados.filter(r => etapas.includes(r.etapa)).length} registro(s) anulado(s)</summary>${c.anulados.filter(r => etapas.includes(r.etapa)).map(r => `<div style="opacity:.6;text-decoration:line-through"><small>${esc(ROT_ETAPA[r.etapa])} ${nf(r.ini_m)}–${nf(r.fim_m)} m · ${esc(r.data)} — ${esc(r.anulado_motivo)} (${esc(r.anulado_por)})</small></div>`).join('')}</details>` : ''}`;
+}
+// lacunas de uma cobertura já unida e ordenada (como vem do servidor), de 0 à extensão
+const lacunasDe = (cob, ext) => { const out = []; let pos = 0;
+  for (const [a, b] of cob || []) { if (a > pos + 1e-3) out.push([pos, Math.min(a, ext)]); pos = Math.max(pos, b); }
+  if (pos < ext - 1e-3) out.push([pos, ext]); return out; };
+// o encarregado só consulta: liberação topográfica e levantamento de cadastro são registrados pela engenharia
+function htmlTerceirizadas(d) {
+  const lib = d.complementar && d.complementar.LIBERACAO_TOPOGRAFICA, ext = d.extensao_m;
+  if (!lib) return '';
+  const falta = lacunasDe(lib.cobertura, ext), lev = (d.fases_cadastro || [])[0];
+  const cor = !falta.length ? 'azul' : lib.metros > 0 ? 'amarelo' : 'vermelho';
+  return `<div class="registro"><div><b>Liberação topográfica</b> <span class="chip ${cor}">liberado ${nf(lib.metros)} de ${nf(ext)} m</span></div>
+      <small>Liberado: ${faixa(lib.cobertura)}${falta.length ? ` · <b>falta liberar: ${faixa(falta)}</b>` : ''}</small></div>
+    ${lev ? htmlFases([lev]) : ''}`;
 }
 function htmlOcorrencias(os_, editavel) {
   return (os_ || []).map(o => `<div class="registro"><div><b>${o.tipo === 'IMPEDIMENTO' ? 'Impedimento' : 'Não conformidade'} #${o.id} · ${esc(o.categoria)}</b>
@@ -126,6 +141,8 @@ const TELAS = {
   campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', carregar: () => {} },
   diario: { titulo: 'Diário de campo', grupo: 'grupo-campo', carregar: () => carregarDiario() },
   interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
+  topografia: { titulo: 'Topografia', grupo: 'grupo-campo', carregar: () => carregarTopografia() },
+  cadastro_campo: { titulo: 'Cadastro de campo', grupo: 'grupo-campo', carregar: () => carregarCadCampo() },
   almox: { titulo: 'Estoque e movimentos', grupo: 'grupo-almox', carregar: () => carregarAlmox() },
   ponto: { titulo: 'Check-in e check-out', grupo: 'grupo-almox', carregar: () => carregarAlmox() },
   compras: { titulo: 'Compras e notas', grupo: 'grupo-almox', carregar: () => carregarCompras() },
@@ -135,8 +152,8 @@ const TELAS = {
   esteira: { titulo: 'Cadastro', grupo: 'administrativo', carregar: () => carregarEsteira() },
   relatorios: { titulo: 'Relatórios', grupo: 'administrativo', carregar: () => carregarRelatorios() },
   admin: { titulo: 'Usuários e histórico', grupo: 'administrativo', carregar: () => carregarAdmin() },
-  lev: { titulo: 'LEV', carregar: () => carregarLev() },
-  medicao: { titulo: 'Medição', carregar: () => carregarMedicoes() },
+  lev: { titulo: 'LEV', grupo: 'administrativo', carregar: () => carregarLev() },
+  medicao: { titulo: 'Medição', grupo: 'administrativo', carregar: () => carregarMedicoes() },
 };
 const GRUPOS = { 'grupo-campo': 'Campo', 'grupo-almox': 'Almoxarifado', administrativo: 'Administrativo' };
 // telas que o perfil abre (config/perfis.json); o servidor confere de novo em cada consulta
@@ -192,19 +209,18 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
-  'grupo-campo': { nome: 'Campo', desc: 'Lançamento do dia, diário de campo e interferências: o que cada equipe fez e o que atrapalhou o avanço.' },
+  'grupo-campo': { nome: 'Campo', desc: 'Lançamento do dia, diário de campo, interferências e, das equipes terceirizadas, topografia e cadastro de campo.' },
   'grupo-almox': { nome: 'Almoxarifado', desc: 'Estoque e movimentos, check-in e check-out das equipes, compras e notas fiscais.' },
-  administrativo: { nome: 'Administrativo', desc: 'Equipes, planejamento, dados da obra, cadastro, relatórios e usuários.' },
-  lev: { nome: 'LEV', desc: 'Cronograma físico-financeiro Caesb, BM, BM Vertical e os levantamentos de redes e de conexões.' },
-  medicao: { nome: 'Medição', desc: 'Boletim e memória de cálculo. Por enquanto, só de teste.', teste: true },
+  administrativo: { nome: 'Administrativo', desc: 'Equipes, planejamento, dados da obra, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
 };
 // a ordem do Menu segue o trabalho de cada perfil; o que o perfil não abre fica de fora
 const MENU_PERFIL = {
-  ENGENHARIA: ['iluminado', 'grupo-campo', 'grupo-almox', 'administrativo', 'lev', 'medicao'],
-  ADMINISTRACAO: ['administrativo', 'grupo-almox', 'lev', 'medicao', 'iluminado', 'grupo-campo'],
-  ALMOXARIFADO: ['grupo-almox', 'grupo-campo', 'iluminado'], CADASTRO: ['administrativo', 'iluminado'],
+  ENGENHARIA: ['iluminado', 'grupo-campo', 'grupo-almox', 'administrativo'],
+  ADMINISTRACAO: ['administrativo', 'grupo-almox', 'iluminado', 'grupo-campo'],
+  ALMOXARIFADO: ['grupo-almox', 'grupo-campo', 'iluminado'], CADASTRO: ['grupo-campo', 'administrativo', 'iluminado'],
+  TOPOGRAFIA: ['grupo-campo', 'iluminado'],
 };
-const ORDEM_MENU = ['grupo-campo', 'iluminado', 'grupo-almox', 'administrativo', 'lev', 'medicao'];
+const ORDEM_MENU = ['grupo-campo', 'iluminado', 'grupo-almox', 'administrativo'];
 const abreModo = id => GRUPOS[id] ? telasDoGrupo(id).length > 0 : podeTela(id);
 let MENU_FOCO = null;
 const iniciais = n => (String(n || '').replace(/\(.*?\)/g, '').replace(/[^\p{L}\s]/gu, '').trim().split(/\s+/).filter(Boolean)
@@ -724,11 +740,13 @@ async function selecionarCampo(tipo, id) {
       ${htmlRegistros(iv, editavel)}
       ${editavel ? '<p class="vazio" style="margin:2px 0">Retificar substitui os intervalos daquele registro. O trecho inteiro é conferido antes de gravar (tudo ou nada); o original fica no histórico.</p>' : ''}
       <div id="retifBox"></div>${htmlHistorico(iv)}
-      <h4 style="margin:10px 0 4px">Liberação topográfica e escavação <small>(não geram quantidade)</small></h4>
-      ${htmlComplementar(d.complementar, pode('retificar_campo'))}${(d.complementar.alertas || []).map(a => `<div class="aviso info">${esc(a)}</div>`).join('')}
-      ${editavel ? `<div class="linha lin-compl" id="fCompl" style="margin-top:6px"><select data-c="etapa">${Object.entries(ROT_ETAPA).filter(([e]) => !(d.mnd && e === 'ESCAVADO')).map(([e, r]) => `<option value="${e}">${r}</option>`).join('')}</select>
-        <input data-c="ini_m" type="number" step="any" min="0" placeholder="de (m)"><input data-c="fim_m" type="number" step="any" min="0" placeholder="até (m)">
-        <input data-c="referencia" placeholder="nota de serviço / locação"><button type="button" class="btn" id="complBtn">Registrar</button></div>` : ''}`
+      <h4 style="margin:10px 0 4px">Topografia e cadastro de campo <small>(equipes terceirizadas, registrados pela engenharia)</small></h4>
+      ${htmlTerceirizadas(d)}${(d.complementar.alertas || []).map(a => `<div class="aviso info">${esc(a)}</div>`).join('')}
+      ${d.mnd ? '' : `<h4 style="margin:10px 0 4px">Escavação <small>(vala aberta; não gera quantidade)</small></h4>
+      ${htmlComplementar(d.complementar, pode('retificar_campo'), ['ESCAVADO'])}`}
+      ${editavel && !d.mnd ? `<div class="linha lin-compl" id="fCompl" style="margin-top:6px">
+        <input data-c="ini_m" type="number" step="any" min="0" placeholder="escavado de (m)"><input data-c="fim_m" type="number" step="any" min="0" placeholder="até (m)">
+        <input data-c="referencia" placeholder="observação (opcional)"><button type="button" class="btn" id="complBtn">Registrar escavação</button></div>` : ''}`
     : `<div class="aviso info">${esc(curto(d.nome))}: ${esc(d.texto)}</div>`;
   $('#apAlvo').insertAdjacentHTML('beforeend', `<h4 style="margin:10px 0 4px">Ocorrências</h4>${htmlOcorrencias(d.ocorrencias, pode('verificar'))}
     <div class="linha" id="fOcor" style="margin-top:6px"><select data-o="tipo"><option value="IMPEDIMENTO">Impedimento</option><option value="NAO_CONFORMIDADE">Não conformidade</option></select>
@@ -743,8 +761,7 @@ async function selecionarCampo(tipo, id) {
   const cb = $('#complBtn');
   if (cb) cb.addEventListener('click', async () => {
     const o = Object.fromEntries($$('#fCompl [data-c]').map(i => [i.dataset.c, i.value])), f = formObj(fAp);
-    const rota = o.etapa === 'ESCAVADO' ? '/api/escavacao' : '/api/liberacao';
-    const ok = await acao(() => api(rota, { trecho_id: id, ini_m: o.ini_m, fim_m: o.fim_m, referencia: o.referencia, data: f.data || hoje() }), 'Registrado.').catch(() => null);
+    const ok = await acao(() => api('/api/escavacao', { trecho_id: id, ini_m: o.ini_m, fim_m: o.fim_m, referencia: o.referencia, data: f.data || hoje() }), 'Escavação registrada.').catch(() => null);
     if (ok) selecionarCampo(tipo, id);
   });
   renderSoldas();
@@ -780,23 +797,27 @@ document.addEventListener('click', async ev => {
   const a = ev.target.closest('[data-anular-etapa]'), r = ev.target.closest('[data-resolver-ocorrencia]');
   if (a) { const motivo = prompt('Motivo da anulação (o registro fica no histórico):'); if (!motivo) return;
     const ok = await acao(() => api('/api/etapa-complementar/anular', { registro_id: a.dataset.anularEtapa, motivo }), 'Registro anulado.').catch(() => null);
-    if (ok && CAMPO) selecionarCampo(CAMPO.tipo, CAMPO.id); }
+    if (ok && TELA === 'topografia') { if (TOP) selecionarTop(TOP.id); carregarTopografia(); recarregarCamadaMapa(); }
+    else if (ok && CAMPO) selecionarCampo(CAMPO.tipo, CAMPO.id); }
   if (r) { const resolucao = prompt('Resolução / correção feita:'); if (!resolucao) return;
     const ok = await acao(() => api('/api/ocorrencia/resolver', { ocorrencia_id: r.dataset.resolverOcorrencia, resolucao }), 'Ocorrência resolvida.').catch(() => null);
     if (ok && CAMPO) selecionarCampo(CAMPO.tipo, CAMPO.id); }
 });
-// retificação de intervalos (aba Campo)
+// retificação de intervalos: no Lançamento do dia (CAMPO) ou na aba Cadastro de campo (CADC)
+const ctxRetif = el => el.closest('#aba-cadastro_campo') ? (CADC && { d: CADC.d, box: $('#cadRetif'), depois: () => selecionarCad(CADC.id) })
+  : CAMPO && { d: CAMPO.d, box: $('#retifBox'), depois: () => selecionarCampo(CAMPO.tipo, CAMPO.id) };
 document.addEventListener('click', async ev => {
-  const b = ev.target.closest('[data-retificar-ref]'); if (!b || !CAMPO) return;
+  const b = ev.target.closest('[data-retificar-ref]'), c = b && ctxRetif(b); if (!c) return;
   const [ref_tipo, ref_id] = b.dataset.retificarRef.split('|');
-  const iv = CAMPO.d.intervalos, g = iv.registros.find(x => x.ref_tipo === ref_tipo && String(x.ref_id) === ref_id);
-  const conc = ref_tipo === 'CONCILIACAO', etapas = conc ? (CAMPO.d.mnd ? ['ASSENTADO'] : ['ASSENTADO', 'REATERRADO']) : Object.keys(iv.etapas);
-  $('#retifBox').innerHTML = `<div class="caixa-retif" data-ref="${ref_tipo}|${ref_id}">
-    <b>Retificar ${conc ? 'conciliação do legado' : 'apontamento'} #${ref_id}</b> — informe o conjunto CORRETO de intervalos deste registro (linha vazia ou removida = intervalo anulado).
-    ${conc ? 'A soma por etapa continua igual à da conciliação; não há quantidades.' : 'As quantidades do apontamento são recalculadas sem dupla contagem (veja a prévia).'}
+  const iv = c.d.intervalos, g = iv.registros.find(x => x.ref_tipo === ref_tipo && String(x.ref_id) === ref_id);
+  const conc = ref_tipo === 'CONCILIACAO', cad = ref_tipo === 'CADASTRO_CAMPO';
+  const etapas = conc ? (c.d.mnd ? ['ASSENTADO'] : ['ASSENTADO', 'REATERRADO']) : cad ? ['CADASTRO_CAMPO'] : Object.keys(iv.etapas);
+  c.box.innerHTML = `<div class="caixa-retif" data-ref="${ref_tipo}|${ref_id}">
+    <b>Retificar ${conc ? 'conciliação do legado' : cad ? 'cadastro de campo' : 'apontamento'} #${ref_id}</b> — informe o conjunto CORRETO de intervalos deste registro (linha vazia ou removida = intervalo anulado).
+    ${conc ? 'A soma por etapa continua igual à da conciliação; não há quantidades.' : cad ? 'Cada intervalo precisa do registro do levantamento; não há quantidades.' : 'As quantidades do apontamento são recalculadas sem dupla contagem (veja a prévia).'}
     <div class="editor" data-etapas="${etapas.join(',')}" ${conc ? 'data-com-data="1"' : ''}>${g.intervalos.map(i => linhaIntervalo(etapas, i, conc, !conc)).join('')}</div>
     <button type="button" class="btn" data-mais-linha>+ intervalo</button>
-    <div class="linha">${conc ? '' : `<label>Data do apontamento<input type="date" data-r="data" value="${esc(g.intervalos[0].data)}"></label>`}
+    <div class="linha">${conc ? '' : `<label>${cad ? 'Data do levantamento' : 'Data do apontamento'}<input type="date" data-r="data" value="${esc(g.intervalos[0].data)}"></label>`}
       <label>Motivo (o que estava errado e como foi confirmado)<input data-r="motivo"></label></div>
     <div class="acoes"><button type="button" class="btn azul" data-retif-acao="previa">Prévia</button><button type="button" class="btn prim" data-retif-acao="aplicar">Aplicar retificação</button><button type="button" class="btn" data-retif-acao="cancelar">Cancelar</button></div>
     <div class="retif-previa"></div></div>`;
@@ -809,7 +830,7 @@ document.addEventListener('click', async ev => {
   const corpo = { ref_tipo, ref_id, intervalos: lerLinhas($('.editor', box)), motivo: r.motivo, data: r.data, simular: b.dataset.retifAcao === 'previa' };
   const p = await acao(() => api('/api/intervalos/retificar', corpo), corpo.simular ? null : 'Retificação aplicada — original preservado no histórico.').catch(() => null);
   if (!p) return;
-  if (!corpo.simular) { selecionarCampo(CAMPO.tipo, CAMPO.id); recarregarCamadaMapa(); return; }
+  if (!corpo.simular) { const c = ctxRetif(b); if (c) c.depois(); if (TELA === 'cadastro_campo') carregarCadCampo(); recarregarCamadaMapa(); return; }
   const lin = l => l.map(i => `${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m (${esc(i.data)})`).join('<br>') || '—';
   const qs = (p.quantidades_depois || []).map(q => [q, (p.quantidades_antes || []).find(a => a.servico === q.servico && a.unidade === q.unidade)])
     .filter(([q, a]) => !a || a.confirmado !== q.confirmado).concat((p.quantidades_antes || []).filter(a => p.quantidades_depois && !p.quantidades_depois.some(q => q.servico === a.servico && q.unidade === a.unidade)).map(a => [null, a]));
@@ -846,14 +867,13 @@ async function enviarApontamento(editado) {
   const o = formObj(fAp);
   await acao(() => api('/api/clima', { data: o.data, equipe_id: o.equipe_id, MANHA: o.MANHA, TARDE: o.TARDE }));
   const quantidades = editado ? $$('#apQuant input[data-s]').filter(i => +i.value !== +i.dataset.p).map(i => ({ servico: i.dataset.s, unidade: i.dataset.u, confirmado: +i.value })) : null;
-  const intervalos = [['ASSENTADO', 'ass'], ['CADASTRO_CAMPO', 'cad'], ['REATERRADO', 'rea']]
+  const intervalos = [['ASSENTADO', 'ass'], ['REATERRADO', 'rea']]
     .filter(([, k]) => o[k + '_ini'] !== '' && o[k + '_fim'] !== '' && o[k + '_ini'] != null)
-    .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'], ...(k === 'cad' && o.cad_ref ? { referencia: o.cad_ref } : {}) }));
+    .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'] }));
   await acao(() => api('/api/apontamento', { data: o.data, equipe_id: o.equipe_id, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id,
     concluido_100: !!o.concluido_100, intervalos: o.concluido_100 ? null : intervalos,
     estaca_ini: o.estaca_ini, estaca_fim: o.estaca_fim, quantidades }), 'Apontamento registrado.');
-  $('#apQuant').innerHTML = ''; ['ass', 'cad', 'rea'].forEach(k => { $(`input[name=${k}_ini]`, fAp).value = ''; $(`input[name=${k}_fim]`, fAp).value = ''; });
-  $('input[name=cad_ref]', fAp).value = '';
+  $('#apQuant').innerHTML = ''; ['ass', 'rea'].forEach(k => { $(`input[name=${k}_ini]`, fAp).value = ''; $(`input[name=${k}_fim]`, fAp).value = ''; });
   $('input[name=concluido_100]', fAp).checked = false;
   selecionarCampo(CAMPO.tipo, CAMPO.id);
 }
@@ -862,7 +882,8 @@ document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-verificar-intervalo]'); if (!b) return;
   if (!confirm(`Confirmar que você (${USUARIO.login}) conferiu este intervalo em campo? Quem informou não pode verificar.`)) return;
   const r = await acao(() => api('/api/intervalo/verificar', { intervalo_id: b.dataset.verificarIntervalo }), 'Intervalo verificado (conferência interna).').catch(() => null);
-  if (r) { selecionarCampo(CAMPO.tipo, CAMPO.id); recarregarCamadaMapa(); }
+  const c = r && ctxRetif(b);
+  if (c) { c.depois(); recarregarCamadaMapa(); }
 });
 function renderSoldas() {
   if (!CAMPO || !$('#soldas')) return;
@@ -1273,7 +1294,7 @@ async function carregarDiario() {
   $('#diaEquipes').innerHTML = d.equipes.map(e => `<div class="dia-equipe"><b>${esc(e.nome)}</b>
       <span>Manhã: ${esc(e.clima.MANHA || '—')}</span><span>Tarde: ${esc(e.clima.TARDE || '—')}</span></div>`).join('') || '<p class="vazio">Nenhuma equipe registrou nada neste dia.</p>';
   $('#diaProducao').innerHTML = d.producao.length ? tabelaHtml('<th>Equipe</th><th>Trecho</th><th>Etapa</th><th class="n">De–até (m)</th><th class="n">Metros</th><th>Registro</th><th></th>',
-    d.producao.map(p => `<tr><td>${esc(p.equipe_id || '—')}</td><td>${esc(curto(p.trecho))}</td><td>${esc(ROT_PRODUCAO[p.etapa] || p.etapa)}</td>
+    d.producao.map(p => `<tr><td>${esc(p.equipe_id || (p.etapa === 'CADASTRO_CAMPO' ? 'terceirizada' : '—'))}</td><td>${esc(curto(p.trecho))}</td><td>${esc(ROT_PRODUCAO[p.etapa] || p.etapa)}</td>
       <td class="n">${nf(p.ini_m)}–${nf(p.fim_m)}</td><td class="n"><b>${nf(p.metros)}</b></td><td><small>${esc([p.informado_por, p.referencia].filter(Boolean).join(' · '))}</small></td>
       <td>${p.verificado ? '<span class="chip verde">verificado</span>' : '<span class="chip cinza">informado</span>'}</td></tr>`)) : nada;
   $('#diaSoldas').innerHTML = d.soldas.length ? tabelaHtml('<th>Equipe</th><th>Trecho / nó</th><th>Tipo</th><th class="n">Qtd.</th><th>Soldador</th><th></th>',
@@ -1353,6 +1374,166 @@ document.addEventListener('click', async ev => {
   const resolucao = prompt('Como foi resolvida? Descreva o que foi feito.'); if (!resolucao) return;
   const r = await acao(() => api('/api/ocorrencia/resolver', { ocorrencia_id: +b.dataset.intResolver, resolucao }), 'Marcada como resolvida.').catch(() => null);
   if (r) TELA === 'diario' ? carregarDiario() : carregarInterferencias();
+});
+
+/* ---------------------------------------------------------------- campo: topografia e cadastro de campo (terceirizadas) */
+// as duas equipes são terceirizadas e não entram no sistema: a engenharia (ou a administração) registra o que elas entregam
+const kpi = ([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`;
+const opcoesFrente = sel => { if (sel.options.length < 2) sel.innerHTML += RESUMO.frentes.map(x => `<option>${esc(x)}</option>`).join(''); };
+const foraDe = ([a, b], cob) => lacunasDe((cob || []).map(([c, d]) => [Math.max(c, a) - a, Math.min(d, b) - a]).filter(([c, d]) => d > c), b - a)
+  .map(([c, d]) => [c + a, d + a]);
+const ROT_SERVICO = { LOCACAO: 'Locação', ESCAVACAO: 'Escavação', ASSENTAMENTO: 'Assentamento' };
+const botaoTrecho = (attr, tid, ponto) => `<button type="button" class="btn" ${attr}="${esc(tid)}">${esc(curto(ponto))}</button>`;
+function preencherTrecho(form, d, id) {
+  const inp = $('input[name=alvo_txt]', form); inp.value = curto(d.nome); inp.dataset.tipo = 'TRECHO'; inp.dataset.id = id;
+}
+
+let TOP_LISTA = 'programados', TOP = null, TOP_DADOS = null;
+const fTop = $('#fTop');
+async function carregarTopografia() {
+  opcoesFrente($('#topFrente'));
+  if (!fTop.data.value) fTop.data.value = hoje();
+  $$('#topLista button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.topLista === TOP_LISTA)));
+  const f = $('#topFrente').value;
+  const r = await acao(() => api('/api/topografia' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
+  TOP_DADOS = r; const t = r.totais;
+  $('#topKpis').innerHTML = [['Trechos liberados', nf(t.trechos_liberados, 0)], ['Liberados em parte', nf(t.trechos_parciais, 0)],
+    ['Metros liberados', nf(t.liberado_m) + ' m'], ['Programado sem liberação (7 dias)', nf(t.programados_sem_liberacao, 0)],
+    ['Executado sem liberação', nf(t.executado_sem_liberacao_m) + ' m']].map(kpi).join('');
+  renderTopLista();
+}
+function renderTopLista() {
+  const r = TOP_DADOS; if (!r) return;
+  const bt = (tid, ponto) => botaoTrecho('data-top-trecho', tid, ponto);
+  const listas = {
+    programados: () => r.programados_sem_liberacao.length ? tabelaHtml('<th>Dia</th><th>Equipe</th><th>Serviço</th><th>Trecho</th><th>Falta liberar (m)</th>',
+      r.programados_sem_liberacao.map(p => `<tr><td>${dataBR(p.data)}</td><td>${esc(p.equipe_id)}</td><td>${esc(ROT_SERVICO[p.servico] || p.servico)}</td>
+        <td>${bt(p.trecho_id, p.ponto)}</td><td>${faixa(p.falta)}</td></tr>`))
+      : `<p class="vazio">Nada programado de ${dataBR(r.hoje)} a ${dataBR(r.ate)} sem liberação.</p>`,
+    executados: () => r.executado_sem_liberacao.length ? tabelaHtml('<th>Trecho</th><th class="n">Sem liberação (m)</th><th>Onde e quando</th>',
+      r.executado_sem_liberacao.map(x => `<tr><td>${bt(x.trecho_id, x.ponto)}</td><td class="n"><b>${nf(x.falta_m)}</b></td>
+        <td><small>${x.faltas.map(f => `${esc(ROT_PRODUCAO[f.etapa] || ROT_ETAPA[f.etapa] || f.etapa)} ${faixa(f.faixas)} (${dataBR(f.data)})`).join('<br>')}</small></td></tr>`))
+      : '<p class="vazio">Nada assentado ou escavado sem liberação até a data.</p>',
+    parciais: () => r.parciais.length ? tabelaHtml('<th>Trecho</th><th class="n">Liberado</th><th>Falta liberar (m)</th>',
+      r.parciais.map(x => `<tr><td>${bt(x.trecho_id, x.ponto)}</td><td class="n">${nf(x.liberado_m)} de ${nf(x.extensao_m)} m</td><td>${faixa(x.falta)}</td></tr>`))
+      : '<p class="vazio">Nenhum trecho liberado só em parte.</p>',
+    recentes: () => r.recentes.length ? tabelaHtml('<th>Data</th><th>Trecho</th><th class="n">De–até (m)</th><th>Nota de serviço</th><th>Registrado por</th><th></th>',
+      r.recentes.map(x => `<tr${x.anulado_em ? ' style="opacity:.6"' : ''}><td>${dataBR(x.data)}</td><td>${bt(x.trecho_id, x.ponto)}</td>
+        <td class="n">${nf(x.ini_m)}–${nf(x.fim_m)}</td><td>${esc(x.referencia || '—')}</td><td>${esc(x.registrado_por)}</td>
+        <td>${x.anulado_em ? `<span class="chip cinza" title="${esc(x.anulado_motivo || '')}">anulada</span>`
+          : pode('retificar_campo') ? `<button type="button" class="btn" data-anular-etapa="${x.id}">Anular</button>` : ''}</td></tr>`))
+      : '<p class="vazio">Nenhuma liberação registrada.</p>',
+  };
+  $('#topConteudo').innerHTML = listas[TOP_LISTA]();
+}
+async function selecionarTop(id) {
+  const d = await acao(() => api(`/api/detalhe?tipo=TRECHO&id=${encodeURIComponent(id)}`)).catch(() => null); if (!d) return;
+  TOP = { id, d }; preencherTrecho(fTop, d, id);
+  $('#topAlvo').innerHTML = `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')}</div>
+    ${htmlComplementar(d.complementar, pode('retificar_campo'), ['LIBERACAO_TOPOGRAFICA'])}
+    ${(d.complementar.alertas || []).map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}`;
+}
+ligarBusca($('input[name=alvo_txt]', fTop), r => r.tipo === 'TRECHO' ? selecionarTop(r.id) : toast('A liberação topográfica é por trecho.', 'erro'));
+$('#topFrente').addEventListener('change', carregarTopografia);
+$('#topLista').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-top-lista]'); if (!b) return;
+  TOP_LISTA = b.dataset.topLista; $$('#topLista button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderTopLista();
+});
+$('#topConteudo').addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-top-trecho]'); if (!b) return;
+  await selecionarTop(b.dataset.topTrecho); fTop.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+$('#topTodo').addEventListener('click', () => { if (!TOP) return toast('Escolha o trecho.', 'erro'); fTop.ini_m.value = 0; fTop.fim_m.value = TOP.d.extensao_m; });
+$('#topFalta').addEventListener('click', () => {
+  if (!TOP) return toast('Escolha o trecho.', 'erro');
+  const f = lacunasDe(TOP.d.complementar.LIBERACAO_TOPOGRAFICA.cobertura, TOP.d.extensao_m)[0];
+  if (!f) return toast('O trecho já está todo liberado.', 'ok');
+  fTop.ini_m.value = +f[0].toFixed(3); fTop.fim_m.value = +f[1].toFixed(3);
+});
+fTop.addEventListener('submit', async ev => {
+  ev.preventDefault();
+  if (!TOP || $('input[name=alvo_txt]', fTop).dataset.id !== TOP.id) return toast('Escolha o trecho na lista que aparece enquanto você digita.', 'erro');
+  const o = formObj(fTop);
+  const r = await acao(() => api('/api/liberacao', { trecho_id: TOP.id, ini_m: o.ini_m, fim_m: o.fim_m, data: o.data, referencia: o.referencia }),
+    'Liberação registrada.').catch(() => null);
+  if (r) { fTop.ini_m.value = ''; fTop.fim_m.value = ''; fTop.referencia.value = ''; selecionarTop(TOP.id); carregarTopografia(); recarregarCamadaMapa(); }
+});
+
+let CAD_LISTA = 'aberta', CADC = null, CAD_DADOS = null;
+const fCad = $('#fCad');
+async function carregarCadCampo() {
+  opcoesFrente($('#cadFrente'));
+  if (!fCad.data.value) fCad.data.value = hoje();
+  $$('#cadLista button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cadLista === CAD_LISTA)));
+  const f = $('#cadFrente').value;
+  const r = await acao(() => api('/api/cadastro-campo' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
+  CAD_DADOS = r; const t = r.totais;
+  $('#cadAviso').innerHTML = t.reaterrado_sem_cadastro_m > 0 ? `<div class="aviso problema"><b>${nf(t.reaterrado_sem_cadastro_m)} m já reaterrados sem levantamento.</b>
+    Com a vala fechada não dá mais para levantar: veja a lista "Reaterrado sem levantamento".</div>` : '';
+  $('#cadKpis').innerHTML = [['Vala aberta sem levantamento', nf(t.vala_aberta_m) + ' m'], ['Reaterrado sem levantamento', nf(t.reaterrado_sem_cadastro_m) + ' m'],
+    ['Trechos pendentes', nf(t.trechos_pendentes, 0)], ['Reaterros com alerta', nf(t.alertas_reaterro, 0)],
+    ['Trechos com levantamento completo', nf(t.trechos_completos, 0)]].map(kpi).join('');
+  renderCadLista();
+}
+function renderCadLista() {
+  const r = CAD_DADOS; if (!r) return;
+  const bt = (tid, ponto) => botaoTrecho('data-cad-trecho', tid, ponto);
+  const leg = x => x.legado_pendente ? ' <span class="chip vermelho" title="Concilie o avanço anterior antes de registrar">legado sem posição</span>' : '';
+  const aberta = r.fila.filter(x => x.vala_aberta_m > 0), fechada = r.fila.filter(x => x.reaterrado_sem_cadastro_m > 0 || x.alertas_reaterro > 0);
+  const listas = {
+    aberta: () => aberta.length ? tabelaHtml('<th>Trecho</th><th class="n">Assentado</th><th class="n">Levantado</th><th>Falta levantar, vala aberta (m)</th>',
+      aberta.map(x => `<tr><td>${bt(x.trecho_id, x.ponto)}${leg(x)}</td><td class="n">${nf(x.assentado_m)} m</td><td class="n">${nf(x.cadastro_m)} m</td>
+        <td><b>${faixa(x.vala_aberta)}</b></td></tr>`))
+      : '<p class="vazio">Nenhum trecho assentado esperando levantamento com a vala aberta.</p>',
+    reaterrados: () => fechada.length ? tabelaHtml('<th>Trecho</th><th>Reaterrado sem levantamento (m)</th><th class="n">Reaterros com alerta</th>',
+      fechada.map(x => `<tr><td>${bt(x.trecho_id, x.ponto)}${leg(x)}</td><td>${x.reaterrado_sem_cadastro.length ? faixa(x.reaterrado_sem_cadastro) : '<small>levantado depois do reaterro</small>'}</td>
+        <td class="n">${x.alertas_reaterro ? `<span class="chip amarelo">${nf(x.alertas_reaterro, 0)}</span>` : '—'}</td></tr>`))
+      : '<p class="vazio">Nenhum reaterro sem levantamento.</p>',
+    recentes: () => r.recentes.length ? tabelaHtml('<th>Data</th><th>Trecho</th><th class="n">De–até (m)</th><th>Registro do levantamento</th><th>Registrado por</th><th></th>',
+      r.recentes.map(x => `<tr${x.anulado_por ? ' style="opacity:.6"' : ''}><td>${dataBR(x.data)}</td><td>${bt(x.trecho_id, x.ponto)}</td>
+        <td class="n">${nf(x.ini_m)}–${nf(x.fim_m)}</td><td>${esc(x.referencia || '—')}</td>
+        <td>${esc(x.informado_por || '—')}${x.apontamento_id ? ` <small>(apontamento #${x.apontamento_id})</small>` : ''}</td>
+        <td>${x.anulado_por ? `<span class="chip cinza">retificado (#${x.anulado_por})</span>` : x.verificado_em ? `<span class="chip azul">verificado · ${esc(x.verificado_por)}</span>` : '<span class="chip amarelo">sem verificação</span>'}</td></tr>`))
+      : '<p class="vazio">Nenhum levantamento registrado.</p>',
+  };
+  $('#cadConteudo').innerHTML = listas[CAD_LISTA]();
+}
+async function selecionarCad(id) {
+  const d = await acao(() => api(`/api/detalhe?tipo=TRECHO&id=${encodeURIComponent(id)}`)).catch(() => null); if (!d) return;
+  CADC = { id, d }; preencherTrecho(fCad, d, id);
+  const iv = d.intervalos, ass = iv.etapas.ASSENTADO, cad = iv.etapas.CADASTRO_CAMPO;
+  const falta = ass.cobertura.flatMap(x => foraDe(x, cad.cobertura));
+  $('#cadRetif').innerHTML = '';
+  $('#cadAlvo').innerHTML = `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')} · assentado ${faixa(ass.cobertura)}</div>
+    <div class="registro"><div><b>Levantado</b> <span class="chip ${falta.length ? 'amarelo' : cad.metros ? 'azul' : 'cinza'}">${nf(cad.metros)} m</span></div>
+      <small>Levantado: ${faixa(cad.cobertura)}${falta.length ? ` · <b>assentado sem levantamento: ${faixa(falta)}</b>` : ''}</small></div>
+    ${htmlFases((d.fases_cadastro || []).slice(0, 1))}
+    <h4 style="margin:10px 0 4px">Levantamentos registrados nesta aba</h4>
+    ${htmlRegistros({ ...iv, registros: iv.registros.filter(g => g.ref_tipo === 'CADASTRO_CAMPO') }, pode('retificar_campo'))}`;
+}
+ligarBusca($('input[name=alvo_txt]', fCad), r => r.tipo === 'TRECHO' ? selecionarCad(r.id) : toast('O cadastro de campo é por trecho.', 'erro'));
+$('#cadFrente').addEventListener('change', carregarCadCampo);
+$('#cadLista').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-cad-lista]'); if (!b) return;
+  CAD_LISTA = b.dataset.cadLista; $$('#cadLista button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderCadLista();
+});
+$('#cadConteudo').addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-cad-trecho]'); if (!b) return;
+  await selecionarCad(b.dataset.cadTrecho); fCad.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+$('#cadFalta').addEventListener('click', () => {
+  if (!CADC) return toast('Escolha o trecho.', 'erro');
+  const f = CADC.d.intervalos.etapas.ASSENTADO.cobertura.flatMap(x => foraDe(x, CADC.d.intervalos.etapas.CADASTRO_CAMPO.cobertura))[0];
+  if (!f) return toast('Todo o assentado já tem levantamento.', 'ok');
+  fCad.ini_m.value = +f[0].toFixed(3); fCad.fim_m.value = +f[1].toFixed(3);
+});
+fCad.addEventListener('submit', async ev => {
+  ev.preventDefault();
+  if (!CADC || $('input[name=alvo_txt]', fCad).dataset.id !== CADC.id) return toast('Escolha o trecho na lista que aparece enquanto você digita.', 'erro');
+  const o = formObj(fCad);
+  const r = await acao(() => api('/api/cadastro-campo', { trecho_id: CADC.id, ini_m: o.ini_m, fim_m: o.fim_m, data: o.data, referencia: o.referencia }),
+    'Levantamento registrado.').catch(() => null);
+  if (r) { fCad.ini_m.value = ''; fCad.fim_m.value = ''; fCad.referencia.value = ''; selecionarCad(CADC.id); carregarCadCampo(); recarregarCamadaMapa(); }
 });
 
 /* ---------------------------------------------------------------- LEV: as planilhas da obra como tabelas */

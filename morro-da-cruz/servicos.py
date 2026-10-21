@@ -25,7 +25,7 @@ from regras import RegraViolada
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 16
+VERSAO_ESQUEMA = 17
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -66,7 +66,7 @@ def aplicar_esquema(conn):
     if "chave" in {r[1] for r in conn.execute("PRAGMA table_info(medicao_lancamentos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_lanc_chave ON medicao_lancamentos(chave) WHERE chave IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "fotos com o original só no Google Drive (miniatura no servidor)"))
+                 (VERSAO_ESQUEMA, _agora(), "cadastro de campo registrado à parte (equipe terceirizada), com retificação própria"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -796,7 +796,21 @@ def _ref_intervalo(i):
         return f"conciliação #{i['conciliacao_id']}"
     if i.get("apontamento_id"):
         return f"apontamento #{i['apontamento_id']}"
+    if i.get("etapa") == "CADASTRO_CAMPO":
+        return f"cadastro de campo #{i.get('id')}"
     return f"intervalo #{i.get('id')}"
+
+
+def _registro_do_intervalo(i):
+    """(ref_tipo, ref_id) do registro que a retificação substitui: apontamento, conciliação do legado ou o cadastro
+    de campo registrado à parte (equipe terceirizada, sem apontamento nem equipe)."""
+    if i.get("conciliacao_id"):
+        return "CONCILIACAO", i["conciliacao_id"]
+    if i.get("apontamento_id"):
+        return "APONTAMENTO", i["apontamento_id"]
+    if i.get("etapa") == "CADASTRO_CAMPO":
+        return "CADASTRO_CAMPO", i["id"]
+    return None
 
 
 def _incoerencias(lista):
@@ -930,16 +944,45 @@ def _atualizar_execucao_trecho(conn, t, exato=False):
 
 def _gravar_intervalos(conn, t, novos, equipe_id, apontamento_id, informado_por, conciliacao_id=None,
                        retificacao_id=None, exato=False):
+    ids = []
     for n in novos:
-        conn.execute(
+        ids.append(conn.execute(
             """INSERT INTO intervalos_execucao(trecho_id,etapa,ini_m,fim_m,data,equipe_id,apontamento_id,origem,
                  informado_por,conciliacao_id,registrado_em,referencia,verificado_em,verificado_por,retificacao_id)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (t["id"], n["etapa"], float(n["ini_m"]), float(n["fim_m"]), n["data"], equipe_id, apontamento_id, n["origem"],
              informado_por, conciliacao_id, _agora(), (n.get("referencia") or "").strip() or None,
-             n.get("verificado_em"), n.get("verificado_por"), retificacao_id))
+             n.get("verificado_em"), n.get("verificado_por"), retificacao_id)).lastrowid)
     _recalcular_alertas(conn, t["id"])
     _atualizar_execucao_trecho(conn, t, exato)
+    return ids
+
+
+def _exigir_referencia_cadastro(referencia):
+    if not str(referencia or "").strip():
+        raise RegraViolada("Informe o registro do levantamento (caderneta, croqui ou arquivo de pontos).")
+
+
+def registrar_cadastro_campo(conn, trecho, ini_m, fim_m, data, referencia, por):
+    """Cadastro de campo (levantamento com a vala aberta) feito por equipe terceirizada e registrado pela engenharia,
+    fora do apontamento do encarregado: sem equipe, sem clima e sem quantidade. Mesmas regras de posição do
+    apontamento (_validar_intervalos): dentro do trecho, sem sobreposição e só sobre o assentado até a data.
+    Aceito também depois do OK interno: não muda metros nem quantidades e alimenta a esteira de cadastro."""
+    exigir_data_ocorrida(data, "Cadastro de campo")
+    if not data:
+        raise RegraViolada("Informe a data do levantamento.")
+    if not str(por or "").strip():
+        raise RegraViolada("Informe quem registra.")
+    _exigir_referencia_cadastro(referencia)
+    if ini_m in (None, "") or fim_m in (None, ""):
+        raise RegraViolada("Informe o intervalo levantado (de/até, em metros desde o início do trecho).")
+    t = alvo(conn, "TRECHO", trecho, operacao=True)
+    _exigir_sem_legado(conn, t, "registrar o cadastro de campo")
+    novos = [{"etapa": "CADASTRO_CAMPO", "ini_m": float(ini_m), "fim_m": float(fim_m), "data": data,
+              "origem": "INFORMADO", "referencia": str(referencia).strip()}]
+    _validar_intervalos(conn, t, novos)
+    with transacao(conn):
+        return _gravar_intervalos(conn, t, novos, None, None, str(por).strip())[0]
 
 
 def _linhas_quantidades(prev, quantidades):
@@ -1096,7 +1139,15 @@ def _grupo_retificacao(conn, ref_tipo, ref_id):
             raise RegraViolada(f"Conciliação #{ref_id} não encontrada.")
         ivs = _rows(conn.execute(f"SELECT * FROM intervalos_execucao WHERE conciliacao_id=? AND {EFETIVO} ORDER BY etapa, ini_m", (ref_id,)))
         return c["trecho_id"], ivs, c
-    raise RegraViolada("Retificação: informe um apontamento ou uma conciliação do legado.")
+    if ref_tipo == "CADASTRO_CAMPO":
+        i = _one(conn, "SELECT * FROM intervalos_execucao WHERE id=?", ref_id)
+        if not i or i["etapa"] != "CADASTRO_CAMPO" or i["apontamento_id"] or i["conciliacao_id"]:
+            raise RegraViolada(f"Cadastro de campo #{ref_id} não encontrado (o lançado num apontamento é retificado pelo apontamento).")
+        if i["anulado_por"]:
+            raise RegraViolada(f"O cadastro de campo #{ref_id} já foi retificado (retificação #{i['anulado_por']}): "
+                               "retifique o registro que o substituiu.")
+        return i["trecho_id"], [i], i
+    raise RegraViolada("Retificação: informe um apontamento, uma conciliação do legado ou um cadastro de campo.")
 
 
 def _quantidades_retificadas(conn, t, ap, antes, metros, quantidades):
@@ -1140,7 +1191,7 @@ def retificar_intervalos(conn, ref_tipo, ref_id, novos, motivo, responsavel, dat
     trecho_id, originais, reg = _grupo_retificacao(conn, ref_tipo, int(ref_id))
     t = alvo(conn, "TRECHO", trecho_id, operacao=True)
     ex = execucao(conn, "TRECHO", t["id"]) or {}
-    if ex.get("ok_fiscal_em"):
+    if ex.get("ok_fiscal_em") and ref_tipo != "CADASTRO_CAMPO":
         raise RegraViolada(f"{t['ponto']} já tem OK interno ({ex['ok_fiscal_em']}): a proposta da medição de teste e a "
                            "esteira de cadastro partiram desses metros. Retificação depois do OK não está implementada.")
     _exigir_sem_legado(conn, t, "retificar intervalos")
@@ -1156,6 +1207,18 @@ def retificar_intervalos(conn, ref_tipo, ref_id, novos, motivo, responsavel, dat
                 raise RegraViolada(f"Nova data {d}: registre antes o clima da equipe {reg['equipe_id']} nos dois turnos.")
         lista = [{"etapa": n.get("etapa"), "ini_m": float(n["ini_m"]), "fim_m": float(n["fim_m"]), "data": d,
                   "referencia": (n.get("referencia") or "").strip() or None} for n in novos or []]
+    elif ref_tipo == "CADASTRO_CAMPO":
+        if quantidades:
+            raise RegraViolada("O cadastro de campo não tem quantidades.")
+        d = data or reg["data"]
+        exigir_data_ocorrida(d, "Cadastro de campo")
+        lista = []
+        for n in novos or []:
+            if n.get("etapa", "CADASTRO_CAMPO") != "CADASTRO_CAMPO":
+                raise RegraViolada("A retificação de um cadastro de campo só aceita intervalos de CADASTRO_CAMPO.")
+            _exigir_referencia_cadastro(n.get("referencia"))
+            lista.append({"etapa": "CADASTRO_CAMPO", "ini_m": float(n["ini_m"]), "fim_m": float(n["fim_m"]), "data": d,
+                          "referencia": str(n["referencia"]).strip()})
     else:
         if quantidades:
             raise RegraViolada("A conciliação não tem quantidades: elas continuam nos apontamentos antigos.")
@@ -1229,6 +1292,8 @@ def retificar_intervalos(conn, ref_tipo, ref_id, novos, motivo, responsavel, dat
                     conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,?,?)", (novo_ap, *linha))
                 conn.execute("UPDATE retificacoes_intervalos SET novo_apontamento_id=? WHERE id=?", (novo_ap, rid))
             _gravar_intervalos(conn, t, lista, reg["equipe_id"], novo_ap, responsavel.strip(), retificacao_id=rid, exato=True)
+        elif ref_tipo == "CADASTRO_CAMPO":
+            _gravar_intervalos(conn, t, lista, None, None, responsavel.strip(), retificacao_id=rid, exato=True)
         else:
             _gravar_intervalos(conn, t, lista, None, None, responsavel.strip(), conciliacao_id=reg["id"],
                                retificacao_id=rid, exato=True)
@@ -1281,7 +1346,7 @@ def situacao_intervalos(conn, trecho_id):
     out["conciliacoes"] = _rows(conn.execute("SELECT * FROM conciliacoes_legado WHERE trecho_id=? ORDER BY id", (t["id"],)))
     grupos = {}
     for i in out["intervalos"]:
-        k = ("CONCILIACAO", i["conciliacao_id"]) if i["conciliacao_id"] else ("APONTAMENTO", i["apontamento_id"]) if i["apontamento_id"] else None
+        k = _registro_do_intervalo(i)
         if k:
             g = grupos.setdefault(k, {"ref_tipo": k[0], "ref_id": k[1], "intervalos": []})
             g["intervalos"].append(i)
