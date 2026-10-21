@@ -30,6 +30,7 @@ import diario as DI
 import documentos as D
 import drive as DR
 import medicao as M
+import notas_servico as NS
 import planejamento as P
 import relatorios as RL
 import exportar
@@ -463,6 +464,77 @@ def p_cadastro_campo(b, c):
                                              b.get("referencia"), b.get("por"))}
 
 
+# ------------------------------------------------------------------ nota de serviço por upload (v18)
+# Quem abre a tela vê as NS daquele tipo; o encarregado vê as de serviço e as do dia da equipe dele.
+TIPOS_DA_TELA = {"notas": set(NS.TIPOS), "topografia": {"TOPOGRAFIA"}, "cadastro_campo": {"CADASTRO"},
+                 "campo": {"SERVICO", "EXECUCAO"}, "diario": {"SERVICO", "EXECUCAO"}}
+
+
+def _tipos_visiveis(usuario):
+    return set().union(*(TIPOS_DA_TELA.get(t, set()) for t in usuario["telas"]))
+
+
+def _ns_visivel(usuario, ns):
+    if ns["tipo"] not in _tipos_visiveis(usuario):
+        return False
+    return not (usuario["restrito_a_equipe"] and ns["tipo"] == "EXECUCAO" and ns["equipe_id"] != usuario["equipe_id"])
+
+
+def _exigir_ns(usuario, ns_ou_tipo):
+    """Registrar, aplicar e anular exigem também a permissão do tipo (topografia, cadastro de campo)."""
+    tipo = ns_ou_tipo if isinstance(ns_ou_tipo, str) else ns_ou_tipo["tipo"]
+    if tipo == "EXECUCAO":
+        raise A.AcessoNegado("A NS do dia é enviada e anulada pela tela Nota do dia.", 403)
+    if NS.PERMISSAO_TIPO.get(tipo):
+        A.exigir(usuario, NS.PERMISSAO_TIPO[tipo])
+
+
+def r_ns(q, c, usuario):
+    if q.get("tipo") and q["tipo"] not in _tipos_visiveis(usuario):
+        raise A.AcessoNegado("O seu perfil não abre as notas de serviço deste tipo.", 403)
+    lista = NS.listar(c, q.get("tipo") or None, q.get("zona") or None, q.get("vigentes", "1") == "1",
+                      q.get("equipe") or None, q.get("data") or None)
+    return [n for n in lista if _ns_visivel(usuario, n)]
+
+
+def r_ns_detalhe(q, c, usuario):
+    d = NS.detalhe(c, int(q["id"]))
+    if not _ns_visivel(usuario, d):
+        raise A.AcessoNegado("Esta nota de serviço não é de uma tela que o seu perfil abre.", 403)
+    return d
+
+
+def p_ns_ler(b, c, usuario):
+    return NS.ler(c, b.get("tipo"), b.get("pdf_b64"), b.get("planilha_b64"), b.get("zona") or None, b.get("pb") or None)
+
+
+def p_ns(b, c, usuario):
+    _exigir_ns(usuario, b.get("tipo") or "")
+    return NS.registrar(c, b.get("tipo"), b.get("pdf_b64"), b["por"], b.get("decisoes"), b.get("croqui_b64"),
+                        b.get("planilha_b64"), {k: b.get(f"{k}_nome") for k in ("pdf", "croqui", "planilha")},
+                        b.get("zona") or None, b.get("pb") or None)
+
+
+def p_ns_anexo(b, c, usuario):
+    _exigir_ns(usuario, NS._ns(c, int(b["ns_id"])))
+    return NS.anexar(c, int(b["ns_id"]), b.get("croqui_b64"), b.get("croqui_nome"), b["por"])
+
+
+def p_ns_aplicar(b, c, usuario):
+    _exigir_ns(usuario, NS._ns(c, int(b["ns_id"])))
+    return NS.aplicar(c, int(b["ns_id"]), b["por"])
+
+
+def p_ns_anular(b, c, usuario):
+    _exigir_ns(usuario, NS._ns(c, int(b["ns_id"])))
+    return NS.anular(c, int(b["ns_id"]), b.get("motivo"), b["por"])
+
+
+ROTAS_NS = {"/api/ns/ler": p_ns_ler, "/api/ns": p_ns, "/api/ns/anexo": p_ns_anexo, "/api/ns/aplicar": p_ns_aplicar,
+            "/api/ns/anular": p_ns_anular}
+TELAS_NS = ("notas", "campo", "diario", "topografia", "cadastro_campo")
+
+
 # ------------------------------------------------------------------ documentos oficiais (links do Google Drive)
 def r_documentos(q, c):
     return D.listar(c)
@@ -634,7 +706,8 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/topografia": r_topografia, "/api/cadastro-campo": r_cadastro_campo}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
-               "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"])}       # recebem o usuário da sessão
+               "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
+               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
@@ -652,7 +725,7 @@ POST.update(ROTAS_DOCUMENTOS)
 POST.update(ROTAS_DRIVE)
 POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar,
              "/api/medicao/conferir": p_medicao_conferir})
-POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha}
+POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, **ROTAS_NS}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
 PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
              "/api/nf/aceitar": "receber", "/api/checkin": "almox", "/api/checkout": "almox", "/api/clima": "campo",
@@ -681,6 +754,8 @@ PERMISSAO.update({rota: "documentos" for rota in ROTAS_DOCUMENTOS})
 AUTOR.update({rota: ("por",) for rota in ROTAS_DOCUMENTOS})
 PERMISSAO.update({rota: "documentos" for rota in ROTAS_DRIVE})
 AUTOR.update({rota: ("por",) for rota in ROTAS_DRIVE})
+PERMISSAO.update({rota: "notas_servico" for rota in ROTAS_NS})
+AUTOR.update({rota: ("por",) for rota in ROTAS_NS})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 # tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral"}
@@ -696,10 +771,17 @@ TELA_GET = {"/api/equipe": ("equipes", "ponto") + _CAMPO, "/api/estoque": _ALMOX
             "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa"),
             "/api/diario": ("diario",), "/api/interferencias": ("interferencias",), "/api/topografia": ("topografia",),
             "/api/cadastro-campo": ("cadastro_campo",), "/api/topologia": ("mapa", "iluminado"),
+            "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS,
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
-TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",)}   # downloads (/arquivos/: LEV)
+TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",),   # downloads (/arquivos/: LEV)
+                "/api/ns/arquivo": TELAS_NS}
+LIMITE_CORPO = 32 * 1024 * 1024                  # PDF + croqui + planilha da NS em base64 cabem; acima: 413 sem ler o corpo
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
+
+
+class CorpoGrande(Exception):
+    """Content-Length acima do limite: recusado (413) sem ler o corpo."""
 
 
 def _mapa_path():
@@ -862,6 +944,8 @@ class Handler(BaseHTTPRequestHandler):
                 A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
             return self._send(200, dados, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                               {"Content-Disposition": f'attachment; filename="{nome}"'})
+        if u.path == "/api/ns/arquivo":
+            return self._ns_arquivo(q, usuario)
         if u.path in ("/mapa", "/mapa/"):
             return self._mapa()
         if u.path.startswith("/mapa/"):
@@ -883,8 +967,35 @@ class Handler(BaseHTTPRequestHandler):
             return self._static(DIR_FOTOS, rel)
         return self._static(WEB, u.path.lstrip("/"))
 
+    def _ns_arquivo(self, q, usuario):
+        """PDF, croqui ou planilha de uma NS registrada, para abrir no navegador (inline, sem executar nada)."""
+        try:
+            with LOCK:
+                ns, doc, nome = NS.arquivo(CONN, int(q.get("id") or 0), q.get("qual") or "pdf")
+                if not _ns_visivel(usuario, ns):
+                    raise A.AcessoNegado("Esta nota de serviço não é de uma tela que o seu perfil abre.", 403)
+                caminho = os.path.join(C.documento_dir(CONN), doc["arquivo"])
+                no_drive = (DR.por_ref(CONN, "DOCUMENTO", [doc["id"]]) or {}).get(doc["id"]) or {}
+        except A.AcessoNegado as e:
+            return self._send(e.status, {"erro": str(e)})
+        except R.RegraViolada as e:
+            return self._send(404, {"erro": str(e)})
+        except (KeyError, ValueError, TypeError) as e:
+            return self._send(400, {"erro": f"Requisição inválida: {e}"})
+        if not os.path.isfile(caminho):                 # saiu do servidor depois de ir para o Drive
+            if no_drive.get("drive_link"):
+                return self._send(302, "", "text/plain; charset=utf-8", {"Location": no_drive["drive_link"]})
+            return self._send(404, {"erro": "O arquivo não está no servidor."})
+        with open(caminho, "rb") as f:                  # fora da trava: o arquivo é lido sem segurar o banco
+            dados = f.read()
+        return self._send(200, dados, doc["mime"] or "application/octet-stream",
+                          {"Content-Disposition": f"inline; filename*=UTF-8''{quote(nome)}",
+                           "Content-Security-Policy": "sandbox", "Cache-Control": "private, max-age=3600"})
+
     def _ler_corpo(self):
         n = int(self.headers.get("Content-Length") or 0)
+        if n > LIMITE_CORPO:
+            raise CorpoGrande(n)
         return json.loads(self.rfile.read(n) or b"{}")
 
     def do_POST(self):
@@ -897,6 +1008,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, {"erro": "Requisição recusada: origem não reconhecida."})
         try:
             body = self._ler_corpo()
+        except CorpoGrande as e:
+            self.close_connection = True                 # o corpo não foi lido: a conexão não serve para outro pedido
+            return self._send(413, {"erro": f"Envio grande demais ({e.args[0] / 2 ** 20:.0f} MB): o limite é "
+                                            f"{LIMITE_CORPO // 2 ** 20} MB por envio (PDF da NS até 5 MB, croqui até 15 MB)."})
         except json.JSONDecodeError:
             return self._send(400, {"erro": "JSON inválido"})
         if not isinstance(body, dict):

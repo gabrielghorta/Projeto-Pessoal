@@ -40,7 +40,11 @@ PARAM = {"cliente": "drive_cliente_id", "segredo": "drive_cliente_segredo", "tok
 MAX_TENTATIVAS = 5
 FOTO_CATEGORIA = {"SINALIZACAO": "Sinalização", "EXECUCAO": "Execução", "CONCLUIDO": "Concluído"}
 DOC_ROTULO = {"NFE_XML": "XML da NF-e", "NF_PDF": "PDF da nota", "NF_IMAGEM": "Imagem da nota", "LAUDO": "Laudo de inspeção",
-              "ROMANEIO": "Romaneio", "OUTRO": "Documento"}
+              "ROMANEIO": "Romaneio", "OUTRO": "Documento", "NS_PDF": "Nota de Serviço", "NS_CROQUI": "Croqui da Nota de Serviço",
+              "NS_PLANILHA": "Planilha da Nota de Serviço"}
+DOC_NS = ("NS_PDF", "NS_CROQUI", "NS_PLANILHA")
+NS_PASTA = {"TOPOGRAFIA": "Topografia", "CADASTRO": "Cadastro", "SERVICO": "Servicos", "EXECUCAO": "Execucao"}
+NS_ROTULO = {"TOPOGRAFIA": "Topografia", "CADASTRO": "Cadastro", "SERVICO": "Serviço de obra"}
 DOC_PASTA = {"NFE_XML": "01_Notas_Fiscais", "NF_PDF": "01_Notas_Fiscais", "NF_IMAGEM": "01_Notas_Fiscais",
              "LAUDO": "04_Laudos_de_Inspecao", "ROMANEIO": "02_Romaneios", "OUTRO": "99_Outros_Documentos"}
 
@@ -365,7 +369,29 @@ def _destino_foto(conn, f):
     return caminho, f"{titulo} ({f['sha256'][:8]}).{ext}"
 
 
+def _destino_ns(conn, d):
+    """Nota de serviço: 03_EXECUCAO_DE_CAMPO/02_Notas_de_Servico/<tipo>/<Zona> (a NS do dia, por mês), com nome legível."""
+    ns = _one(conn, "SELECT * FROM notas_servico WHERE ? IN (pdf_id, croqui_id, planilha_id) ORDER BY id DESC LIMIT 1", d["id"])
+    if not ns:
+        return None
+    ext = d["arquivo"].rsplit(".", 1)[-1]
+    qual = {"NS_CROQUI": " - croqui", "NS_PLANILHA": " - planilha"}.get(d["tipo"], "")
+    onde = " ".join(x for x in (ns["zona"], ns["pb"]) if x) or "sem zona"
+    pasta = f"03_EXECUCAO_DE_CAMPO/02_Notas_de_Servico/{NS_PASTA[ns['tipo']]}/{ns['zona'] or 'sem-zona'}"
+    if ns["tipo"] == "EXECUCAO":
+        titulo = f"Morro da Cruz - NS do dia {ns['numero']} - {onde} - {ns['data']}{qual}"
+        pasta += f"/{str(ns['data'])[:7]}"
+    else:
+        fl = "01" if int(ns["folhas"] or 1) == 1 else f"01-{int(ns['folhas']):02d}"
+        titulo = f"Morro da Cruz - NS {ns['numero']} fl {fl} - {NS_ROTULO[ns['tipo']]} - {onde} - {ns['data']}{qual}"
+    return pasta, f"{_limpo(titulo)} ({d['sha256'][:8]}).{ext}"
+
+
 def _destino_documento(conn, d):
+    if d["tipo"] in DOC_NS:
+        destino = _destino_ns(conn, d)
+        if destino:
+            return destino
     ext = d["arquivo"].rsplit(".", 1)[-1]
     mes = str(d["enviado_em"] or "")[:7]
     rotulo = DOC_ROTULO.get(d["tipo"], "Documento")
@@ -389,8 +415,11 @@ def sincronizar_fila(conn):
                                     AND COALESCE(validacao, '') NOT IN ('INVALIDA', 'ARQUIVO_AUSENTE')
                                     AND NOT EXISTS (SELECT 1 FROM envios_drive e WHERE e.origem='FOTO' AND e.ref_id=f.id)
                                   ORDER BY id"""))
-    docs = _rows(conn.execute("""SELECT * FROM documentos d
+    # arquivo de nota de serviço só depois de ligado a uma NS registrada (um envio abandonado não vira arquivo solto)
+    docs = _rows(conn.execute(f"""SELECT * FROM documentos d
                                   WHERE NOT EXISTS (SELECT 1 FROM envios_drive e WHERE e.origem='DOCUMENTO' AND e.ref_id=d.id)
+                                    AND (d.tipo NOT IN {DOC_NS} OR EXISTS (SELECT 1 FROM notas_servico n
+                                                                           WHERE d.id IN (n.pdf_id, n.croqui_id, n.planilha_id)))
                                   ORDER BY id"""))
     if not fotos and not docs:
         return 0

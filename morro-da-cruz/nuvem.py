@@ -136,7 +136,8 @@ def _pedido(environ):
         _Pedido = Pedido
     p = _Pedido()
     n = int(environ.get("CONTENT_LENGTH") or 0)
-    p.rfile = io.BytesIO(environ["wsgi.input"].read(n) if n > 0 else b"")
+    import server                                    # acima do limite o corpo nem é lido: o Handler responde 413
+    p.rfile = io.BytesIO(environ["wsgi.input"].read(n) if 0 < n <= server.LIMITE_CORPO else b"")
     p.wfile = io.BytesIO()
     p.client_address = (environ.get("REMOTE_ADDR") or "", 0)
     p.command = environ.get("REQUEST_METHOD", "GET")
