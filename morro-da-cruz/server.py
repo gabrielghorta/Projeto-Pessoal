@@ -38,6 +38,7 @@ import link
 import mapa_geral as MG
 import regras as R
 import servicos as S
+import topologia as TP
 
 BASE = caminhos.PASTA
 WEB = os.path.join(caminhos.RECURSOS, "web")
@@ -157,6 +158,16 @@ def r_planilhas(q, c):
             out.append({"chave": chave, "arquivo": os.path.basename(p), "descricao": descricao, "bytes": os.path.getsize(p),
                         "url": "/arquivos/" + chave})
     return out
+
+
+def r_topologia(q, c):
+    """Trechos físicos (conexão → conexão), junções que não são conexão e pendências (config/topologia.json).
+    ?trecho=<id ou nome visível> devolve só o trecho físico daquela linha; ?desenho=1 traz, para o mapa REV02, as
+    pontas a encaixar no nó em cada desenho e os trechos físicos com mais de uma linha."""
+    if q.get("desenho"):
+        p = _mapa_path()
+        return {"correcoes": MG.correcoes(p) if os.path.exists(p) else {}, "fisicos": TP.mapa(c)}
+    return TP.consulta(c, q.get("trecho"))
 
 
 def r_mapa_estado(q, c):
@@ -604,7 +615,7 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios,
        "/api/documentos": r_documentos, "/api/mapa/geral": r_mapa_geral, "/api/planilhas": r_planilhas,
        "/api/interferencias": r_interferencias, "/api/lev/cronograma": r_lev_cronograma, "/api/lev/bm": r_lev_bm,
-       "/api/lev/redes": r_lev_redes, "/api/lev/conexoes": r_lev_conexoes}
+       "/api/lev/redes": r_lev_redes, "/api/lev/conexoes": r_lev_conexoes, "/api/topologia": r_topologia}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"])}       # recebem o usuário da sessão
@@ -667,6 +678,7 @@ TELA_GET = {"/api/equipe": ("equipes", "ponto") + _CAMPO, "/api/estoque": _ALMOX
             "/api/medicao": ("medicao",), "/api/medicao/elegibilidade": ("medicao",), "/api/planilhas": ("lev",),
             "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa"),
             "/api/diario": ("diario",), "/api/interferencias": ("interferencias",),
+            "/api/topologia": ("mapa", "iluminado"),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
 TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",)}   # downloads (/arquivos/: LEV)
