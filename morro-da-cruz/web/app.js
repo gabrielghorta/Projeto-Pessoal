@@ -155,7 +155,7 @@ const TELAS = {
   lev: { titulo: 'LEV', grupo: 'administrativo', carregar: () => carregarLev() },
   medicao: { titulo: 'Medição', grupo: 'administrativo', carregar: () => carregarMedicoes() },
 };
-const GRUPOS = { 'grupo-campo': 'Campo', 'grupo-almox': 'Almoxarifado', administrativo: 'Administrativo' };
+const GRUPOS = { 'grupo-campo': 'Execução', 'grupo-almox': 'Almoxarifado', administrativo: 'Administrativo' };
 // telas que o perfil abre (config/perfis.json); o servidor confere de novo em cada consulta
 const podeTela = id => id === 'inicio' || !!(USUARIO && USUARIO.telas.includes(id));
 const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeTela(t));
@@ -209,18 +209,18 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
-  'grupo-campo': { nome: 'Campo', desc: 'Lançamento do dia, diário de campo, interferências e, das equipes terceirizadas, topografia e cadastro de campo.' },
+  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: lançamento do dia, diário, interferências e, das equipes terceirizadas, topografia e cadastro de campo.' },
   'grupo-almox': { nome: 'Almoxarifado', desc: 'Estoque e movimentos, check-in e check-out das equipes, compras e notas fiscais.' },
   administrativo: { nome: 'Administrativo', desc: 'Equipes, planejamento, dados da obra, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
 };
 // a ordem do Menu segue o trabalho de cada perfil; o que o perfil não abre fica de fora
 const MENU_PERFIL = {
-  ENGENHARIA: ['iluminado', 'grupo-campo', 'grupo-almox', 'administrativo'],
-  ADMINISTRACAO: ['administrativo', 'grupo-almox', 'iluminado', 'grupo-campo'],
+  ENGENHARIA: ['iluminado', 'administrativo', 'grupo-almox', 'grupo-campo'],
+  ADMINISTRACAO: ['iluminado', 'administrativo', 'grupo-almox', 'grupo-campo'],
   ALMOXARIFADO: ['grupo-almox', 'grupo-campo', 'iluminado'], CADASTRO: ['grupo-campo', 'administrativo', 'iluminado'],
   TOPOGRAFIA: ['grupo-campo', 'iluminado'],
 };
-const ORDEM_MENU = ['grupo-campo', 'iluminado', 'grupo-almox', 'administrativo'];
+const ORDEM_MENU = ['iluminado', 'administrativo', 'grupo-almox', 'grupo-campo'];
 const abreModo = id => GRUPOS[id] ? telasDoGrupo(id).length > 0 : podeTela(id);
 let MENU_FOCO = null;
 const iniciais = n => (String(n || '').replace(/\(.*?\)/g, '').replace(/[^\p{L}\s]/gu, '').trim().split(/\s+/).filter(Boolean)
@@ -1663,7 +1663,7 @@ function aplicarPermissoes() {
   $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO;
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
-  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Campo; o almoxarife, também o Almoxarifado
+  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Execução; o almoxarife, também o Almoxarifado
   $$('.rail-item[data-tela]').forEach(b => { b.hidden = !podeTela(b.dataset.tela); });
   $$('button.rail-grupo').forEach(b => { b.hidden = $(`.rail-sub[data-grupo="${b.dataset.grupo}"]`).hidden = !telasDoGrupo(b.dataset.grupo).length; });
   $$('.rail-itens .rail-div').forEach(d => {                    // divisória sem nada visível depois dela some
