@@ -12,6 +12,8 @@
 --   * v6 (etapa 4, campo): intervalos por etapa no trecho, soldas informadas × verificadas, foto original com hash.
 --   * v7 (auditoria f035f5c): avanço legado sem posição + conciliação explícita, cronologia dos pré-requisitos,
 --     validação da imagem antes de aceitar a foto como evidência.
+--   * v18: nota de serviço por upload (notas_servico, ns_segmentos; tipos NS_* em documentos) e a origem de cada
+--     liberação, cadastro de campo e intervalo executado gravados a partir dela (ns_segmento_id).
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS schema_versao (
@@ -462,7 +464,8 @@ CREATE TABLE IF NOT EXISTS apontamentos (
   estaca_ini TEXT, estaca_fim TEXT,
   informado_por TEXT,
   anulado_por INTEGER REFERENCES retificacoes_intervalos(id),   -- v8: retificado: fica no histórico, fora das somas
-  retificacao_id INTEGER REFERENCES retificacoes_intervalos(id) -- v8: apontamento criado por uma retificação
+  retificacao_id INTEGER REFERENCES retificacoes_intervalos(id), -- v8: apontamento criado por uma retificação
+  motivo_sem_ns TEXT                   -- v18: lançado à mão, sem nota de serviço (exceção da engenharia): o motivo
 );
 
 -- Intervalo executado de um trecho, por etapa (metros a partir do início do trecho, sentido da 06.1).
@@ -491,6 +494,7 @@ CREATE TABLE IF NOT EXISTS intervalos_execucao (
   referencia TEXT,
   anulado_por INTEGER REFERENCES retificacoes_intervalos(id),
   retificacao_id INTEGER REFERENCES retificacoes_intervalos(id),
+  ns_segmento_id INTEGER REFERENCES ns_segmentos(id),   -- v18: gravado a partir deste segmento de nota de serviço
   CHECK (fim_m > ini_m)
 );
 
@@ -719,7 +723,7 @@ CREATE TABLE IF NOT EXISTS fornecedores (
 -- nomeado pelo SHA-256 e conferido no backup.
 CREATE TABLE IF NOT EXISTS documentos (
   id INTEGER PRIMARY KEY,
-  tipo TEXT NOT NULL CHECK (tipo IN ('NFE_XML','NF_PDF','NF_IMAGEM','LAUDO','ROMANEIO','OUTRO')),
+  tipo TEXT NOT NULL CHECK (tipo IN ('NFE_XML','NF_PDF','NF_IMAGEM','LAUDO','ROMANEIO','OUTRO','NS_PDF','NS_CROQUI','NS_PLANILHA')),
   arquivo TEXT NOT NULL,
   nome_original TEXT,
   sha256 TEXT NOT NULL UNIQUE,
@@ -853,6 +857,7 @@ CREATE TABLE IF NOT EXISTS etapas_complementares (
   obs TEXT,
   registrado_em TEXT NOT NULL,
   anulado_em TEXT, anulado_por TEXT, anulado_motivo TEXT,
+  ns_segmento_id INTEGER REFERENCES ns_segmentos(id),   -- v18: gravado a partir deste segmento de nota de serviço
   CHECK (fim_m > ini_m)
 );
 -- Ocorrências de campo: IMPEDIMENTO (o que impede o avanço) e NAO_CONFORMIDADE (o que precisa ser corrigido).
@@ -870,6 +875,70 @@ CREATE TABLE IF NOT EXISTS ocorrencias (
 );
 CREATE INDEX IF NOT EXISTS ix_ocorrencias_alvo ON ocorrencias(alvo_tipo, alvo_id);
 CREATE INDEX IF NOT EXISTS ix_etapas_compl ON etapas_complementares(trecho_id, etapa);
+
+-- ---------------------------------------------------------------- nota de serviço por upload (v18)
+-- NS da Caesb enviada em PDF (croqui e planilha .xlsx junto), lida pelo sistema (ns_leitura.py) e conferida por uma
+-- pessoa antes de gravar. TOPOGRAFIA grava a liberação topográfica; CADASTRO, o cadastro de campo (só sobre o assentado;
+-- o resto fica pendente e é aplicado depois); SERVICO é o plano do serviço da zona (não grava nada); EXECUCAO é a NS do
+-- dia, enviada pela equipe com o croqui, que lança o executado. Os arquivos ficam em documentos. Nunca apagada: anulada
+-- com motivo (os registros dela também); o reenvio do mesmo conteúdo (a versão assinada) troca o arquivo e guarda a
+-- versão anterior como SUBSTITUIDA (substitui_id aponta para ela).
+CREATE TABLE IF NOT EXISTS notas_servico (
+  id INTEGER PRIMARY KEY,
+  tipo TEXT NOT NULL CHECK (tipo IN ('TOPOGRAFIA','CADASTRO','SERVICO','EXECUCAO')),
+  contrato TEXT NOT NULL,              -- número/ano (10239/2026)
+  numero TEXT NOT NULL,                -- como na NS (012)
+  folhas INTEGER NOT NULL DEFAULT 1,
+  data TEXT NOT NULL,                  -- DATA da NS (na NS do dia, o dia executado)
+  localizacao TEXT, titulo TEXT,
+  zona TEXT, pb TEXT,
+  equipe_id TEXT REFERENCES equipes(id),   -- NS do dia: a equipe que executou
+  pdf_id INTEGER NOT NULL REFERENCES documentos(id),
+  croqui_id INTEGER REFERENCES documentos(id),
+  planilha_id INTEGER REFERENCES documentos(id),
+  impressao TEXT NOT NULL,             -- impressão dos dados lidos: a mesma NS em outro arquivo tem a mesma impressão
+  leitura TEXT NOT NULL,               -- JSON da leitura (cabeçalho, grupos, contas e avisos)
+  extensao_m REAL,                     -- soma dos segmentos, em metros da NS
+  status TEXT NOT NULL DEFAULT 'REGISTRADA' CHECK (status IN ('REGISTRADA','SUBSTITUIDA','ANULADA')),
+  substitui_id INTEGER REFERENCES notas_servico(id),
+  registrada_por TEXT NOT NULL, registrada_em TEXT NOT NULL,
+  anulada_por TEXT, anulada_em TEXT, anulada_motivo TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ns_vigente ON notas_servico(contrato, tipo, numero) WHERE status = 'REGISTRADA';
+CREATE INDEX IF NOT EXISTS ix_ns_dia ON notas_servico(tipo, data, equipe_id);
+-- Segmento da NS (de elemento a elemento; juntado quando passa por um cruzamento) casado com o trecho físico de
+-- topologia.py. A cópia dos membros do trecho físico é a da conferência: a topologia pode mudar depois.
+-- situacao: AUTOMATICO (casamento único, mesmo DE, diferença dentro da tolerância) · CONFIRMAR (mais de um candidato ou
+-- diferença até 5 %) · ERRO · SEM_CORRESPONDENCIA · CONFIRMADO (uma pessoa escolheu) · FORA (deixado de fora, com motivo).
+-- Só AUTOMATICO e CONFIRMADO gravam.
+CREATE TABLE IF NOT EXISTS ns_segmentos (
+  id INTEGER PRIMARY KEY,
+  ns_id INTEGER NOT NULL REFERENCES notas_servico(id),
+  ordem INTEGER NOT NULL,
+  grupo INTEGER NOT NULL,
+  de TEXT, para TEXT,                  -- elementos como escritos na NS, do de menor estaca para o de maior
+  metros_ns REAL,                      -- distância na NS (diferença das acumuladas)
+  ini_ns_m REAL, fim_ns_m REAL,        -- acumuladas (estaca) do começo e do fim na NS
+  de_mm INTEGER, metodo TEXT,          -- da linha de chegada
+  fisico_id TEXT,                      -- trecho físico (TF-…) escolhido
+  membros TEXT,                        -- JSON: cópia dos membros do trecho físico
+  sentido INTEGER CHECK (sentido IN (1, -1)),   -- +1: a estaca da NS cresce no sentido do trecho físico
+  extensao_fisico_m REAL,              -- extensão do trecho físico inteiro
+  ini_fisico_m REAL, fim_fisico_m REAL,         -- o que a NS cobre no trecho físico (na NS do dia, o executado)
+  etapas TEXT,                         -- NS do dia: JSON das etapas lidas (ASSENTADO, REATERRADO, ESCAVADO)
+  origem_sentido TEXT CHECK (origem_sentido IN ('NS','PROGRAMACAO','NS_SERVICO','ENGENHARIA')),
+  situacao TEXT NOT NULL CHECK (situacao IN ('AUTOMATICO','CONFIRMAR','ERRO','SEM_CORRESPONDENCIA','CONFIRMADO','FORA')),
+  motivo TEXT,                         -- da situação ou de quem deixou de fora
+  candidatos TEXT,                     -- JSON: trechos físicos possíveis
+  avisos TEXT,                         -- JSON: cruzamento no meio, diferença de extensão, MND sem vala…
+  confirmado_por TEXT, confirmado_em TEXT,
+  aplicado_m REAL NOT NULL DEFAULT 0,  -- metros gravados a partir do segmento
+  pendente_m REAL NOT NULL DEFAULT 0,  -- metros que ainda não puderam ser gravados
+  pendente TEXT                        -- por que ficou pendente (sem assentado, avanço legado, clima…)
+);
+CREATE INDEX IF NOT EXISTS ix_ns_segmentos ON ns_segmentos(ns_id);
+-- (os índices de intervalos_execucao.ns_segmento_id e etapas_complementares.ns_segmento_id são criados por
+-- servicos.aplicar_esquema quando a coluna já existe: as migrações antigas aplicam o esquema antes da v18)
 
 -- ---------------------------------------------------------------- acesso e auditoria (v9, módulo A)
 -- Usuários do sistema: senha só como hash PBKDF2. Perfis e permissões em config/perfis.json (provisório, D-10).

@@ -25,7 +25,7 @@ from regras import RegraViolada
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 17
+VERSAO_ESQUEMA = 18
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -65,8 +65,11 @@ def aplicar_esquema(conn):
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     if "chave" in {r[1] for r in conn.execute("PRAGMA table_info(medicao_lancamentos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_lanc_chave ON medicao_lancamentos(chave) WHERE chave IS NOT NULL")
+    for tabela, indice in (("intervalos_execucao", "ix_iv_ns"), ("etapas_complementares", "ix_compl_ns")):
+        if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
+            conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "cadastro de campo registrado à parte (equipe terceirizada), com retificação própria"))
+                 (VERSAO_ESQUEMA, _agora(), "nota de serviço por upload (topografia, cadastro, serviço e NS do dia)"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -948,11 +951,11 @@ def _gravar_intervalos(conn, t, novos, equipe_id, apontamento_id, informado_por,
     for n in novos:
         ids.append(conn.execute(
             """INSERT INTO intervalos_execucao(trecho_id,etapa,ini_m,fim_m,data,equipe_id,apontamento_id,origem,
-                 informado_por,conciliacao_id,registrado_em,referencia,verificado_em,verificado_por,retificacao_id)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                 informado_por,conciliacao_id,registrado_em,referencia,verificado_em,verificado_por,retificacao_id,
+                 ns_segmento_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (t["id"], n["etapa"], float(n["ini_m"]), float(n["fim_m"]), n["data"], equipe_id, apontamento_id, n["origem"],
              informado_por, conciliacao_id, _agora(), (n.get("referencia") or "").strip() or None,
-             n.get("verificado_em"), n.get("verificado_por"), retificacao_id)).lastrowid)
+             n.get("verificado_em"), n.get("verificado_por"), retificacao_id, n.get("ns_segmento_id"))).lastrowid)
     _recalcular_alertas(conn, t["id"])
     _atualizar_execucao_trecho(conn, t, exato)
     return ids
@@ -963,7 +966,7 @@ def _exigir_referencia_cadastro(referencia):
         raise RegraViolada("Informe o registro do levantamento (caderneta, croqui ou arquivo de pontos).")
 
 
-def registrar_cadastro_campo(conn, trecho, ini_m, fim_m, data, referencia, por):
+def registrar_cadastro_campo(conn, trecho, ini_m, fim_m, data, referencia, por, ns_segmento_id=None):
     """Cadastro de campo (levantamento com a vala aberta) feito por equipe terceirizada e registrado pela engenharia,
     fora do apontamento do encarregado: sem equipe, sem clima e sem quantidade. Mesmas regras de posição do
     apontamento (_validar_intervalos): dentro do trecho, sem sobreposição e só sobre o assentado até a data.
@@ -979,7 +982,7 @@ def registrar_cadastro_campo(conn, trecho, ini_m, fim_m, data, referencia, por):
     t = alvo(conn, "TRECHO", trecho, operacao=True)
     _exigir_sem_legado(conn, t, "registrar o cadastro de campo")
     novos = [{"etapa": "CADASTRO_CAMPO", "ini_m": float(ini_m), "fim_m": float(fim_m), "data": data,
-              "origem": "INFORMADO", "referencia": str(referencia).strip()}]
+              "origem": "INFORMADO", "referencia": str(referencia).strip(), "ns_segmento_id": ns_segmento_id}]
     _validar_intervalos(conn, t, novos)
     with transacao(conn):
         return _gravar_intervalos(conn, t, novos, None, None, str(por).strip())[0]
@@ -1004,14 +1007,14 @@ def _recusar_solda(quantidades):
 
 def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_reaterrados=0,
             concluido_100=False, estaca_ini=None, estaca_fim=None, quantidades=None, intervalos_novos=None,
-            informado_por=None):
+            informado_por=None, motivo_sem_ns=None):
     """Lança avanço de campo. `quantidades=None` equivale a [✅ OK, Confirmar Previsto].
 
     Trecho: o avanço é registrado em INTERVALOS por etapa (`intervalos_novos`: [{etapa, ini_m, fim_m, referencia?}],
     em metros desde o início do trecho; `referencia` = registro do levantamento de campo) ou com '100 % concluído'
     (preenche as lacunas). Apontamento só em metros não é mais aceito para trecho (criaria posição presumida). Com
     avanço anterior sem posição, exige antes a conciliação. Estimativas (soldas ⌈L/6⌉) nunca viram quantidade
-    confirmada: soldas têm controle próprio.
+    confirmada: soldas têm controle próprio. `motivo_sem_ns`: lançamento à mão (sem nota de serviço), guardado junto.
     """
     exigir_data_ocorrida(data, "Apontamento")
     turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
@@ -1046,9 +1049,9 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     with transacao(conn):
         apid = conn.execute(
             """INSERT INTO apontamentos(data,equipe_id,alvo_tipo,alvo_id,metros_executados,metros_reaterrados,estaca_ini,
-                 estaca_fim,informado_por) VALUES (?,?,?,?,?,?,?,?,?)""",
+                 estaca_fim,informado_por,motivo_sem_ns) VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (data, equipe_id, tipo, aid, metros_executados, metros_reaterrados, estaca_ini, estaca_fim,
-             informado_por)).lastrowid
+             informado_por, (motivo_sem_ns or "").strip() or None)).lastrowid
         for linha in _linhas_quantidades(prev, quantidades):
             conn.execute("INSERT INTO apontamento_quantidades VALUES (?,?,?,?,?)", (apid, *linha))
         if tipo == "TRECHO":
@@ -1395,7 +1398,8 @@ def etapas_complementares(conn, trecho_id, etapa=None, anuladas=False):
     return _rows(conn.execute(sql + " ORDER BY etapa, ini_m", args))
 
 
-def registrar_etapa_complementar(conn, trecho_ref, etapa, ini_m, fim_m, data, registrado_por, referencia=None, obs=None):
+def registrar_etapa_complementar(conn, trecho_ref, etapa, ini_m, fim_m, data, registrado_por, referencia=None, obs=None,
+                                 ns_segmento_id=None):
     """Liberação topográfica (exige a referência da nota de serviço/locação) ou escavação, por intervalo do trecho.
     Não gera quantidade nem altera o resumo de execução. Repetição/sobreposição na mesma etapa é recusada."""
     exigir_data_ocorrida(data, "Liberação/escavação")
@@ -1417,9 +1421,10 @@ def registrar_etapa_complementar(conn, trecho_ref, etapa, ini_m, fim_m, data, re
     if sob:
         raise RegraViolada(f"{etapa} {a:g}–{b:g} m sobrepõe registro existente ({sob[0]:g}–{sob[1]:g} m).")
     return conn.execute(
-        """INSERT INTO etapas_complementares(trecho_id,etapa,ini_m,fim_m,data,registrado_por,referencia,obs,registrado_em)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
-        (t["id"], etapa, a, b, data, registrado_por.strip(), (referencia or "").strip() or None, obs, _agora())).lastrowid
+        """INSERT INTO etapas_complementares(trecho_id,etapa,ini_m,fim_m,data,registrado_por,referencia,obs,registrado_em,
+             ns_segmento_id) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (t["id"], etapa, a, b, data, registrado_por.strip(), (referencia or "").strip() or None, obs, _agora(),
+         ns_segmento_id)).lastrowid
 
 
 def anular_etapa_complementar(conn, registro_id, motivo, por):

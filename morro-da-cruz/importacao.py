@@ -1096,6 +1096,30 @@ def preparar_v17(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v18(conn):
+    """Esquema v17 → v18: nota de serviço por upload. Tabelas novas (notas_servico, ns_segmentos), a origem de cada
+    liberação, cadastro de campo e intervalo gravado a partir de uma NS (ns_segmento_id), o motivo do lançamento à mão
+    sem NS (apontamentos.motivo_sem_ns) e os tipos NS_PDF, NS_CROQUI e NS_PLANILHA em documentos. O CHECK de
+    documentos.tipo não muda por ALTER: como na v17, a tabela antiga é renomeada (com legacy_alter_table=ON as chaves
+    estrangeiras das notas fiscais e das inspeções continuam no nome documentos), a nova é criada e TODAS as linhas são
+    copiadas (contagem conferida) antes de descartar a antiga."""
+    for tabela in ("intervalos_execucao", "etapas_complementares"):
+        _add_coluna(conn, tabela, "ns_segmento_id", "INTEGER REFERENCES ns_segmentos(id)")
+    _add_coluna(conn, "apontamentos", "motivo_sem_ns", "TEXT")
+    sql = (conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='documentos'").fetchone() or [""])[0]
+    if sql and "NS_PDF" not in sql:
+        antes = conn.execute("SELECT COUNT(*) FROM documentos").fetchone()[0]
+        conn.execute("ALTER TABLE documentos RENAME TO documentos_v17")
+        S.aplicar_esquema(conn)
+        cols = ", ".join(r[1] for r in conn.execute("PRAGMA table_info(documentos_v17)"))
+        conn.execute(f"INSERT INTO documentos({cols}) SELECT {cols} FROM documentos_v17")
+        depois = conn.execute("SELECT COUNT(*) FROM documentos").fetchone()[0]
+        if depois != antes:
+            raise RuntimeError(f"Migração v18: documentos copiados {depois} ≠ {antes}; nada foi alterado.")
+        conn.execute("DROP TABLE documentos_v17")
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""
