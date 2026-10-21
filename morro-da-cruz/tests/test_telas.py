@@ -1,6 +1,7 @@
 """Telas novas (tela inicial, menu lateral e Mapa iluminado): visão geral do mapa REV02 (traçado, zonas e satélite),
 planilhas oficiais para baixar do próprio sistema, ligações prediais do BM, camada de liberação topográfica e a
 coerência entre o HTML e o JavaScript (toda tela do menu existe, todo elemento usado pelo código está na página)."""
+import io
 import os
 import re
 import sys
@@ -41,6 +42,20 @@ class TestVisaoGeral(unittest.TestCase):
         # MV-11, VTF-12 e VTF-16 continuam sem posição: não aparecem entre os nós desenhados
         desenhados = {n for e in g["els"] for n in e["n"]}
         self.assertFalse([n for n in desenhados if re.search(r"_(MV-11|VTF-12|VTF-16)$", n)])
+
+    def test_mosaico_do_satelite_com_todas_as_pbs_no_lugar(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("sem Pillow: a tela monta as PBs uma a uma")
+        im = Image.open(io.BytesIO(MG.mosaico(MAPA))).convert("L")
+        g = MG.geometria(MAPA)
+        for pb in ("PB01", "PB12", "PB20"):            # a PB20 é girada 90° no REV02 e ficava de fora do mosaico
+            q = next(q for q in g["quadros"] if q["id"] == pb)
+            cx, cy = (min(q["p"][0::2]) + max(q["p"][0::2])) / 2 * 1.3, (min(q["p"][1::2]) + max(q["p"][1::2])) / 2 * 1.3
+            reg = im.crop((round(cx - 40), round(cy - 40), round(cx + 40), round(cy + 40)))
+            media = sum(i * n for i, n in enumerate(reg.histogram())) / (reg.width * reg.height)
+            self.assertGreater(media, 60, pb)            # o fundo vazio do mosaico é 14
 
     def test_imagens_das_plantas(self):
         self.assertEqual(MG.imagem_pb(MAPA, "PB01")[:4], b"RIFF")

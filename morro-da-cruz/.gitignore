@@ -11,3 +11,5 @@ MorroDaCruz_Obra_Windows.zip
 LINK_DA_EQUIPE.txt
 cloudflared
 cloudflared.exe
+# mosaico do satélite montado a partir do HTML do mapa (refeito sozinho)
+mapa/cache/
