@@ -1,11 +1,13 @@
-"""Campo: o diário de cada dia (o que cada equipe fez) e o painel de interferências e ocorrências.
+"""Execução: o diário de obra de cada dia (o que cada equipe fez) e o painel de interferências e ocorrências.
 
-Só leitura: junta o que o lançamento de campo, o check-in, o planejamento e as ocorrências já gravaram. Nada aqui grava;
-abrir e resolver uma interferência continuam nas rotas de ocorrência (servicos.abrir_ocorrencia / resolver_ocorrencia).
+Só leitura: junta o que a NS do dia (e o que o sistema lançou a partir dela), o check-in, o planejamento e as
+ocorrências já gravaram. Nada aqui grava; abrir e resolver uma interferência continuam nas rotas de ocorrência
+(servicos.abrir_ocorrencia / resolver_ocorrencia).
 """
 import re
 from datetime import date
 
+import notas_servico as NS
 import planejamento as P
 import regras as R
 import servicos as S
@@ -81,13 +83,51 @@ def diario(conn, data, equipe=None):
                       *(c["equipe_id"] for c in checkins), *(p["equipe_id"] for p in programacoes),
                       *(o["equipe_id"] for o in ocorrencias if o["equipe_id"])})
     metros = {e: round(sum(p["metros"] for p in producao if p["etapa"] == e), 2) for e in ETAPAS}
-    return {"data": data, "equipe": equipe,
+    ns_dia = NS.listar_dia(conn, data, equipe)
+    equipes = sorted(set(equipes) | {n["equipe_id"] for n in ns_dia})
+    return {"data": data, "equipe": equipe, "ns_dia": ns_dia, "programado_executado": programado_executado(programacoes, producao),
+            "alertas": alertas(checkins, ns_dia, nomes),
             "equipes": [{"id": e, "nome": nomes.get(e, e), "clima": clima.get(e, {})} for e in equipes],
             "programacoes": programacoes, "checkins": checkins, "producao": producao, "liberacoes": liberacoes,
             "soldas": soldas, "fotos": fotos, "ocorrencias": ocorrencias,
             "totais": {"assentado_m": metros["ASSENTADO"], "cadastro_m": metros["CADASTRO_CAMPO"], "reaterrado_m": metros["REATERRADO"],
                        "soldas": sum(s["quantidade"] for s in soldas), "fotos": len(fotos), "ocorrencias": len(ocorrencias),
                        "equipes": len(equipes)}}
+
+
+def programado_executado(programacoes, producao):
+    """Por equipe e trecho: o que estava programado para o dia (Dados da obra) contra o que foi executado (metros por
+    etapa). Programação de nó entra como programada; execução fora da programação aparece também."""
+    linhas = {}
+    for p in programacoes:
+        if p["status"] == "CANCELADA":
+            continue
+        x = linhas.setdefault((p["equipe_id"], p["alvo_tipo"], p["alvo_id"]), {"equipe_id": p["equipe_id"], "alvo_tipo": p["alvo_tipo"],
+                                                                               "alvo_id": p["alvo_id"], "nome": p["alvo_nome"],
+                                                                               "servicos": [], "executado": {}})
+        x["servicos"].append(p["servico_nome"])
+    for e in producao:
+        if not e["equipe_id"]:
+            continue
+        x = linhas.setdefault((e["equipe_id"], "TRECHO", e["trecho_id"]), {"equipe_id": e["equipe_id"], "alvo_tipo": "TRECHO",
+                                                                          "alvo_id": e["trecho_id"], "nome": e["trecho"],
+                                                                          "servicos": [], "executado": {}})
+        x["executado"][e["etapa"]] = round(x["executado"].get(e["etapa"], 0) + e["metros"], 2)
+    for x in linhas.values():
+        x["situacao"] = ("PROGRAMADO_E_EXECUTADO" if x["servicos"] and x["executado"] else
+                         "PROGRAMADO_SEM_EXECUCAO" if x["servicos"] else "EXECUTADO_SEM_PROGRAMACAO")
+    return sorted(linhas.values(), key=lambda x: (x["equipe_id"], x["situacao"], x["nome"] or ""))
+
+
+def alertas(checkins, ns_dia, nomes):
+    """Equipe com check-in e sem NS do dia, NS enviada com atraso e segmentos aguardando a engenharia."""
+    com_ns = {n["equipe_id"] for n in ns_dia}
+    out = [f"{nomes.get(eq, eq)}: check-in feito e nenhuma NS do dia enviada." for eq in sorted({c["equipe_id"] for c in checkins} - com_ns)]
+    out += [f"{n['referencia']} ({nomes.get(n['equipe_id'], n['equipe_id'])}): enviada com atraso, {n['atraso_dias']} dias depois da data."
+            for n in ns_dia if n["atrasada"]]
+    out += [f"{n['referencia']} ({nomes.get(n['equipe_id'], n['equipe_id'])}): {len(n['fila'])} segmento(s) aguardando a engenharia."
+            for n in ns_dia if n["fila"]]
+    return out
 
 
 def interferencias(conn, abertas=None, equipe=None, tipo=None, categoria=None, ini=None, fim=None, limite=300):

@@ -904,7 +904,11 @@ CREATE TABLE IF NOT EXISTS notas_servico (
   registrada_por TEXT NOT NULL, registrada_em TEXT NOT NULL,
   anulada_por TEXT, anulada_em TEXT, anulada_motivo TEXT
 );
-CREATE UNIQUE INDEX IF NOT EXISTS ux_ns_vigente ON notas_servico(contrato, tipo, numero) WHERE status = 'REGISTRADA';
+-- uma NS vigente por número; a NS do dia, por número, equipe e dia (mais de uma por equipe e dia é permitido)
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ns_numero ON notas_servico(contrato, tipo, numero)
+  WHERE status = 'REGISTRADA' AND tipo <> 'EXECUCAO';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ns_dia_numero ON notas_servico(contrato, numero, equipe_id, data)
+  WHERE status = 'REGISTRADA' AND tipo = 'EXECUCAO';
 CREATE INDEX IF NOT EXISTS ix_ns_dia ON notas_servico(tipo, data, equipe_id);
 -- Segmento da NS (de elemento a elemento; juntado quando passa por um cruzamento) casado com o trecho físico de
 -- topologia.py. A cópia dos membros do trecho físico é a da conferência: a topologia pode mudar depois.

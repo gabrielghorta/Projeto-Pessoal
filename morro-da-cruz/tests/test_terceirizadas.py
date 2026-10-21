@@ -22,8 +22,9 @@ class TestTerceirizadas(BaseHTTP):
     def assentar(self, ini, fim, data=D, extra=()):
         enc = self.cliente("enc1")
         self.assertEqual(enc.post("/api/clima", {"data": data, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})[0], 200)
-        st, r = enc.post("/api/apontamento", {"data": data, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                              "intervalos": [{"etapa": "ASSENTADO", "ini_m": ini, "fim_m": fim}, *extra]})
+        st, r = self.cliente("eng1").post("/api/apontamento", {          # sem NS do dia: à mão, pela engenharia, com motivo
+            "data": data, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR, "motivo_sem_ns": "teste",
+            "intervalos": [{"etapa": "ASSENTADO", "ini_m": ini, "fim_m": fim}, *extra]})
         self.assertEqual(st, 200, r)
         return r["id"]
 

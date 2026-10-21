@@ -63,6 +63,11 @@ def _lugar(c):
     return " e ".join(f"{z} {pb}" for z, pb in zp) or "sem zona"
 
 
+def _el(texto):
+    """Elemento da NS sem a descrição: 'NÓ9.1 - TÊ 160x160' → 'NÓ9.1'; 'CH_VRP-15 (CAIXA DA VRP)' → 'CH_VRP-15'."""
+    return re.split(r"\s+\(|\s+-\s+", str(texto or "").strip())[0] or "?"
+
+
 def _curto(nome):
     return re.sub(r"^(Zona\d\d|ADUTORA)_PB\d\d_(Rede|CH|Adutora)_", "", nome or "")
 
@@ -168,10 +173,37 @@ def _contexto(ns, zona=None, pb=None):
     return dict(ctx, origem=origem)
 
 
-def _segmentos_grupo(g, gi, ind, ctx):
+def _no_meio(ls, k):
+    return f"linha {k + 1} ({ls[k].get('elemento') or 'sem elemento'}) sem elemento da rede: tomada como ponto no meio"
+
+
+def _fora(ls, k):
+    return f"linha {k + 1} ({ls[k].get('elemento') or 'sem elemento'}) sem elemento da rede: fora dos segmentos"
+
+
+def _soltas(ls, rec, gi, ctx_g):
+    """NS do dia: a última linha sem elemento depois do último elemento é onde a execução parou; a primeira linha sem
+    elemento antes do primeiro é de onde ela continuou (dia anterior). Cada uma vira um segmento com uma ponta só."""
+    acc = lambda k: ls[k].get("dist_acumulada")
+    out = []
+    ini = next((k for k in range(rec[0]) if acc(k) is not None and acc(rec[0]) is not None and acc(k) < acc(rec[0]) - R.TOL_M), None)
+    if ini is not None:
+        out.append({"grupo": gi, "i": ini, "j": rec[0], "ka": None, "kb": chave_rede(ls[rec[0]]["elemento"]), "solta": "inicio",
+                    "cands": [], "ctx": ctx_g, "avisos": [_fora(ls, k) for k in range(ini)] + [_no_meio(ls, k) for k in range(ini + 1, rec[0])]})
+    fim = next((k for k in range(len(ls) - 1, rec[-1], -1) if acc(k) is not None and acc(rec[-1]) is not None
+                and acc(k) > acc(rec[-1]) + R.TOL_M), None)
+    if fim is not None:
+        out.append({"grupo": gi, "i": rec[-1], "j": fim, "ka": chave_rede(ls[rec[-1]]["elemento"]), "kb": None, "solta": "fim",
+                    "cands": [], "ctx": ctx_g, "avisos": [_no_meio(ls, k) for k in range(rec[-1] + 1, fim)]
+                    + [_fora(ls, k) for k in range(fim + 1, len(ls))]})
+    return out
+
+
+def _segmentos_grupo(g, gi, ind, ctx, soltas=False):
     """Segmentos de um grupo: de um elemento reconhecido ao seguinte; linhas sem elemento reconhecido no meio viram
     ponto intermediário (aviso). Depois, segmentos que se encontram numa junção do mesmo trecho físico (cruzamento,
-    divisa…) são juntados: a NS vai de conexão a conexão."""
+    divisa…) são juntados: a NS vai de conexão a conexão. Com `soltas` (NS do dia), a linha sem elemento no fim (parada)
+    ou no começo (continuação) vira segmento de uma ponta só (_soltas)."""
     ls = g["linhas"]
     ctx_g = dict(ctx)
     cg = L.contexto_zona_pb(g.get("titulo"))
@@ -180,14 +212,12 @@ def _segmentos_grupo(g, gi, ind, ctx):
     segs = []
     for i, j in zip(rec, rec[1:]):
         ka, kb = chave_rede(ls[i]["elemento"]), chave_rede(ls[j]["elemento"])
-        avisos = [f"linha {k + 1} ({ls[k].get('elemento') or 'sem elemento'}) sem elemento da rede: tomada como ponto no meio"
-                  for k in range(i + 1, j)]
-        segs.append({"grupo": gi, "i": i, "j": j, "ka": ka, "kb": kb, "cands": _vaos(ind, ka, kb, ctx_g), "avisos": avisos,
-                     "ctx": ctx_g})
-    if segs:                                       # linhas sem elemento antes do 1º ou depois do último: ficam de fora
+        segs.append({"grupo": gi, "i": i, "j": j, "ka": ka, "kb": kb, "cands": _vaos(ind, ka, kb, ctx_g),
+                     "avisos": [_no_meio(ls, k) for k in range(i + 1, j)], "ctx": ctx_g})
+    pontas = _soltas(ls, rec, gi, ctx_g) if soltas and rec else []
+    if segs and not pontas:                        # linhas sem elemento antes do 1º ou depois do último: ficam de fora
         for k in [k for k in range(len(ls)) if k < rec[0] or k > rec[-1]]:
-            (segs[0] if k < rec[0] else segs[-1])["avisos"].append(
-                f"linha {k + 1} ({ls[k].get('elemento') or 'sem elemento'}) sem elemento da rede: fora dos segmentos")
+            (segs[0] if k < rec[0] else segs[-1])["avisos"].append(_fora(ls, k))
     mudou = True
     while mudou:
         mudou = False
@@ -208,7 +238,7 @@ def _segmentos_grupo(g, gi, ind, ctx):
                 del segs[n + 1]
                 mudou = True
                 break
-    return segs
+    return [p for p in pontas if p["solta"] == "inicio"] + segs + [p for p in pontas if p["solta"] == "fim"]
 
 
 def _candidato(c, ns_m, de_mm):
@@ -248,9 +278,9 @@ def _conferir(c, ns_m, de_mm, metodo):
     return "ERRO", f"diferença acima de 5 %: {dif}", avisos
 
 
-def _avaliar(s, ls, ns):
+def _avaliar(s, ls, ns, conferir=_conferir):
     """Situação do segmento e o candidato escolhido (quando há um só). Cada candidato leva a própria situação: a pessoa
-    só pode escolher um que não seja ERRO."""
+    só pode escolher um que não seja ERRO. `conferir`: a regra de distância (a NS do dia aceita execução parcial)."""
     a, b = ls[s["i"]], ls[s["j"]]
     ns_m = None if None in (a.get("dist_acumulada"), b.get("dist_acumulada")) else round(b["dist_acumulada"] - a["dist_acumulada"], 3)
     de_mm = b.get("dn_mm") or a.get("dn_mm")
@@ -264,7 +294,7 @@ def _avaliar(s, ls, ns):
         return out
     lista = [_candidato(c, ns_m, de_mm) for c in cands]
     for c in lista:
-        c["situacao"], c["motivo"], c["avisos"] = _conferir(c, ns_m, de_mm, metodo)
+        c["situacao"], c["motivo"], c["avisos"] = conferir(c, ns_m, de_mm, metodo)
     out["candidatos"] = lista
     mesmo_de = [c for c in lista if not de_mm or int(c["de_mm"] or 0) == int(de_mm)]
     if de_mm and not mesmo_de:
@@ -389,13 +419,17 @@ def _ler_arquivos(conn, pdf_b64, planilha_b64=None, hoje=None):
     return pdf, planilha, ns
 
 
-def _ja_registrada(conn, ns, tipo, sha_pdf):
+def _ja_registrada(conn, ns, tipo, sha_pdf, equipe_id=None):
+    """(o mesmo arquivo já guardado numa NS não anulada, a NS vigente de mesma chave). Chave: contrato, tipo e número; a
+    NS do dia também pela equipe e pelo dia."""
     cab = ns["cabecalho"]
-    por_arquivo = _one(conn, """SELECT n.id, n.numero, n.tipo, n.status, n.registrada_em FROM notas_servico n
+    por_arquivo = _one(conn, """SELECT n.id, n.numero, n.tipo, n.status, n.registrada_em, n.equipe_id, n.data FROM notas_servico n
                                 JOIN documentos d ON d.id = n.pdf_id WHERE d.sha256=? AND n.status <> 'ANULADA'
                                 ORDER BY n.id DESC LIMIT 1""", sha_pdf)
-    mesma = _one(conn, "SELECT id, numero, impressao, registrada_em FROM notas_servico WHERE contrato=? AND tipo=? AND numero=? "
-                       "AND status='REGISTRADA'", L.norm_contrato(cab.get("contrato")) or "", tipo, str(cab.get("numero") or ""))
+    sql = ("SELECT * FROM notas_servico WHERE contrato=? AND tipo=? AND numero=? AND status='REGISTRADA'"
+           + (" AND equipe_id=? AND data=?" if tipo == "EXECUCAO" else ""))
+    args = [L.norm_contrato(cab.get("contrato")) or "", tipo, str(cab.get("numero") or "")]
+    mesma = _one(conn, sql, *(args + ([equipe_id, cab.get("data")] if tipo == "EXECUCAO" else [])))
     return por_arquivo, mesma
 
 
@@ -730,3 +764,455 @@ def arquivo(conn, ns_id, qual):
     ext = doc["arquivo"].rsplit(".", 1)[-1]
     rot = {"pdf": "", "croqui": " - croqui", "planilha": " - planilha"}[qual]
     return ns, doc, f"NS {ns['numero']}{rot}.{ext}"
+
+
+# ------------------------------------------------------------------ NS do dia (EXECUCAO): o que a equipe executou
+# A equipe envia a NS com o que foi executado e o croqui; o sistema lança sozinho o que é inequívoco, como execução
+# INFORMADA (amarela no mapa, sem verificação), e o resto vai, sem gravar, para a fila "NS do dia a conferir".
+ETAPAS_DIA = {"ASSENTADO": ("ASSENT",), "REATERRADO": ("REATERR",), "ESCAVADO": ("ESCAV", "VALA ABERTA")}
+ROT_ETAPA = {"ASSENTADO": "assentado", "REATERRADO": "reaterrado", "ESCAVADO": "escavado"}
+FILA = ("CONFIRMAR", "ERRO", "SEM_CORRESPONDENCIA")
+ATRASO_DIAS = 3
+SEM_ETAPA = "a NS não diz a etapa: considerado assentamento"
+ORIGEM = {"NS": "da própria NS", "PROGRAMACAO": "da programação do dia da equipe", "NS_SERVICO": "da NS de serviço da zona",
+          "ENGENHARIA": "escolhido pela engenharia"}
+
+
+def etapas_do_texto(*textos):
+    """Etapas escritas na NS do dia (título da NS, título do grupo, observações): ASSENT… → ASSENTADO, REATERR… →
+    REATERRADO, ESCAV… ou VALA ABERTA → ESCAVADO. Mais de uma palavra, mais de uma etapa."""
+    t = " ".join(L.norm_txt(x) for x in textos if x)
+    return [e for e, chaves in ETAPAS_DIA.items() if any(re.search(rf"\b{k}", t) for k in chaves)]
+
+
+def estaca(m):
+    """122.01 → '6+2,01' (estaca de 20 m + fração, como na NS)."""
+    if m is None:
+        return "?"
+    i = int(round(m, 2) // 20)
+    return f"{i}+{_m(round(m - 20 * i, 2))}"
+
+
+def _chaves_texto(texto):
+    """Elementos da rede citados num texto livre: 'REDE … (NÓ6.1 - NÓ9.1 - VRP-15)' → ['NO6.1', 'NO9.1', 'VRP-15']."""
+    return [k for k in (chave_rede(p) for p in re.split(r"\s+-\s+|[(),;/]|->|→", texto or "")) if k]
+
+
+def _conferir_dia(c, ns_m, de_mm, metodo):
+    """NS do dia: distância menor que a do projeto é execução parcial, a partir do elemento de menor estaca, no sentido
+    do outro (não é erro); maior, além da tolerância, vai para a engenharia (até 5 %: aceitar a diferença; acima: erro)."""
+    sit, motivo, avisos = _conferir(c, None, de_mm, metodo)          # DE e método
+    if sit == "ERRO" or ns_m is None:
+        return sit, motivo, avisos
+    proj = c["extensao_m"]
+    if _diferenca_ok(ns_m, proj) or ns_m > proj:
+        return _conferir(c, ns_m, de_mm, metodo)
+    x = c["ini_m"] if c["sentido"] == 1 else c["fim_m"]
+    c["ini_m"], c["fim_m"] = (x, round(x + ns_m, 3)) if c["sentido"] == 1 else (round(x - ns_m, 3), x)
+    c["executado_m"] = ns_m
+    return "AUTOMATICO", f"execução parcial: {_m(ns_m)} de {_m(proj)} m, a partir do {_curto(c['de'])}", avisos
+
+
+def _programados(conn, equipe_id, data):
+    """Linhas da 06.1 programadas para a equipe no dia (Dados da obra ou Programação), menos as canceladas."""
+    return {r[0] for r in conn.execute("SELECT alvo_id FROM programacoes WHERE equipe_id=? AND data=? AND alvo_tipo='TRECHO' "
+                                        "AND status <> 'CANCELADA'", (equipe_id, data))}
+
+
+def _servico_zona(conn, zona):
+    """Intervalos dos trechos físicos da NS de serviço vigente da zona: (fisico_id, ini, fim)."""
+    if not zona:
+        return []
+    return [tuple(r) for r in conn.execute(
+        """SELECT s.fisico_id, s.ini_fisico_m, s.fim_fisico_m FROM ns_segmentos s JOIN notas_servico n ON n.id = s.ns_id
+           WHERE n.tipo='SERVICO' AND n.status='REGISTRADA' AND n.zona=? AND s.situacao IN ('AUTOMATICO','CONFIRMADO')
+             AND s.fisico_id IS NOT NULL""", (zona,))]
+
+
+def _avaliar_solta(s, g, ns, ind, fontes, anterior=None):
+    """Segmento de uma ponta só (a execução parou numa estaca sem elemento, ou continuou de uma): vai do elemento até a
+    estaca. Para que lado, nesta ordem: o trecho físico em que a NS já vinha (o elemento é cruzamento ou conexão no meio
+    dele), outro elemento citado no título ou nas observações, a programação do dia da equipe, a NS de serviço da zona;
+    senão, a engenharia escolhe (CONFIRMAR)."""
+    ls, fim = g["linhas"], s["solta"] == "fim"
+    a, b = ls[s["i"]], ls[s["j"]]
+    el, solta = (a, b) if fim else (b, a)
+    chave = s["ka"] if fim else s["kb"]
+    d = None if None in (a.get("dist_acumulada"), b.get("dist_acumulada")) else round(b["dist_acumulada"] - a["dist_acumulada"], 3)
+    de_mm, metodo = solta.get("dn_mm") or el.get("dn_mm"), solta.get("metodo") or el.get("metodo")
+    rot = lambda l: l.get("elemento") or f"estaca {estaca(l.get('dist_acumulada'))}"
+    out = {"grupo": s["grupo"], "de": rot(a), "para": rot(b), "metros_ns": d, "ini_ns_m": a.get("dist_acumulada"),
+           "fim_ns_m": b.get("dist_acumulada"), "de_mm": de_mm, "metodo": metodo, "candidatos": [], "escolhido": None,
+           "solta": s["solta"], "avisos": list(s["avisos"]) + [
+               f"a execução {'parou na' if fim else 'continuou da'} estaca {estaca(solta.get('dist_acumulada'))} (sem elemento)"]}
+    pontos = [p for p in ind["chaves"].get(chave, ()) if _no_contexto(p, s["ctx"])]
+    if not pontos or d is None:
+        out.update(situacao="SEM_CORRESPONDENCIA", motivo=f"{_el(el.get('elemento'))} não está nos trechos da "
+                   f"{' '.join(x for x in (s['ctx'].get('zona'), s['ctx'].get('pb')) if x) or 'obra'}" if not pontos
+                   else "a linha sem elemento não tem a distância")
+        return out
+    cands, lado_de = [], []
+    for p in pontos:
+        F = p["F"]
+        for lado in (1, -1):
+            folga = F["extensao_m"] - p["pos"] if lado == 1 else p["pos"]
+            if folga <= R.TOL_M:
+                continue
+            x0, x1 = sorted((p["pos"], p["pos"] + lado * min(d, folga)))
+            prox = F["no_fim"] if lado == 1 else F["no_ini"]
+            c = {"fisico_id": F["id"], "ini_m": round(x0, 3), "fim_m": round(x1, 3), "sentido": lado if fim else -lado,
+                 "extensao_m": round(folga, 3), "extensao_fisico_m": F["extensao_m"], "executado_m": d, "diferenca_m": None,
+                 "de_mm": F["de_mm"], "metodologias": F["metodologias"], "de": p["nome"], "para": prox, "texto": F["texto"],
+                 "linhas": [m["ponto"] for m in F["membros"]], "situacao": "AUTOMATICO", "motivo": None, "avisos": []}
+            if d > folga + max(TOL_ABS, TOL_REL * folga):
+                c.update(situacao="ERRO", motivo=f"a NS passa do fim do trecho: {_m(d)} m na NS × {_m(folga)} m até "
+                                                 f"{_curto(prox)} (falta o elemento seguinte na NS)")
+            elif de_mm and int(F["de_mm"] or 0) != int(de_mm):
+                c.update(situacao="ERRO", motivo=f"DE {de_mm} na NS × DE {int(F['de_mm'] or 0)} na 06.1")
+            elif metodo and len(F["metodologias"]) == 1 and F["metodologias"][0] != metodo:
+                c.update(situacao="ERRO", motivo=f"método {metodo} na NS × {F['metodologias'][0]} na 06.1")
+            elif d > folga:
+                c["avisos"].append(f"chegou ao {_curto(prox)} (a NS não lista)")
+            cands.append(c)
+            lado_de.append((F, p["pos"], lado))
+    out["candidatos"] = cands
+    validos = [k for k, c in enumerate(cands) if c["situacao"] != "ERRO"]
+    if not validos:
+        out.update(situacao="ERRO", motivo=cands[0]["motivo"] if cands else "nenhum trecho sai do elemento")
+        return out
+    filtros = []
+    e = (anterior or {}).get("escolhido")
+    if fim and e:                       # a NS vinha num trecho físico e o elemento é cruzamento ou conexão no meio dele
+        filtros.append(("NS", lambda k: cands[k]["fisico_id"] == e["fisico_id"] and cands[k]["sentido"] == e["sentido"]))
+    andados = {chave_rede(l.get("elemento")) for n, l in enumerate(ls) if (n <= s["i"] if fim else n >= s["j"])}
+    citados = (set(_chaves_texto(g.get("titulo")) + _chaves_texto(ns["cabecalho"].get("titulo")) + _chaves_texto(solta.get("obs")))
+               - andados - {None})
+    if citados:                         # outro elemento citado: o lado em que ele está
+        filtros.append(("NS", lambda k: any(q["F"] is lado_de[k][0] and (q["pos"] - lado_de[k][1]) * lado_de[k][2] > R.TOL_M
+                                            for kk in citados for q in ind["chaves"].get(kk, ()))))
+    filtros.append(("PROGRAMACAO", lambda k: bool(fontes["programados"] & {x["trecho_id"] for x in TP.para_linhas(
+        lado_de[k][0], cands[k]["ini_m"], cands[k]["fim_m"])})))
+    filtros.append(("NS_SERVICO", lambda k: any(f == cands[k]["fisico_id"] and min(y, cands[k]["fim_m"]) - max(x, cands[k]["ini_m"])
+                                                > R.TOL_M for f, x, y in fontes["servico"])))
+    escolha, origem = (validos[0], "NS") if len(validos) == 1 else (None, None)
+    for org, f in ([] if escolha is not None else filtros):
+        sel = [k for k in validos if f(k)]
+        if len(sel) == 1:
+            escolha, origem = sel[0], org
+            break
+    if escolha is None:
+        out.update(situacao="CONFIRMAR", motivo=f"a NS não diz para que lado a execução {'seguiu depois do' if fim else 'veio até o'} "
+                   f"{_el(el.get('elemento'))} ({len(validos)} trechos possíveis, sem programação do dia que decida): escolha o trecho")
+        return out
+    c = out["escolhido"] = cands[escolha]
+    out["avisos"] += c["avisos"] + ([f"sentido {ORIGEM[origem]}"] if origem != "NS" else [])
+    out.update(situacao="AUTOMATICO", motivo=None, origem_sentido=origem)
+    return out
+
+
+def casar_dia(conn, ns, ctx, equipe_id, data, ind=None):
+    """Segmentos da NS do dia: o casamento das outras NS (elemento a elemento, com junção e conexão no meio da linha),
+    a execução parcial e as pontas soltas (_avaliar_solta), e as etapas de cada segmento."""
+    ind = ind or indice(conn)
+    fontes = {"programados": _programados(conn, equipe_id, data), "servico": _servico_zona(conn, ctx.get("zona"))}
+    titulo, out = ns["cabecalho"].get("titulo"), []
+    for gi, g in enumerate(ns["grupos"]):
+        ls, anterior = g["linhas"], None
+        for s in _segmentos_grupo(g, gi, ind, ctx, soltas=True):
+            seg = (_avaliar_solta(s, g, ns, ind, fontes, anterior) if s.get("solta")
+                   else dict(_avaliar(s, ls, ns, _conferir_dia), origem_sentido="NS"))
+            i0 = s["i"] if s["i"] == 0 else s["i"] + 1                      # observações das estacas que o segmento alcança
+            seg["etapas"] = etapas_do_texto(titulo, g.get("titulo"), *[ls[k].get("obs") for k in range(i0, s["j"] + 1)])
+            if not seg["etapas"]:
+                seg["etapas"], seg["avisos"] = ["ASSENTADO"], seg["avisos"] + [SEM_ETAPA]
+            seg["ordem"] = len(out) + 1
+            out.append(seg)
+            anterior = seg
+        if ls and not any(chave_rede(l.get("elemento")) for l in ls):
+            out.append({"ordem": len(out) + 1, "grupo": gi, "de": ls[0].get("elemento"), "para": ls[-1].get("elemento"),
+                        "metros_ns": None, "situacao": "SEM_CORRESPONDENCIA", "candidatos": [], "escolhido": None, "avisos": [],
+                        "etapas": None, "motivo": "o grupo não tem elemento da rede (nó, VRP, VM, MV, DF, VTF, HID) para "
+                                                  "localizar a execução"})
+    return out
+
+
+def _intersec(a_lst, b_lst):
+    return [(max(a, x), min(b, y)) for a, b in a_lst for x, y in b_lst if min(b, y) - max(a, x) > R.TOL_M]
+
+
+def _proprios(conn, seg_id, trecho_id, etapa):
+    """Cobertura que o próprio segmento já lançou (para não contar como 'já estava lançado' ao repetir)."""
+    if seg_id is None:
+        return []
+    if etapa == "ESCAVADO":
+        sql = "SELECT ini_m, fim_m FROM etapas_complementares WHERE ns_segmento_id=? AND trecho_id=? AND etapa=? AND anulado_em IS NULL"
+    else:
+        sql = f"SELECT ini_m, fim_m FROM intervalos_execucao WHERE ns_segmento_id=? AND trecho_id=? AND etapa=? AND {S.EFETIVO}"
+    return R.unir_intervalos([tuple(r) for r in conn.execute(sql, (seg_id, trecho_id, etapa))])
+
+
+def plano_dia(conn, fisico, ini_m, fim_m, etapas, data, seg_id=None):
+    """O que a NS do dia lança em cada linha da 06.1 tocada por [ini_m, fim_m]: por etapa, só o que ainda não está
+    lançado (o resto conta como 'já estava'); reaterro só sobre o assentado até a data (o de antes ou o desta NS); no
+    pedaço MND, escavação e reaterro não se aplicam (pulados, com aviso)."""
+    out = []
+    for p in TP.para_linhas(fisico, ini_m, fim_m):
+        tid, faixa = p["trecho_id"], (p["ini_m"], p["fim_m"])
+        mnd = (_one(conn, "SELECT metodologia FROM trechos WHERE id=?", tid) or {}).get("metodologia") == "MND"
+        item = dict(p, mnd=mnd, gravar={e: [] for e in ETAPAS_DIA}, ja={e: 0.0 for e in ETAPAS_DIA}, pulado=[], sem_assentado=[])
+        novo_ass = []
+        for e in ETAPAS_DIA:
+            if e not in etapas:
+                continue
+            if mnd and e != "ASSENTADO":
+                item["pulado"].append(e)
+                continue
+            todos = _cobertura_compl(conn, tid, e) if e == "ESCAVADO" else S._cobertura(conn, tid, e)
+            livre = R.fora_da_cobertura(faixa, todos)
+            if e == "REATERRADO":
+                base = R.unir_intervalos(S._cobertura(conn, tid, "ASSENTADO", ate_data=data) + novo_ass)
+                item["sem_assentado"] = _faixas([x for f in livre for x in R.fora_da_cobertura(f, base)])
+                livre = _intersec(livre, base)
+            item["gravar"][e] = _faixas(livre)
+            if e == "ASSENTADO":
+                novo_ass = [tuple(x) for x in item["gravar"][e]]
+            coberto = faixa[1] - faixa[0] - R.comprimento(R.fora_da_cobertura(faixa, todos))
+            item["ja"][e] = round(max(coberto - R.comprimento(_intersec([faixa], _proprios(conn, seg_id, tid, e))), 0.0), 3)
+        out.append(item)
+    return out
+
+
+def _lancado_seg(conn, seg_id):
+    """{etapa: metros} que o segmento tem lançados (registros efetivos)."""
+    out = dict(conn.execute(f"SELECT etapa, SUM(fim_m - ini_m) FROM intervalos_execucao WHERE ns_segmento_id=? AND {S.EFETIVO} "
+                            "GROUP BY etapa", (seg_id,)))
+    out.update(conn.execute("SELECT etapa, SUM(fim_m - ini_m) FROM etapas_complementares WHERE ns_segmento_id=? "
+                            "AND anulado_em IS NULL GROUP BY etapa", (seg_id,)))
+    return {k: round(v, 3) for k, v in out.items() if v}
+
+
+def _lancar_segmento(conn, ns, seg, por):
+    """Lança um segmento conferido (AUTOMATICO ou CONFIRMADO) numa transação própria (SAVEPOINT): um apontamento por
+    linha da 06.1 (assentado e reaterro) e a escavação como etapa complementar. Uma recusa manda só este segmento
+    para a fila, com o motivo. Informado por quem enviou a NS."""
+    etapas = json.loads(seg["etapas"]) if seg["etapas"] else ["ASSENTADO"]
+    plano = plano_dia(conn, _fisico_salvo(seg), seg["ini_fisico_m"], seg["fim_fisico_m"], etapas, ns["data"], seg["id"])
+    ref = referencia(ns["numero"], ns["folhas"])
+    ini, fim = seg["ini_ns_m"], seg["fim_ns_m"]
+    if ini is not None and fim is not None and ini > fim:
+        ini, fim = fim, ini
+    est = (f"NS {ns['numero']} · {estaca(ini)}", estaca(fim))           # "NS 015 · 0+0,00" a "6+2,01"
+    quem = ns["registrada_por"]
+    lancado, pendente = [], None
+    try:
+        with transacao(conn):
+            for item in plano:
+                novos = [{"etapa": e, "ini_m": a, "fim_m": b, "referencia": ref, "ns_segmento_id": seg["id"]}
+                         for e in ("ASSENTADO", "REATERRADO") for a, b in item["gravar"][e]]
+                if novos:
+                    S.apontar(conn, ns["data"], ns["equipe_id"], "TRECHO", item["trecho_id"], estaca_ini=est[0], estaca_fim=est[1],
+                              intervalos_novos=novos, informado_por=quem)
+                for a, b in item["gravar"]["ESCAVADO"]:
+                    S.registrar_etapa_complementar(conn, item["trecho_id"], "ESCAVADO", a, b, ns["data"], quem, ref, None,
+                                                   ns_segmento_id=seg["id"])
+                lancado += [{"ponto": item["ponto"], "etapa": e, "ini_m": a, "fim_m": b} for e in ETAPAS_DIA for a, b in item["gravar"][e]]
+    except RegraViolada as e:
+        lancado, pendente = [], f"não lançado: {e}"
+    sem = [(item["ponto"], f) for item in plano for f in item["sem_assentado"]]
+    if not pendente and sem:
+        pendente = (f"reaterro sem assentamento lançado até {_data_br(ns['data'])}: "
+                    + ", ".join(f"{_curto(pt)} {_m(a)}–{_m(b)} m" for pt, (a, b) in sem))
+    feito = _lancado_seg(conn, seg["id"])
+    pendente_m = 0.0 if not pendente else (sum(b - a for _, (a, b) in sem) if not pendente.startswith("não lançado")
+                                           else (seg["fim_fisico_m"] or 0) - (seg["ini_fisico_m"] or 0))
+    return {"ordem": seg["ordem"], "id": seg["id"], "lancado": lancado, "pendente": pendente, "pendente_m": round(pendente_m, 3),
+            "aplicado_m": max(feito.values(), default=0.0), "feito": feito,
+            "ja": {e: round(sum(i["ja"][e] for i in plano), 3) for e in ETAPAS_DIA if sum(i["ja"][e] for i in plano) > R.TOL_M},
+            "pulado": sorted({f"{_curto(i['ponto'])} é MND (sem vala): {' e '.join(ROT_ETAPA[e] for e in i['pulado'])} não se "
+                              f"aplica{'m' if len(i['pulado']) > 1 else ''}; o assentado vale" for i in plano if i["pulado"]})}
+
+
+def registrar_dia(conn, ns_id, por):
+    """Lança o que está conferido na NS do dia (AUTOMATICO e CONFIRMADO), um SAVEPOINT por segmento. Pode ser chamada de
+    novo (a engenharia, depois de resolver a fila): só lança o que ainda falta, nunca duas vezes o mesmo pedaço."""
+    ns = _ns(conn, int(ns_id))
+    if ns["tipo"] != "EXECUCAO":
+        raise RegraViolada("Só a NS do dia lança a execução.")
+    if ns["status"] != "REGISTRADA":
+        raise RegraViolada(f"NS {ns['numero']} está {ns['status'].lower()}.")
+    out = []
+    with transacao(conn):
+        for seg in _rows(conn.execute(f"SELECT * FROM ns_segmentos WHERE ns_id=? AND situacao IN {APLICADAS} ORDER BY ordem",
+                                      (ns["id"],))):
+            r = _lancar_segmento(conn, ns, seg, por)
+            conn.execute("UPDATE ns_segmentos SET aplicado_m=?, pendente_m=?, pendente=? WHERE id=?",
+                         (r["aplicado_m"], r["pendente_m"], r["pendente"], seg["id"]))
+            out.append(r)
+    return out
+
+
+def _clima_do_dia(conn, data, equipe_id, clima):
+    """O clima é o único toque da tela de envio: a NS não traz o clima e o apontamento exige manhã e tarde."""
+    for turno in ("MANHA", "TARDE"):
+        if (clima or {}).get(turno):
+            S.registrar_clima(conn, data, equipe_id, turno, clima[turno])
+    turnos = {r[0] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
+    if turnos != {"MANHA", "TARDE"}:
+        raise RegraViolada(f"Informe o clima da manhã e da tarde de {_data_br(data)}: o diário precisa dele.")
+
+
+def enviar_dia(conn, equipe_id, pdf_b64, croqui_b64, por, planilha_b64=None, nomes=None, clima=None, hoje=None):
+    """A NS do dia enviada pela equipe (ou em nome dela): lê, recusa o que não é desta obra, o PDF sem texto e a data
+    futura, guarda os arquivos e a NS, casa os segmentos e lança sozinho o que é inequívoco (registrar_dia)."""
+    if not equipe_id or not _one(conn, "SELECT 1 FROM equipes WHERE id=?", equipe_id):
+        raise RegraViolada("Escolha a equipe da nota do dia.")
+    nomes = nomes or {}
+    pdf, planilha, ns = _ler_arquivos(conn, pdf_b64, planilha_b64, hoje)
+    if not ns["resultado"]["aceita"]:
+        raise RegraViolada("NS recusada: " + "; ".join(ns["resultado"]["motivos"][:4]))
+    cab = ns["cabecalho"]
+    por_arquivo, mesma = _ja_registrada(conn, ns, "EXECUCAO", hashlib.sha256(pdf).hexdigest(), equipe_id)
+    if por_arquivo:
+        raise RegraViolada(f"Esta NS já foi enviada: NS {por_arquivo['numero']} ({TIPOS.get(por_arquivo['tipo'])}"
+                           f"{', equipe ' + por_arquivo['equipe_id'] if por_arquivo['equipe_id'] else ''}, {_data_br(por_arquivo['data'])}).")
+    if mesma and mesma["impressao"] != ns["impressao_dados"]:
+        raise RegraViolada(f"A NS {mesma['numero']} desta equipe em {_data_br(mesma['data'])} já foi enviada com outro conteúdo: "
+                           "anule o envio anterior (com o motivo) antes de enviar o novo. Nada foi gravado.")
+    if not croqui_b64 and not mesma:
+        raise RegraViolada("Envie o croqui junto com a nota (PDF, JPG ou PNG; foto do celular vale).")
+    with transacao(conn):
+        _clima_do_dia(conn, cab["data"], equipe_id, clima)
+        pdf_id = _guardar(conn, "NS_PDF", pdf, nomes.get("pdf"), por)
+        croqui_id = _croqui(conn, croqui_b64, nomes.get("croqui"), por) if croqui_b64 else None
+        planilha_id = _guardar(conn, "NS_PLANILHA", planilha, nomes.get("planilha"), por) if planilha else None
+        if mesma:
+            _trocar_arquivo(conn, mesma, {"pdf_id": pdf_id, **({"croqui_id": croqui_id} if croqui_id else {}),
+                                          **({"planilha_id": planilha_id} if planilha_id else {})}, por)
+            return dict(resumo_dia(conn, mesma["id"]), arquivo_trocado=True)
+        zona = equipe_id if re.fullmatch(r"Zona\d\d|ADUTORA", equipe_id) else None
+        ctx = _contexto(ns, zona)
+        if ctx["origem"] == "FORMULARIO":
+            ctx["origem"] = "EQUIPE"
+        segs = casar_dia(conn, ns, ctx, equipe_id, cab["data"])
+        ns_id = _inserir_ns(conn, "EXECUCAO", ns, ctx, pdf_id, croqui_id, planilha_id, por, equipe_id=equipe_id)
+        for s in segs:
+            _inserir_segmento(conn, ns_id, s, por)
+        lancamento = registrar_dia(conn, ns_id, por)
+    return dict(resumo_dia(conn, ns_id, lancamento), arquivo_trocado=False)
+
+
+def _na_fila(s):
+    return s["situacao"] in FILA or (s["situacao"] in APLICADAS and (s.get("pendente_m") or 0) > R.TOL_M)
+
+
+def _registros_seg(conn, seg_id):
+    """O que o segmento gravou: [{ponto, etapa, ini_m, fim_m, verificado}] (efetivos)."""
+    out = [{"ponto": r["ponto"], "trecho_id": r["trecho_id"], "etapa": r["etapa"], "ini_m": r["ini_m"], "fim_m": r["fim_m"],
+            "verificado": bool(r["verificado_em"]), "apontamento_id": r["apontamento_id"]}
+           for r in _rows(conn.execute(f"""SELECT i.*, t.ponto FROM intervalos_execucao i JOIN trechos t ON t.id = i.trecho_id
+                                           WHERE i.ns_segmento_id=? AND {S.EFETIVO.replace('anulado_por', 'i.anulado_por')}
+                                           ORDER BY t.ponto, i.etapa, i.ini_m""", (seg_id,)))]
+    out += [{"ponto": r["ponto"], "trecho_id": r["trecho_id"], "etapa": r["etapa"], "ini_m": r["ini_m"], "fim_m": r["fim_m"],
+             "verificado": False, "apontamento_id": None}
+            for r in _rows(conn.execute("""SELECT e.*, t.ponto FROM etapas_complementares e JOIN trechos t ON t.id = e.trecho_id
+                                           WHERE e.ns_segmento_id=? AND e.anulado_em IS NULL ORDER BY t.ponto, e.ini_m""", (seg_id,)))]
+    return out
+
+
+def _atraso(ns):
+    try:
+        return (date.fromisoformat(str(ns["registrada_em"])[:10]) - date.fromisoformat(str(ns["data"])[:10])).days
+    except (TypeError, ValueError):
+        return 0
+
+
+def resumo_dia(conn, ns_id, lancamento=None):
+    """A NS do dia com os segmentos, o que cada um gravou e o que está na fila da engenharia (para a tela e o diário)."""
+    ns = _ns(conn, int(ns_id))
+    ns.pop("leitura", None)
+    ns["referencia"] = referencia(ns["numero"], ns["folhas"])
+    ns["segmentos"] = segmentos(conn, ns["id"])
+    por_ordem = {r["ordem"]: r for r in lancamento or []}
+    for s in ns["segmentos"]:
+        s["registros"] = _registros_seg(conn, s["id"])
+        s["na_fila"] = ns["status"] == "REGISTRADA" and _na_fila(s)
+        r = por_ordem.get(s["ordem"])
+        if r:
+            s["agora"] = {"lancado": r["lancado"], "ja": r["ja"], "pulado": r["pulado"]}
+    ns["fila"] = [s["ordem"] for s in ns["segmentos"] if s["na_fila"]]
+    ns["atraso_dias"] = _atraso(ns)
+    ns["atrasada"] = ns["atraso_dias"] > ATRASO_DIAS
+    ns["verificada"] = any(r["verificado"] for s in ns["segmentos"] for r in s["registros"])
+    ns["avisos"] = sorted({a for s in ns["segmentos"] for a in (s.get("avisos") or []) if a == SEM_ETAPA}) + (
+        [f"NS enviada com atraso: {ns['atraso_dias']} dias depois da data da nota"] if ns["atrasada"] else [])
+    ns["drive"] = {q: v for q, v in ((q, _drive(conn, [ns[f"{q}_id"]]).get(ns[f"{q}_id"])) for q in ("pdf", "croqui")) if v}
+    return ns
+
+
+def listar_dia(conn, data=None, equipe=None, fila=False):
+    """NS do dia vigentes (por dia e equipe) com a situação de cada segmento; `fila`: só as que têm segmento esperando
+    a engenharia, de qualquer dia."""
+    sql, args = "SELECT id FROM notas_servico WHERE tipo='EXECUCAO' AND status='REGISTRADA'", []
+    for cond, val in (("data=?", data), ("equipe_id=?", equipe)):
+        if val:
+            sql, args = f"{sql} AND {cond}", args + [val]
+    if fila:
+        sql += (f" AND id IN (SELECT ns_id FROM ns_segmentos WHERE situacao IN {FILA} OR (situacao IN {APLICADAS} "
+                "AND pendente_m > 0.001))")
+    return [resumo_dia(conn, r[0]) for r in conn.execute(sql + " ORDER BY data DESC, equipe_id, id DESC LIMIT 200", args)]
+
+
+def conferir_dia(conn, ns_id, decisoes, por):
+    """A engenharia resolve a fila da NS do dia: escolhe o trecho (e, com ele, o sentido) e aceita, ou deixa de fora com
+    o motivo; depois lança o que ficou conferido (registrar_dia). Sem decisão, só tenta de novo o que ficou pendente."""
+    ns = _ns(conn, int(ns_id))
+    if ns["tipo"] != "EXECUCAO" or ns["status"] != "REGISTRADA":
+        raise RegraViolada("Só a NS do dia vigente é conferida aqui.")
+    segs = {s["ordem"]: s for s in _rows(conn.execute("SELECT * FROM ns_segmentos WHERE ns_id=?", (ns["id"],)))}
+    with transacao(conn):
+        for d in decisoes or []:
+            s = segs.get(int(d.get("ordem") or 0))
+            if not s:
+                raise RegraViolada(f"Segmento {d.get('ordem')} não existe nesta NS.")
+            if d.get("acao") == "FORA":
+                if not str(d.get("motivo") or "").strip():
+                    raise RegraViolada(f"Segmento {s['ordem']}: informe por que fica de fora.")
+                if s["aplicado_m"]:
+                    raise RegraViolada(f"Segmento {s['ordem']} já tem execução lançada: para desfazer, anule a NS (ou retifique "
+                                       "o apontamento).")
+                conn.execute("UPDATE ns_segmentos SET situacao='FORA', motivo=?, pendente=NULL, pendente_m=0, confirmado_por=?, "
+                             "confirmado_em=? WHERE id=?", (str(d["motivo"]).strip(), por, _agora(), s["id"]))
+            elif d.get("acao") == "ACEITAR":
+                if s["situacao"] != "CONFIRMAR":
+                    raise RegraViolada(f"Segmento {s['ordem']}: {NS_SITUACAO.get(s['situacao'], s['situacao'])} "
+                                       + ("só pode ficar de fora." if s["situacao"] in FILA else "não precisa de conferência."))
+                cands = json.loads(s["candidatos"] or "[]")
+                k = d.get("candidato")
+                if k is None and s["fisico_id"]:
+                    c = {"fisico_id": s["fisico_id"], "ini_m": s["ini_fisico_m"], "fim_m": s["fim_fisico_m"], "sentido": s["sentido"]}
+                elif k is not None and 0 <= int(k) < len(cands):
+                    c = cands[int(k)]
+                else:
+                    raise RegraViolada(f"Segmento {s['ordem']}: escolha um dos trechos possíveis.")
+                if c.get("situacao") == "ERRO":
+                    raise RegraViolada(f"Segmento {s['ordem']}: o trecho escolhido não serve ({c.get('motivo')}).")
+                F = _fisico_por_id(conn, c["fisico_id"])
+                conn.execute("""UPDATE ns_segmentos SET situacao='CONFIRMADO', fisico_id=?, membros=?, sentido=?, extensao_fisico_m=?,
+                                  ini_fisico_m=?, fim_fisico_m=?, origem_sentido=?, confirmado_por=?, confirmado_em=? WHERE id=?""",
+                             (F["id"], json.dumps(F["membros"], ensure_ascii=False), c["sentido"], F["extensao_m"], c["ini_m"],
+                              c["fim_m"], s["origem_sentido"] if k is None else "ENGENHARIA", por, _agora(), s["id"]))
+            elif d.get("acao") not in (None, "", "REPETIR"):
+                raise RegraViolada("Ação inválida (ACEITAR ou FORA).")
+        lancamento = registrar_dia(conn, ns["id"], por)
+    return resumo_dia(conn, ns["id"], lancamento)
+
+
+NS_SITUACAO = {"AUTOMATICO": "lançado automaticamente", "CONFIRMADO": "já conferido", "FORA": "fora",
+               "CONFIRMAR": "a confirmar", "ERRO": "com erro", "SEM_CORRESPONDENCIA": "sem correspondência"}
+
+
+def verificado_dia(conn, ns_id):
+    """Algum registro da NS já foi verificado (conferência interna): o encarregado não anula mais o envio."""
+    return bool(conn.execute(f"""SELECT 1 FROM intervalos_execucao i JOIN ns_segmentos s ON s.id = i.ns_segmento_id
+                                 WHERE s.ns_id=? AND i.verificado_em IS NOT NULL AND {S.EFETIVO.replace('anulado_por', 'i.anulado_por')}
+                                 LIMIT 1""", (ns_id,)).fetchone())

@@ -301,7 +301,8 @@ def p_clima(b, c):
 def p_apontamento(b, c):
     return {"id": S.apontar(c, b["data"], b["equipe_id"], b["alvo_tipo"], b["alvo_id"], float(b.get("metros_executados") or 0),
                             float(b.get("metros_reaterrados") or 0), bool(b.get("concluido_100")), b.get("estaca_ini"),
-                            b.get("estaca_fim"), b.get("quantidades"), b.get("intervalos") or None, b.get("informado_por"))}
+                            b.get("estaca_fim"), b.get("quantidades"), b.get("intervalos") or None, b.get("informado_por"),
+                            b.get("motivo_sem_ns"))}
 
 
 def p_legado_conciliar(b, c):
@@ -583,6 +584,39 @@ ROTAS_NS = {"/api/ns/ler": p_ns_ler, "/api/ns": p_ns, "/api/ns/anexo": p_ns_anex
 TELAS_NS = ("notas", "campo", "diario", "topografia", "cadastro_campo")
 
 
+# NS do dia: a equipe (o encarregado só a dele) ou, em nome dela, supervisor, engenharia e administração
+def r_ns_dia(q, c, usuario):
+    equipe = usuario["equipe_id"] if usuario["restrito_a_equipe"] else (q.get("equipe") or None)
+    return NS.listar_dia(c, q.get("data") or None, equipe, q.get("fila") == "1")
+
+
+def p_ns_dia(b, c, usuario):
+    equipe = b.get("equipe_id") or (usuario["equipe_id"] if usuario["restrito_a_equipe"] else None)
+    return NS.enviar_dia(c, equipe, b.get("pdf_b64"), b.get("croqui_b64"), b["por"], b.get("planilha_b64"),
+                         {k: b.get(f"{k}_nome") for k in ("pdf", "croqui", "planilha")}, b.get("clima"))
+
+
+def p_ns_dia_conferir(b, c, usuario):
+    return NS.conferir_dia(c, int(b["ns_id"]), b.get("decisoes") or [], b["por"])
+
+
+def p_ns_dia_anular(b, c, usuario):
+    """O encarregado anula o envio da equipe dele enquanto nenhum registro foi verificado; depois, só quem retifica."""
+    ns = NS._ns(c, int(b["ns_id"]))
+    if ns["tipo"] != "EXECUCAO":
+        raise R.RegraViolada("Aqui se anula só a NS do dia; as outras, na tela Notas de serviço.")
+    if "retificar_campo" not in usuario["permissoes"]:
+        if usuario["restrito_a_equipe"] and ns["equipe_id"] != usuario["equipe_id"]:
+            raise A.AcessoNegado(f"Seu usuário anula só os envios da equipe {usuario['equipe_id']}.", 403)
+        if NS.verificado_dia(c, ns["id"]):
+            raise A.AcessoNegado("Um registro desta nota já foi verificado: agora só a engenharia ou a administração anula.", 403)
+    return NS.anular(c, ns["id"], b.get("motivo"), b["por"])
+
+
+ROTAS_NS_DIA = {"/api/ns/dia": ("campo", p_ns_dia), "/api/ns/dia/conferir": ("retificar_campo", p_ns_dia_conferir),
+                "/api/ns/dia/anular": ("campo", p_ns_dia_anular)}
+
+
 # ------------------------------------------------------------------ documentos oficiais (links do Google Drive)
 def r_documentos(q, c):
     return D.listar(c)
@@ -757,7 +791,7 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
-               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe}
+               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
@@ -776,7 +810,8 @@ POST.update(ROTAS_DRIVE)
 POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar,
              "/api/medicao/conferir": p_medicao_conferir})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_PLANEJAMENTO.items()})
-POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, **ROTAS_NS}
+POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, **ROTAS_NS,
+                **{rota: fn for rota, (_, fn) in ROTAS_NS_DIA.items()}}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
 PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
              "/api/nf/aceitar": "receber", "/api/checkin": "almox", "/api/checkout": "almox", "/api/clima": "campo",
@@ -809,6 +844,8 @@ PERMISSAO.update({rota: "documentos" for rota in ROTAS_DRIVE})
 AUTOR.update({rota: ("por",) for rota in ROTAS_DRIVE})
 PERMISSAO.update({rota: "notas_servico" for rota in ROTAS_NS})
 AUTOR.update({rota: ("por",) for rota in ROTAS_NS})
+PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_NS_DIA.items()})
+AUTOR.update({rota: ("por",) for rota in ROTAS_NS_DIA})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 # tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral"}
@@ -826,7 +863,7 @@ TELA_GET = {"/api/equipe": ("equipes", "ponto", "mapa") + _CAMPO, "/api/estoque"
             "/api/cadastro-campo": ("cadastro_campo",), "/api/topologia": ("mapa", "iluminado"),
             "/api/dados-obra/selecao": ("mapa",), "/api/dados-obra/estado": ("mapa",), "/api/cronograma": ("cronograma", "mapa"),
             "/api/almox/quarentena": ("almox", "compras"),
-            "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS,
+            "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS, "/api/ns/dia": ("campo", "diario", "notas"),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
 TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",),   # downloads (/arquivos/: LEV)
@@ -1214,6 +1251,12 @@ class Handler(BaseHTTPRequestHandler):
                         isinstance(i, dict) and i.get("etapa") == "CADASTRO_CAMPO" for i in body.get("intervalos") or []):
                     raise A.AcessoNegado("O cadastro de campo é feito por equipe terceirizada e registrado pela engenharia "
                                          "na aba Cadastro de campo, não no lançamento do dia.", 403)
+                if rota == "/api/apontamento" and str(body.get("alvo_tipo") or "").upper() == "TRECHO":
+                    if "lancar_sem_ns" not in usuario["permissoes"]:      # o avanço do trecho vem da NS do dia
+                        raise A.AcessoNegado("O avanço do trecho vem da nota de serviço do dia (tela Nota do dia). Lançar à mão, "
+                                             "sem nota, é exceção da engenharia e da administração.", 403)
+                    if not str(body.get("motivo_sem_ns") or "").strip():
+                        raise R.RegraViolada("Lançamento sem nota de serviço: informe o motivo (fica guardado junto do apontamento).")
                 if usuario["restrito_a_equipe"] and body.get("equipe_id") not in (None, "", usuario["equipe_id"]):
                     raise A.AcessoNegado(f"Seu usuário lança só para a equipe {usuario['equipe_id']}.", 403)
                 for campo in AUTOR.get(rota, ()):
