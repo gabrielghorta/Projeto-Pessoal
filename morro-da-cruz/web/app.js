@@ -140,6 +140,7 @@ const TELAS = {
   campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', carregar: () => {} },
   diario: { titulo: 'Diário de campo', grupo: 'grupo-campo', carregar: () => carregarDiario() },
   interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
+  notas: { titulo: 'Notas de serviço', grupo: 'grupo-campo', carregar: () => carregarNotas() },
   topografia: { titulo: 'Topografia', grupo: 'grupo-campo', carregar: () => carregarTopografia() },
   cadastro_campo: { titulo: 'Cadastro de campo', grupo: 'grupo-campo', carregar: () => carregarCadCampo() },
   mapa: { titulo: 'Dados da obra', grupo: 'planejamento', carregar: () => carregarDadosObra() },
@@ -209,7 +210,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
-  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: lançamento do dia, diário, interferências e, das equipes terceirizadas, topografia e cadastro de campo.' },
+  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: lançamento do dia, diário, interferências, as notas de serviço e, das equipes terceirizadas, topografia e cadastro de campo.' },
   planejamento: { nome: 'Planejamento', desc: 'O mapa do Dados da obra (programar as equipes, liberar o material do dia e receber a devolução), a programação, o cronograma do Project, o estoque com o aceite do material, compras e notas e o check-in.' },
   administrativo: { nome: 'Administrativo', desc: 'Equipes, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
 };
@@ -1406,6 +1407,8 @@ async function carregarTopografia() {
   const f = $('#topFrente').value;
   const r = await acao(() => api('/api/topografia' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   TOP_DADOS = r; const t = r.totais;
+  $('#topNsEnviar').hidden = !(pode('notas_servico') && podeTela('notas'));
+  nsCarregarLista('TOPOGRAFIA', '#topNsLista');
   $('#topKpis').innerHTML = [['Trechos liberados', nf(t.trechos_liberados, 0)], ['Liberados em parte', nf(t.trechos_parciais, 0)],
     ['Metros liberados', nf(t.liberado_m) + ' m'], ['Programado sem liberação (7 dias)', nf(t.programados_sem_liberacao, 0)],
     ['Executado sem liberação', nf(t.executado_sem_liberacao_m) + ' m']].map(kpi).join('');
@@ -1477,6 +1480,8 @@ async function carregarCadCampo() {
   const f = $('#cadFrente').value;
   const r = await acao(() => api('/api/cadastro-campo' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   CAD_DADOS = r; const t = r.totais;
+  $('#cadNsEnviar').hidden = !(pode('notas_servico') && podeTela('notas'));
+  nsCarregarLista('CADASTRO', '#cadNsLista');
   $('#cadAviso').innerHTML = t.reaterrado_sem_cadastro_m > 0 ? `<div class="aviso problema"><b>${nf(t.reaterrado_sem_cadastro_m)} m já reaterrados sem levantamento.</b>
     Com a vala fechada não dá mais para levantar: veja a lista "Reaterrado sem levantamento".</div>` : '';
   $('#cadKpis').innerHTML = [['Vala aberta sem levantamento', nf(t.vala_aberta_m) + ' m'], ['Reaterrado sem levantamento', nf(t.reaterrado_sem_cadastro_m) + ' m'],
