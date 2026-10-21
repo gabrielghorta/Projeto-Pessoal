@@ -11,6 +11,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-python -c "import openpyxl" >nul 2>nul || python -m pip install --user openpyxl pillow
+python -c "import openpyxl, pypdf" >nul 2>nul || python -m pip install --user openpyxl pillow "pypdf>=6,<7"
 python iniciar.py
 pause

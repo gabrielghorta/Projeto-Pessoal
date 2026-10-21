@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install openpyxl pillow
+      - run: python -m pip install openpyxl pillow "pypdf>=6,<7"
       - name: Testes (inclui os da base real e o ciclo da Zona01, com as planilhas do repositório)
         run: python -m unittest discover -s tests
 
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install pyinstaller==6.22.3 openpyxl pillow
+      - run: python -m pip install pyinstaller==6.22.3 openpyxl pillow "pypdf>=6,<7"
       - run: python -m PyInstaller MorroDaCruz.spec --noconfirm
       - name: Baixar o cloudflared (túnel do link para a equipe)
         run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
