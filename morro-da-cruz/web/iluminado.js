@@ -1,5 +1,5 @@
 /* Traçado real da rede para a tela inicial e para o Mapa iluminado.
- * A geometria vem da visão geral do HTML REV02 (/api/mapa/geral: zonas oficiais, trechos, nós) e a situação
+ * A geometria vem da visão geral do HTML REV02 (/api/mapa/geral: satélite das PBs, zonas oficiais, trechos, nós) e a situação
  * de cada trecho vem só dos registros do banco (/api/mapa/estado). Nenhuma coordenada é criada aqui: o que não tem
  * posição no projeto não aparece no mapa (continua na bandeja do Dados da obra). */
 
@@ -117,10 +117,44 @@ function situacao(est, nome) {
 // o visor (arrastar, aproximar, clique) serve a este mapa e ao do Dados da obra (planejamento.js): cada um passa o seu
 // contexto com svg(), caixa(), desenhar(px, zoom) e clique(alvo, ev)
 const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
-  vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true },
-  svg: () => $('#iluSvg'), caixa: () => $('#ilu'), desenhar: desenharIlu, clique: alvo => cliqueNoMapa(alvo) };
-// sem as plantas baixas por baixo (pedido do responsável em 21/10/2026): a divisão por PB fica só no Dados da obra
-try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') || '{}')); } catch (_) { /* sem storage */ }
+  vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true }, fundo: 'escura',
+  prefixo: 'ilu', svg: () => $('#iluSvg'), caixa: () => $('#ilu'), desenhar: desenharIlu, clique: alvo => cliqueNoMapa(alvo) };
+// satélite escurecido por padrão: as cores da situação aparecem por cima, como no mapa do projeto
+const FUNDOS = { escura: ['Escura', 'brightness(.42) saturate(.5)'], clara: ['Clara', 'brightness(.85)'], sem: ['Sem satélite', ''] };
+try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') || '{}')); ILU.fundo = FUNDOS[localStorage.getItem('mc-ilu-fundo')] ? localStorage.getItem('mc-ilu-fundo') : 'escura'; } catch (_) { /* sem storage */ }
+
+/* ---- satélite: as fotos das 25 PBs (o mesmo nos dois mapas) */
+// De longe, o mosaico montado no servidor (mapa_geral.mosaico: matriz completa de cada PB, cada uma recortada pelo seu
+// quadro). Aproximando, as PBs à vista entram em resolução cheia por cima. Tudo cortado no limite das zonas: fora delas
+// não há nada (pedido do responsável em 21/10/2026). Onde nenhuma PB tem foto (~3 % da área, na borda das zonas), fica escuro.
+const SAT_DETALHE_PX = 0.7, SAT_DETALHE_MAX = 6;     // unidades do mapa por pixel da tela; PBs carregadas ao mesmo tempo
+function htmlSatelite(g, p) {
+  return `<defs><clipPath id="${p}ZonasClip">${g.zonas.map(z => `<polygon points="${pontos(z.p)}"/>`).join('')}</clipPath>
+      ${g.quadros.map(q => `<clipPath id="${p}Q${esc(q.id)}"><polygon points="${pontos(q.p)}"/></clipPath>`).join('')}</defs>
+    <g id="${p}Sat" clip-path="url(#${p}ZonasClip)"><image class="sat-mosaico" href="/mapa/geral.webp?v=${g.versao}" x="0" y="0" width="${g.w}" height="${g.h}" preserveAspectRatio="none"/><g class="sat-detalhe"></g></g>`;
+}
+const satDe = ctx => $(`#${ctx.prefixo}Sat`);
+function ligarSatelite(ctx, g) {                     // sem Pillow no servidor não há mosaico: as PBs inteiras, sempre
+  $('.sat-mosaico', satDe(ctx)).addEventListener('error', () => { ctx.semMosaico = true; detalheSatelite(ctx, g, 0); }, { once: true });
+}
+function detalheSatelite(ctx, g, px) {
+  const box = satDe(ctx) && $('.sat-detalhe', satDe(ctx)); if (!box || !ctx.vb) return;
+  let quero = [];
+  if (ctx.semMosaico) quero = g.imagens.map(im => im.id);
+  else if (px < SAT_DETALHE_PX) {
+    const [x, y, w, h] = ctx.vb;
+    quero = g.quadros.filter(q => { const [x0, y0, x1, y1] = limites([q.p]); return x1 > x && x0 < x + w && y1 > y && y0 < y + h; }).map(q => q.id);
+    if (quero.length > SAT_DETALHE_MAX) quero = [];
+  }
+  const ja = new Set($$('[data-pb]', box).map(e => e.dataset.pb));
+  if (quero.length === ja.size && quero.every(id => ja.has(id))) return;
+  $$('[data-pb]', box).forEach(e => { if (!quero.includes(e.dataset.pb)) e.remove(); });
+  const comQuadro = new Set(g.quadros.map(q => q.id));
+  quero.filter(id => !ja.has(id)).forEach(id => {
+    const im = g.imagens.find(x => x.id === id); if (!im) return;
+    box.insertAdjacentHTML('beforeend', `<g data-pb="${esc(id)}"${comQuadro.has(id) ? ` clip-path="url(#${ctx.prefixo}Q${esc(id)})"` : ''}><image href="/mapa/pb/${esc(id)}.webp?v=${g.versao}" width="${im.w}" height="${im.h}" preserveAspectRatio="none" transform="matrix(${im.m.join(' ')})"/></g>`);
+  });
+}
 const iluSvg = () => $('#iluSvg');
 
 async function carregarIluminado() {
@@ -139,8 +173,9 @@ function montarIluminado(g) {
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}"/>`).join('')
     + g.zonas.map(z => `<polyline class="ilu-zl" points="${pontos(z.p)} ${z.p[0]},${z.p[1]}"/>`).join('');
   const hits = g.trechos.map((t, i) => `<path class="ilu-hit" data-i="${i}" d="${caminho(t.p)}"/>`).join('');
-  svg.innerHTML = `<g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluHits">${hits}</g>
+  svg.innerHTML = `${htmlSatelite(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluHits">${hits}</g>
     <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="iluPins"></g>`;
+  ligarSatelite(ILU, g);
   ILU.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   ILU.vb = null; ajustarAspecto();
   ligarGestos(svg);
@@ -167,6 +202,7 @@ function desenharVista(ctx = ILU) {
   ctx.desenhar(w / (svg.getBoundingClientRect().width || 1), (ctx.base[2] - ctx.base[0]) / w);   // unidades do mapa por pixel e zoom
 }
 function desenharIlu(px, zoom) {
+  if (ILU.fundo !== 'sem') detalheSatelite(ILU, GERAL, px);
   $('#iluLinhas').style.strokeWidth = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)) + 'px';
   $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
   $$('#iluPins .ilu-pin').forEach(p => {
@@ -279,13 +315,15 @@ function desenharPins() {
 }
 const equipeNome = id => ((RESUMO && RESUMO.equipes) || []).find(e => e.id === id)?.nome || id;
 function aplicarCamadas() {
+  satDe(ILU).style.display = ILU.fundo === 'sem' ? 'none' : '';
+  satDe(ILU).style.filter = FUNDOS[ILU.fundo][1];
   $('#iluZonas').style.display = ILU.cam.zonas ? '' : 'none';
   $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.38 : 0.08) : 0.26));
   $('#iluNomes').style.display = ILU.cam.nomes ? '' : 'none';
   $('#iluPins').style.display = ILU.cam.equipes ? '' : 'none';
   $$('#iluLinhas .ilu-tr').forEach(p => p.style.display = ILU.vis[p.dataset.situ] ? '' : 'none');
   if (GERAL && GERAL.trechos[0] && GERAL.trechos[0].s) $$('#iluHits .ilu-hit').forEach(h => h.style.display = ILU.vis[GERAL.trechos[+h.dataset.i].s] ? '' : 'none');
-  try { localStorage.setItem('mc-ilu-camadas', JSON.stringify(ILU.cam)); } catch (_) { /* sem storage */ }
+  try { localStorage.setItem('mc-ilu-camadas', JSON.stringify(ILU.cam)); localStorage.setItem('mc-ilu-fundo', ILU.fundo); } catch (_) { /* sem storage */ }
 }
 
 /* ---- janelas das ferramentas: Situação, Zonas, Equipes e Camadas */
@@ -325,7 +363,9 @@ function abrirPop(nome, recarregar) {
   }
   if (nome === 'camadas') {
     const ch = (k, rot) => `<button type="button" class="ilu-linha" data-camada="${k}" aria-pressed="${ILU.cam[k]}"><span>${ILU.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`;
-    pop.innerHTML = '<h3>Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes');
+    pop.innerHTML = '<h3>Fundo de satélite</h3><div class="ilu-fundos">' + Object.entries(FUNDOS).map(([k, [rot]]) =>
+      `<button type="button" class="ilu-fundo" data-fundo="${k}" aria-pressed="${ILU.fundo === k}">${rot}</button>`).join('') + '</div>'
+      + '<h3 style="margin-top:14px">Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes');
   }
 }
 function fecharPop() {
@@ -339,6 +379,7 @@ $('#iluFerr').addEventListener('click', ev => {
   const z = ev.target.closest('[data-zona]'); if (z) { fecharPop(); return z.dataset.zona ? focarZona(z.dataset.zona) : verTudo(); }
   const e = ev.target.closest('[data-ir]'); if (e) { fecharPop(); return focarAlvo(e.dataset.irTipo, e.dataset.ir); }
   const c = ev.target.closest('[data-camada]'); if (c) { ILU.cam[c.dataset.camada] = !ILU.cam[c.dataset.camada]; aplicarCamadas(); return abrirPop('camadas', true); }
+  const fu = ev.target.closest('[data-fundo]'); if (fu) { ILU.fundo = fu.dataset.fundo; aplicarCamadas(); desenharVista(); return abrirPop('camadas', true); }
 });
 document.addEventListener('pointerdown', ev => { if (ILU.pop && !ev.target.closest('.ilu-bloco')) fecharPop(); });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && TELA === 'iluminado') { fecharPop(); fecharFicha(); } });

@@ -1,7 +1,6 @@
 /* Planejamento: o mapa do Dados da obra e o cronograma do MS Project.
- * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02 e o visor de arrastar e aproximar) e é o único
- * que mostra as plantas baixas: cada PB recortada pelo seu quadro (a folha inteira cobria a vizinha) e com a matriz
- * completa do REV02 (a PB20 é girada), mais a divisão das PBs com o nome de cada uma.
+ * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02, o satélite das PBs cortado nas zonas e o
+ * visor de arrastar e aproximar) e mostra também a divisão das PBs, com o nome de cada uma.
  * Aqui se escolhem trechos: o toque escolhe um; Ctrl + clique (ou o botão "Juntar trechos", no celular) junta vários.
  * O servidor completa a seleção (/api/dados-obra/selecao): cada linha traz o trecho físico inteiro e o nó entre dois
  * trechos escolhidos entra sozinho. Com a seleção, o painel ao lado programa a equipe (período e dias), libera o material
@@ -21,9 +20,9 @@ const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: nul
   sel: [], nos: [], resp: null, aba: null, pedido: 0, equipe: null, equipeFixa: false, crono: null, foco: null, ultPx: 0,
   extra: [], qtd: {}, noIdx: null, vis: Object.fromEntries(PLAN.map(s => [s.id, true])),
   cam: { plantas: true, quadros: true, zonas: true, nomes: true },
-  svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln };
+  prefixo: 'pln', svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln };
 try { Object.assign(PLN.cam, JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}')); } catch (_) { /* sem storage */ }
-const CAMADAS_PLN = { plantas: 'Plantas baixas (fundo)', quadros: 'Divisão das PBs', zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
+const CAMADAS_PLN = { plantas: 'Satélite (fotos das PBs)', quadros: 'Divisão das PBs', zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
 const DIAS_SEMANA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 const nomeAlvoCurto = n => nomeCurto(n).replace(/^NÓ/, 'NÓ ');
 
@@ -79,16 +78,11 @@ function montarPln(g) {
     const nome = e.n.find(n => n.includes('_Rede_')) || e.n[0];          // a ponta do trecho cita o nome da Rede
     return `<circle class="pln-no" data-i="${i}" data-n="${esc(nome)}" cx="${e.x}" cy="${e.y}" r="1"><title>${esc(nomeCurto(nome))}</title></circle>`;
   }).join('');
-  const quadro = Object.fromEntries(g.quadros.map(q => [q.id, q]));
-  const plantas = g.imagens.map(im => {
-    const img = `<image href="/mapa/pb/${esc(im.id)}.webp?v=${g.versao}" width="${im.w}" height="${im.h}" preserveAspectRatio="none" transform="matrix(${im.m.join(' ')})"/>`;
-    return quadro[im.id] ? `<g clip-path="url(#plnQ${esc(im.id)})">${img}</g>` : img;      // o recorte fica fora da matriz da imagem
-  }).join('');
   const divisao = g.quadros.map(q => `<polygon class="pln-quadro" points="${pontos(q.p)}"/>`).join('')
     + g.quadros.map(q => { const [x0, y0] = limites([q.p]); return `<text class="pln-quadro-rot" x="${x0}" y="${y0}">${esc(q.id)}</text>`; }).join('');
-  svg.innerHTML = `<defs>${g.quadros.map(q => `<clipPath id="plnQ${esc(q.id)}"><polygon points="${pontos(q.p)}"/></clipPath>`).join('')}</defs>
-    <g id="plnPlantas">${plantas}</g><g id="plnZonas">${zonas}</g><g id="plnQuadros">${divisao}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnHits">${hits}</g><g id="plnNos" class="longe">${nos}</g>
+  svg.innerHTML = `${htmlSatelite(g, 'pln')}<g id="plnZonas">${zonas}</g><g id="plnQuadros">${divisao}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnHits">${hits}</g><g id="plnNos" class="longe">${nos}</g>
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
+  ligarSatelite(PLN, g);
   aplicarCamadasPln();
   PLN.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   PLN.vb = null; ajustarAspecto(PLN);
@@ -98,6 +92,7 @@ function montarPln(g) {
 }
 
 function desenharPln(px, zoom) {
+  if (PLN.cam.plantas) detalheSatelite(PLN, GERAL, px);
   $('#plnLinhas').style.strokeWidth = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)) + 'px';
   $('#plnSelG').style.strokeWidth = Math.min(14, 9 * Math.pow(Math.max(zoom, 1), 0.3)) + 'px';
   $$('#plnNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
@@ -270,7 +265,7 @@ function abrirPopPln(nome, recarregar) {
       + '<p>Toque numa linha para mostrar ou esconder. O pino é a equipe com check-in no dia; contorno branco é a seleção e o nó com anel entrou sozinho (liga dois trechos escolhidos).</p>';
   } else if (nome === 'camadas') {
     pop.innerHTML = '<h3>Camadas</h3>' + Object.entries(CAMADAS_PLN).map(([k, rot]) => `<button type="button" class="ilu-linha" data-pln-camada="${k}" aria-pressed="${PLN.cam[k]}"><span>${PLN.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`).join('')
-      + '<p>As plantas baixas são as 25 PBs do projeto (REV02), cada uma recortada pelo seu quadro. No Mapa iluminado elas não aparecem.</p>';
+      + '<p>O satélite vem das 25 PBs do projeto (REV02), cortado no limite das zonas. A divisão das PBs mostra o quadro e o nome de cada uma (só neste mapa).</p>';
   } else {
     const zs = [...new Set(GERAL.trechos.map(zonaDoTrecho))].sort((a, b) => (a === ZONA_ADUTORA) - (b === ZONA_ADUTORA) || String(a).localeCompare(String(b)));
     pop.innerHTML = '<h3>Zonas</h3>' + `<button type="button" class="ilu-linha" data-pln-zona="" aria-current="${!PLN.zona}"><i class="zona"></i><span>Obra inteira</span></button>`
@@ -289,11 +284,11 @@ $('#plnFerr').addEventListener('click', ev => {
   if (s) { PLN.vis[s.dataset.plnSitu] = !PLN.vis[s.dataset.plnSitu]; colorirPln(); return abrirPopPln('legenda', true); }
   const z = ev.target.closest('[data-pln-zona]'); if (z) { fecharPopPln(); return z.dataset.plnZona ? focarZonaPln(z.dataset.plnZona) : verTudoPln(); }
   const c = ev.target.closest('[data-pln-camada]');
-  if (c) { PLN.cam[c.dataset.plnCamada] = !PLN.cam[c.dataset.plnCamada]; aplicarCamadasPln(); return abrirPopPln('camadas', true); }
+  if (c) { PLN.cam[c.dataset.plnCamada] = !PLN.cam[c.dataset.plnCamada]; aplicarCamadasPln(); desenharVista(PLN); return abrirPopPln('camadas', true); }
 });
 function aplicarCamadasPln() {
-  [['plantas', '#plnPlantas'], ['quadros', '#plnQuadros'], ['zonas', '#plnZonas'], ['nomes', '#plnNomes']].forEach(([k, sel]) => {
-    const el = $(sel); if (el) el.style.display = PLN.cam[k] ? '' : 'none';
+  [['plantas', satDe(PLN)], ['quadros', $('#plnQuadros')], ['zonas', $('#plnZonas')], ['nomes', $('#plnNomes')]].forEach(([k, el]) => {
+    if (el) el.style.display = PLN.cam[k] ? '' : 'none';
   });
   try { localStorage.setItem('mc-pln-camadas', JSON.stringify(PLN.cam)); } catch (_) { /* sem storage */ }
 }

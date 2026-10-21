@@ -7,8 +7,9 @@ refeito quando o HTML muda (data de modificação).
 
 * geometria(caminho)  → dicionário enxuto para a tela (zonas, nomes, quadros, trechos por nome visível, imagens),
                         com as pontas dos trechos encaixadas no centro do nó (correcoes)
-* mosaico(caminho)    → as 25 imagens montadas numa só (webp), se o Pillow estiver instalado; senão None e a tela
-                        monta as imagens uma a uma (imagem_pb)
+* mosaico(caminho)    → as fotos de satélite das 25 PBs montadas numa só (webp), com a matriz completa de cada uma e cada
+                        PB recortada pelo seu quadro, se o Pillow estiver instalado; senão None e a tela monta as PBs
+                        uma a uma (imagem_pb)
 * imagem_pb(caminho, pb) → bytes webp da imagem de uma PB, como está no HTML
 * pontas(caminho)     → cada ponta de trecho medida em metros contra o nó da 06.1, com classe e ação de desenho
 * correcoes(caminho)  → por desenho (GERAL e PBxx), as pontas a encaixar no nó: [trecho, parte, ponta, cortar, x, y]
@@ -37,6 +38,7 @@ TOL_NO_M = 0.10            # ponta a até 10 cm do centro do nó: já está no n
 TOL_ENCAIXE_M = 2.0        # a 06.1 liga ponta a nó até 1,59 m (2.721 pontas): acima de 2 m não encaixa, é pendência
 TOL_PONTA_UTM_M = 0.5      # a ponta do desenho fica sobre a UTM da 06.1; acima disso o desenho não chega ao fim do trecho
 ALCANCE_ARCO_M = 3.0       # trecho perto da ponta onde se procura o arco do pulo
+VERSAO_MOSAICO = 2          # muda quando a montagem do mosaico muda (o guardado em mapa/cache/ é refeito)
 SEM_NO = {"DIVISA DE ZONA": "DIVISA_ZONA", "LIMITE DA TRAVESSIA MND": "LIMITE_MND",
           "PONTA SEM NÓ NA TABELA": "PONTA_SEM_NO", "JUNÇÃO SEM NÓ NA TABELA": "JUNCAO_SEM_NO"}
 
@@ -384,26 +386,70 @@ def imagem_pb(caminho, pb):
     return base64.b64decode(b64) if b64 else None
 
 
+def _no_mosaico(Image, ImageDraw, tela, src, im, escala, quadro=None):
+    """Cola uma PB na tela do mosaico com a matriz completa do REV02 (a PB20 é girada 90°): reduz a foto primeiro (Lanczos)
+    e aplica a afim só na caixa que ela ocupa. Com `quadro`, só a parte dentro do quadro da PB."""
+    a, b, cc, d, e, f = im["matrix"]
+    k = escala * math.hypot(a, b) * im["w"] / src.width               # pixels da tela por pixel da foto
+    red = src.resize((max(1, round(src.width * k)), max(1, round(src.height * k))), Image.LANCZOS, reducing_gap=2.0)
+    su, sv = im["w"] / red.width, im["h"] / red.height                 # unidades da folha por pixel da foto reduzida
+    A, C, B, D = escala * a * su, escala * cc * sv, escala * b * su, escala * d * sv
+    E, F = escala * e, escala * f
+    cantos = [(A * x + C * y + E, B * x + D * y + F) for x, y in ((0, 0), (red.width, 0), (red.width, red.height), (0, red.height))]
+    x0, y0 = max(0, math.floor(min(x for x, _ in cantos))), max(0, math.floor(min(y for _, y in cantos)))
+    x1, y1 = min(tela.width, math.ceil(max(x for x, _ in cantos))), min(tela.height, math.ceil(max(y for _, y in cantos)))
+    if x1 <= x0 or y1 <= y0:
+        return
+    det = A * D - C * B
+    i00, i01, i10, i11 = D / det, -C / det, -B / det, A / det
+    pedaco = red.transform((x1 - x0, y1 - y0), Image.AFFINE,
+                           (i00, i01, i00 * (x0 - E) + i01 * (y0 - F), i10, i11, i10 * (x0 - E) + i11 * (y0 - F)), resample=Image.BILINEAR)
+    mascara = Image.new("L", pedaco.size, 0)
+    ImageDraw.Draw(mascara).polygon([(x - x0, y - y0) for x, y in cantos], fill=255)
+    if quadro:
+        corte = Image.new("L", pedaco.size, 0)
+        ImageDraw.Draw(corte).polygon([(quadro[i] * escala - x0, quadro[i + 1] * escala - y0) for i in range(0, len(quadro), 2)], fill=255)
+        mascara = Image.composite(corte, Image.new("L", pedaco.size, 0), mascara)
+    tela.paste(pedaco, (x0, y0), mascara)
+
+
 def mosaico(caminho, escala=1.3, qualidade=58):
+    """As fotos de satélite das 25 PBs montadas numa imagem só, no espaço da visão geral. Primeiro as folhas inteiras (cobrem
+    o que fica entre os quadros), depois cada PB recortada pelo seu quadro: a folha inteira cobria a vizinha e deixava a
+    emenda torta. O corte no limite das zonas é feito na tela (clipPath), com a borda exata."""
     c = _ler(caminho)
     if "mosaico" in c:
         return c["mosaico"]
+    # montar leva alguns segundos: a imagem fica guardada em mapa/cache/ (refeita quando o HTML ou a montagem mudam)
+    guardado = os.path.join(os.path.dirname(os.path.abspath(caminho)), "cache",
+                            f"geral_v{VERSAO_MOSAICO}_{int(os.path.getmtime(caminho))}_{escala:g}_{qualidade}.webp")
+    if os.path.isfile(guardado):
+        with open(guardado, "rb") as f:
+            c["mosaico"] = f.read()
+        return c["mosaico"]
     try:
-        from PIL import Image
+        from PIL import Image, ImageDraw
     except ImportError:
         c["mosaico"] = None
         return None
     g = c["dados"]["visaoGeral"]
     tela = Image.new("RGB", (round(g["w"] * escala), round(g["h"] * escala)), (14, 14, 14))
-    for im in g["images"]:
-        b64 = c["imagens"].get(im["id"])
-        if not b64:
-            continue
-        a, _, _, d, e, f = im["matrix"]                    # as PBs só têm escala e deslocamento (rotação ~1e-7)
-        src = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
-        tam = (max(1, round(im["w"] * a * escala)), max(1, round(im["h"] * d * escala)))
-        tela.paste(src.resize(tam, Image.LANCZOS, reducing_gap=2.0), (round(e * escala), round(f * escala)))
+    quadros = {q["id"]: q["p"] for q in g.get("frames", [])}
+    fotos = [(im, Image.open(io.BytesIO(base64.b64decode(c["imagens"][im["id"]]))).convert("RGB"))
+             for im in g["images"] if c["imagens"].get(im["id"])]
+    for im, src in fotos:
+        _no_mosaico(Image, ImageDraw, tela, src, im, escala)
+    for im, src in fotos:
+        if im["id"] in quadros:
+            _no_mosaico(Image, ImageDraw, tela, src, im, escala, quadros[im["id"]])
     buf = io.BytesIO()
     tela.save(buf, "WEBP", quality=qualidade, method=4)
     c["mosaico"] = buf.getvalue()
+    try:                                                   # pasta só de leitura (executável): fica só na memória
+        os.makedirs(os.path.dirname(guardado), exist_ok=True)
+        with open(guardado + ".tmp", "wb") as f:
+            f.write(c["mosaico"])
+        os.replace(guardado + ".tmp", guardado)
+    except OSError:
+        pass
     return c["mosaico"]
