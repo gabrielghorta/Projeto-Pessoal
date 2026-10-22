@@ -10,6 +10,7 @@ import os
 import re
 import threading
 
+import apropriacao as AP
 import servicos as S
 from servicos import RegraViolada, _rows
 
@@ -98,6 +99,11 @@ def bm(conn, planilha="JUNTADA", q=None):
     itens = _rows(conn.execute(f"""SELECT item, item_bm, subgrupo, subgrupo_nome, codigo_caesb, classificacao, descricao, unidade,
                                           quantidade, preco_unitario, valor_total FROM bm_itens
                                    WHERE planilha=? AND vigente=1{f} ORDER BY linha_origem, id""", [planilha, *a]))
+    if planilha == "VERTICAL":                       # situação na base de custo (aprovado ou a aprovar) e o código oficial
+        sit = {it["item"]: it for it in AP.catalogo(conn, com_reprovados=False) if it["tipo_ref"] == "BM"}
+        for i in itens:
+            s = sit.get(i["item"]) or {}
+            i.update({k: s.get(k) for k in ("situacao", "rotulo", "origem_rotulo", "codigo_oficial", "conciliado")})
     por_classe = {}
     for i in itens:
         por_classe[i["classificacao"] or "—"] = round(por_classe.get(i["classificacao"] or "—", 0) + (i["valor_total"] or 0), 2)

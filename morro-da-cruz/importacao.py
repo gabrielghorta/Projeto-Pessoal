@@ -1120,6 +1120,16 @@ def preparar_v18(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v19(conn):
+    """Esquema v18 → v19: apropriação direta e itens a aprovar na base de custo. Tabelas novas (apropriacoes,
+    apropriacao_documentos, itens_novos_base, codigos_oficiais) e, em medicao_lancamentos, a gaveta 5 e as colunas do item
+    novo, da restrição, da liberação e da data do lançamento. O CHECK da gaveta não muda por ALTER: a tabela é recriada
+    com todas as linhas (mesmos ids, contagem conferida) antes de descartar a antiga."""
+    S.aplicar_esquema(conn)
+    _recriar_tabela(conn, "medicao_lancamentos", "BETWEEN 1 AND 5")
+    S.aplicar_esquema(conn)
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

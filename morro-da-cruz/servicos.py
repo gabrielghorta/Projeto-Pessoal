@@ -25,7 +25,7 @@ from regras import RegraViolada
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 18
+VERSAO_ESQUEMA = 19
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -69,7 +69,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "nota de serviço por upload (topografia, cadastro, serviço e NS do dia)"))
+                 (VERSAO_ESQUEMA, _agora(), "apropriação direta, itens a aprovar na base de custo e gaveta 5 da medição"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -189,6 +189,8 @@ def _retirado(conn, alvo_tipo, alvo_id):
 
 
 def nome_alvo(conn, alvo_tipo, alvo_id):
+    if alvo_tipo == "APROPRIACAO":                     # gaveta 5: a parcela é a apropriação direta
+        return f"Apropriação nº {alvo_id}"
     try:
         return alvo(conn, alvo_tipo, alvo_id)["nome"]
     except RegraViolada:
@@ -1698,6 +1700,19 @@ def _bm_item(conn, chave):
     return _one(conn, "SELECT * FROM bm_itens WHERE planilha='VERTICAL' AND item=? AND vigente=1", chave)
 
 
+def codigo_oficial(conn, item):
+    """O código oficial registrado para um item com código provisório (o último), ou None."""
+    return _one(conn, "SELECT * FROM codigos_oficiais WHERE item=? ORDER BY id DESC LIMIT 1", item)
+
+
+def item_a_aprovar(conn, bm):
+    """O código provisório do item do BM que ainda não tem o código oficial registrado (None se o item é aprovado:
+    base Caesb, SINAPI, SICRO ou provisório já com o código oficial). A situação vale para toda a medição."""
+    if bm is None or R.origem_codigo(bm["codigo_caesb"]) != "PROVISORIO" or codigo_oficial(conn, bm["item"]):
+        return None
+    return bm["codigo_caesb"] or "sem código"
+
+
 def _itens_servico(conn, servico, trecho):
     """[(bm_item, fração)] de um serviço da 06.1, segundo config/servicos_rede.json; [] = sem vínculo com fonte."""
     cfg = next((s for s in mapa_servicos()["gaveta1"] if s["servico"] == servico), None)
@@ -1717,14 +1732,22 @@ def chave_parcela(tipo_medicao, gaveta, servico, alvo_tipo, alvo_id, item, unida
 
 
 def _lancar(conn, medicao_id, gaveta, servico, bm, unidade, quantidade, alvo_tipo=None, alvo_id=None,
-            nf_id=None, material_id=None, motivo=None, obs=None):
-    status = "PROPOSTO" if bm is not None and not motivo else "PENDENTE"
+            nf_id=None, material_id=None, motivo=None, obs=None, restricao=None, novo=None):
+    """Grava a parcela na medição. PROPOSTO só com item (do BM ou item novo aprovado) e sem motivo; o resto fica PENDENTE,
+    fora do valor. Item do BM com código provisório sem o código oficial fica PENDENTE com a restrição ITEM_A_APROVAR e
+    entra sozinho quando o código é registrado (apropriacao.sincronizar)."""
+    provisorio = item_a_aprovar(conn, bm)
+    if provisorio and not motivo:
+        motivo, restricao = (f"item a aprovar na base de custo (código provisório {provisorio}): fora da medição até o "
+                             "código oficial da Caesb ser registrado", "ITEM_A_APROVAR")
+    status = "PROPOSTO" if (bm is not None or novo is not None) and not motivo else "PENDENTE"
     if status == "PENDENTE" and not motivo:
         motivo = "sem item de BM com fonte"
     med = _one(conn, "SELECT numero, tipo, status FROM medicoes WHERE id=?", medicao_id)
     if med["status"] != "ABERTA":
         raise RegraViolada(f"A {med['numero']}ª medição já está fechada.")
-    chave = chave_parcela(med["tipo"], gaveta, servico, alvo_tipo, alvo_id, bm["item"] if bm else None, unidade, nf_id, material_id)
+    item = bm["item"] if bm else (f"NOVO-{novo['id']}" if novo else None)
+    chave = chave_parcela(med["tipo"], gaveta, servico, alvo_tipo, alvo_id, item, unidade, nf_id, material_id)
     # a mesma parcela em outra medição (ou repetida nesta), inclusive pelo alvo × serviço quando o item mudou de id
     ja = _one(conn, """SELECT m.numero FROM medicao_lancamentos l JOIN medicoes m ON m.id=l.medicao_id
                         WHERE l.chave=? OR (m.tipo=? AND l.gaveta=? AND l.servico=? AND l.alvo_tipo IS ? AND l.alvo_id IS ?
@@ -1733,11 +1756,12 @@ def _lancar(conn, medicao_id, gaveta, servico, bm, unidade, quantidade, alvo_tip
     if ja:
         raise RegraViolada(f"Parcela já medida: {servico} de {nome_alvo(conn, alvo_tipo, alvo_id) if alvo_id else 'NF/material'} "
                            f"já está na {ja['numero']}ª medição ({med['tipo']}). Nada foi lançado.")
-    conn.execute(
-        """INSERT INTO medicao_lancamentos(medicao_id,gaveta,servico,bm_item_id,alvo_tipo,alvo_id,nf_id,material_id,
-             unidade,quantidade,status,motivo,observacao,chave) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (medicao_id, gaveta, servico, bm["id"] if bm else None, alvo_tipo, alvo_id, nf_id, material_id, unidade,
-         round(quantidade, 4), status, motivo, obs, chave))
+    return conn.execute(
+        """INSERT INTO medicao_lancamentos(medicao_id,gaveta,servico,bm_item_id,item_novo_id,alvo_tipo,alvo_id,nf_id,material_id,
+             unidade,quantidade,status,motivo,observacao,chave,restricao,lancado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (medicao_id, gaveta, servico, bm["id"] if bm else None, novo["id"] if novo else None, alvo_tipo, alvo_id, nf_id,
+         material_id, unidade, round(quantidade, 4), status, motivo, obs, chave, restricao if status == "PENDENTE" else None,
+         _agora())).lastrowid
 
 
 def _vertical_por_codigo(conn, codigo_bm):
@@ -1804,9 +1828,11 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
                 codigos.setdefault(R.quantidades_previstas_elemento([i])[0]["servico"], i["codigo_bm"])
             for s in servs:
                 bm, motivo = _vertical_por_codigo(conn, codigos.get(s["servico"]))
-                if bm and str(bm["classificacao"]).upper().startswith("MATERIAL"):
-                    bm, motivo = None, "material: regime de faturamento pendente (matriz de regimes não aprovada)"
-                _lancar(conn, med["id"], 1, s["servico"], bm, s["unidade"], s["qtd"], tipo, aid, motivo=motivo)
+                restricao = None
+                if bm and str(bm["classificacao"]).upper().startswith("MATERIAL"):     # o item fica, para mostrar o valor parado
+                    motivo, restricao = "material: regime de faturamento pendente (matriz de regimes não aprovada)", "MATERIAL_SEM_REGIME"
+                _lancar(conn, med["id"], 1, s["servico"], bm, s["unidade"], s["qtd"], tipo, aid, motivo=motivo,
+                        restricao=restricao)
     return med["id"]
 
 
@@ -2134,7 +2160,7 @@ def congelar_medicao(conn, medicao_id, origem):
     r = _resumo_calculado(conn, medicao_id)
     for g in r["gavetas"].values():
         for l in g["lancamentos"]:
-            if l["bm_item_id"] is not None:
+            if l["bm_item_id"] is not None or l.get("item_novo_id") is not None:
                 conn.execute("UPDATE medicao_lancamentos SET preco_congelado=?, classificacao_congelada=?, item_congelado=? "
                              "WHERE id=?", (l["preco_unitario"], l["classificacao"], l["item"], l["id"]))
     bdi_m, bdi_s, k = _fatores(conn)
@@ -2155,6 +2181,7 @@ GAVETAS = {
     2: "Materiais — regime pendente (matriz de regimes)",
     3: "Cadastros Aprovados GDOC",
     4: "Calçadas / Asfalto",
+    5: "Apropriação direta",
 }
 
 
@@ -2187,15 +2214,17 @@ def _resumo_calculado(conn, medicao_id, usar_congelado=True):
         raise RegraViolada("Medição não encontrada.")
     med.pop("resumo_congelado", None)
     lanc = _rows(conn.execute(
-        """SELECT l.*, b.item, b.subgrupo, b.planilha, b.descricao AS bm_descricao, b.classificacao, b.preco_unitario
-           FROM medicao_lancamentos l LEFT JOIN bm_itens b ON b.id=l.bm_item_id
+        """SELECT l.*, COALESCE(b.item, 'NOVO-' || n.id) AS item, b.subgrupo, b.planilha,
+                  COALESCE(b.descricao, n.descricao) AS bm_descricao, COALESCE(b.classificacao, n.classificacao) AS classificacao,
+                  COALESCE(b.preco_unitario, n.preco_aprovado) AS preco_unitario
+           FROM medicao_lancamentos l LEFT JOIN bm_itens b ON b.id=l.bm_item_id LEFT JOIN itens_novos_base n ON n.id=l.item_novo_id
            WHERE l.medicao_id=? ORDER BY l.gaveta, l.id""", (medicao_id,)))
     for l in lanc:
         l["alvo_nome"] = nome_alvo(conn, l["alvo_tipo"], l["alvo_id"]) if l["alvo_id"] else None
         if usar_congelado and l["preco_congelado"] is not None:
             l["preco_unitario"], l["classificacao"], l["item"] = (l["preco_congelado"], l["classificacao_congelada"],
                                                                   l["item_congelado"])
-    linha = lambda l: (l["bm_item_id"], l["classificacao"], l["preco_unitario"], l["quantidade"])
+    linha = lambda l: (l["bm_item_id"] or ("NOVO", l["item_novo_id"]), l["classificacao"], l["preco_unitario"], l["quantidade"])
     propostos = [l for l in lanc if l["status"] == "PROPOSTO"]
     gavetas = {}
     for g, n in GAVETAS.items():

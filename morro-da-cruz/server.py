@@ -23,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlparse
 
 import acesso as A
+import apropriacao as AP
 import caminhos
 import backup
 import compras as C
@@ -368,7 +369,8 @@ def r_medicoes(q, c):
 
 
 def p_medicao(b, c):
-    return {"id": S.criar_medicao(c, int(b["numero"]), b["periodo_ini"], b["periodo_fim"], b.get("tipo", "TESTE"))}
+    mid = S.criar_medicao(c, int(b["numero"]), b["periodo_ini"], b["periodo_fim"], b.get("tipo", "TESTE"))
+    return {"id": mid, "liberados": AP.sincronizar(c)}          # o que estava parado e já foi liberado entra nesta
 
 
 def r_medicao(q, c):
@@ -621,6 +623,41 @@ ROTAS_NS_DIA = {"/api/ns/dia": ("campo", p_ns_dia), "/api/ns/dia/conferir": ("re
                 "/api/ns/dia/anular": ("campo", p_ns_dia_anular)}
 
 
+# ------------------------------------------------------------------ apropriação direta e base de custo (D-90 em diante)
+def r_base_custo_busca(q, c):
+    return {"itens": AP.buscar(c, q.get("q"), q.get("grupo") or None, q.get("tipo") or None)}
+
+
+def r_base_custo_itens(q, c):
+    """Com ref: o item com a situação e o saldo; com grupo e tipo: os itens do subgrupo; sem nada: as listas da tela."""
+    if q.get("ref"):
+        it = AP.item(c, q["ref"])
+        return {"item": {**AP.publico(it), **AP.saldo(c, it)}}
+    itens = AP.itens_do_subgrupo(c, q["grupo"], q["tipo"]) if q.get("grupo") and q.get("tipo") else []
+    return {**AP.grupos(), "itens": itens}
+
+
+def r_apropriacoes(q, c, usuario):
+    equipe = usuario["equipe_id"] if usuario["restrito_a_equipe"] else (q.get("equipe") or None)
+    return AP.listar(c, q.get("ini") or None, q.get("fim") or None, equipe)
+
+
+def r_medicao_restricoes(q, c):
+    r = AP.restricoes(c, q.get("medicao") or None)
+    return {**r, "itens_a_aprovar": AP.itens_a_aprovar(c, r["linhas"])}
+
+
+ROTAS_APROPRIACAO = {
+    "/api/apropriacao": ("apropriacao", lambda b, c: AP.apropriar(c, b, b["por"], C.documento_dir(c))),
+    "/api/apropriacao/estornar": ("apropriacao", lambda b, c: AP.estornar(c, int(b["apropriacao_id"]), b.get("motivo"), b["por"])),
+    "/api/base-custo/item-novo": ("apropriacao", lambda b, c: AP.propor_item(c, b, b["por"])),
+    "/api/base-custo/decidir": ("medicao", lambda b, c: AP.decidir_item(c, b, b["por"], C.documento_dir(c))),
+    "/api/base-custo/codigo-oficial": ("medicao", lambda b, c: AP.registrar_codigo_oficial(c, b, b["por"], C.documento_dir(c))),
+}
+TELAS_BASE_CUSTO = ("campo", "medicao", "lev")
+TELAS_APROPRIACAO = ("campo", "diario", "medicao")
+
+
 # ------------------------------------------------------------------ documentos oficiais (links do Google Drive)
 def r_documentos(q, c):
     return D.listar(c)
@@ -791,11 +828,13 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/lev/redes": r_lev_redes, "/api/lev/conexoes": r_lev_conexoes, "/api/topologia": r_topologia,
        "/api/topografia": r_topografia, "/api/cadastro-campo": r_cadastro_campo,
        "/api/dados-obra/selecao": r_dados_obra_selecao, "/api/dados-obra/estado": r_dados_obra_estado,
-       "/api/cronograma": r_cronograma, "/api/almox/quarentena": r_quarentena}
+       "/api/cronograma": r_cronograma, "/api/almox/quarentena": r_quarentena,
+       "/api/base-custo/busca": r_base_custo_busca, "/api/base-custo/itens": r_base_custo_itens,
+       "/api/medicao/restricoes": r_medicao_restricoes}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
-               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia}
+               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
@@ -814,6 +853,7 @@ POST.update(ROTAS_DRIVE)
 POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar,
              "/api/medicao/conferir": p_medicao_conferir})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_PLANEJAMENTO.items()})
+POST.update({rota: fn for rota, (_, fn) in ROTAS_APROPRIACAO.items()})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, **ROTAS_NS,
                 **{rota: fn for rota, (_, fn) in ROTAS_NS_DIA.items()}}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
@@ -850,6 +890,8 @@ PERMISSAO.update({rota: "notas_servico" for rota in ROTAS_NS})
 AUTOR.update({rota: ("por",) for rota in ROTAS_NS})
 PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_NS_DIA.items()})
 AUTOR.update({rota: ("por",) for rota in ROTAS_NS_DIA})
+PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_APROPRIACAO.items()})
+AUTOR.update({rota: ("por",) for rota in ROTAS_APROPRIACAO})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 # tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral"}
@@ -868,10 +910,12 @@ TELA_GET = {"/api/equipe": ("equipes", "ponto", "mapa") + _CAMPO, "/api/estoque"
             "/api/dados-obra/selecao": ("mapa",), "/api/dados-obra/estado": ("mapa",), "/api/cronograma": ("cronograma", "mapa"),
             "/api/almox/quarentena": ("almox", "compras"),
             "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS, "/api/ns/dia": ("campo", "diario", "notas"),
+            "/api/base-custo/busca": TELAS_BASE_CUSTO, "/api/base-custo/itens": TELAS_BASE_CUSTO,
+            "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
 TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",),   # downloads (/arquivos/: LEV)
-                "/api/ns/arquivo": TELAS_NS}
+                "/api/ns/arquivo": TELAS_NS, "/api/apropriacao/arquivo": TELAS_APROPRIACAO}
 LIMITE_CORPO = 32 * 1024 * 1024                  # PDF + croqui + planilha da NS em base64 cabem; acima: 413 sem ler o corpo
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
 
@@ -1042,6 +1086,8 @@ class Handler(BaseHTTPRequestHandler):
                               {"Content-Disposition": f'attachment; filename="{nome}"'})
         if u.path == "/api/ns/arquivo":
             return self._ns_arquivo(q, usuario)
+        if u.path == "/api/apropriacao/arquivo":
+            return self._apropriacao_arquivo(q, usuario)
         if u.path in ("/mapa", "/mapa/"):
             return self._mapa()
         if u.path.startswith("/mapa/"):
@@ -1083,6 +1129,27 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(302, "", "text/plain; charset=utf-8", {"Location": no_drive["drive_link"]})
             return self._send(404, {"erro": "O arquivo não está no servidor."})
         with open(caminho, "rb") as f:                  # fora da trava: o arquivo é lido sem segurar o banco
+            dados = f.read()
+        return self._send(200, dados, doc["mime"] or "application/octet-stream",
+                          {"Content-Disposition": f"inline; filename*=UTF-8''{quote(nome)}",
+                           "Content-Security-Policy": "sandbox", "Cache-Control": "private, max-age=3600"})
+
+    def _apropriacao_arquivo(self, q, usuario):
+        """Evidência de uma apropriação direta ou o documento da Caesb de um item a aprovar (inline, sem executar nada)."""
+        try:
+            with LOCK:
+                doc, nome = AP.arquivo(CONN, int(q.get("doc") or 0))
+                caminho = os.path.join(C.documento_dir(CONN), doc["arquivo"])
+                no_drive = (DR.por_ref(CONN, "DOCUMENTO", [doc["id"]]) or {}).get(doc["id"]) or {}
+        except R.RegraViolada as e:
+            return self._send(404, {"erro": str(e)})
+        except (KeyError, ValueError, TypeError) as e:
+            return self._send(400, {"erro": f"Requisição inválida: {e}"})
+        if not os.path.isfile(caminho):
+            if no_drive.get("drive_link"):
+                return self._send(302, "", "text/plain; charset=utf-8", {"Location": no_drive["drive_link"]})
+            return self._send(404, {"erro": "O arquivo não está no servidor."})
+        with open(caminho, "rb") as f:
             dados = f.read()
         return self._send(200, dados, doc["mime"] or "application/octet-stream",
                           {"Content-Disposition": f"inline; filename*=UTF-8''{quote(nome)}",

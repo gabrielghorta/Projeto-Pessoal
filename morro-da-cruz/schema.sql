@@ -654,9 +654,10 @@ CREATE TABLE IF NOT EXISTS medicoes (
 CREATE TABLE IF NOT EXISTS medicao_lancamentos (
   id INTEGER PRIMARY KEY,
   medicao_id INTEGER NOT NULL REFERENCES medicoes(id),
-  gaveta INTEGER NOT NULL CHECK (gaveta BETWEEN 1 AND 4),
+  gaveta INTEGER NOT NULL CHECK (gaveta BETWEEN 1 AND 5),   -- v19: gaveta 5 = apropriação direta
   servico TEXT NOT NULL,
   bm_item_id INTEGER REFERENCES bm_itens(id),
+  item_novo_id INTEGER REFERENCES itens_novos_base(id),     -- v19: item fora do BM, aprovado pela Caesb
   alvo_tipo TEXT, alvo_id TEXT,
   nf_id INTEGER REFERENCES notas_fiscais(id),
   material_id TEXT REFERENCES materiais(id),
@@ -668,7 +669,10 @@ CREATE TABLE IF NOT EXISTS medicao_lancamentos (
   preco_congelado REAL,                -- preço sem BDI do item no fechamento da medição
   classificacao_congelada TEXT,
   item_congelado TEXT,
-  chave TEXT                           -- v13: parcela (tipo da medição|gaveta|serviço|alvo|item|unid.): única entre medições
+  chave TEXT,                          -- v13: parcela (tipo da medição|gaveta|serviço|alvo|item|unid.): única entre medições
+  restricao TEXT,                      -- v19: o que segura o PENDENTE (ITEM_A_APROVAR, MATERIAL_SEM_REGIME); vira proposta quando cai
+  origem_id INTEGER REFERENCES medicao_lancamentos(id),     -- v19: o PENDENTE de medição fechada que este lançamento liberou
+  lancado_em TEXT                      -- v19: quando foi lançado (dias parados na lista "medível com restrição")
 );
 
 -- v13: conferência interna da medição de TESTE pela engenharia (Ankara), antes do fechamento. Guarda o retrato das
@@ -941,6 +945,70 @@ CREATE TABLE IF NOT EXISTS ns_segmentos (
   pendente TEXT                        -- por que ficou pendente (sem assentado, avanço legado, clima…)
 );
 CREATE INDEX IF NOT EXISTS ix_ns_segmentos ON ns_segmentos(ns_id);
+
+-- v19: apropriação direta (lançamento sem nota de serviço, só Engenharia e Administração) e itens a aprovar na base de
+-- custo. A planilha do BM não muda: o código oficial de um item com código provisório (XX) fica em codigos_oficiais e o
+-- item que não está no BM fica em itens_novos_base. Nada é apagado: estorno, reprovação e troca ficam no histórico.
+CREATE TABLE IF NOT EXISTS itens_novos_base (
+  id INTEGER PRIMARY KEY,
+  grupo TEXT NOT NULL,                 -- CANTEIRO, REDES, CAIXAS, INTERLIGAÇÃO, LIGAÇÕES, HIDROMECÂNICO, ADMINISTRAÇÃO LOCAL
+  classificacao TEXT NOT NULL CHECK (classificacao IN ('MATERIAL','SERVIÇO')),
+  descricao TEXT NOT NULL,
+  unidade TEXT NOT NULL,
+  atributos TEXT,                      -- JSON com as chaves do BM (descricao_resumida, material, diametro, pressao…)
+  preco_proposto REAL NOT NULL CHECK (preco_proposto > 0),
+  fonte_preco TEXT NOT NULL CHECK (fonte_preco IN ('COTACAO','NF','SINAPI','SICRO')),
+  fonte_ref TEXT,                      -- código SINAPI/SICRO, nº da NF ou da cotação
+  justificativa TEXT NOT NULL,
+  situacao TEXT NOT NULL DEFAULT 'A_APROVAR' CHECK (situacao IN ('A_APROVAR','APROVADO','REPROVADO')),
+  codigo_oficial TEXT,
+  preco_aprovado REAL,
+  documento_id INTEGER REFERENCES documentos(id),          -- ofício ou memorando da Caesb (aprovação)
+  data_decisao TEXT,
+  motivo TEXT,                         -- da reprovação
+  proposto_por TEXT NOT NULL, proposto_em TEXT NOT NULL,
+  decidido_por TEXT, decidido_em TEXT
+);
+CREATE TABLE IF NOT EXISTS codigos_oficiais (
+  id INTEGER PRIMARY KEY,
+  item TEXT NOT NULL,                  -- item da Vertical (5.1_1.14.1): vale de uma revisão do BM para a outra
+  bm_item_id INTEGER NOT NULL REFERENCES bm_itens(id),
+  codigo_provisorio TEXT NOT NULL,
+  codigo TEXT NOT NULL,
+  documento_id INTEGER NOT NULL REFERENCES documentos(id),
+  data TEXT NOT NULL,
+  por TEXT NOT NULL, em TEXT NOT NULL,
+  conciliado_rev TEXT, conciliado_em TEXT                 -- revisão do BM importada já com este código
+);
+CREATE INDEX IF NOT EXISTS ix_codigos_oficiais ON codigos_oficiais(item);
+CREATE TABLE IF NOT EXISTS apropriacoes (
+  id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  bm_item_id INTEGER REFERENCES bm_itens(id),
+  item_novo_id INTEGER REFERENCES itens_novos_base(id),
+  item TEXT NOT NULL,                  -- item da Vertical ou NOVO-<id>
+  quantidade REAL NOT NULL CHECK (quantidade > 0),
+  unidade TEXT NOT NULL,
+  local_tipo TEXT CHECK (local_tipo IN ('CANTEIRO','ZONA','TRECHO','ATIVIDADE')),
+  local_id TEXT,
+  local_texto TEXT,
+  executor_tipo TEXT NOT NULL CHECK (executor_tipo IN ('EQUIPE_OBRA','OUTRA_OBRA','TERCEIRO')),
+  equipe_id TEXT REFERENCES equipes(id),
+  executor_obra TEXT,                  -- outra obra ou contrato da Ankara
+  executor_nome TEXT,                  -- equipe da outra obra ou nome do terceiro
+  o_que_foi_feito TEXT NOT NULL,
+  memoria_calculo TEXT NOT NULL,
+  justificativa TEXT NOT NULL,
+  registrado_por TEXT NOT NULL, registrado_em TEXT NOT NULL,
+  estornado_por TEXT, estornado_em TEXT, estorno_motivo TEXT,
+  CHECK ((bm_item_id IS NULL) <> (item_novo_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS ix_apropriacoes ON apropriacoes(data);
+CREATE TABLE IF NOT EXISTS apropriacao_documentos (
+  apropriacao_id INTEGER NOT NULL REFERENCES apropriacoes(id),
+  documento_id INTEGER NOT NULL REFERENCES documentos(id),
+  PRIMARY KEY (apropriacao_id, documento_id)
+);
 -- (os índices de intervalos_execucao.ns_segmento_id e etapas_complementares.ns_segmento_id são criados por
 -- servicos.aplicar_esquema quando a coluna já existe: as migrações antigas aplicam o esquema antes da v18)
 

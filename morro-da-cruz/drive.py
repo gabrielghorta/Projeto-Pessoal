@@ -387,9 +387,31 @@ def _destino_ns(conn, d):
     return pasta, f"{_limpo(titulo)} ({d['sha256'][:8]}).{ext}"
 
 
+def _destino_apropriacao(conn, d):
+    """Evidência da apropriação direta (por mês da apropriação) ou documento da Caesb de um item a aprovar."""
+    ext = d["arquivo"].rsplit(".", 1)[-1]
+    base = re.sub(r"\.[A-Za-z0-9]{2,5}$", "", str(d["nome_original"] or "")) or "sem nome"
+    ap = _one(conn, """SELECT a.id, a.data, a.item FROM apropriacao_documentos x JOIN apropriacoes a ON a.id=x.apropriacao_id
+                       WHERE x.documento_id=? ORDER BY a.id LIMIT 1""", d["id"])
+    if ap:
+        titulo = f"Morro da Cruz - Apropriação {ap['id']} - item {ap['item']} - {ap['data']} - {base}"
+        return f"03_EXECUCAO_DE_CAMPO/03_Apropriacao_Direta/{str(ap['data'])[:7]}", f"{_limpo(titulo)} ({d['sha256'][:8]}).{ext}"
+    cod = (_one(conn, "SELECT item, codigo, data FROM codigos_oficiais WHERE documento_id=? ORDER BY id LIMIT 1", d["id"])
+           or _one(conn, "SELECT 'NOVO-' || id AS item, codigo_oficial AS codigo, data_decisao AS data FROM itens_novos_base "
+                         "WHERE documento_id=? ORDER BY id LIMIT 1", d["id"]))
+    if cod:
+        titulo = f"Morro da Cruz - Código oficial {cod['codigo']} - item {cod['item']} - {cod['data']}"
+        return "05_MEDICAO/01_Base_de_Custo", f"{_limpo(titulo)} ({d['sha256'][:8]}).{ext}"
+    return None
+
+
 def _destino_documento(conn, d):
     if d["tipo"] in DOC_NS:
         destino = _destino_ns(conn, d)
+        if destino:
+            return destino
+    if d["tipo"] == "OUTRO":
+        destino = _destino_apropriacao(conn, d)
         if destino:
             return destino
     ext = d["arquivo"].rsplit(".", 1)[-1]

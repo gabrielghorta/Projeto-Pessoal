@@ -1,5 +1,5 @@
 {
-  "_leia": "Perfis, permissões e telas (decisão D-10 em docs/DECISOES_PENDENTES.md; telas por perfil definidas pelo responsável em 19/10/2026; topografia e cadastro de campo são terceirizados e registrados só pela Engenharia e pela Administração; o grupo Almoxarifado virou Planejamento em 21/10/2026, com o mapa do Dados da obra e o cronograma do Project; notas de serviço em PDF e NS do dia da equipe a partir de 21/10/2026, decisões D-69 em diante). O servidor confere a permissão de cada gravação e a tela de cada consulta (GET); quem grava é sempre o usuário da sessão. \"telas\": [\"*\"] = todas. Ajuste esta matriz e os usuários reais você mesmo (python usuarios.py).",
+  "_leia": "Perfis, permissões e telas (decisão D-10 em docs/DECISOES_PENDENTES.md; telas por perfil definidas pelo responsável em 19/10/2026; topografia e cadastro de campo são terceirizados e registrados só pela Engenharia e pela Administração; o grupo Almoxarifado virou Planejamento em 21/10/2026, com o mapa do Dados da obra e o cronograma do Project; notas de serviço em PDF e NS do dia da equipe a partir de 21/10/2026, decisões D-69 em diante; apropriação direta, só Engenharia e Administração, a partir de 22/10/2026, decisões D-90 em diante). O servidor confere a permissão de cada gravação e a tela de cada consulta (GET); quem grava é sempre o usuário da sessão. \"telas\": [\"*\"] = todas. Ajuste esta matriz e os usuários reais você mesmo (python usuarios.py).",
   "permissoes": {
     "usuarios": "Criar, alterar, desativar e excluir usuários",
     "auditoria": "Consultar o histórico de alterações de qualquer objeto",
@@ -23,11 +23,12 @@
     "medicao": "Abrir, conferir, fechar e exportar medição de TESTE",
     "documentos": "Ligar a conta Google da obra (fotos e notas no Drive)",
     "notas_servico": "Enviar e registrar notas de serviço e croquis (topografia, cadastro e serviço de obra)",
-    "lancar_sem_ns": "Lançar à mão o avanço de um trecho sem nota de serviço (exceção, com motivo)"
+    "lancar_sem_ns": "Lançar à mão o avanço de um trecho sem nota de serviço (exceção, com motivo)",
+    "apropriacao": "Apropriação direta e cadastro de item a aprovar na base de custo"
   },
   "telas": {
     "iluminado": "Mapa iluminado",
-    "campo": "Execução · Nota do dia",
+    "campo": "Execução · Lançamento do dia (nota de serviço e apropriação direta)",
     "diario": "Execução · Diário de obra",
     "interferencias": "Execução · Interferências e ocorrências",
     "topografia": "Execução · Topografia (liberação, terceirizada)",
@@ -51,12 +52,12 @@
                       "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar",
                                      "compras_pedir", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar",
                                      "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos",
-                                     "notas_servico", "lancar_sem_ns"]},
+                                     "notas_servico", "lancar_sem_ns", "apropriacao"]},
     "ENGENHARIA": {"nome": "Engenharia", "telas": ["*"],
                    "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar",
                                   "compras_pedir", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar",
                                   "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos",
-                                  "notas_servico", "lancar_sem_ns"]},
+                                  "notas_servico", "lancar_sem_ns", "apropriacao"]},
     "ALMOXARIFADO": {"nome": "Almoxarifado", "telas": ["iluminado", "campo", "diario", "interferencias", "mapa", "almox", "ponto", "compras"],
                      "permissoes": ["almox", "receber", "inventario_contar", "compras_solicitar", "campo"]},
     "SUPERVISOR": {"nome": "Supervisor de campo", "telas": ["iluminado", "campo", "diario", "interferencias"],

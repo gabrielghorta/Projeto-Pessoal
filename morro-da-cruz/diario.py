@@ -1,12 +1,13 @@
 """Execução: o diário de obra de cada dia (o que cada equipe fez) e o painel de interferências e ocorrências.
 
-Só leitura: junta o que a NS do dia (e o que o sistema lançou a partir dela), o check-in, o planejamento e as
-ocorrências já gravaram. Nada aqui grava; abrir e resolver uma interferência continuam nas rotas de ocorrência
+Só leitura: junta o que a NS do dia (e o que o sistema lançou a partir dela), a apropriação direta, o check-in, o
+planejamento e as ocorrências já gravaram. Nada aqui grava; abrir e resolver uma interferência continuam nas rotas de ocorrência
 (servicos.abrir_ocorrencia / resolver_ocorrencia).
 """
 import re
 from datetime import date
 
+import apropriacao as AP
 import notas_servico as NS
 import planejamento as P
 import regras as R
@@ -89,7 +90,7 @@ def diario(conn, data, equipe=None):
             "alertas": alertas(checkins, ns_dia, nomes),
             "equipes": [{"id": e, "nome": nomes.get(e, e), "clima": clima.get(e, {})} for e in equipes],
             "programacoes": programacoes, "checkins": checkins, "producao": producao, "liberacoes": liberacoes,
-            "soldas": soldas, "fotos": fotos, "ocorrencias": ocorrencias,
+            "soldas": soldas, "fotos": fotos, "ocorrencias": ocorrencias, "apropriacoes": AP.listar(conn, data, data, equipe),
             "totais": {"assentado_m": metros["ASSENTADO"], "cadastro_m": metros["CADASTRO_CAMPO"], "reaterrado_m": metros["REATERRADO"],
                        "soldas": sum(s["quantidade"] for s in soldas), "fotos": len(fotos), "ocorrencias": len(ocorrencias),
                        "equipes": len(equipes)}}

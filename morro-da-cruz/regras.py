@@ -347,6 +347,25 @@ def indice_reajuste(periodo_ini, periodo_fim, indices):
         "(cruza aniversário ou após a última vigência) — cadastrar o novo índice e o rateio na aba REAJUSTE.")
 
 
+# ------------------------------------------------------------------ base de custo: situação do item
+ORIGEM_CODIGO = OrderedDict([("BASE_CAESB", "base Caesb"), ("SINAPI", "SINAPI"), ("SICRO", "SICRO"),
+                             ("PROVISORIO", "código provisório"), ("NOVO", "item novo")])
+
+
+def origem_codigo(codigo):
+    """De onde vem o código do item do BM: base Caesb (só números), SINAPI ('SI' no código), SICRO ('SC') ou provisório
+    (com 'X', como 1514603060XX11, até a Caesb dar o código oficial). SINAPI e SICRO vieram no orçamento da licitação
+    (P0): são contratuais. Código vazio ou fora desses formatos também é provisório."""
+    c = str(codigo or "").strip().upper()
+    if not c or "X" in c:
+        return "PROVISORIO"
+    if "SI" in c:
+        return "SINAPI"
+    if "SC" in c:
+        return "SICRO"
+    return "BASE_CAESB" if c.isdigit() else "PROVISORIO"
+
+
 def aplicar_teto(valor_pedido, ja_medido, teto):
     """Limita ao teto do subgrupo (BM Vertical). Retorna (valor_aceito, excedente)."""
     if teto is None:

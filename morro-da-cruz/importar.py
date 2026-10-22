@@ -41,7 +41,8 @@ OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontam
                 "fornecedores", "documentos", "solicitacoes_compra", "solicitacao_itens", "pedidos_compra", "pedido_itens",
                 "nf_linhas", "recebimentos", "recebimento_itens", "inspecoes", "devolucoes_fornecedor", "transferencias",
                 "inventarios", "inventario_itens", "programacoes", "programacao_materiais", "conferencias_medicao",
-                "notas_servico", "ns_segmentos"]
+                "notas_servico", "ns_segmentos", "apropriacoes", "apropriacao_documentos", "itens_novos_base",
+                "codigos_oficiais"]
 
 
 class ImportacaoReprovada(RuntimeError):
@@ -83,7 +84,7 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
     versao = S.versao_banco(conn)
     antes = contar_operacionais(conn)
     # Migração de esquema roda com as chaves estrangeiras desligadas, como manda o procedimento do SQLite: há migrações que
-    # recriam tabelas (v1; notas_fiscais/movimentos na v11; retificacoes_intervalos na v17; documentos na v18) e, com as
+    # recriam tabelas (v1; notas_fiscais/movimentos na v11; retificacoes_intervalos na v17; documentos na v18; medicao_lancamentos na v19) e, com as
     # chaves ligadas, renomear a tabela antiga reescreveria as referências das outras tabelas para o nome provisório, que
     # depois é descartado. A integridade é conferida por PRAGMA foreign_key_check antes do COMMIT e qualquer violação
     # reprova a importação inteira. Banco já no esquema atual: chaves ligadas.
@@ -128,6 +129,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v17(conn)
         if 0 < versao < 18:
             I.preparar_v18(conn)
+        if 0 < versao < 19:
+            I.preparar_v19(conn)
         S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar
