@@ -61,8 +61,10 @@ Decisões D-90 a D-97 (`docs/DECISOES_PENDENTES.md`, seção 8). Código: `aprop
 `servicos._lancar`.
 
 **Situação do item na base de custo** (só duas, para toda a medição):
-- **aprovado:** código da base Caesb (215 itens), SINAPI ("SI" no código, 185) ou SICRO ("SC", 16), que vieram no orçamento
-  da licitação (P0), ou código provisório com o código oficial registrado;
+- **aprovado:** código da base Caesb: só números (215 itens) ou com a composição de referência SINAPI ("SI" no código,
+  185) ou SICRO ("SC", 16). Os códigos com SI e SC também são oficiais da base de custos da Caesb (ex.: tapume
+  8000508010SI98459, na Tabela de Engenharia – DF) e vieram no orçamento da licitação (P0). Ou código provisório com o
+  código oficial registrado;
 - **a aprovar:** os 16 itens do BM com "X" no código (ex.: `1514603060XX11`) até a Caesb dar o código oficial, e os itens
   novos, fora do BM.
 

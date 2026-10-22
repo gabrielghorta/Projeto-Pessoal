@@ -4,6 +4,7 @@ Tudo aqui é determinístico e testável isoladamente; `servicos.py` aplica
 estas regras sobre o banco.
 """
 import math
+import re
 from collections import OrderedDict
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -348,14 +349,16 @@ def indice_reajuste(periodo_ini, periodo_fim, indices):
 
 
 # ------------------------------------------------------------------ base de custo: situação do item
-ORIGEM_CODIGO = OrderedDict([("BASE_CAESB", "base Caesb"), ("SINAPI", "SINAPI"), ("SICRO", "SICRO"),
-                             ("PROVISORIO", "código provisório"), ("NOVO", "item novo")])
+ORIGEM_CODIGO = OrderedDict([("BASE_CAESB", "base Caesb"), ("SINAPI", "base Caesb (composição SINAPI)"),
+                             ("SICRO", "base Caesb (composição SICRO)"), ("PROVISORIO", "código provisório"),
+                             ("NOVO", "item novo")])
 
 
 def origem_codigo(codigo):
-    """De onde vem o código do item do BM: base Caesb (só números), SINAPI ('SI' no código), SICRO ('SC') ou provisório
-    (com 'X', como 1514603060XX11, até a Caesb dar o código oficial). SINAPI e SICRO vieram no orçamento da licitação
-    (P0): são contratuais. Código vazio ou fora desses formatos também é provisório."""
+    """De onde vem o código do item do BM: base Caesb (só números), base Caesb com composição SINAPI ('SI' no código, como
+    8000508010SI98459) ou SICRO ('SC'), ou provisório (com 'X', como 1514603060XX11, até a Caesb dar o código oficial).
+    Os códigos com SI e SC são oficiais da base de custos da Caesb e vieram no orçamento da licitação (P0): são
+    contratuais. Código vazio ou fora desses formatos também é provisório."""
     c = str(codigo or "").strip().upper()
     if not c or "X" in c:
         return "PROVISORIO"
@@ -364,6 +367,12 @@ def origem_codigo(codigo):
     if "SC" in c:
         return "SICRO"
     return "BASE_CAESB" if c.isdigit() else "PROVISORIO"
+
+
+def composicao_referencia(codigo):
+    """'8000508010SI98459' → 'SINAPI 98459'; '2202019100SCE9779' → 'SICRO E9779'; código sem SI/SC → None."""
+    m = re.search(r"(SI|SC)([A-Z0-9]+)$", str(codigo or "").strip().upper())
+    return f"{'SINAPI' if m.group(1) == 'SI' else 'SICRO'} {m.group(2)}" if m else None
 
 
 def aplicar_teto(valor_pedido, ja_medido, teto):

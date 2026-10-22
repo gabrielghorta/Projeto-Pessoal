@@ -88,7 +88,10 @@ TÊ 90° eletrofusão DE 63 PE100). Sinônimos: TE/TÊ, PEAD/POLIETILENO DE ALTA
 PVC/POLICLORETO DE VINILA e FOFO/FERRO FUNDIDO. Primeiro o casamento exato de item ou código, depois quem casa mais palavras
 inteiras; o diâmetro exato do item vale mais que um pedaço ("63" não empata com "110X63"). A busca também acha os itens
 novos. Escolher pela busca preenche o grupo e o tipo sozinho. Cada resultado mostra a situação em etiqueta: verde
-"Aprovado · base Caesb/SINAPI/SICRO", vermelha "A aprovar · código provisório" ou "A aprovar · item novo".
+"Aprovado · base Caesb" (com a composição de referência quando o código tem SI ou SC, como "Aprovado · base Caesb
+(SINAPI 98459)" no tapume 8000508010SI98459, que é código oficial da base de custos da Caesb), vermelha "A aprovar ·
+código provisório" ou "A aprovar · item novo". Achado o item, o formulário Apropriação vem logo abaixo (botão "Apropriar
+este item"); o cadastro de item novo é só para o que não está no orçamento.
 
 **Cartão do item:** situação, origem do código, preço unitário sem BDI, contratado, já medido e apropriado, saldo, e o
 aviso quando a quantidade passa do saldo (o excedente fica parado até aditivo ou apostilamento), quando o item é a

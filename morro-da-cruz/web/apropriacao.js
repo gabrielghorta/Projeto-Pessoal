@@ -101,6 +101,7 @@ async function aprEscolher(ref, preencher) {
     await aprCarregarSubgrupo(r.item.ref);
   }
   $$('#aprResultados [data-apr-ref]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.aprRef === ref)));
+  $('#fItemNovo').hidden = true; $('#novoParecidos').innerHTML = '';     // achou o item: o cadastro de item novo não é preciso
   aprCartao();
 }
 function aprCartao() {
@@ -120,7 +121,8 @@ function aprCartao() {
     ${it.situacao === 'A_APROVAR' ? '<div class="aviso problema"><b>Item a aprovar:</b> a apropriação é gravada, mas fica fora da medição até a Caesb dar o código oficial.</div>' : ''}
     ${it.situacao === 'REPROVADO' ? '<div class="aviso problema"><b>Item reprovado pela Caesb:</b> escolha outro item.</div>' : ''}
     ${it.classificacao === 'MATERIAL' ? '<div class="aviso info">Material: fica fora da medição até a matriz de regimes ser aprovada (D-53/D-54).</div>' : ''}
-    ${passa ? `<div class="aviso problema">A quantidade passa do saldo do item (${nf(it.saldo, 3)} ${esc(it.unidade)}): o excedente fica parado até aditivo ou apostilamento.</div>` : ''}</div>`;
+    ${passa ? `<div class="aviso problema">A quantidade passa do saldo do item (${nf(it.saldo, 3)} ${esc(it.unidade)}): o excedente fica parado até aditivo ou apostilamento.</div>` : ''}
+    ${it.situacao !== 'REPROVADO' && pode('apropriacao') ? '<div class="acoes" style="margin-top:8px"><button type="button" class="btn prim" data-apr-ir="1">Apropriar este item ↓</button></div>' : ''}</div>`;
 }
 $('#fApr').quantidade.addEventListener('input', aprCartao);
 
@@ -249,6 +251,11 @@ document.addEventListener('click', async ev => {
     if (!motivo || !motivo.trim()) return;
     const r = await acao(() => api('/api/apropriacao/estornar', { apropriacao_id: +est.dataset.aprEstornar, motivo }), 'Apropriação estornada.').catch(() => null);
     if (r) { aprCarregarLista(); if (APR.item) aprEscolher(APR.item.ref, false); }
+    return;
+  }
+  if (ev.target.closest('[data-apr-ir]')) {                // do cartão do item para o formulário da apropriação
+    $('#fApr').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => $('#fApr').quantidade.focus({ preventScroll: true }), 350);
     return;
   }
   const usar = ev.target.closest('[data-apr-usar]');

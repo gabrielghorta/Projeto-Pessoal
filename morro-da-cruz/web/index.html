@@ -233,8 +233,33 @@
             </div>
             <label style="margin-top:10px">Item<select id="aprItem"><option value="">Escolha o grupo e o tipo</option></select></label>
             <div id="aprCartao" style="margin-top:10px"></div>
-            <div class="acoes" style="margin-top:10px"><button type="button" class="btn grande" id="aprNovoBtn" data-perm="apropriacao">O item não está na lista</button></div>
+            <p class="vazio" style="margin:10px 0 0">Achou o item? Preencha a <b>Apropriação</b> logo abaixo.</p>
+            <div class="acoes" style="margin-top:6px"><button type="button" class="btn" id="aprNovoBtn" data-perm="apropriacao">O item não está no orçamento? Cadastrar item novo a aprovar</button></div>
           </div>
+          <form class="painel" id="fApr" data-perm="apropriacao">
+            <h3>Apropriação</h3>
+            <div class="linha">
+              <label>Data<input type="date" name="data" required></label>
+              <label>Quantidade <span id="aprUnidade"></span><input type="number" step="any" min="0" name="quantidade" required></label>
+            </div>
+            <div class="linha">
+              <label>Local (opcional)<select name="local_tipo" id="aprLocalTipo"><option value="">Sem local</option><option value="CANTEIRO">Canteiro</option><option value="ZONA">Zona</option><option value="TRECHO">Trecho</option><option value="ATIVIDADE">Nó ou caixa</option></select></label>
+              <label id="aprZonaRot" hidden>Zona<select id="aprZona"></select></label>
+              <label id="aprAlvoRot" hidden>Trecho / nó / caixa<div class="busca"><input id="aprAlvo" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
+            </div>
+            <div class="linha">
+              <label>Quem executou<select name="executor_tipo" id="aprExecutor" required></select></label>
+              <label id="aprEquipeRot">Equipe da obra<select name="equipe_id" id="aprEquipe"></select></label>
+              <label id="aprObraRot" hidden>Obra ou contrato da Ankara<input name="executor_obra" placeholder="ex.: CT 9702/2024 — ETE Paranoá"></label>
+              <label id="aprNomeRot" hidden>Equipe<input name="executor_nome" placeholder="qual equipe ou nome do terceiro"></label>
+            </div>
+            <label>O que foi feito<textarea name="o_que_foi_feito" rows="2" required></textarea></label>
+            <label>Memória de cálculo da quantidade<textarea name="memoria_calculo" rows="2" required placeholder="ex.: 2 contêineres × 1 instalação"></textarea></label>
+            <label>Justificativa técnica<textarea name="justificativa" rows="2" required></textarea></label>
+            <label>Evidências: fotos, croqui ou documento (pelo menos uma)<input type="file" name="evidencias" multiple accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
+            <p class="vazio" style="margin:0">As evidências vão para o memorial da medição (galeria de fotos/croqui e justificativa técnica) e para o Drive. Correção só por estorno, com motivo.</p>
+            <div class="acoes"><button class="btn prim grande" id="aprGravar">Gravar a apropriação</button></div>
+          </form>
           <form class="painel" id="fItemNovo" data-perm="apropriacao" hidden>
             <h3>Item novo a aprovar na base de custo</h3>
             <p class="vazio" style="margin:0 0 8px">Entra como "a aprovar" e já pode receber apropriação. Fica fora da medição até a Caesb dar o código oficial.</p>
@@ -266,30 +291,6 @@
             <label>Justificativa<textarea name="justificativa" rows="2" required placeholder="por que o item é preciso e por que não está no BM"></textarea></label>
             <div id="novoParecidos"></div>
             <div class="acoes"><button class="btn prim grande" id="novoGravar">Cadastrar o item a aprovar</button><button type="button" class="btn grande" id="novoCancelar">Cancelar</button></div>
-          </form>
-          <form class="painel" id="fApr" data-perm="apropriacao">
-            <h3>Apropriação</h3>
-            <div class="linha">
-              <label>Data<input type="date" name="data" required></label>
-              <label>Quantidade <span id="aprUnidade"></span><input type="number" step="any" min="0" name="quantidade" required></label>
-            </div>
-            <div class="linha">
-              <label>Local (opcional)<select name="local_tipo" id="aprLocalTipo"><option value="">Sem local</option><option value="CANTEIRO">Canteiro</option><option value="ZONA">Zona</option><option value="TRECHO">Trecho</option><option value="ATIVIDADE">Nó ou caixa</option></select></label>
-              <label id="aprZonaRot" hidden>Zona<select id="aprZona"></select></label>
-              <label id="aprAlvoRot" hidden>Trecho / nó / caixa<div class="busca"><input id="aprAlvo" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
-            </div>
-            <div class="linha">
-              <label>Quem executou<select name="executor_tipo" id="aprExecutor" required></select></label>
-              <label id="aprEquipeRot">Equipe da obra<select name="equipe_id" id="aprEquipe"></select></label>
-              <label id="aprObraRot" hidden>Obra ou contrato da Ankara<input name="executor_obra" placeholder="ex.: CT 9702/2024 — ETE Paranoá"></label>
-              <label id="aprNomeRot" hidden>Equipe<input name="executor_nome" placeholder="qual equipe ou nome do terceiro"></label>
-            </div>
-            <label>O que foi feito<textarea name="o_que_foi_feito" rows="2" required></textarea></label>
-            <label>Memória de cálculo da quantidade<textarea name="memoria_calculo" rows="2" required placeholder="ex.: 2 contêineres × 1 instalação"></textarea></label>
-            <label>Justificativa técnica<textarea name="justificativa" rows="2" required></textarea></label>
-            <label>Evidências: fotos, croqui ou documento (pelo menos uma)<input type="file" name="evidencias" multiple accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
-            <p class="vazio" style="margin:0">As evidências vão para o memorial da medição (galeria de fotos/croqui e justificativa técnica) e para o Drive. Correção só por estorno, com motivo.</p>
-            <div class="acoes"><button class="btn prim grande" id="aprGravar">Gravar a apropriação</button></div>
           </form>
         </div>
         <div class="painel" style="min-width:0;align-self:start">
