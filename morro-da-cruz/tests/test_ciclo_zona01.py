@@ -47,6 +47,7 @@ TEM_DADOS = all(I.caminho(CFG, k) for k in ("redes", "conexoes", "evidencias", "
 TR = "Zona01_PB01_Rede_TR001"
 D0, D1, D2, D3 = "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-16"
 FUTURO = "2099-01-01"
+SEM_NS = "ciclo de teste: lançamento à mão, sem a NS do dia"
 USUARIOS = (("eng1", "ENGENHARIA", None), ("eng2", "ENGENHARIA", None), ("almox1", "ALMOXARIFADO", None),
             ("almox2", "ALMOXARIFADO", None), ("enc1", "EQUIPE", "Zona01"), ("adm", "ADMINISTRACAO", None))
 TUDO_MED = dict.fromkeys(R.CHECKLIST_CONFERENCIA_MEDICAO, True)
@@ -247,14 +248,18 @@ class CicloZona01(unittest.TestCase):
                                                            "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 30},
                                                                           {"etapa": "CADASTRO_CAMPO", "ini_m": 0, "fim_m": 30}]}, 403)
         self.assertIn("aba Cadastro de campo", cad_enc)                     # o levantamento é da equipe terceirizada
-        ap = self.ok("enc1", "/api/apontamento", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                                  "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 30}]})["id"]
+        corpo = {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
+                 "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 30}]}
+        self.assertIn("Nota do dia", self.recusa("enc1", "/api/apontamento", corpo, 403))   # o avanço vem da NS do dia
+        self.recusa("eng1", "/api/apontamento", corpo)                     # à mão, só com o motivo
+        ap = self.ok("eng1", "/api/apontamento", dict(corpo, motivo_sem_ns=SEM_NS))["id"]
         type(self).ap1 = ap
         self.recusa("enc1", "/api/cadastro-campo", {"trecho_id": TR, "ini_m": 0, "fim_m": 30, "data": D2, "referencia": "caderneta 12"}, 403)
         type(self).cad1 = self.ok("eng1", "/api/cadastro-campo", {"trecho_id": TR, "ini_m": 0, "fim_m": 30, "data": D2,
                                                                   "referencia": "caderneta 12"})["id"]
-        self.recusa("enc1", "/api/apontamento", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                                 "intervalos": [{"etapa": "ASSENTADO", "ini_m": 20, "fim_m": 35}]})    # sobreposição
+        self.recusa("eng1", "/api/apontamento", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
+                                                 "intervalos": [{"etapa": "ASSENTADO", "ini_m": 20, "fim_m": 35}],
+                                                 "motivo_sem_ns": SEM_NS})                                          # sobreposição
         futuro = self.recusa("enc1", "/api/clima", {"data": FUTURO, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})
         self.assertIn("data futura", futuro)
         for cat in ("SINALIZACAO", "EXECUCAO"):
@@ -321,9 +326,10 @@ class CicloZona01(unittest.TestCase):
         ck = self.ok("almox1", "/api/checkin", {"data": D3, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
                                                 "materiais": [{"material_id": self.tubo, "quantidade": 50}]})["id"]
         resto = round(self.L - 28, 6)
-        self.ok("enc1", "/api/apontamento", {"data": D3, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
+        self.ok("eng1", "/api/apontamento", {"data": D3, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
                                              "intervalos": [{"etapa": "ASSENTADO", "ini_m": 28, "fim_m": self.L},
-                                                            {"etapa": "REATERRADO", "ini_m": 0, "fim_m": self.L}]})
+                                                            {"etapa": "REATERRADO", "ini_m": 0, "fim_m": self.L}],
+                                             "motivo_sem_ns": SEM_NS})
         self.ok("eng1", "/api/cadastro-campo", {"trecho_id": TR, "ini_m": 28, "fim_m": self.L, "data": D3, "referencia": "caderneta 13"})
         self.ok("enc1", "/api/foto", {"alvo_tipo": "TRECHO", "alvo_id": TR, "categoria": "CONCLUIDO", "conteudo_b64": jpeg(),
                                       "data_hora": f"{D3}T16:00:00"})

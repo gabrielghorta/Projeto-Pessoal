@@ -84,6 +84,7 @@ def duplicidades(conn, medicao_id=None):
             """SELECT m.tipo, l.gaveta, l.servico, l.alvo_tipo, l.alvo_id, GROUP_CONCAT(DISTINCT m.numero) numeros,
                       GROUP_CONCAT(DISTINCT l.medicao_id) ids
                FROM medicao_lancamentos l JOIN medicoes m ON m.id=l.medicao_id WHERE l.alvo_id IS NOT NULL
+                 AND l.id NOT IN (SELECT origem_id FROM medicao_lancamentos WHERE origem_id IS NOT NULL)
                GROUP BY m.tipo, l.gaveta, l.servico, l.alvo_tipo, l.alvo_id HAVING COUNT(DISTINCT l.medicao_id) > 1""").fetchall():
         ids = {int(x) for x in r["ids"].split(",")}
         if medicao_id is None or medicao_id in ids:
@@ -212,6 +213,12 @@ def elegibilidade(conn, medicao_id):
 
 # ------------------------------------------------------------------ conferência interna (engenharia) antes do fechamento
 def _evidencias(conn, tipo, aid):
+    if tipo == "APROPRIACAO":                      # gaveta 5: as evidências são os anexos da apropriação direta
+        n = conn.execute("SELECT COUNT(*) FROM apropriacao_documentos WHERE apropriacao_id=?", (aid,)).fetchone()[0]
+        ap = _one(conn, "SELECT registrado_por, registrado_em FROM apropriacoes WHERE id=?", aid) or {}
+        return {"ok_interno_em": None, "ok_interno_por": None, "fotos_validas": 0, "fotos_faltando": [] if n else ["evidência"],
+                "ocorrencias_abertas": 0, "soldas_informadas": 0, "soldas_aprovadas": 0, "soldas_sem_verificacao": 0,
+                "evidencias": n, "registrado_por": ap.get("registrado_por"), "registrado_em": ap.get("registrado_em")}
     ex = S.execucao(conn, tipo, aid) or {}
     fotos = conn.execute(f"SELECT COUNT(*) FROM fotos WHERE alvo_tipo=? AND alvo_id=? AND {S.FOTO_VALIDA}", (tipo, aid)).fetchone()[0]
     ev = {"ok_interno_em": ex.get("ok_fiscal_em"), "ok_interno_por": ex.get("ok_fiscal_por"), "fotos_validas": fotos,
@@ -231,8 +238,10 @@ def _evidencias(conn, tipo, aid):
 
 def retrato(conn, medicao_id):
     """Lançamentos, evidências por alvo, duplicidades e pendências — o que a engenharia confere."""
-    lanc = _rows(conn.execute("""SELECT l.id, l.gaveta, l.servico, l.alvo_tipo, l.alvo_id, b.item, l.unidade, l.quantidade, l.status,
-                                        l.motivo FROM medicao_lancamentos l LEFT JOIN bm_itens b ON b.id=l.bm_item_id
+    lanc = _rows(conn.execute("""SELECT l.id, l.gaveta, l.servico, l.alvo_tipo, l.alvo_id,
+                                        COALESCE(b.item, CASE WHEN l.item_novo_id IS NOT NULL THEN 'NOVO-' || l.item_novo_id END) item,
+                                        l.unidade, l.quantidade, l.status, l.motivo
+                                 FROM medicao_lancamentos l LEFT JOIN bm_itens b ON b.id=l.bm_item_id
                                  WHERE l.medicao_id=? ORDER BY l.gaveta, l.id""", (medicao_id,)))
     alvos = {}
     for l in lanc:

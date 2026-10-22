@@ -211,17 +211,22 @@ class TestPermissoesEAutoria(BaseHTTP):
         self.assertEqual(st, 403)
         self.assertIn("Zona01", r["erro"])
         self.assertEqual(enc.post("/api/clima", {"data": D, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})[0], 200)
-        st, r = enc.post("/api/apontamento", {"data": D, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                              "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}],
-                                              "informado_por": "Outra Pessoa"})
-        self.assertEqual(st, 200, r)
-        self.assertEqual(self.q("SELECT informado_por FROM apontamentos"), [("enc1",)])          # não o nome digitado
-        self.assertEqual(self.q("SELECT informado_por FROM intervalos_execucao"), [("enc1",)])
-        iid = self.q("SELECT id FROM intervalos_execucao")[0][0]
+        corpo = {"data": D, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
+                 "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}], "informado_por": "Outra Pessoa"}
+        st, r = enc.post("/api/apontamento", corpo)
+        self.assertEqual(st, 403, r)                                            # o avanço do trecho vem da NS do dia
+        self.assertIn("Nota do dia", r["erro"])
         eng = self.cliente("eng1")
-        st, r = eng.post("/api/intervalo/verificar", {"intervalo_id": iid, "verificado_por": "enc1"})
+        self.assertEqual(eng.post("/api/apontamento", corpo)[0], 422)           # à mão, só com o motivo
+        st, r = eng.post("/api/apontamento", dict(corpo, motivo_sem_ns="NS do dia molhou no campo"))
         self.assertEqual(st, 200, r)
-        self.assertEqual(self.q("SELECT verificado_por FROM intervalos_execucao"), [("eng1",)])
+        self.assertEqual(self.q("SELECT informado_por, motivo_sem_ns FROM apontamentos"),
+                         [("eng1", "NS do dia molhou no campo")])                   # não o nome digitado
+        self.assertEqual(self.q("SELECT informado_por FROM intervalos_execucao"), [("eng1",)])
+        iid = self.q("SELECT id FROM intervalos_execucao")[0][0]
+        st, r = self.cliente("eng2").post("/api/intervalo/verificar", {"intervalo_id": iid, "verificado_por": "enc1"})
+        self.assertEqual(st, 200, r)
+        self.assertEqual(self.q("SELECT verificado_por FROM intervalos_execucao"), [("eng2",)])
         self.assertEqual(enc.post("/api/intervalo/verificar", {"intervalo_id": iid})[0], 403)   # equipe não verifica
 
     def test_verificacao_segregada_pela_identidade_real(self):
@@ -229,7 +234,8 @@ class TestPermissoesEAutoria(BaseHTTP):
             S.registrar_clima(self.c, D, "Zona01", t, "SOL")
         eng1 = self.cliente("eng1")
         st, _ = eng1.post("/api/apontamento", {"data": D, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                               "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}]})
+                                               "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}],
+                                               "motivo_sem_ns": "teste"})
         self.assertEqual(st, 200)
         iid = self.q("SELECT id FROM intervalos_execucao")[0][0]
         st, r = eng1.post("/api/intervalo/verificar", {"intervalo_id": iid, "verificado_por": "outra pessoa"})
@@ -287,10 +293,10 @@ class TestReenvioConcorrenciaEAtomicidade(BaseHTTP):
         self.assertEqual(S.disponivel(self.c, "CAESB-PEAD-DE63"), 10)
 
     def test_falha_no_meio_desfaz_a_operacao_e_o_registro_de_reenvio(self):
-        enc = self.cliente("enc1")
-        enc.post("/api/clima", {"data": D, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})
+        self.cliente("enc1").post("/api/clima", {"data": D, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})
+        enc = self.cliente("eng1")                                              # lançamento à mão: exceção da engenharia
         corpo = {"data": D, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                 "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}]}
+                 "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10}], "motivo_sem_ns": "teste"}
         with mock.patch.object(S, "_atualizar_execucao_trecho", side_effect=RuntimeError("queda simulada")):
             st, r = enc.post("/api/apontamento", corpo, cabecalhos={"X-Idem": "k-falha"})
         self.assertEqual(st, 500)

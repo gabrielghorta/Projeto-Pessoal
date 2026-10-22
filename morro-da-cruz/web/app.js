@@ -137,9 +137,10 @@ aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escur
 const TELAS = {
   inicio: { titulo: 'Início', carregar: () => renderInicio() },
   iluminado: { titulo: 'Mapa iluminado', carregar: () => carregarIluminado() },
-  campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', carregar: () => {} },
-  diario: { titulo: 'Diário de campo', grupo: 'grupo-campo', carregar: () => carregarDiario() },
+  campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', carregar: () => carregarLancamentoDia() },
+  diario: { titulo: 'Diário de obra', grupo: 'grupo-campo', carregar: () => carregarDiario() },
   interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
+  notas: { titulo: 'Notas de serviço', grupo: 'grupo-campo', carregar: () => carregarNotas() },
   topografia: { titulo: 'Topografia', grupo: 'grupo-campo', carregar: () => carregarTopografia() },
   cadastro_campo: { titulo: 'Cadastro de campo', grupo: 'grupo-campo', carregar: () => carregarCadCampo() },
   mapa: { titulo: 'Dados da obra', grupo: 'planejamento', carregar: () => carregarDadosObra() },
@@ -209,7 +210,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
-  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: lançamento do dia, diário, interferências e, das equipes terceirizadas, topografia e cadastro de campo.' },
+  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: a nota do dia de cada equipe, o diário de obra, interferências, as notas de serviço e, das equipes terceirizadas, topografia e cadastro de campo.' },
   planejamento: { nome: 'Planejamento', desc: 'O mapa do Dados da obra (programar as equipes, liberar o material do dia e receber a devolução), a programação, o cronograma do Project, o estoque com o aceite do material, compras e notas e o check-in.' },
   administrativo: { nome: 'Administrativo', desc: 'Equipes, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
 };
@@ -731,6 +732,7 @@ let CAMPO = null;
 async function selecionarCampo(tipo, id) {
   const d = await acao(() => api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(id)}`));
   CAMPO = { tipo, id, d };
+  ndAlvoEscolhido(d.nome || id);
   $('#apMetros').style.display = tipo === 'TRECHO' ? '' : 'none';
   const iv = d.intervalos;
   const editavel = tipo === 'TRECHO' && !(d.execucao && d.execucao.ok_fiscal_em);
@@ -881,7 +883,7 @@ async function enviarApontamento(editado) {
     .map(([etapa, k]) => ({ etapa, ini_m: +o[k + '_ini'], fim_m: +o[k + '_fim'] }));
   await acao(() => api('/api/apontamento', { data: o.data, equipe_id: o.equipe_id, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id,
     concluido_100: !!o.concluido_100, intervalos: o.concluido_100 ? null : intervalos,
-    estaca_ini: o.estaca_ini, estaca_fim: o.estaca_fim, quantidades }), 'Apontamento registrado.');
+    estaca_ini: o.estaca_ini, estaca_fim: o.estaca_fim, quantidades, motivo_sem_ns: o.motivo_sem_ns }), 'Apontamento registrado.');
   $('#apQuant').innerHTML = ''; ['ass', 'rea'].forEach(k => { $(`input[name=${k}_ini]`, fAp).value = ''; $(`input[name=${k}_fim]`, fAp).value = ''; });
   $('input[name=concluido_100]', fAp).checked = false;
   selecionarCampo(CAMPO.tipo, CAMPO.id);
@@ -899,12 +901,12 @@ function renderSoldas() {
   const s = CAMPO.d.soldas;
   $('#soldas').innerHTML = `<p style="margin:4px 0">${s.estimativa_barras_6m != null ? `Estimativa ⌈L/6⌉: <b>${s.estimativa_barras_6m}</b> (só referência) · ` : ''}Informadas <b>${s.informadas}</b> · aprovadas ${s.aprovadas} · reprovadas ${s.reprovadas} · sem verificação ${s.sem_verificacao}</p>
     ${s.registros.map(r => `<div><small>${esc(r.data)} · ${r.quantidade} ${esc(r.tipo)}${r.posicao_m != null ? ' @ ' + nf(r.posicao_m) + ' m' : ''} · ${esc(r.soldador)} · inf. ${esc(r.informado_por)}</small>
-      ${r.verificado_em ? `<span class="chip ${r.resultado === 'APROVADA' ? 'verde' : 'vermelho'}">${esc(r.resultado)} · ${esc(r.verificado_por)}</span>` : `<button type="button" class="btn" data-verificar-solda="${r.id}">Verificar</button>`}</div>`).join('')}`;
+      ${r.verificado_em ? `<span class="chip ${r.resultado === 'APROVADA' ? 'verde' : 'vermelho'}">${esc(r.resultado)} · ${esc(r.verificado_por)}</span>` : pode('verificar') ? `<button type="button" class="btn" data-verificar-solda="${r.id}">Verificar</button>` : '<span class="chip amarelo">sem verificação</span>'}</div>`).join('')}`;
 }
 $('#fSolda').addEventListener('submit', async ev => {
-  ev.preventDefault(); if (!CAMPO) return toast('Selecione o trecho/nó no apontamento.', 'erro');
+  ev.preventDefault(); if (!CAMPO) return toast('Escolha o trecho ou o nó das soldas.', 'erro');
   const o = formObj(ev.target), d = formObj(fAp);
-  const r = await acao(() => api('/api/solda', { ...o, data: d.data || hoje(), equipe_id: d.equipe_id || null, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id }), 'Soldas registradas (aguardam verificação).').catch(() => null);
+  const r = await acao(() => api('/api/solda', { ...o, data: d.data || hoje(), equipe_id: $('#ndEquipe').value || d.equipe_id || null, alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id }), 'Soldas registradas (aguardam verificação).').catch(() => null);
   if (r) { ev.target.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id); }
 });
 document.addEventListener('click', async ev => {
@@ -933,7 +935,7 @@ function lerOriginal(arquivo) {
 }
 $('#fFoto').addEventListener('submit', async ev => {
   ev.preventDefault();
-  if (!CAMPO) return toast('Selecione o trecho/nó no apontamento.', 'erro');
+  if (!CAMPO) return toast('Escolha o trecho ou o nó da foto.', 'erro');
   const f = ev.target, arq = f.arquivo.files[0], cat = f.categoria.value;
   const pos = await gps(), quando = new Date(arq.lastModified || Date.now()), dh = new Date(quando - quando.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
   const b64 = await lerOriginal(arq);
@@ -1028,6 +1030,7 @@ async function carregarMedicao() {
   $('#medTetos').className = r.tetos.length ? '' : 'vazio';
   $('#medTetos').innerHTML = r.tetos.length ? `<table><thead><tr><th>Subgrupo</th><th class="n">Teto</th><th class="n">Anterior</th><th class="n">Atual</th><th class="n">Excedente</th></tr></thead><tbody>
     ${r.tetos.map(t => `<tr><td>${esc(t.subgrupo)} ${esc(t.nome || '')}</td><td class="n">${brl(t.teto)}</td><td class="n">${brl(t.anterior)}</td><td class="n">${brl(t.atual)}</td><td class="n">${t.excedente ? `<span class="chip vermelho">${brl(t.excedente)}</span>` : '—'}</td></tr>`).join('')}</tbody></table>` : 'Sem lançamentos com item de BM.';
+  aprCarregarRestricoes(id);
 }
 const SIT_REGRA = { 'CONFIRMADA': 'verde', 'PROVISÓRIA': 'amarelo', 'HIPÓTESE': 'amarelo', 'BLOQUEADA': 'vermelho', 'VÍNCULO INCOMPLETO': 'vermelho' };
 const SIT_ELEG = { PROPOSTO_NESTA: ['verde', 'proposto nesta'], APTO_SEM_OK: ['amarelo', 'completo, sem OK interno'],
@@ -1284,6 +1287,8 @@ const ROT_CATEG = { INTERFERENCIA: 'Interferência', FALTA_MATERIAL: 'Falta de m
   SEGURANCA: 'Segurança', ACESSO: 'Acesso', OUTRO: 'Outro', EXECUCAO: 'Execução', MATERIAL: 'Material', SOLDA: 'Solda', CADASTRO: 'Cadastro',
   DOCUMENTO: 'Documento' };
 const ROT_PRODUCAO = { ASSENTADO: 'Assentado', CADASTRO_CAMPO: 'Cadastro de campo', REATERRADO: 'Reaterrado' };
+const PROG_EXEC = { PROGRAMADO_E_EXECUTADO: ['programado e executado', 'verde'], PROGRAMADO_SEM_EXECUCAO: ['programado, sem execução', 'amarelo'],
+  EXECUTADO_SEM_PROGRAMACAO: ['executado fora da programação', 'azul'] };
 const rotCateg = c => ROT_CATEG[c] || c;
 const tabelaHtml = (cab, linhas) => `<div class="tabela"><table><thead><tr>${cab}</tr></thead><tbody>${linhas.join('')}</tbody></table></div>`;
 function opcoesEquipe(sel, primeira) {
@@ -1296,9 +1301,17 @@ async function carregarDiario() {
   if (!$('#diaData').value) $('#diaData').value = hoje();
   const q = new URLSearchParams({ data: $('#diaData').value }); if (sel.value) q.set('equipe', sel.value);
   const d = await acao(() => api('/api/diario?' + q)).catch(() => null); if (!d) return;
-  const t = d.totais;
-  $('#diaKpis').innerHTML = [['Assentado', nf(t.assentado_m) + ' m'], ['Cadastro de campo', nf(t.cadastro_m) + ' m'], ['Reaterrado', nf(t.reaterrado_m) + ' m'],
+  const t = d.totais, fila = d.ns_dia.reduce((x, n) => x + n.fila.length, 0);
+  $('#diaAlertas').innerHTML = d.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('');
+  $('#diaKpis').innerHTML = [['Notas do dia', nf(d.ns_dia.length, 0)], ['Aguardando a engenharia', nf(fila, 0)], ['Assentado', nf(t.assentado_m) + ' m'],
+    ['Cadastro de campo', nf(t.cadastro_m) + ' m'], ['Reaterrado', nf(t.reaterrado_m) + ' m'],
     ['Soldas', nf(t.soldas, 0)], ['Fotos', nf(t.fotos, 0)], ['Ocorrências', nf(t.ocorrencias, 0)]].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join('');
+  renderDiarioNs(d.ns_dia);
+  $('#diaProgExec').innerHTML = d.programado_executado.length ? tabelaHtml('<th>Equipe</th><th>Trecho / nó</th><th>Programado</th><th>Executado</th><th></th>',
+    d.programado_executado.map(x => `<tr><td>${esc(x.equipe_id)}</td><td>${esc(curto(x.nome))}</td><td>${esc(x.servicos.join(', ') || '—')}</td>
+      <td>${Object.entries(x.executado).map(([e, m]) => `${esc((ROT_PRODUCAO[e] || e).toLowerCase())} ${nf(m)} m`).join(' · ') || '—'}</td>
+      <td><span class="chip ${PROG_EXEC[x.situacao][1]}">${PROG_EXEC[x.situacao][0]}</span></td></tr>`))
+    : '<p class="vazio">Nada programado nem executado neste dia.</p>';
   const nada = '<p class="vazio">Nada registrado neste dia.</p>';
   $('#diaEquipes').innerHTML = d.equipes.map(e => `<div class="dia-equipe"><b>${esc(e.nome)}</b>
       <span>Manhã: ${esc(e.clima.MANHA || '—')}</span><span>Tarde: ${esc(e.clima.TARDE || '—')}</span></div>`).join('') || '<p class="vazio">Nenhuma equipe registrou nada neste dia.</p>';
@@ -1319,6 +1332,7 @@ async function carregarDiario() {
       <small>${nf(c.funcionarios, 0)} pessoa(s) · ${nf(c.maquinas, 0)} máquina(s)${c.contingencia ? ' · ' + esc(c.contingencia) : ''}</small>
       ${c.materiais.length ? `<div><small>${c.materiais.map(m => `${esc(m.tipo.toLowerCase())} ${nf(m.quantidade, 3)} ${esc(m.material_id)}`).join(' · ')}</small></div>` : ''}</div>`).join('') || '<p class="vazio">Nenhum check-in neste dia.</p>';
   $('#diaOcorrencias').innerHTML = d.ocorrencias.map(htmlInterf).join('') || '<p class="vazio">Nenhuma interferência ou ocorrência aberta neste dia.</p>';
+  $('#diaApropriacoes').innerHTML = d.apropriacoes.map(a => aprHtml(a, false)).join('') || '<p class="vazio">Nenhuma apropriação direta neste dia.</p>';
   $('#painelDiaLib').hidden = !!d.equipe;
   $('#diaLiberacoes').innerHTML = d.liberacoes.map(l => `<div class="dia-equipe"><b>${esc(ROT_ETAPA[l.etapa] || l.etapa)}</b><span>${esc(curto(l.trecho))} · ${nf(l.ini_m)}–${nf(l.fim_m)} m</span>
       <small>${esc([l.registrado_por, l.referencia].filter(Boolean).join(' · '))}</small></div>`).join('') || nada;
@@ -1406,6 +1420,8 @@ async function carregarTopografia() {
   const f = $('#topFrente').value;
   const r = await acao(() => api('/api/topografia' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   TOP_DADOS = r; const t = r.totais;
+  $('#topNsEnviar').hidden = !(pode('notas_servico') && podeTela('notas'));
+  nsCarregarLista('TOPOGRAFIA', '#topNsLista');
   $('#topKpis').innerHTML = [['Trechos liberados', nf(t.trechos_liberados, 0)], ['Liberados em parte', nf(t.trechos_parciais, 0)],
     ['Metros liberados', nf(t.liberado_m) + ' m'], ['Programado sem liberação (7 dias)', nf(t.programados_sem_liberacao, 0)],
     ['Executado sem liberação', nf(t.executado_sem_liberacao_m) + ' m']].map(kpi).join('');
@@ -1438,6 +1454,7 @@ function renderTopLista() {
 async function selecionarTop(id) {
   const d = await acao(() => api(`/api/detalhe?tipo=TRECHO&id=${encodeURIComponent(id)}`)).catch(() => null); if (!d) return;
   TOP = { id, d }; preencherTrecho(fTop, d, id);
+  $('#topExcecao').open = true;                       // o detalhe do trecho (e anular) fica no painel da exceção
   $('#topAlvo').innerHTML = `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')}</div>
     ${htmlComplementar(d.complementar, pode('retificar_campo'), ['LIBERACAO_TOPOGRAFICA'])}
     ${(d.complementar.alertas || []).map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}`;
@@ -1477,6 +1494,8 @@ async function carregarCadCampo() {
   const f = $('#cadFrente').value;
   const r = await acao(() => api('/api/cadastro-campo' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   CAD_DADOS = r; const t = r.totais;
+  $('#cadNsEnviar').hidden = !(pode('notas_servico') && podeTela('notas'));
+  nsCarregarLista('CADASTRO', '#cadNsLista');
   $('#cadAviso').innerHTML = t.reaterrado_sem_cadastro_m > 0 ? `<div class="aviso problema"><b>${nf(t.reaterrado_sem_cadastro_m)} m já reaterrados sem levantamento.</b>
     Com a vala fechada não dá mais para levantar: veja a lista "Reaterrado sem levantamento".</div>` : '';
   $('#cadKpis').innerHTML = [['Vala aberta sem levantamento', nf(t.vala_aberta_m) + ' m'], ['Reaterrado sem levantamento', nf(t.reaterrado_sem_cadastro_m) + ' m'],
@@ -1510,6 +1529,7 @@ function renderCadLista() {
 async function selecionarCad(id) {
   const d = await acao(() => api(`/api/detalhe?tipo=TRECHO&id=${encodeURIComponent(id)}`)).catch(() => null); if (!d) return;
   CADC = { id, d }; preencherTrecho(fCad, d, id);
+  $('#cadExcecao').open = true;
   const iv = d.intervalos, ass = iv.etapas.ASSENTADO, cad = iv.etapas.CADASTRO_CAMPO;
   const falta = ass.cobertura.flatMap(x => foraDe(x, cad.cobertura));
   $('#cadRetif').innerHTML = '';
@@ -1599,15 +1619,17 @@ function htmlBM(r) {
   const vert = r.planilha === 'VERTICAL';
   let sub = null;
   const linhas = r.itens.flatMap(i => {
-    const grupo = vert && i.subgrupo !== sub ? (sub = i.subgrupo, [`<tr class="grupo"><td colspan="7">${esc(i.subgrupo)} · ${esc(i.subgrupo_nome || '')}</td></tr>`]) : [];
-    return [...grupo, `<tr><td>${esc(vert ? i.item_bm || i.item : i.item)}</td><td>${esc(i.codigo_caesb || '')}</td><td>${esc(i.descricao)}</td><td>${esc(i.unidade || '')}</td>
+    const grupo = vert && i.subgrupo !== sub ? (sub = i.subgrupo, [`<tr class="grupo"><td colspan="8">${esc(i.subgrupo)} · ${esc(i.subgrupo_nome || '')}</td></tr>`]) : [];
+    const sit = vert ? `<td><span class="chip ${i.situacao === 'APROVADO' ? 'verde' : 'vermelho'}">${esc(i.situacao === 'APROVADO' ? 'aprovado' : 'a aprovar')}</span>
+      <br><small>${esc(i.origem_rotulo || '')}${i.codigo_oficial ? ' · oficial ' + esc(i.codigo_oficial) : ''}${i.conciliado ? ' · ' + esc(i.conciliado) : ''}</small></td>` : '';
+    return [...grupo, `<tr><td>${esc(vert ? i.item_bm || i.item : i.item)}</td><td>${esc(i.codigo_caesb || '')}</td>${sit}<td>${esc(i.descricao)}</td><td>${esc(i.unidade || '')}</td>
       <td class="n">${nf(i.quantidade, 3)}</td><td class="n">${reais(i.preco_unitario)}</td><td class="n">${reais(i.valor_total)}</td></tr>`];
   });
   return `<div class="kpis"><div class="kpi"><span>Total ${vert ? 'BM Vertical' : 'BM'} (sem BDI)</span><b>${reais(r.total)}</b></div>
       ${Object.entries(r.por_classe).map(([k, v]) => `<div class="kpi"><span>${esc(k)}</span><b>${reais(v)}</b></div>`).join('')}
       <div class="kpi"><span>BDI material · serviço</span><b>${r.bdi == null ? '—' : pct(+r.bdi, 2)} · ${r.bdi_servico == null ? '—' : pct(+r.bdi_servico, 2)}</b></div></div>
     <p class="vazio" style="margin:0 0 8px">${nf(r.itens.length, 0)} itens${$('#levBusca').value.trim() ? ' encontrados' : ''}. Preços sem BDI (contrato, cláusula 5.2).</p>
-    ${r.itens.length ? tabelaHtml('<th>Item</th><th>Cód. Caesb</th><th>Descrição</th><th>Und.</th><th class="n">Quantidade</th><th class="n">Preço unit.</th><th class="n">Total</th>', linhas)
+    ${r.itens.length ? tabelaHtml(`<th>Item</th><th>Cód. Caesb</th>${vert ? '<th>Situação</th>' : ''}<th>Descrição</th><th>Und.</th><th class="n">Quantidade</th><th class="n">Preço unit.</th><th class="n">Total</th>`, linhas)
       : '<p class="vazio">Nenhum item com essa busca.</p>'}`;
 }
 function htmlRedes(r) {

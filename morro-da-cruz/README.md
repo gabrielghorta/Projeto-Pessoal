@@ -3,7 +3,7 @@
 Aplicação web **privada e local** da obra *Implantação de Redes de Distribuição no Morro da Cruz,
 São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 
-- Tecnologia: Python (biblioteca padrão + `openpyxl`; `pillow` opcional, para o satélite do Mapa iluminado), banco SQLite e interface HTML/JS sem bibliotecas externas (só as fontes do Google Fonts, com fonte do sistema se faltar internet).
+- Tecnologia: Python (biblioteca padrão + `openpyxl` + `pypdf`, para ler a nota de serviço em PDF; `pillow` opcional, para o satélite do Mapa iluminado), banco SQLite e interface HTML/JS sem bibliotecas externas (só as fontes do Google Fonts, com fonte do sistema se faltar internet).
 - Com login, perfis e permissões checadas no servidor. Roda no computador (`MorroDaCruz.exe`) ou **na nuvem, com link fixo e sem depender de computador** (`nuvem.py`, passo a passo em `docs/NUVEM.md`). O layout funciona em tela de celular (360 px).
 - **Implantação, backup e recuperação:** `docs/IMPLANTACAO.md`.
 - **Entrega para revisão** (situação, matriz, testes, decisões): `docs/ENTREGA_FINAL.md`. Ciclo completo da Zona01: `docs/EVIDENCIAS_CICLO_ZONA01.md`.
@@ -30,7 +30,7 @@ O executável é gerado e testado no Windows pelo GitHub Actions (`.github/workf
 
 ## Testar no seu computador pelo código (demonstração, sem tocar no banco oficial)
 
-1. Instale o Python 3.11+ (no Windows, marque "Add python.exe to PATH") e rode `pip install openpyxl pillow`.
+1. Instale o Python 3.11+ (no Windows, marque "Add python.exe to PATH") e rode `pip install openpyxl pillow "pypdf>=6,<7"`.
 2. Baixe esta branch (`claude/powerbi-modifications-wqxekj`) e entre na pasta `morro-da-cruz`.
 3. Copie as 5 planilhas oficiais para `planilhas/` e o HTML do mapa REV02 para `mapa/` (nomes em `planilhas/LEIA-ME.md` e `mapa/LEIA-ME.md`).
 4. Rode `python demo.py` e abra **http://127.0.0.1:8765**. Entre com `eng.demo` e a senha `demo-morro-123` (outros perfis: o comando lista).
@@ -39,7 +39,7 @@ O executável é gerado e testado no Windows pelo GitHub Actions (`.github/workf
 
 ## Como rodar (Windows)
 
-1. Instale o Python 3.11+ e rode `pip install openpyxl`. Recomendado: `pip install pillow`, para decodificar por completo as fotos enviadas. Sem o Pillow, PNG continua sendo decodificado e JPEG passa só pela verificação estrutural; o método fica registrado em cada foto.
+1. Instale o Python 3.11+ e rode `pip install openpyxl "pypdf>=6,<7"`. Recomendado: `pip install pillow`, para decodificar por completo as fotos enviadas. Sem o Pillow, PNG continua sendo decodificado e JPEG passa só pela verificação estrutural; o método fica registrado em cada foto.
 2. Coloque as planilhas oficiais em `planilhas/` e o HTML REV02 em `mapa/`. Os nomes exatos estão em `config/fontes.json`.
 3. Faça a importação. Ela nunca apaga o banco nem movimentos.
    ```

@@ -55,6 +55,63 @@ O que muda no banco:
 
 Na migração, os lançamentos existentes recebem a chave na ordem em que foram gravados. Uma parcela repetida por versão anterior fica **sem chave**: é preservada e aparece no relatório de duplicidades. A conferência CONFORME da medição que a contém fica impedida até a decisão da engenharia.
 
+## Gaveta 5, item a aprovar e "medível com restrição" (esquema v19, 22/10/2026)
+
+Decisões D-90 a D-97 (`docs/DECISOES_PENDENTES.md`, seção 8). Código: `apropriacao.py`; a regra do item a aprovar está em
+`servicos._lancar`.
+
+**Situação do item na base de custo** (só duas, para toda a medição):
+- **aprovado:** código da base Caesb (215 itens), SINAPI ("SI" no código, 185) ou SICRO ("SC", 16), que vieram no orçamento
+  da licitação (P0), ou código provisório com o código oficial registrado;
+- **a aprovar:** os 16 itens do BM com "X" no código (ex.: `1514603060XX11`) até a Caesb dar o código oficial, e os itens
+  novos, fora do BM.
+
+Qualquer lançamento num item a aprovar fica **PENDENTE** com a restrição `ITEM_A_APROVAR`, inclusive os que vêm do OK
+interno (gavetas 1 a 4). O lançamento de material do OK interno de nós passa a guardar o item do BM (continua PENDENTE,
+restrição `MATERIAL_SEM_REGIME`), para o valor parado aparecer.
+
+**Gaveta 5 — Apropriação direta.** Entra na medição de TESTE a apropriação em item **aprovado**, de **serviço** e dentro
+da quantidade do BM (contratado − medido nas gavetas 1 a 4 − já proposto de apropriações). Vai para a medição de teste
+aberta do mês da data ou, se ela já fechou ou não existe, para a próxima aberta. A chave da parcela é
+`TESTE|5|APROPRIAÇÃO DIRETA|APROPRIACAO|<nº>|<item>|<unid.>`: não duplica. Passa pela mesma conferência interna
+(o retrato mostra as evidências da apropriação). A medição oficial continua bloqueada (D-56). O item novo aprovado entra
+com o preço aprovado no cálculo (sem BDI na linha; o BDI e o K são os da medição).
+
+**Quando a restrição cai, entra sozinho** (`apropriacao.sincronizar`), na hora em que o código é registrado, o item novo
+é aprovado ou uma medição de teste é aberta:
+- apropriação: a quantidade ainda não proposta vira proposta (complemento com outro nome de serviço, se já havia uma parte);
+- lançamento retido numa medição **aberta**: vira PROPOSTO ali mesmo (a conferência deixa de valer, como em qualquer mudança);
+- lançamento retido numa medição **fechada**: uma cópia PROPOSTA entra na próxima medição de teste aberta, apontando para
+  o original (`origem_id`). O original fica como estava; o relatório de duplicidades não conta o par.
+
+**Painel "Medível com restrição"** (`GET /api/medicao/restricoes?medicao=`). Não entra no valor da medição. Cada linha:
+item, quantidade, **valor parado** (sem BDI: quantidade × preço do BM; no item novo, o preço proposto, "estimado"), a
+restrição em etiqueta forte, há quantos dias está parado e a ação que libera e quem faz. No topo, o total por restrição,
+filtros por restrição e por grupo e os botões "Registrar código oficial" e "Abrir a esteira do cadastro".
+
+| Restrição | O que entra | Libera |
+|---|---|---|
+| a. Item a aprovar | apropriações e lançamentos retidos em item XX ou novo; item novo reprovado aparece à parte | registrar o código oficial da Caesb |
+| b. Acima da contratada no BM | o excedente da apropriação sobre o saldo do item | aditivo ou apostilamento |
+| c. Excedente do teto do subgrupo (D-57) | o excedente da tabela de tetos da medição | aditivo ou apostilamento |
+| d. Material sem regime (D-53/D-54) | apropriação em item de material e lançamento de material do OK interno | aprovar a matriz de regimes |
+| e. Cadastro esperando o GDOC | trecho em `4_GDOC_ANALISE` (cobrar o memorando ESET), `3_RECEBIDO` (protocolar) e `5A_NEGADO` (reenviar à empresa); valor = extensão × item de cadastro (D-58) | as ações da esteira |
+| — Sem medição aberta | apropriação livre, mas sem medição de teste aberta para a data | abrir a medição do mês |
+
+**Painel "Itens a aprovar na base de custo":** os 16 XX e os itens novos, com a situação, o valor parado e as ações
+registrar o código (XX), aprovar (código, preço aprovado, data e o ofício ou memorando em PDF) e reprovar (motivo, fica no
+histórico). A planilha do BM não muda: o código fica em `codigos_oficiais` e aparece junto do item (LEV › BM Vertical,
+coluna Situação). Quando uma revisão nova do BM vier já com o código, a tela mostra "conciliado com a REV xx".
+
+| Rota | Permissão |
+|---|---|
+| `POST /api/base-custo/codigo-oficial` `{item_ref, codigo, data, documento_b64}` | `medicao` |
+| `POST /api/base-custo/decidir` `{item_ref, acao: APROVAR\|REPROVAR, codigo, preco_aprovado, data, documento_b64, motivo}` | `medicao` |
+| `GET /api/medicao/restricoes?medicao=` (lista, totais e os itens a aprovar) | tela `medicao` |
+| `POST /api/medicao` (abrir medição de teste) | `medicao`; agora também propõe o que estava livre |
+
+Testes: `tests/test_apropriacao.py` (`TestMedicao`, `TestSituacao`, `TestMigracaoV19`).
+
 ## Rotas
 
 | Rota | Permissão | Autor gravado |

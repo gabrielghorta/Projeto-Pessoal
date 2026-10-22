@@ -3,7 +3,7 @@
 #
 #   [ -d ~/Projeto-Pessoal ] || git clone -b claude/powerbi-modifications-wqxekj --depth 1 https://github.com/gabrielghorta/Projeto-Pessoal.git ~/Projeto-Pessoal; bash ~/Projeto-Pessoal/morro-da-cruz/instalar_pythonanywhere.sh
 #
-# O que ele faz: baixa a versão mais nova do código; instala o openpyxl; monta a obra das planilhas do repositório
+# O que ele faz: baixa a versão mais nova do código; instala o openpyxl e o pypdf (leitura da nota de serviço); monta a obra das planilhas do repositório
 # (banco de demonstração, perfil TESTE) e pede o seu administrador; liga o site em https://<seu usuário>.pythonanywhere.com
 # Pode rodar de novo quantas vezes quiser: não apaga nada (os dados ficam em morro-da-cruz/dados_demo, fora do Git).
 set -u
@@ -21,6 +21,7 @@ for v in 3.13 3.12 3.11; do
   command -v "python$v" >/dev/null || continue
   "python$v" -c "import openpyxl" 2>/dev/null || "python$v" -m pip install --user --quiet "openpyxl>=3.1,<4"
   "python$v" -c "import PIL" 2>/dev/null || "python$v" -m pip install --user --quiet "pillow>=10" 2>/dev/null || true
+  "python$v" -c "import pypdf" 2>/dev/null || "python$v" -m pip install --user --quiet "pypdf>=6,<7"
 done
 
 echo "== 3/4 Banco da obra e administrador"
