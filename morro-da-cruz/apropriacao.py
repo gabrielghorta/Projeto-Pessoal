@@ -125,14 +125,16 @@ def _rev_bm(conn):
 
 def _situacao_bm(b, oficial, rev=None):
     origem = R.origem_codigo(b["codigo_caesb"])
-    s = {"origem": origem, "origem_rotulo": R.ORIGEM_CODIGO[origem], "codigo_oficial": None, "conciliado": None}
+    comp = R.composicao_referencia(b["codigo_caesb"]) if origem in ("SINAPI", "SICRO") else None
+    s = {"origem": origem, "origem_rotulo": f"base Caesb · composição {comp}" if comp else R.ORIGEM_CODIGO[origem],
+         "codigo_oficial": None, "conciliado": None}
     if oficial:
         s["codigo_oficial"] = oficial["codigo"]
         s["oficial"] = {k: oficial[k] for k in ("codigo", "data", "por", "em", "documento_id", "codigo_provisorio")}
         if origem != "PROVISORIO" and str(b["codigo_caesb"]).strip() == str(oficial["codigo"]).strip():
             s["conciliado"] = f"conciliado com a {rev}" if rev else "conciliado com o BM"
-    if origem != "PROVISORIO":
-        s.update(situacao="APROVADO", rotulo=f"Aprovado · {R.ORIGEM_CODIGO[origem]}")
+    if origem != "PROVISORIO":                         # SI/SC: código oficial da base Caesb, com a composição de referência
+        s.update(situacao="APROVADO", rotulo=f"Aprovado · base Caesb ({comp})" if comp else "Aprovado · base Caesb")
     elif oficial:
         s.update(situacao="APROVADO", rotulo=f"Aprovado · código oficial {oficial['codigo']}")
     else:

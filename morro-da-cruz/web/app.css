@@ -512,8 +512,9 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .apr-cartao { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: 10px 12px; background: var(--painel2); }
 .apr-cartao dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px 12px; margin: 8px 0 0; }
 .apr-cartao dt { font-size: 12px; color: var(--suave); }
-.apr-cartao dd { margin: 0; font-weight: 700; }
+.apr-cartao dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 .registro.estornada > div:first-child b, .registro.estornada .apr-riscado { text-decoration: line-through; opacity: .7; }
 .chip.forte { background: var(--vermelho-forte); color: #fff; font-size: 12.5px; padding: 3px 10px; }
 .rest-acao { font-size: 13px; }
+#campoApr .btn { min-height: 44px; }
 .form-inline { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; margin-top: 8px; }

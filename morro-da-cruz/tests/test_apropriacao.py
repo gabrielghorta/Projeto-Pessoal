@@ -117,6 +117,11 @@ class TestSituacao(BaseAp):
                  "1514603060XX11": "PROVISORIO", "8008508024X238": "PROVISORIO", "": "PROVISORIO", None: "PROVISORIO"}
         for cod, origem in casos.items():
             self.assertEqual(R.origem_codigo(cod), origem, cod)
+        self.assertEqual([R.composicao_referencia(c) for c in ("8000508010SI98459", "2202019100SCE9779", "0173003001001")],
+                         ["SINAPI 98459", "SICRO E9779", None])
+        tapume = AP.item(self.c, "1.2_5.1.2")                  # SI: código oficial da base Caesb, com a composição SINAPI
+        self.assertEqual((tapume["situacao"], tapume["rotulo"], tapume["origem_rotulo"]),
+                         ("APROVADO", "Aprovado · base Caesb (SINAPI 98459)", "base Caesb · composição SINAPI 98459"))
 
     def test_bm_aprovados_e_a_aprovar_e_o_codigo_oficial(self):
         cont = {}
