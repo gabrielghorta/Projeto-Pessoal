@@ -247,7 +247,7 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .chips-grandes button { min-height: 44px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--borda2); background: transparent; color: var(--texto); font-weight: 700; font-size: 15px; cursor: pointer; }
 .chips-grandes button[aria-pressed="true"] { background: var(--laranja); border-color: var(--laranja); color: var(--sobre-laranja); }
 .btn.grande { min-height: 52px; font-size: 17px; width: 100%; }
-.croqui-par { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 4px 0 16px; }
+.croqui-par { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 12px; margin: 4px 0 16px; }
 .croqui-par figure { margin: 0; min-width: 0; }
 .croqui-par figcaption { font-size: 13px; color: var(--suave); font-weight: 700; margin-bottom: 6px; }
 .croqui-par img, .croqui-sistema, .croqui-pdf { display: block; width: 100%; height: 260px; object-fit: contain; border: 1px solid var(--borda); border-radius: var(--raio-p); background: var(--painel2); }

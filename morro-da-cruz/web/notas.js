@@ -18,12 +18,14 @@ const chipNs = s => `<span class="chip ${(NS_SITU[s] || ['', ''])[1]}">${esc((NS
 const mNs = v => v == null ? '—' : nf(v) + ' m';
 const linhaNs = n => String(n || '').split('_').pop();                       // Zona03_PB08_Rede_TR020 → TR020
 const elNs = t => String(t || '').split(/\s+\(|\s+-\s+/)[0].trim() || '?';       // NÓ6.1 - TÊ 160x110 → NÓ6.1
+const PERM_NS = { TOPOGRAFIA: 'topografia', CADASTRO: 'cadastro_campo' };     // registrar, aplicar e anular pedem também a do tipo
+const podeNs = tipo => pode('notas_servico') && (!PERM_NS[tipo] || pode(PERM_NS[tipo]));
 const linkNs = (id, qual, rot) => `<a class="btn" href="/api/ns/arquivo?id=${id}&qual=${qual}" target="_blank" rel="noopener">${rot}</a>`;
 
 /* ---------------------------------------------------------------- envio e leitura */
 async function carregarNotas() {
   const z = $('#nsZona');
-  if (z.options.length < 2) z.innerHTML += RESUMO.frentes.map(f => `<option>${esc(f)}</option>`).join('');
+  if (z.options.length < 2) z.innerHTML += RESUMO.frentes.filter(f => /^(Zona\d\d|ADUTORA)$/.test(f)).map(f => `<option>${esc(f)}</option>`).join('');
   nsMarcarTipo();
   $$('#nsFiltro button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.nsFiltro === NSV.filtro)));
   $('#nsAnuladas').checked = NSV.anuladas;
@@ -51,17 +53,19 @@ $('#nsTipo').addEventListener('click', ev => {
   if (NSV.leitura && b.dataset.nsTipo !== NSV.tipo) nsLimpar(false);     // a prévia muda com o tipo: ler de novo
   NSV.tipo = b.dataset.nsTipo; nsMarcarTipo();
 });
+const nsTravar = sim => { $$('#nsTipo button, #fNs button.prim').forEach(b => { b.disabled = sim; }); };
 $('#fNs').addEventListener('submit', async ev => {
   ev.preventDefault();
-  const f = ev.target, o = formObj(f);
+  const f = ev.target, o = formObj(f), tipo = NSV.tipo;          // o tipo fica preso durante a leitura
   nsLimpar(false);
   const arquivos = { pdf: await nsArquivo(f.pdf), croqui: await nsArquivo(f.croqui), planilha: await nsArquivo(f.planilha) };
   if (!arquivos.pdf) return toast('Escolha o PDF da nota de serviço.', 'erro');
   $('#nsResultado').innerHTML = '<p class="vazio">Lendo a nota…</p>';
-  const r = await acao(() => api('/api/ns/ler', { tipo: NSV.tipo, pdf_b64: arquivos.pdf.b64, planilha_b64: arquivos.planilha && arquivos.planilha.b64,
-    zona: o.zona || null, pb: o.pb || null })).catch(() => null);
-  if (!r) { $('#nsResultado').innerHTML = '<p class="vazio">A nota não foi lida. Veja o aviso acima.</p>'; return; }
-  NSV.envio = { tipo: NSV.tipo, arquivos, zona: o.zona || null, pb: o.pb || null };
+  nsTravar(true);
+  const r = await acao(() => api('/api/ns/ler', { tipo, pdf_b64: arquivos.pdf.b64, planilha_b64: arquivos.planilha && arquivos.planilha.b64,
+    zona: o.zona || null, pb: o.pb || null })).catch(() => null).finally(() => nsTravar(false));
+  if (!r || r.tipo !== NSV.tipo) { $('#nsResultado').innerHTML = '<p class="vazio">A nota não foi lida. Veja o aviso acima.</p>'; return; }
+  NSV.envio = { tipo: r.tipo, arquivos, zona: o.zona || null, pb: o.pb || null };
   NSV.leitura = r; NSV.decisoes = {}; NSV.marcado = {};
   renderNsLeitura();
   if (r.contrato_ok) renderNsSegmentos();             // nota de outra obra: não há o que conferir
@@ -167,7 +171,7 @@ function nsFaltas() {
   if (r.ja_registrada) out.push('este arquivo já foi registrado');
   if (r.mesmo_numero && !r.mesmo_numero.mesma_impressao) out.push('anular a NS anterior de mesmo número');
   if (NSV.envio.tipo === 'SERVICO' && !NSV.envio.arquivos.croqui && !r.mesmo_numero) out.push('o croqui (obrigatório no serviço de obra)');
-  if (!pode('notas_servico')) out.push('seu perfil não registra notas de serviço');
+  if (!podeNs(NSV.envio.tipo)) out.push('seu perfil não registra notas de serviço deste tipo');
   const conferir = r.segmentos.filter(s => s.situacao !== 'AUTOMATICO' && !NSV.decisoes[s.ordem]).map(s => s.ordem);
   if (conferir.length && !(r.mesmo_numero && r.mesmo_numero.mesma_impressao)) out.push(`conferir o(s) segmento(s) ${conferir.join(', ')}`);
   return out;
@@ -212,7 +216,7 @@ const driveNs = d => !d ? '' : d.status === 'ENVIADO' ? `<a href="${esc(d.drive_
   : d.status === 'ERRO' ? `<span class="chip vermelho" title="${esc(d.ultimo_erro || '')}">erro</span>` : '<span class="chip cinza">na fila</span>';
 function htmlNsLista(lista) {
   if (!lista.length) return '<p class="vazio">Nenhuma nota de serviço recebida.</p>';
-  const gerir = pode('notas_servico');
+
   return tabelaHtml('<th>NS</th><th>Tipo</th><th>Onde</th><th>Data</th><th>Situação</th><th class="n">Gravou</th><th class="n">Pendente</th><th>Drive</th><th></th>',
     lista.map(n => `<tr${n.status === 'ANULADA' ? ' style="opacity:.6"' : ''}><td><b>${esc(n.referencia)}</b><br><small>${esc(n.titulo || '')}</small></td>
       <td>${esc(NS_TIPOS[n.tipo] || n.tipo)}</td><td>${esc([n.zona, n.pb, n.equipe_id && n.tipo === 'EXECUCAO' ? 'equipe ' + n.equipe_id : null].filter(Boolean).join(' · ') || '—')}</td>
@@ -221,8 +225,8 @@ function htmlNsLista(lista) {
       <td>${driveNs((n.drive || {}).pdf)}</td>
       <td><div class="acoes">${linkNs(n.id, 'pdf', 'PDF')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Croqui') : ''}
         <button type="button" class="btn" data-ns-ver="${n.id}">Ver</button>
-        ${gerir && n.status === 'REGISTRADA' && NS_ETAPA[n.tipo] && n.pendente_m > 0.001 ? `<button type="button" class="btn azul" data-ns-aplicar="${n.id}">Aplicar o que falta</button>` : ''}
-        ${gerir && n.status === 'REGISTRADA' && n.tipo !== 'EXECUCAO' ? `<button type="button" class="btn" data-ns-anular="${n.id}">Anular</button>` : ''}</div></td></tr>
+        ${podeNs(n.tipo) && n.status === 'REGISTRADA' && NS_ETAPA[n.tipo] && n.pendente_m > 0.001 ? `<button type="button" class="btn azul" data-ns-aplicar="${n.id}">Aplicar o que falta</button>` : ''}
+        ${podeNs(n.tipo) && n.status === 'REGISTRADA' && n.tipo !== 'EXECUCAO' ? `<button type="button" class="btn" data-ns-anular="${n.id}">Anular</button>` : ''}</div></td></tr>
       <tr hidden data-ns-detalhe="${n.id}"><td colspan="9"></td></tr>`));
 }
 async function nsVer(id, linha) {
@@ -332,7 +336,12 @@ $('#fNd').addEventListener('submit', async ev => {
     ndListas(); recarregarCamadaMapa(); driveEmSegundoPlano();
   } finally { bt.disabled = false; bt.textContent = 'Enviar a nota do dia'; }
 });
-ligarBusca($('#ndAlvo'), async r => { await selecionarCampo(r.tipo, r.id); $('#ndAlvoInfo').textContent = `Soldas e fotos de ${curto(r.rotulo || r.id)}.`; });
+ligarBusca($('#ndAlvo'), r => selecionarCampo(r.tipo, r.id));
+// o trecho (ou nó) das soldas e fotos é um só na tela, venha da busca, do formulário de exceção ou da ficha do mapa
+function ndAlvoEscolhido(nome) {
+  $('#ndAlvo').value = curto(nome); $('#ndAlvoInfo').textContent = `Soldas e fotos de ${curto(nome)}.`;
+  if (!$('#ndOutros').open && !$('#ndExcecao').open) (pode('lancar_sem_ns') ? $('#ndExcecao') : $('#ndOutros')).open = true;
+}
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-nd-anular]'); if (!b) return;
   const motivo = prompt('Motivo da anulação (o que esta nota lançou também é anulado; nada é apagado):'); if (!motivo || !motivo.trim()) return;
@@ -384,12 +393,16 @@ function htmlFilaSeg(n, s) {
     <div class="acoes" style="margin-top:6px">${s.situacao === 'CONFIRMAR' ? `<button type="button" class="btn azul" data-fila-acao="aceitar">${cands.length ? 'Usar o trecho marcado' : 'Aceitar a diferença'}</button>` : ''}
       ${s.aplicado_m ? '' : '<button type="button" class="btn" data-fila-acao="fora">Deixar de fora</button>'}
       ${['AUTOMATICO', 'CONFIRMADO'].includes(s.situacao) ? '<small>será tentado de novo ao registrar</small>' : ''}
-      ${d ? `<span class="chip azul">${d.acao === 'FORA' ? 'fica de fora: ' + esc(d.motivo) : 'aceito'}</span>` : ''}</div></div>`;
+      ${d ? `<span class="chip azul">${d.acao === 'FORA' ? 'fica de fora: ' + esc(d.motivo) : 'aceito'}</span> <button type="button" class="btn" data-fila-acao="desfazer">Desfazer</button>` : ''}</div></div>`;
 }
 async function nsCarregarFila() {
   const painel = $('#nsFilaPainel'); painel.hidden = !pode('retificar_campo'); if (painel.hidden) return;
   const lista = await api('/api/ns/dia?fila=1').catch(() => null); if (!lista) return;
   NSV.filaDados = lista;
+  const vale = {};                                    // decisões antigas só valem para o que ainda está na fila
+  lista.forEach(n => { const d = NSV.fila[n.id] || {}; n.segmentos.filter(s => s.na_fila).forEach(s => {
+    const x = d[s.ordem]; if (x && (x.acao === 'FORA' || s.situacao === 'CONFIRMAR')) (vale[n.id] = vale[n.id] || {})[s.ordem] = x; }); });
+  NSV.fila = vale;
   $('#nsFila').innerHTML = lista.length ? lista.map(n => `<div class="painel" style="margin:8px 0;padding:12px" data-fila-ns="${n.id}">
       <div class="acoes" style="justify-content:space-between"><b>${esc(n.referencia)} · ${dataBR(n.data)} · ${esc(n.equipe_id)}</b><small>enviada por ${esc(n.registrada_por)}</small></div>
       ${n.segmentos.filter(s => s.na_fila).map(s => htmlFilaSeg(n, s)).join('')}
@@ -402,7 +415,8 @@ $('#nsFila').addEventListener('click', async ev => {
   if (b) {
     const caixa = b.closest('[data-fila-ns]'), id = +caixa.dataset.filaNs, o = +b.closest('[data-fila-ordem]').dataset.filaOrdem;
     const dec = NSV.fila[id] = NSV.fila[id] || {};
-    if (b.dataset.filaAcao === 'fora') {
+    if (b.dataset.filaAcao === 'desfazer') delete dec[o];
+    else if (b.dataset.filaAcao === 'fora') {
       const motivo = prompt('Por que este segmento fica de fora?'); if (!motivo || !motivo.trim()) return;
       dec[o] = { ordem: o, acao: 'FORA', motivo: motivo.trim() };
     } else {

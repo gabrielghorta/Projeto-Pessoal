@@ -732,6 +732,7 @@ let CAMPO = null;
 async function selecionarCampo(tipo, id) {
   const d = await acao(() => api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(id)}`));
   CAMPO = { tipo, id, d };
+  ndAlvoEscolhido(d.nome || id);
   $('#apMetros').style.display = tipo === 'TRECHO' ? '' : 'none';
   const iv = d.intervalos;
   const editavel = tipo === 'TRECHO' && !(d.execucao && d.execucao.ok_fiscal_em);
@@ -900,7 +901,7 @@ function renderSoldas() {
   const s = CAMPO.d.soldas;
   $('#soldas').innerHTML = `<p style="margin:4px 0">${s.estimativa_barras_6m != null ? `Estimativa ⌈L/6⌉: <b>${s.estimativa_barras_6m}</b> (só referência) · ` : ''}Informadas <b>${s.informadas}</b> · aprovadas ${s.aprovadas} · reprovadas ${s.reprovadas} · sem verificação ${s.sem_verificacao}</p>
     ${s.registros.map(r => `<div><small>${esc(r.data)} · ${r.quantidade} ${esc(r.tipo)}${r.posicao_m != null ? ' @ ' + nf(r.posicao_m) + ' m' : ''} · ${esc(r.soldador)} · inf. ${esc(r.informado_por)}</small>
-      ${r.verificado_em ? `<span class="chip ${r.resultado === 'APROVADA' ? 'verde' : 'vermelho'}">${esc(r.resultado)} · ${esc(r.verificado_por)}</span>` : `<button type="button" class="btn" data-verificar-solda="${r.id}">Verificar</button>`}</div>`).join('')}`;
+      ${r.verificado_em ? `<span class="chip ${r.resultado === 'APROVADA' ? 'verde' : 'vermelho'}">${esc(r.resultado)} · ${esc(r.verificado_por)}</span>` : pode('verificar') ? `<button type="button" class="btn" data-verificar-solda="${r.id}">Verificar</button>` : '<span class="chip amarelo">sem verificação</span>'}</div>`).join('')}`;
 }
 $('#fSolda').addEventListener('submit', async ev => {
   ev.preventDefault(); if (!CAMPO) return toast('Escolha o trecho ou o nó das soldas.', 'erro');
@@ -1451,6 +1452,7 @@ function renderTopLista() {
 async function selecionarTop(id) {
   const d = await acao(() => api(`/api/detalhe?tipo=TRECHO&id=${encodeURIComponent(id)}`)).catch(() => null); if (!d) return;
   TOP = { id, d }; preencherTrecho(fTop, d, id);
+  $('#topExcecao').open = true;                       // o detalhe do trecho (e anular) fica no painel da exceção
   $('#topAlvo').innerHTML = `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')}</div>
     ${htmlComplementar(d.complementar, pode('retificar_campo'), ['LIBERACAO_TOPOGRAFICA'])}
     ${(d.complementar.alertas || []).map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}`;
@@ -1525,6 +1527,7 @@ function renderCadLista() {
 async function selecionarCad(id) {
   const d = await acao(() => api(`/api/detalhe?tipo=TRECHO&id=${encodeURIComponent(id)}`)).catch(() => null); if (!d) return;
   CADC = { id, d }; preencherTrecho(fCad, d, id);
+  $('#cadExcecao').open = true;
   const iv = d.intervalos, ass = iv.etapas.ASSENTADO, cad = iv.etapas.CADASTRO_CAMPO;
   const falta = ass.cobertura.flatMap(x => foraDe(x, cad.cobertura));
   $('#cadRetif').innerHTML = '';

@@ -169,6 +169,58 @@ class TestLancamento(BaseDia):
         self.assertEqual(NS.registrar_dia(self.c, r["id"], "eng1")[0]["lancado"], [])            # repetir não duplica
 
 
+class TestRevisao(BaseDia):
+    """Achados da revisão: a ponta solta não volta sobre o segmento vizinho, o que foi tirado de propósito não volta,
+    a anulação com reaterro e assentado na mesma NS e o apontamento à mão não traz verificação nem NS do navegador."""
+
+    def test_parada_nao_volta_sobre_o_trecho_anterior(self):
+        self.programar(["Zona03_PB08_Rede_TR020"], ONTEM)                  # a programação só tem o trecho de antes
+        g = grupo(["NÓ6.1 - TÊ 160x110", "NÓ9.1 - TÊ 160x160", ""], [277.99, 122.01], obs=["ASSENTAMENTO", None, "PARADA"])
+        r = self.ok(self.enviar("enc3", pdf_dia([g])))
+        self.assertEqual([(s["fisico_id"], s["ini_fisico_m"], s["fim_fisico_m"]) for s in r["segmentos"]],
+                         [("TF-00351", 0.0, 277.99), ("TF-00337", 0.0, 122.01)])
+        self.assertEqual(self.gravado(), [("TR006", 0.0, 119.5), ("TR007", 0.0, 2.51), ("TR020", 0.0, 277.99)])
+
+    def test_continuacao_nao_cai_sobre_o_trecho_seguinte(self):
+        self.programar([TR006], ONTEM)
+        g = grupo(["", "NÓ9.1 - TÊ 160x160", "CH_VRP-15"], [77.99, 295.98], obs=["ASSENTAMENTO", None, None], inicio=200.0)
+        r = self.ok(self.enviar("enc3", pdf_dia([g])))
+        self.assertEqual([(s["fisico_id"], s["ini_fisico_m"], s["fim_fisico_m"]) for s in r["segmentos"]],
+                         [("TF-00351", 200.0, 277.99), ("TF-00337", 0.0, 295.98)])
+
+    def test_o_que_foi_retificado_nao_volta_ao_conferir_a_fila(self):
+        g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98]), grupo(["NÓ56.1", "NÓ8.1"], [32.4], titulo="REDE ZONA 03")]
+        r = self.ok(self.enviar("enc3", pdf_dia(g, titulo='"REDE DE ÁGUA" - ZONA 03 - NOTA DO DIA')))
+        self.recusa(self.cli("eng1").post("/api/ns/dia/conferir", {"ns_id": r["id"], "decisoes": [
+            {"ordem": 1, "acao": "FORA", "motivo": "x"}]}), 422, "já tem execução")
+        for (ap,) in self.c.execute("SELECT DISTINCT apontamento_id FROM intervalos_execucao WHERE anulado_por IS NULL").fetchall():
+            S.retificar_intervalos(self.c, "APONTAMENTO", ap, [], "trecho medido errado na nota", "eng1")
+        k = next(i for i, c in enumerate(r["segmentos"][1]["candidatos"]) if c["fisico_id"] == "TF-00365")
+        self.ok(self.cli("eng1").post("/api/ns/dia/conferir", {"ns_id": r["id"], "decisoes": [
+            {"ordem": 1, "acao": "FORA", "motivo": "retificado"}, {"ordem": 2, "acao": "ACEITAR", "candidato": k}]}))
+        self.assertEqual(self.gravado(), [("TR034", 0.0, 32.4)])                 # o segmento 1 não foi relançado
+
+    def test_anular_com_assentado_e_reaterro_na_mesma_nota(self):
+        g = [grupo(["NÓ9.1", ""], [100.0], obs=["ASSENTAMENTO", "PARADA"], titulo="REDE ZONA 03 - PB08 - PEAD DE 160 - FRENTE A"),
+             grupo(["NÓ9.1", ""], [80.0], obs=["REATERRO", "PARADA"], titulo="REDE ZONA 03 - PB08 - PEAD DE 160 - FRENTE B")]
+        self.programar([TR006], ONTEM)
+        r = self.ok(self.enviar("enc3", pdf_dia(g)))
+        self.assertEqual(len(self.gravado("REATERRADO")), 2)
+        self.ok(self.cli("enc3").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "nota errada"}))
+        self.assertEqual((self.gravado(), self.gravado("REATERRADO")), ([], []))
+
+    def test_apontamento_a_mao_nao_traz_verificacao_nem_ns(self):
+        for t in ("MANHA", "TARDE"):
+            S.registrar_clima(self.c, ONTEM.isoformat(), "Zona03", t, "SOL")
+        r = self.ok(self.cli("eng1").post("/api/apontamento", {
+            "data": ONTEM.isoformat(), "equipe_id": "Zona03", "alvo_tipo": "TRECHO", "alvo_id": TR006, "motivo_sem_ns": "teste",
+            "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 10, "verificado_em": "2026-10-01", "verificado_por": "eng2",
+                            "ns_segmento_id": 1}]}))
+        i = self.c.execute("SELECT verificado_em, verificado_por, ns_segmento_id FROM intervalos_execucao WHERE apontamento_id=?",
+                           (r["id"],)).fetchone()
+        self.assertEqual(tuple(i), (None, None, None))
+
+
 class TestRecusas(BaseDia):
     def test_outra_obra_data_futura_sem_texto_sem_croqui_e_sem_clima(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98])]

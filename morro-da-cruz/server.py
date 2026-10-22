@@ -299,9 +299,12 @@ def p_clima(b, c):
 
 
 def p_apontamento(b, c):
+    # do intervalo, só o que a pessoa informa: verificação e ligação com a NS nunca vêm do navegador
+    intervalos = [{k: i.get(k) for k in ("etapa", "ini_m", "fim_m", "referencia")} for i in b.get("intervalos") or []
+                  if isinstance(i, dict)]
     return {"id": S.apontar(c, b["data"], b["equipe_id"], b["alvo_tipo"], b["alvo_id"], float(b.get("metros_executados") or 0),
                             float(b.get("metros_reaterrados") or 0), bool(b.get("concluido_100")), b.get("estaca_ini"),
-                            b.get("estaca_fim"), b.get("quantidades"), b.get("intervalos") or None, b.get("informado_por"),
+                            b.get("estaca_fim"), b.get("quantidades"), intervalos or None, b.get("informado_por"),
                             b.get("motivo_sem_ns"))}
 
 

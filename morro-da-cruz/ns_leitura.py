@@ -152,7 +152,8 @@ def contexto_zona_pb(*textos):
     t = sem_acento(' '.join(x for x in textos if x)).upper()
     z = re.search(r'\bZONA\s*[-_ ]?\s*0*(\d{1,2})\b', t)
     pb = re.search(r'\bPB\s*[-_ ]?\s*0*(\d{1,2})\b', t)
-    return {'zona': f'Zona{int(z.group(1)):02d}' if z else None, 'pb': f'PB{int(pb.group(1)):02d}' if pb else None}
+    zona = f'Zona{int(z.group(1)):02d}' if z else 'ADUTORA' if re.search(r'\bADUTORA\b', t) else None
+    return {'zona': zona, 'pb': f'PB{int(pb.group(1)):02d}' if pb else None}
 
 
 # ------------------------------------------------------------------------------------------------ tokens

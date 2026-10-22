@@ -178,6 +178,31 @@ class TestTopografia(BaseReal):
         self.assertEqual(self.ok(self.cli("eng1").get("/api/ns?tipo=TOPOGRAFIA&vigentes=0"))[0]["id"], r["id"])
 
 
+class TestRevisao(BaseReal):
+    def test_liberacao_anulada_nao_volta_com_aplicar_e_aplicado_e_o_efetivo(self):
+        r = self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns()))
+        lib = self.c.execute("SELECT id FROM etapas_complementares WHERE trecho_id=?", (self.tid[TR020],)).fetchone()[0]
+        S.anular_etapa_complementar(self.c, lib, "locação refeita à mão", "eng1")
+        self.assertEqual(self.ok(self.cli("eng1").post("/api/ns/aplicar", {"ns_id": r["id"]}))["gravado_m"], 0.0)
+        self.assertEqual(self.liberacoes(TR020), [])
+        self.assertEqual([x[0] for x in self.c.execute("SELECT aplicado_m FROM ns_segmentos ORDER BY ordem")], [0.0, 295.98])
+
+    def test_versoes_so_da_propria_ns_e_arquivo_de_ns_anulada_volta(self):
+        pdf = pdf_ns()
+        nid = self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf))["id"]
+        self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns(girar=True)))                  # versão assinada
+        self.ok(self.cli("eng1").post("/api/ns/anular", {"ns_id": nid, "motivo": "refeita"}))
+        r = self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf))                             # o arquivo da NS anulada volta
+        self.assertEqual(self.ok(self.cli("eng1").get(f"/api/ns/detalhe?id={r['id']}"))["versoes"], [])
+        self.assertEqual(len(self.ok(self.cli("eng1").get(f"/api/ns/detalhe?id={nid}"))["versoes"]), 1)
+
+    def test_adutora_tem_zona_e_pb(self):
+        self.assertEqual(NS._zona_pb("ADUTORA_PB03_Adutora_TR001"), ("ADUTORA", "PB03"))
+        self.assertEqual(NS._norm_zona_pb("adutora", "3"), ("ADUTORA", "PB03"))
+        from ns_leitura import contexto_zona_pb
+        self.assertEqual(contexto_zona_pb('"ADUTORA" - PB03 - VER CROQUI'), {"zona": "ADUTORA", "pb": "PB03"})
+
+
 class TestCadastro(BaseReal):
     def test_grava_sobre_o_assentado_deixa_pendente_e_aplica_depois(self):
         self.assentar(TR006, 0, 100, "2026-10-14")
