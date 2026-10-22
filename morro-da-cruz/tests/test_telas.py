@@ -154,6 +154,19 @@ class TestPaginaECodigo(unittest.TestCase):
                 self.assertNotIn(m.group(1), vistos, f"{m.group(1)} declarado em {vistos.get(m.group(1))} e em {arq}")
                 vistos[m.group(1)] = arq
 
+    def test_mapas_sem_o_que_travava_de_perto(self):
+        """Medido em 22/10/2026: a rede inteira num caminho tracejado só e o filtro CSS no satélite levavam de 0,5 a 1,7 s
+        por quadro ao arrastar de perto. O tracejado vai em pedaços (um caminho por trecho, contorno em pedaços) e o
+        escurecimento é um véu por cima das fotos."""
+        ilu, pln, css = ler("iluminado.js"), ler("planejamento.js"), ler("app.css")
+        for js in (ilu, pln):
+            self.assertIn("linhasTracejadas(por[s.id]", js)
+            self.assertIn("contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl')", js)
+            self.assertNotIn("<polyline class=\"ilu-zl\" points=", js)
+        self.assertNotIn(".style.filter = FUNDOS", ilu)
+        self.assertNotRegex(css, r"#plnSat\s*\{[^}]*filter")
+        self.assertIn('class="sat-veu"', ilu)
+
     def test_ids_unicos_e_scripts_carregados(self):
         todos = re.findall(r'id="([^"]+)"', self.html)
         self.assertEqual(len(todos), len(set(todos)))

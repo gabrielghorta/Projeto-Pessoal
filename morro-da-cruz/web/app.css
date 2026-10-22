@@ -399,7 +399,8 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .pln { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
 .pln .ilu { height: calc(100vh - 150px); }
 .pln-sel { stroke-opacity: .9; }
-#plnSat { filter: brightness(.55) saturate(.7); }
+.sat-veu { fill: #000; pointer-events: none; }
+#plnSat .sat-veu { fill-opacity: .45; }
 .pln-quadro { fill: none; stroke: #6CB8F0; stroke-opacity: .75; stroke-width: 1.2px; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; pointer-events: none; }
 .pln-quadro-rot { fill: #6CB8F0; font-weight: 700; dominant-baseline: hanging; paint-order: stroke; stroke: #101010; pointer-events: none; font-family: var(--fonte); }
 .pln-no { fill: #101010; stroke: #F2F2F2; stroke-width: 1.5px; vector-effect: non-scaling-stroke; cursor: pointer; }

@@ -70,7 +70,7 @@ async function recarregarPln() {
 function montarPln(g) {
   const svg = PLN.svg();
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}" fill-opacity=".16"/>`).join('')
-    + g.zonas.map(z => `<polyline class="ilu-zl" points="${pontos(z.p)} ${z.p[0]},${z.p[1]}"/>`).join('');
+    + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
   const hits = g.trechos.map((t, i) => `<path class="ilu-hit" data-i="${i}" d="${caminho(t.p)}"/>`).join('');
   PLN.noIdx = new Map();
   const nos = g.els.map((e, i) => {
@@ -78,7 +78,7 @@ function montarPln(g) {
     const nome = e.n.find(n => n.includes('_Rede_')) || e.n[0];          // a ponta do trecho cita o nome da Rede
     return `<circle class="pln-no" data-i="${i}" data-n="${esc(nome)}" cx="${e.x}" cy="${e.y}" r="1"><title>${esc(nomeCurto(nome))}</title></circle>`;
   }).join('');
-  const divisao = g.quadros.map(q => `<polygon class="pln-quadro" points="${pontos(q.p)}"/>`).join('')
+  const divisao = contornosTracejados(g.quadros.map(q => q.p), 'pln-quadro')
     + g.quadros.map(q => { const [x0, y0] = limites([q.p]); return `<text class="pln-quadro-rot" x="${x0}" y="${y0}">${esc(q.id)}</text>`; }).join('');
   svg.innerHTML = `${htmlSatelite(g, 'pln')}<g id="plnZonas">${zonas}</g><g id="plnQuadros">${divisao}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnHits">${hits}</g><g id="plnNos" class="longe">${nos}</g>
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
@@ -94,27 +94,30 @@ function montarPln(g) {
 function desenharPln(px, zoom) {
   if (PLN.cam.plantas) detalheSatelite(PLN, GERAL, px);
   $('#plnLinhas').style.strokeWidth = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)) + 'px';
-  $('#plnSelG').style.strokeWidth = Math.min(14, 9 * Math.pow(Math.max(zoom, 1), 0.3)) + 'px';
-  $$('#plnNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
-  $$('#plnQuadros text').forEach(t => { t.setAttribute('font-size', 12 * px); t.setAttribute('stroke-width', 3 * px); t.setAttribute('dx', 6 * px); t.setAttribute('dy', 6 * px); });
-  $$('#plnPins .ilu-pin').forEach(p => {
-    const c = p.querySelector('circle'), tx = p.querySelector('text');
-    c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
-  });
-  if (Math.abs(px - PLN.ultPx) > PLN.ultPx * 0.02) {                   // arrastar não muda a escala: só o zoom redesenha os nós
-    PLN.ultPx = px;
+  if (escalaMudou(PLN, px)) {                          // arrastar não muda a escala: só o zoom mexe em textos, pinos e nós
+    PLN.svg().style.setProperty('--k', 1 / px);
+    $('#plnSelG').style.strokeWidth = Math.min(14, 9 * Math.pow(Math.max(zoom, 1), 0.3)) + 'px';
+    $$('#plnNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
+    $$('#plnQuadros text').forEach(t => { t.setAttribute('font-size', 12 * px); t.setAttribute('stroke-width', 3 * px); t.setAttribute('dx', 6 * px); t.setAttribute('dy', 6 * px); });
+    $$('#plnPins .ilu-pin').forEach(p => {
+      const c = p.querySelector('circle'), tx = p.querySelector('text');
+      c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
+    });
     $$('#plnNos circle').forEach(c => c.setAttribute('r', (c.classList.contains('sel') ? 7 : 4.5) * px));
+    $('#plnNos').classList.toggle('longe', zoom < 3);
   }
-  $('#plnNos').classList.toggle('longe', zoom < 3);
-  $('#plnTrilha').innerHTML = PLN.zona ? `<button type="button" data-pln-tudo>Obra inteira</button> › ${esc(nomeZona(PLN.zona))}`
-    : zoom > 1.15 ? '<button type="button" data-pln-tudo>Ver a obra inteira</button>' : 'Obra inteira';
+  trilha($('#plnTrilha'), PLN.zona ? `<button type="button" data-pln-tudo>Obra inteira</button> › ${esc(nomeZona(PLN.zona))}`
+    : zoom > 1.15 ? '<button type="button" data-pln-tudo>Ver a obra inteira</button>' : 'Obra inteira');
 }
 
 function colorirPln() {
   if (!PLN.pronto || !GERAL) return;
   const mapa = ESTADO_MAPA, por = Object.fromEntries(PLAN.map(s => [s.id, []]));
   GERAL.trechos.forEach(t => { t.ps = planSitu(t.n, mapa); por[t.ps].push(t); });
-  $('#plnLinhas').innerHTML = PLAN.map(s => `<path class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}"${s.tracejado ? ` stroke-dasharray="${s.tracejado}"` : ''}${s.opacidade ? ` stroke-opacity="${s.opacidade}"` : ''} d="${caminho(por[s.id].flatMap(t => t.p))}"/>`).join('');
+  $('#plnLinhas').innerHTML = PLAN.map(s => {
+    const attrs = `class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}"${s.opacidade ? ` stroke-opacity="${s.opacidade}"` : ''}`;
+    return s.tracejado ? linhasTracejadas(por[s.id], `${attrs} stroke-dasharray="${s.tracejado}"`) : `<path ${attrs} d="${caminho(por[s.id].flatMap(t => t.p))}"/>`;
+  }).join('');
   $$('#plnLinhas .ilu-tr').forEach(p => p.style.display = PLN.vis[p.dataset.situ] ? '' : 'none');
   const doDia = ((PLN.est || {}).checkins || []).filter(c => c.data === PLN.dia && c.alvo_nome);
   $('#plnPins').innerHTML = doDia.map(c => {

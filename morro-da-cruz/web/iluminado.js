@@ -21,6 +21,27 @@ async function estadoMapa(novo) {
 const SVGNS = 'http://www.w3.org/2000/svg';
 const pontos = p => { let s = ''; for (let i = 0; i < p.length; i += 2) s += (i ? ' ' : '') + p[i] + ',' + p[i + 1]; return s; };
 const caminho = partes => partes.map(p => 'M' + pontos(p)).join('');
+// Tracejado pesa: o navegador calcula cada traço do caminho inteiro, até fora da tela, a cada quadro (de perto, 1,7 s por
+// quadro com a rede toda num caminho só). Por isso o tracejado vai em pedaços curtos, que o navegador pula quando estão
+// fora da vista: um caminho por trecho e o contorno das zonas e dos quadros em pedaços de ~40 unidades do mapa. Cada
+// pedaço continua o tracejado de onde o anterior parou (--k = pixels da tela por unidade do mapa, posto a cada zoom), para
+// o desenho ficar igual ao do contorno inteiro, inclusive onde duas zonas vizinhas se sobrepõem.
+const linhasTracejadas = (trechos, attrs) => trechos.map(t => `<path ${attrs} d="${caminho(t.p)}"/>`).join('');
+function contornosTracejados(polis, cls, passo = 40) {
+  let s = '';
+  for (const p of polis) {
+    const q = p.length > 4 ? [...p, p[0], p[1]] : p;            // contorno fechado
+    let ini = 0, acc = 0, feito = 0;
+    for (let i = 2; i < q.length; i += 2) {
+      acc += Math.hypot(q[i] - q[i - 2], q[i + 1] - q[i - 1]);
+      if (acc - feito >= passo || i === q.length - 2) {
+        s += `<polyline class="${cls}" style="stroke-dashoffset:calc(var(--k, 1) * ${-feito.toFixed(2)}px)" points="${pontos(q.slice(ini, i + 2))}"/>`;
+        ini = i; feito = acc;
+      }
+    }
+  }
+  return s;
+}
 function limites(listas, folga = 0) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   listas.forEach(p => { for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]); } });
@@ -119,8 +140,9 @@ function situacao(est, nome) {
 const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
   vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true }, fundo: 'escura',
   prefixo: 'ilu', svg: () => $('#iluSvg'), caixa: () => $('#ilu'), desenhar: desenharIlu, clique: alvo => cliqueNoMapa(alvo) };
-// satélite escurecido por padrão: as cores da situação aparecem por cima, como no mapa do projeto
-const FUNDOS = { escura: ['Escura', 'brightness(.42) saturate(.5)'], clara: ['Clara', 'brightness(.85)'], sem: ['Sem satélite', ''] };
+// satélite escurecido por padrão: as cores da situação aparecem por cima, como no mapa do projeto. O escurecimento é um
+// véu preto por cima das fotos (opacidade): filtro CSS no satélite refazia a imagem inteira a cada quadro
+const FUNDOS = { escura: ['Escura', 0.58], clara: ['Clara', 0.15], sem: ['Sem satélite', 0] };
 try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') || '{}')); ILU.fundo = FUNDOS[localStorage.getItem('mc-ilu-fundo')] ? localStorage.getItem('mc-ilu-fundo') : 'escura'; } catch (_) { /* sem storage */ }
 
 /* ---- satélite: as fotos das 25 PBs (o mesmo nos dois mapas) */
@@ -131,7 +153,8 @@ const SAT_DETALHE_PX = 0.7, SAT_DETALHE_MAX = 6;     // unidades do mapa por pix
 function htmlSatelite(g, p) {
   return `<defs><clipPath id="${p}ZonasClip">${g.zonas.map(z => `<polygon points="${pontos(z.p)}"/>`).join('')}</clipPath>
       ${g.quadros.map(q => `<clipPath id="${p}Q${esc(q.id)}"><polygon points="${pontos(q.p)}"/></clipPath>`).join('')}</defs>
-    <g id="${p}Sat" clip-path="url(#${p}ZonasClip)"><image class="sat-mosaico" href="/mapa/geral.webp?v=${g.versao}" x="0" y="0" width="${g.w}" height="${g.h}" preserveAspectRatio="none"/><g class="sat-detalhe"></g></g>`;
+    <g id="${p}Sat" clip-path="url(#${p}ZonasClip)"><image class="sat-mosaico" href="/mapa/geral.webp?v=${g.versao}" x="0" y="0" width="${g.w}" height="${g.h}" preserveAspectRatio="none"/><g class="sat-detalhe"></g>
+      <rect class="sat-veu" x="0" y="0" width="${g.w}" height="${g.h}"/></g>`;
 }
 const satDe = ctx => $(`#${ctx.prefixo}Sat`);
 function ligarSatelite(ctx, g) {                     // sem Pillow no servidor não há mosaico: as PBs inteiras, sempre
@@ -171,7 +194,7 @@ function avisoIlu(msg) { const a = $('#iluAviso'); a.textContent = msg; a.hidden
 function montarIluminado(g) {
   const svg = iluSvg();
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}"/>`).join('')
-    + g.zonas.map(z => `<polyline class="ilu-zl" points="${pontos(z.p)} ${z.p[0]},${z.p[1]}"/>`).join('');
+    + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
   const hits = g.trechos.map((t, i) => `<path class="ilu-hit" data-i="${i}" d="${caminho(t.p)}"/>`).join('');
   svg.innerHTML = `${htmlSatelite(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluHits">${hits}</g>
     <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="iluPins"></g>`;
@@ -203,16 +226,25 @@ function desenharVista(ctx = ILU) {
 }
 function desenharIlu(px, zoom) {
   if (ILU.fundo !== 'sem') detalheSatelite(ILU, GERAL, px);
-  $('#iluLinhas').style.strokeWidth = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)) + 'px';
-  $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
-  $$('#iluPins .ilu-pin').forEach(p => {
-    const c = p.querySelector('circle'), tx = p.querySelector('text');
-    c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
-  });
-  $('#iluSel').style.strokeWidth = Math.min(11, 7 * Math.pow(Math.max(zoom, 1), 0.3)) + 'px';
-  const tr = $('#iluTrilha');
-  tr.innerHTML = ILU.zona ? `<button type="button" data-ilu-tudo>Obra inteira</button> › ${esc(nomeZona(ILU.zona))}` : zoom > 1.15 ? '<button type="button" data-ilu-tudo>Ver a obra inteira</button>' : 'Obra inteira';
+  if (escalaMudou(ILU, px)) {                        // arrastar não muda a escala: só o zoom mexe em traços e textos
+    ILU.svg().style.setProperty('--k', 1 / px);
+    $('#iluLinhas').style.strokeWidth = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)) + 'px';
+    $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
+    $$('#iluPins .ilu-pin').forEach(p => {
+      const c = p.querySelector('circle'), tx = p.querySelector('text');
+      c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
+    });
+    $('#iluSel').style.strokeWidth = Math.min(11, 7 * Math.pow(Math.max(zoom, 1), 0.3)) + 'px';
+  }
+  trilha($('#iluTrilha'), ILU.zona ? `<button type="button" data-ilu-tudo>Obra inteira</button> › ${esc(nomeZona(ILU.zona))}` : zoom > 1.15 ? '<button type="button" data-ilu-tudo>Ver a obra inteira</button>' : 'Obra inteira');
 }
+// a escala só muda com o zoom (2 % de folga); ctx.ultPx = 0 força o redesenho (pinos novos, cores novas)
+function escalaMudou(ctx, px) {
+  if (ctx.ultPx && Math.abs(px - ctx.ultPx) <= ctx.ultPx * 0.02) return false;
+  ctx.ultPx = px;
+  return true;
+}
+const trilha = (el, html) => { if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; } };
 function irPara(alvo, animar = true, ctx = ILU) {
   const r = ctx.svg().getBoundingClientRect();
   const fim = encaixar(alvo, r.width / r.height), ini = ctx.vb.slice();
@@ -300,8 +332,10 @@ function focarAlvo(tipo, nome) {
 function colorirIluminado() {
   const est = ILU.est, por = Object.fromEntries(SITU.map(s => [s.id, []]));
   GERAL.trechos.forEach(t => { t.s = situacao(est, t.n); por[t.s].push(t); });
-  $('#iluLinhas').innerHTML = SITU.map(s => `<path class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}"${s.tracejado ? ' stroke-dasharray="5 4"' : ''} d="${caminho(por[s.id].flatMap(t => t.p))}"/>`).join('');
-  desenharPins(); aplicarCamadas(); desenharVista();
+  $('#iluLinhas').innerHTML = SITU.map(s => s.tracejado
+    ? linhasTracejadas(por[s.id], `class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}" stroke-dasharray="5 4"`)
+    : `<path class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}" d="${caminho(por[s.id].flatMap(t => t.p))}"/>`).join('');
+  desenharPins(); aplicarCamadas(); ILU.ultPx = 0; desenharVista();
   if (ILU.sel) marcarSelecao();
   if (ILU.pop) abrirPop(ILU.pop, true);
 }
@@ -316,7 +350,7 @@ function desenharPins() {
 const equipeNome = id => ((RESUMO && RESUMO.equipes) || []).find(e => e.id === id)?.nome || id;
 function aplicarCamadas() {
   satDe(ILU).style.display = ILU.fundo === 'sem' ? 'none' : '';
-  satDe(ILU).style.filter = FUNDOS[ILU.fundo][1];
+  $('.sat-veu', satDe(ILU)).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]);
   $('#iluZonas').style.display = ILU.cam.zonas ? '' : 'none';
   $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.38 : 0.08) : 0.26));
   $('#iluNomes').style.display = ILU.cam.nomes ? '' : 'none';
