@@ -78,7 +78,7 @@ O botão **Registrar** só libera com todos os segmentos conferidos. Numa transa
 - **Cadastro:** grava o cadastro de campo **só sobre o assentado até a data da nota**; o resto fica **pendente** no
   segmento ("ainda não assentado até 15/10/2026"). Quando o assentamento for lançado (com data até a da nota),
   **Aplicar o que falta** grava o que faltava. Repetir não grava duas vezes.
-- **Serviço de obra:** guarda a nota e o croqui. Nada é gravado nos trechos; a equipe abre a nota na Nota do dia.
+- **Serviço de obra:** guarda a nota e o croqui. Nada é gravado nos trechos; a equipe abre a nota no Lançamento do dia (aba Nota de serviço).
 - Cada registro leva a referência `NS 012 fl. 01/01` e o segmento da nota de onde veio (`ns_segmento_id`).
 
 ### Reenvio e anulação
@@ -112,7 +112,9 @@ com `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` e `Content-
 
 ---
 
-## 2. NS do dia (Execução · Nota do dia)
+## 2. NS do dia (Execução · Lançamento do dia, aba Nota de serviço)
+
+A tela de campo voltou a se chamar **Lançamento do dia** (22/10/2026) e tem duas abas: **Nota de serviço** (esta) e **Apropriação direta**, o lançamento sem nota de serviço da Engenharia e da Administração (`docs/MODULO_B_CAMPO.md`, D-90 em diante).
 
 ### Como enviar pelo celular
 

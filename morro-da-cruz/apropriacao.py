@@ -522,11 +522,13 @@ def parecidos(conn, descricao, atributos=None, limite=3):
     if not ws:
         return []
     out = []
-    for it in catalogo(conn, com_reprovados=False):
-        toks = _tokens(it["_texto"])
-        f = sum(1 for w in ws if w in toks) / len(ws)
-        if f >= 0.6:
-            out.append((f, it))
+    for it in catalogo(conn, com_reprovados=False):     # só a descrição e os identificadores (o grupo casaria com tudo)
+        texto = " ".join(str(x) for x in [it["descricao"], it.get("resumida")] + [v for k, v in it["atributos"].items() if k != "grupo"]
+                         if x not in (None, "", "N/A"))
+        toks = _tokens(" ".join(palavras(texto)))
+        n = sum(1 for w in ws if w in toks)
+        if n >= 2 and n / len(ws) >= 0.6:
+            out.append((n / len(ws), it))
     out.sort(key=lambda x: -x[0])
     return [dict(publico(it), semelhanca=round(f * 100)) for f, it in out[:limite]]
 

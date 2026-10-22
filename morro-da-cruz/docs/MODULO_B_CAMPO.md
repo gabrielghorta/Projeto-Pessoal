@@ -66,3 +66,59 @@ Valem para (servicos e compras):
 - recebimento, inspeção, devolução ao fornecedor e transferência.
 
 Programação, reserva e período de medição continuam podendo ser futuros. Teste: `tests/test_campo_b.py::TestDataFutura`. A falta dessa recusa apareceu no ciclo da Zona01.
+
+## Apropriação direta (esquema v19, 22/10/2026)
+
+Decisões D-90 a D-97 (`docs/DECISOES_PENDENTES.md`, seção 8). Código: `apropriacao.py`, `web/apropriacao.js`.
+
+A tela **Lançamento do dia** (Execução, tela `campo`) tem duas abas: **Nota de serviço** (a NS do dia e o croqui,
+`docs/NOTAS_DE_SERVICO.md`) e **Apropriação direta**, o lançamento sem nota de serviço direto no item do orçamento. Ex.: o
+canteiro feito por uma equipe de outra obra da Ankara no período entre obras e os gastos do canteiro. A segunda aba só
+aparece com a permissão `apropriacao` (Engenharia e Administração); para os outros perfis o servidor responde 403.
+
+**Escolha do item, como no BM Vertical:** grupo (Canteiro, Redes, Caixas, Interligação, Ligações, Hidromecânico,
+Administração local) → material ou serviço (os dois dão o subgrupo) → item. A **busca única** no topo acha o item por
+qualquer identificador:
+- item do BM Vertical (`5.1_1.14.27`) e do BM (`1.14.27`), o código Caesb inteiro ou um pedaço;
+- descrição oficial e resumida, grupo e grupo de orçamento Ankara;
+- material, diâmetro, pressão, resina, tipo de conexão, solda e unidade.
+
+Sem acento e sem diferença de maiúscula, palavras em qualquer ordem e cada uma podendo ser pedaço ("tê 63 pe100" acha o
+TÊ 90° eletrofusão DE 63 PE100). Sinônimos: TE/TÊ, PEAD/POLIETILENO DE ALTA DENSIDADE, Ø/DE/DN/"63MM" para o diâmetro,
+PVC/POLICLORETO DE VINILA e FOFO/FERRO FUNDIDO. Primeiro o casamento exato de item ou código, depois quem casa mais palavras
+inteiras; o diâmetro exato do item vale mais que um pedaço ("63" não empata com "110X63"). A busca também acha os itens
+novos. Escolher pela busca preenche o grupo e o tipo sozinho. Cada resultado mostra a situação em etiqueta: verde
+"Aprovado · base Caesb/SINAPI/SICRO", vermelha "A aprovar · código provisório" ou "A aprovar · item novo".
+
+**Cartão do item:** situação, origem do código, preço unitário sem BDI, contratado, já medido e apropriado, saldo, e o
+aviso quando a quantidade passa do saldo (o excedente fica parado até aditivo ou apostilamento), quando o item é a
+aprovar ou quando é material (D-53/D-54).
+
+**Campos da apropriação:** data (não futura), quantidade na unidade do item, local opcional (canteiro, zona, ou trecho ou
+nó pela busca de trecho), quem executou (equipe da obra; equipe de outra obra ou contrato da Ankara, com a obra e a
+equipe; terceiro, com o nome), o que foi feito, memória de cálculo, justificativa técnica e **pelo menos uma evidência**
+(foto, croqui ou documento: PDF, JPG ou PNG, até 10). As evidências alimentam o memorial da medição e vão para o Drive em
+`03_EXECUCAO_DE_CAMPO/03_Apropriacao_Direta/<AAAA-MM>`. O responsável é o usuário da sessão; o base64 não vai para a
+auditoria.
+
+**Correção só por estorno com motivo:** a apropriação fica riscada (nada é apagado); a proposta dela numa medição aberta
+volta a PENDENTE; já medida numa medição fechada, o estorno é recusado (D-16).
+
+**"O item não está na lista":** cadastro rápido do item novo (grupo, material ou serviço, descrição, unidade, os
+identificadores da busca, preço proposto e a fonte, que pode ser cotação, NF ou SINAPI/SICRO com o código, e a
+justificativa). Antes de gravar, o sistema avisa se a descrição e os identificadores batem com um item que já existe
+("parece o item 5.1_1.14.27: é esse?"). O item entra como a aprovar e já pode receber apropriação.
+
+**Diário de obra:** as apropriações do dia aparecem numa seção própria.
+
+| Rota | Permissão ou tela |
+|---|---|
+| `GET /api/base-custo/busca?q=&grupo=&tipo=` | telas `campo`, `medicao`, `lev` |
+| `GET /api/base-custo/itens?grupo=&tipo=` (ou `?ref=` para um item com o saldo) | as mesmas |
+| `POST /api/apropriacao` (com `evidencias: [{nome, conteudo_b64}]`) | `apropriacao` |
+| `POST /api/apropriacao/estornar` `{apropriacao_id, motivo}` | `apropriacao` |
+| `GET /api/apropriacoes?ini=&fim=&equipe=` | telas `campo`, `diario`, `medicao` |
+| `POST /api/base-custo/item-novo` (com `confirmar` para gravar apesar do parecido) | `apropriacao` |
+| `GET /api/apropriacao/arquivo?doc=` (evidência ou documento da Caesb, inline) | telas `campo`, `diario`, `medicao` |
+
+Testes: `tests/test_apropriacao.py` (`TestBusca`, `TestApropriacaoHttp`).
