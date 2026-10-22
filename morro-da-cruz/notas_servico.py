@@ -468,9 +468,9 @@ def _resumo_leitura(ns):
             "fonte": {k: v for k, v in (ns.get("fonte") or {}).items() if k in ("extrator", "conferido_com", "paginas", "produtor")}}
 
 
-def ler(conn, tipo, pdf_b64, planilha_b64=None, zona=None, pb=None, hoje=None):
-    """Só lê (não grava nada): a leitura e as contas da NS, o casamento de cada segmento com os trechos da obra e a prévia
-    do que seria gravado por linha da 06.1."""
+def ler(conn, tipo, pdf_b64, planilha_b64=None, zona=None, pb=None, hoje=None, croqui_b64=None):
+    """Só lê (não grava nada): a leitura e as contas da NS, o casamento de cada segmento com os trechos da obra, a prévia
+    do que seria gravado por linha da 06.1 e a conferência do croqui."""
     if tipo not in TIPOS or tipo == "EXECUCAO":
         raise RegraViolada("Tipo de nota de serviço inválido (TOPOGRAFIA, CADASTRO ou SERVICO).")
     pdf, _, ns = _ler_arquivos(conn, pdf_b64, planilha_b64, hoje)
@@ -491,7 +491,7 @@ def ler(conn, tipo, pdf_b64, planilha_b64=None, zona=None, pb=None, hoje=None):
             "contrato_ok": L.norm_contrato(ns["cabecalho"].get("contrato")) == L.norm_contrato(S.contrato(conn)),
             "ja_registrada": por_arquivo and dict(por_arquivo, motivo="o mesmo arquivo já foi registrado"),
             "mesmo_numero": mesma and dict(mesma, mesma_impressao=mesma["impressao"] == ns["impressao_dados"]),
-            "aviso_tipo": aviso_tipo}
+            "aviso_tipo": aviso_tipo, "avisos_croqui": _avisos_croqui(croqui_b64, ns)}
 
 
 def _fisico_por_id(conn, fisico_id):
@@ -515,6 +515,20 @@ def _croqui(conn, croqui_b64, nome, por):
     if ext not in ("pdf", "jpg", "png"):
         raise RegraViolada("O croqui precisa ser PDF, JPG ou PNG (foto do celular vale).")
     return _guardar(conn, "NS_CROQUI", dados, nome, por)
+
+
+def _avisos_croqui(croqui_b64, ns):
+    """O croqui em PDF com texto é conferido com a nota (número, contrato e data escritos nele): só avisa."""
+    return L.conferir_croqui(_bytes(croqui_b64, "o croqui", LIMITE_CROQUI), ns) if croqui_b64 else []
+
+
+def _leitura_com_croqui(leitura_json, avisos):
+    """A leitura guardada da NS com os avisos do croqui que ela tem agora."""
+    leitura = json.loads(leitura_json or "{}")
+    leitura.pop("avisos_croqui", None)
+    if avisos:
+        leitura["avisos_croqui"] = avisos
+    return json.dumps(leitura, ensure_ascii=False, default=str)
 
 
 def _decidir(segs, decisoes, por):
@@ -556,6 +570,8 @@ def _inserir_ns(conn, tipo, ns, ctx, pdf_id, croqui_id, planilha_id, por, equipe
     leitura = {k: ns[k] for k in ("cabecalho", "grupos", "notas", "resumo", "total_geral", "assinaturas", "avisos",
                                   "verificacoes", "resultado", "leitor")}
     leitura["fonte"] = {k: v for k, v in (ns.get("fonte") or {}).items() if k in ("extrator", "conferido_com", "paginas", "produtor")}
+    if ns.get("avisos_croqui"):
+        leitura["avisos_croqui"] = ns["avisos_croqui"]
     return conn.execute(
         """INSERT INTO notas_servico(tipo,contrato,numero,folhas,data,localizacao,titulo,zona,pb,equipe_id,pdf_id,croqui_id,
              planilha_id,impressao,leitura,extensao_m,status,substitui_id,registrada_por,registrada_em)
@@ -616,15 +632,18 @@ def registrar(conn, tipo, pdf_b64, por, decisoes=None, croqui_b64=None, planilha
                            "antes de registrar a nova. Nada foi gravado.")
     if tipo == "SERVICO" and not croqui_b64 and not mesma:
         raise RegraViolada("A NS de serviço vai com o croqui (PDF, JPG ou PNG).")
+    ns["avisos_croqui"] = _avisos_croqui(croqui_b64, ns)
     with transacao(conn):
         pdf_id = _guardar(conn, "NS_PDF", pdf, nomes.get("pdf"), por)
         croqui_id = _croqui(conn, croqui_b64, nomes.get("croqui"), por) if croqui_b64 else None
         planilha_id = _guardar(conn, "NS_PLANILHA", planilha, nomes.get("planilha"), por) if planilha else None
         if mesma:
-            novos = {"pdf_id": pdf_id, **({"croqui_id": croqui_id} if croqui_id else {}),
+            novos = {"pdf_id": pdf_id, **({"croqui_id": croqui_id, "leitura": _leitura_com_croqui(mesma["leitura"], ns["avisos_croqui"])}
+                                          if croqui_id else {}),
                      **({"planilha_id": planilha_id} if planilha_id else {})}
             _trocar_arquivo(conn, mesma, novos, por)
-            return {"id": mesma["id"], "arquivo_trocado": True, "segmentos": [], "gravado_m": 0.0, "pendente_m": 0.0}
+            return {"id": mesma["id"], "arquivo_trocado": True, "segmentos": [], "gravado_m": 0.0, "pendente_m": 0.0,
+                    "avisos_croqui": ns["avisos_croqui"]}
         ctx = _contexto(ns, zona, pb)
         segs = casar(conn, ns, ctx)
         _decidir(segs, decisoes, por)
@@ -640,7 +659,7 @@ def registrar(conn, tipo, pdf_b64, por, decisoes=None, croqui_b64=None, planilha
                 _marcar(conn, sid, r)
             out.append(r)
     return {"id": ns_id, "arquivo_trocado": False, "segmentos": out, "gravado_m": round(sum(r["gravado_m"] for r in out), 3),
-            "pendente_m": round(sum(r["pendente_m"] for r in out), 3)}
+            "pendente_m": round(sum(r["pendente_m"] for r in out), 3), "avisos_croqui": ns["avisos_croqui"]}
 
 
 def _marcar(conn, seg_id, r):
@@ -710,12 +729,13 @@ def anexar(conn, ns_id, croqui_b64, nome, por):
     ns = _ns(conn, int(ns_id))
     if ns["status"] != "REGISTRADA":
         raise RegraViolada(f"NS {ns['numero']} está {ns['status'].lower()}.")
+    avisos = _avisos_croqui(croqui_b64, json.loads(ns["leitura"] or "{}"))
     with transacao(conn):
         cid = _croqui(conn, croqui_b64, nome, por)
         if cid == ns["croqui_id"]:
             raise RegraViolada("Este croqui já está na NS.")
-        _trocar_arquivo(conn, ns, {"croqui_id": cid}, por)
-    return {"id": ns["id"], "croqui_id": cid}
+        _trocar_arquivo(conn, ns, {"croqui_id": cid, "leitura": _leitura_com_croqui(ns["leitura"], avisos)}, por)
+    return {"id": ns["id"], "croqui_id": cid, "avisos_croqui": avisos}
 
 
 # ------------------------------------------------------------------ consulta
@@ -1117,14 +1137,15 @@ def enviar_dia(conn, equipe_id, pdf_b64, croqui_b64, por, planilha_b64=None, nom
                            "anule o envio anterior (com o motivo) antes de enviar o novo. Nada foi gravado.")
     if not croqui_b64 and not mesma:
         raise RegraViolada("Envie o croqui junto com a nota (PDF, JPG ou PNG; foto do celular vale).")
+    ns["avisos_croqui"] = _avisos_croqui(croqui_b64, ns)
     with transacao(conn):
         _clima_do_dia(conn, cab["data"], equipe_id, clima)
         pdf_id = _guardar(conn, "NS_PDF", pdf, nomes.get("pdf"), por)
         croqui_id = _croqui(conn, croqui_b64, nomes.get("croqui"), por) if croqui_b64 else None
         planilha_id = _guardar(conn, "NS_PLANILHA", planilha, nomes.get("planilha"), por) if planilha else None
         if mesma:
-            _trocar_arquivo(conn, mesma, {"pdf_id": pdf_id, **({"croqui_id": croqui_id} if croqui_id else {}),
-                                          **({"planilha_id": planilha_id} if planilha_id else {})}, por)
+            _trocar_arquivo(conn, mesma, {"pdf_id": pdf_id, **({"croqui_id": croqui_id, "leitura": _leitura_com_croqui(
+                mesma["leitura"], ns["avisos_croqui"])} if croqui_id else {}), **({"planilha_id": planilha_id} if planilha_id else {})}, por)
             return dict(resumo_dia(conn, mesma["id"]), arquivo_trocado=True)
         zona = equipe_id if re.fullmatch(r"Zona\d\d|ADUTORA", equipe_id) else None
         ctx = _contexto(ns, zona)
@@ -1166,7 +1187,7 @@ def _atraso(ns):
 def resumo_dia(conn, ns_id, lancamento=None):
     """A NS do dia com os segmentos, o que cada um gravou e o que está na fila da engenharia (para a tela e o diário)."""
     ns = _ns(conn, int(ns_id))
-    ns.pop("leitura", None)
+    ns["avisos_croqui"] = croqui = json.loads(ns.pop("leitura", None) or "{}").get("avisos_croqui") or []
     ns["referencia"] = referencia(ns["numero"], ns["folhas"])
     ns["segmentos"] = segmentos(conn, ns["id"])
     por_ordem = {r["ordem"]: r for r in lancamento or []}
@@ -1181,7 +1202,7 @@ def resumo_dia(conn, ns_id, lancamento=None):
     ns["atrasada"] = ns["atraso_dias"] > ATRASO_DIAS
     ns["verificada"] = any(r["verificado"] for s in ns["segmentos"] for r in s["registros"])
     ns["avisos"] = sorted({a for s in ns["segmentos"] for a in (s.get("avisos") or []) if a == SEM_ETAPA}) + (
-        [f"NS enviada com atraso: {ns['atraso_dias']} dias depois da data da nota"] if ns["atrasada"] else [])
+        [f"NS enviada com atraso: {ns['atraso_dias']} dias depois da data da nota"] if ns["atrasada"] else []) + croqui
     ns["drive"] = {q: v for q, v in ((q, _drive(conn, [ns[f"{q}_id"]]).get(ns[f"{q}_id"])) for q in ("pdf", "croqui")) if v}
     ns["croqui_mime"] = (_one(conn, "SELECT mime FROM documentos WHERE id=?", ns["croqui_id"]) or {}).get("mime")
     return ns

@@ -1,6 +1,6 @@
 # Notas de serviço (NS) por upload e diário de obra pela NS do dia
 
-CT 10.239/2026 · 21/10/2026 · esquema v18 · decisões D-69 a D-74 e D-80 a D-85 (`docs/DECISOES_PENDENTES.md`)
+CT 10.239/2026 · 21/10/2026 (planilha .xls e conferência do croqui: 22/10/2026) · esquema v18 · decisões D-69 a D-74 e D-80 a D-85 (`docs/DECISOES_PENDENTES.md`)
 
 Topografia, cadastro de campo e serviço de obra deixam de ser digitados: chegam como **nota de serviço em PDF**, no
 formato da Caesb. O diário de obra também: a equipe envia **a NS do dia** (o que executou) e **o croqui**, e o sistema
@@ -24,10 +24,16 @@ Código: `ns_leitura.py` (leitor), `notas_servico.py` (casamento, registro e NS 
 ### Como enviar
 
 1. Escolha o tipo: **Topografia**, **Cadastro de campo** ou **Serviço de obra**.
-2. Escolha o PDF da nota. O croqui é opcional (obrigatório no serviço de obra). A planilha `.xlsx` da nota é opcional:
-   quando vem, é a leitura exata e o sistema confere se diz o mesmo que o PDF.
+2. Escolha o PDF da nota. O croqui é opcional (obrigatório no serviço de obra). A planilha da nota é opcional, no
+   `.xlsx` ou no `.xls` do Excel 97-2003 (como a Caesb manda): quando vem, é a leitura exata e o sistema confere se diz
+   o mesmo que o PDF.
 3. Se a nota não disser a zona e a PB, abra "A nota não diz a zona ou a PB" e escolha (aceita "8", "pb8" ou "PB08").
 4. Toque em **Ler a nota**. Ler não grava nada. O PDF e o croqui abrem no próprio navegador.
+
+**Croqui de outra nota.** Quando o croqui é PDF com texto (o que sai do AutoCAD), o sistema confere o número da NS, o
+contrato e a data escritos nele com os da nota. O que não bate aparece em "Confira o croqui" (por exemplo, "o croqui é
+da NS 006, e a nota é a 012"). É só aviso: não bloqueia e não grava nada. O aviso fica guardado com a nota e some quando
+o croqui certo é enviado. Foto e PDF sem texto não são conferidos. O desenho do croqui continua sem ser lido (D-74).
 
 As abas **Topografia** e **Cadastro de campo** têm o botão **Enviar nota de serviço** (abre esta tela com o tipo
 escolhido) e a lista das notas do tipo. O formulário digitado antigo continua, recolhido em
@@ -89,9 +95,10 @@ O botão **Registrar** só libera com todos os segmentos conferidos. Numa transa
 | Mensagem | O que fazer |
 |---|---|
 | "a nota é de outro contrato" | conferir se é desta obra; a NS de outra obra nunca entra |
-| "PDF sem camada de texto" | pedir o PDF gerado pelo Excel (não a digitalização) ou enviar a planilha `.xlsx` |
+| "PDF sem camada de texto" | pedir o PDF gerado pelo Excel (não a digitalização) ou enviar a planilha (`.xlsx` ou `.xls`) |
 | erro nas contas (A01, A04, A08, A11, A13…) | conferir a nota com a topografia; corrigida, enviar de novo |
-| "leram dados diferentes" | enviar a planilha `.xlsx` da nota, que é a leitura exata |
+| "leram dados diferentes" | enviar a planilha da nota (`.xlsx` ou `.xls`), que é a leitura exata |
+| "Planilha .xls ilegível" | salvar a planilha como `.xlsx` no Excel e enviar de novo (planilha com senha ou do Excel 5/95 não é lida) |
 | "folhas … de …" | enviar o PDF com todas as folhas |
 | "data … futura" | conferir a data da nota |
 
@@ -173,7 +180,8 @@ Por dia e equipe: a nota do dia e o croqui enviado, ao lado do **croqui do siste
 o sistema entendeu da nota acesos e os da fila tracejados), o que foi lançado (linha da 06.1, metros e etapa) e o que
 espera a engenharia; **programado × executado** (programação do Dados da obra × o que foi lançado); clima, pessoas e
 material, soldas, fotos, ocorrências e interferências, como antes; e os alertas: "check-in feito e nenhuma NS do dia",
-"NS enviada com atraso" e "segmentos aguardando a engenharia".
+"NS enviada com atraso", "confira o croqui" (croqui que diz outra NS, outro contrato ou outra data) e "segmentos
+aguardando a engenharia".
 
 No Drive: `03_EXECUCAO_DE_CAMPO/02_Notas_de_Servico/Execucao/<Zona>/<AAAA-MM>/`, com
 `Morro da Cruz - NS do dia 015 - Zona03 PB08 - 2026-10-21 (hash).pdf` e o mesmo com "- croqui".
@@ -184,17 +192,22 @@ No Drive: `03_EXECUCAO_DE_CAMPO/02_Notas_de_Servico/Execucao/<Zona>/<AAAA-MM>/`,
 
 - **O formato real da NS do dia ainda não foi visto.** Os casos foram feitos com notas sintéticas no leiaute Caesb.
   A linha de parada é lida do PDF quando tem as cotas (com ou sem método e material). **Só com a estaca e as
-  distâncias**, as colunas ficam incertas e a nota é recusada (E04/E05). A planilha `.xlsx` da nota deve resolver,
-  mas esse caso ainda não foi testado.
-- **O croqui não é lido** (o texto do AutoCAD sai embaralhado; a foto pode estar torta): é guardado e mostrado.
+  distâncias**, as colunas ficam incertas e a nota é recusada (E04/E05). A planilha da nota deve resolver, mas esse
+  caso ainda não foi testado.
+- **O desenho do croqui não é lido** (a foto pode estar torta; o traçado não vira trecho): é guardado e mostrado. Do
+  croqui em PDF com texto só saem o número da NS, o contrato e a data, para o aviso de croqui de outra nota.
+- **A planilha `.xls`** é lida por um leitor próprio (`planilha_xls.py`, sem biblioteca nova), testado com a planilha
+  real da NS 006 e com planilhas sintéticas. Planilha com senha ou do Excel 5/95 é recusada: salvar como `.xlsx`.
 - **Nós e caixas** (tê, registro, VRP): a nota do dia não diz que a peça foi instalada; hoje só o lançamento à mão.
 - **Nomes de elementos** de uma NS de água real ainda não vistos; sem vocabulário de esgoto (PV, coletor) como regra.
 - **PDF escaneado:** recusado; não há OCR.
 
 ## 4. Testes
 
-`tests/test_ns_leitura.py` (leitor), `tests/test_notas_servico.py` (migração v18, casamento, registro por tipo,
+`tests/test_ns_leitura.py` (leitor e conferência do croqui), `tests/test_planilha_xls.py` (leitor do `.xls`: tipos
+de célula, mini fluxo, arquivo cortado, laço e senha), `tests/test_notas_servico.py` (migração v18, casamento, registro por tipo,
 permissões, arquivo e 413) e `tests/test_ns_dia.py` (NS do dia: inteiro, parcial, parada pela programação e pela
 engenharia, continuação e já lançado, reaterro e escavação, MND, conexão no meio da linha, sem etapa, recusas, atraso,
 permissões, anulação e Diário de obra), sobre a base real das planilhas (`tests/base_real.py`). Os PDFs reais de
-exemplo não ficam no repositório: `MC_NS_EXEMPLOS=<pasta>` roda o teste deles.
+exemplo não ficam no repositório: `MC_NS_EXEMPLOS=<pasta>` roda o teste deles (`ns_assinada.pdf`,
+`ns_nao_assinada.pdf`, `ns_planilha.xls` e `croqui.pdf` da NS 006).

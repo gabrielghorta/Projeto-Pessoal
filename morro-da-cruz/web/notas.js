@@ -63,6 +63,7 @@ $('#fNs').addEventListener('submit', async ev => {
   $('#nsResultado').innerHTML = '<p class="vazio">Lendo a nota…</p>';
   nsTravar(true);
   const r = await acao(() => api('/api/ns/ler', { tipo, pdf_b64: arquivos.pdf.b64, planilha_b64: arquivos.planilha && arquivos.planilha.b64,
+    croqui_b64: arquivos.croqui && arquivos.croqui.b64,
     zona: o.zona || null, pb: o.pb || null })).catch(() => null).finally(() => nsTravar(false));
   if (!r || r.tipo !== NSV.tipo) { $('#nsResultado').innerHTML = '<p class="vazio">A nota não foi lida. Veja o aviso acima.</p>'; return; }
   NSV.envio = { tipo: r.tipo, arquivos, zona: o.zona || null, pb: o.pb || null };
@@ -78,12 +79,13 @@ function renderNsLeitura() {
   const ctx = r.contexto, onde = [ctx.zona, ctx.pb].filter(Boolean).join(' ');
   const avisos = [];
   if (!r.contrato_ok) avisos.push(['problema', `<b>Recusada: a nota é de outro contrato (${esc(l.contrato || 'sem contrato')}).</b> Esta obra é o ${esc(RESUMO.contrato)}. Nada pode ser registrado.`]);
-  else if (!res.aceita) avisos.push(['problema', `<b>Recusada:</b> ${res.motivos.map(esc).join('; ')}. Confira o PDF ou envie a planilha da nota (.xlsx).`]);
+  else if (!res.aceita) avisos.push(['problema', `<b>Recusada:</b> ${res.motivos.map(esc).join('; ')}. Confira o PDF ou envie a planilha da nota (.xlsx ou .xls).`]);
   if (r.ja_registrada) avisos.push(['problema', `<b>Este arquivo já foi registrado</b> (NS ${esc(r.ja_registrada.numero)}, ${esc(NS_TIPOS[r.ja_registrada.tipo] || r.ja_registrada.tipo)}, em ${dataBR(String(r.ja_registrada.registrada_em).slice(0, 10))}).`]);
   if (r.mesmo_numero) avisos.push(r.mesmo_numero.mesma_impressao
     ? ['sugestao', `A NS ${esc(r.mesmo_numero.numero)} já está registrada com o mesmo conteúdo (por exemplo, a versão sem assinatura). Ao registrar, só o arquivo é trocado; a versão anterior fica guardada.`]
     : ['problema', `<b>A NS ${esc(r.mesmo_numero.numero)} já está registrada com outro conteúdo.</b> Anule a anterior (com o motivo) na lista "Notas recebidas" antes de registrar esta.`]);
   if (r.aviso_tipo) avisos.push(['info', `Confira o tipo: ${esc(r.aviso_tipo)}.`]);
+  (r.avisos_croqui || []).forEach(t => avisos.push(['problema', `<b>Confira o croqui:</b> ${esc(t)}.`]));
   if (!onde) avisos.push(['info', 'A nota não diz a zona nem a PB: escolha em "A nota não diz a zona ou a PB" e leia de novo.']);
   const ass = (l.assinaturas || []).filter(s => s.nome || s.empresa);
   $('#nsResultado').innerHTML = `<div class="acoes" style="justify-content:space-between">
@@ -233,7 +235,8 @@ async function nsVer(id, linha) {
   if (!linha.hidden) { linha.hidden = true; return; }
   const d = await acao(() => api('/api/ns/detalhe?id=' + id)).catch(() => null); if (!d) return;
   linha.hidden = false;
-  $('td', linha).innerHTML = `${d.status === 'ANULADA' ? `<div class="aviso problema">Anulada por ${esc(d.anulada_por)} em ${dataBR(String(d.anulada_em).slice(0, 10))}: ${esc(d.anulada_motivo)}</div>` : ''}
+  $('td', linha).innerHTML = `${((d.leitura || {}).avisos_croqui || []).map(t => `<div class="aviso problema">Confira o croqui: ${esc(t)}.</div>`).join('')}
+    ${d.status === 'ANULADA' ? `<div class="aviso problema">Anulada por ${esc(d.anulada_por)} em ${dataBR(String(d.anulada_em).slice(0, 10))}: ${esc(d.anulada_motivo)}</div>` : ''}
     ${d.segmentos.map(s => `<div class="registro"><div><b>${s.ordem}. ${esc(elNs(s.de))} → ${esc(elNs(s.para))} · ${mNs(s.metros_ns)} na nota</b> ${chipNs(s.situacao)}</div>
       <small>${s.linhas.length ? s.linhas.map(l => `${esc(linhaNs(l.ponto))} ${nf(l.ini_m)}–${nf(l.fim_m)} m`).join(' · ') : 'sem trecho da obra'}
         ${s.aplicado_m > 0.001 ? ` · gravado ${nf(s.aplicado_m)} m` : ''}${s.pendente_m > 0.001 ? ` · <b>pendente ${nf(s.pendente_m)} m</b>` : ''}${s.confirmado_por ? ` · conferido por ${esc(s.confirmado_por)}` : ''}</small>

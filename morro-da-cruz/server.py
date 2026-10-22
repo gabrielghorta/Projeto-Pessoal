@@ -557,7 +557,8 @@ def r_ns_detalhe(q, c, usuario):
 
 
 def p_ns_ler(b, c, usuario):
-    return NS.ler(c, b.get("tipo"), b.get("pdf_b64"), b.get("planilha_b64"), b.get("zona") or None, b.get("pb") or None)
+    return NS.ler(c, b.get("tipo"), b.get("pdf_b64"), b.get("planilha_b64"), b.get("zona") or None, b.get("pb") or None,
+                  croqui_b64=b.get("croqui_b64"))
 
 
 def p_ns(b, c, usuario):

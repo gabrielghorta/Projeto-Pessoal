@@ -142,6 +142,19 @@ class TestTopografia(BaseReal):
         self.assertEqual((h["Content-Security-Policy"], h["X-Content-Type-Options"]), ("sandbox", "nosniff"))
         self.assertEqual(self.abrir("eng1", f"/api/ns/arquivo?id={ns['id']}&qual=croqui")[0], 404)
 
+    def test_planilha_xls_confere_o_pdf_e_e_guardada(self):
+        """A planilha da NS no .xls do Excel 97-2003 (como ela chega): confere o PDF, é guardada e abre com o tipo certo."""
+        xls = NSS.xls_de_ns(**NSS.ns_zona03_pb08())
+        r = self.ok(self.ler("eng1", "TOPOGRAFIA", pdf_ns(), planilha_b64=b64(xls)))
+        self.assertEqual(r["leitura"]["fonte"]["conferido_com"], {"extrator": "planilha .xls", "mesma_impressao": True})
+        r = self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns(), planilha_b64=b64(xls), planilha_nome="NS 012.xls"))
+        self.assertEqual(r["gravado_m"], 573.97)
+        st, h, dados = self.abrir("eng1", f"/api/ns/arquivo?id={r['id']}&qual=planilha")
+        self.assertEqual((st, h["Content-Type"], dados), (200, "application/vnd.ms-excel", xls))
+        self.assertTrue(h["Content-Disposition"].endswith("NS%20012%20-%20planilha.xls"))
+        doc = NSS.composto({"WordDocument": b"\0" * 5000})                # composto do Office, mas não é planilha
+        self.recusa(self.ler("eng1", "TOPOGRAFIA", pdf_ns(), planilha_b64=b64(doc)), 422, "Workbook")
+
     def test_grava_so_o_que_nao_estava_liberado(self):
         S.registrar_etapa_complementar(self.c, TR006, "LIBERACAO_TOPOGRAFICA", 50, 120, "2026-10-10", "eng1", "locação antiga")
         r = self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns()))
@@ -248,6 +261,26 @@ class TestServico(BaseReal):
         self.assertEqual((st, dados), (200, novo))
         self.recusa(self.cli("eng1").post("/api/ns/aplicar", {"ns_id": r["id"]}), 422, "Só a NS de topografia")
         self.recusa(self.cli("eng1").post("/api/ns/anexo", {"ns_id": r["id"], "croqui_b64": b64(b"GIF89a")}), 422, "PDF, JPG ou PNG")
+
+
+    def test_croqui_de_outra_nota_avisa_e_fica_na_leitura(self):
+        """O croqui em PDF diz outra NS e outra data: avisa na leitura e no registro (não bloqueia) e guarda o aviso; o
+        croqui certo enviado depois limpa o aviso, e a versão anterior continua com o dela."""
+        pdf = pdf_ns(numero="020", bloco="TOPOGRAFIA")
+        errado = NSS.pdf_de_texto(["CROQUI DE LOCAÇÃO - N.S.019", "DATA: 14/10/2026"])
+        avisos = ["o croqui é da NS 019, e a nota é a 020", "a data do croqui (14/10/2026) não é a da nota (15/10/2026)"]
+        self.assertEqual(self.ok(self.ler("eng1", "SERVICO", pdf, croqui_b64=b64(errado)))["avisos_croqui"], avisos)
+        self.assertEqual(self.ok(self.ler("eng1", "SERVICO", pdf))["avisos_croqui"], [])
+        r = self.ok(self.registrar("eng1", "SERVICO", pdf, croqui_b64=b64(errado), croqui_nome="c.pdf"))
+        self.assertEqual(r["avisos_croqui"], avisos)
+        self.assertEqual(self.ok(self.cli("eng1").get(f"/api/ns/detalhe?id={r['id']}"))["leitura"]["avisos_croqui"], avisos)
+        certo = NSS.pdf_de_texto(["CROQUI DE LOCAÇÃO - N.S.020", "DATA: 15/10/2026"])
+        a = self.ok(self.cli("eng1").post("/api/ns/anexo", {"ns_id": r["id"], "croqui_b64": b64(certo), "croqui_nome": "c2.pdf"}))
+        self.assertEqual(a["avisos_croqui"], [])
+        det = self.ok(self.cli("eng1").get(f"/api/ns/detalhe?id={r['id']}"))
+        self.assertNotIn("avisos_croqui", det["leitura"])
+        ant = self.ok(self.cli("eng1").get(f"/api/ns/detalhe?id={det['versoes'][0]['id']}"))
+        self.assertEqual(ant["leitura"]["avisos_croqui"], avisos)
 
 
 class TestCasamento(BaseReal):

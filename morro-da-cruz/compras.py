@@ -19,6 +19,7 @@ import re
 
 import imagens
 import nfe
+import planilha_xls
 import regras as R
 import servicos as S
 from servicos import RegraViolada, _agora, _one, _rows, transacao
@@ -34,6 +35,8 @@ def _tipo_arquivo(dados):
         return "pdf", "application/pdf"
     if dados[:4] == b"PK\x03\x04" and b"xl/workbook.xml" in dados[:65536] + dados[-65536:]:
         return "xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if planilha_xls.eh_xls(dados):
+        return "xls", "application/vnd.ms-excel"
     ext, mime = imagens.tipo(dados)
     if ext in ("jpg", "png"):
         return ext, mime
@@ -55,7 +58,7 @@ def guardar_documento(conn, tipo, conteudo_b64, nome_original, por, dir_docs):
         raise RegraViolada("Documento vazio ou maior que 20 MB.")
     ext, mime = _tipo_arquivo(dados)
     esperado = {"NFE_XML": ("xml",), "NF_PDF": ("pdf",), "NF_IMAGEM": ("jpg", "png"), "NS_PDF": ("pdf",),
-                "NS_PLANILHA": ("xlsx",)}.get(tipo, ("pdf", "jpg", "png"))
+                "NS_PLANILHA": ("xlsx", "xls")}.get(tipo, ("pdf", "jpg", "png"))
     if ext not in esperado:
         raise RegraViolada(f"Arquivo de {tipo} precisa ser {'/'.join(e.upper() for e in esperado)}.")
     if ext in ("jpg", "png"):

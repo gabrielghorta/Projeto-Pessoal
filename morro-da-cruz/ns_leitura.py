@@ -6,8 +6,9 @@ de título, bloco (TOPOGRAFIA…), tabela de estacas por grupo (rede, adutora), 
 entre as linhas de dados, NOTAS, RESUMO, TOTAL GERAL e assinaturas.
 * Texto: pypdf no modo layout (a página girada, /Rotate 90, tem de ir para o conteúdo antes, senão sai vazio). Se o
   pdftotext existir, o PDF é lido de novo com ele e as duas leituras são comparadas pela impressão dos dados.
-* Planilha .xlsx da NS (opcional): as células viram o mesmo texto em colunas e passam pelo mesmo leitor; a leitura da
-  planilha confere a do PDF (dados diferentes = falha de leitura).
+* Planilha da NS (opcional), .xlsx ou o .xls do Excel 97-2003 (planilha_xls.py): as células viram o mesmo texto em
+  colunas e passam pelo mesmo leitor; a leitura da planilha confere a do PDF (dados diferentes = falha de leitura).
+* Croqui em PDF com texto (opcional): o número da NS, o contrato e a data escritos nele são conferidos com os da nota.
 * Colunas: a posição de uma célula VAZIA é decidida por âncoras. No pypdf a linha inteira desliza conforme o texto do
   elemento, então as âncoras são RELATIVAS ao método (V.C.A/MND) ou ao material (PEAD-160) da própria linha, aprendidas
   nas linhas completas. No pdftotext (e na planilha) as posições são fiéis e os rótulos do cabeçalho servem de âncora.
@@ -26,6 +27,8 @@ import unicodedata
 from datetime import date, datetime
 from itertools import combinations
 from statistics import median
+
+import planilha_xls
 
 VERSAO = "ns_leitura 1"
 TOL = 0.011            # m: valores impressos com 2 casas
@@ -276,36 +279,54 @@ def _texto_celula(v, formato):
     return re.sub(r'\s+', ' ', str(v)).strip()
 
 
-def ler_planilha(dados):
-    """Páginas de texto da planilha .xlsx da NS (uma por aba com conteúdo de NS), com as células em colunas fixas, como o
-    pdftotext: passam pelo mesmo leitor do PDF."""
-    if not dados or dados[:4] != b'PK\x03\x04':
-        raise LeituraRecusada('A planilha da NS precisa ser .xlsx (o .xls antigo não é lido; salve como .xlsx).')
-    if len(dados) > LIMITE_PLANILHA:
-        raise LeituraRecusada(f'Planilha da NS maior que {LIMITE_PLANILHA // 2 ** 20} MB.')
+def tipo_planilha(dados):
+    """'.xlsx', '.xls' ou None."""
+    if dados[:4] == b'PK\x03\x04':
+        return '.xlsx'
+    return '.xls' if dados[:8] == planilha_xls.ASSINATURA else None
+
+
+def _abas_xlsx(dados):
     try:
         import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(dados), data_only=True, read_only=True)
     except Exception as e:  # noqa: BLE001
         raise LeituraRecusada(f'Planilha ilegível ({type(e).__name__}).') from None
-    paginas = []
     try:
-        for ws in wb.worksheets:
-            linhas = [[_texto_celula(c.value, c.number_format) if hasattr(c, 'number_format') else _texto_celula(c.value, '')
-                       for c in row] for row in ws.iter_rows()]
-            linhas = [l for l in linhas if any(l)]
-            if not any(re.search(r'N\.?\s?S\.?\s*n\s*[º°o]|NOTA\s+DE\s+SERVI', ' '.join(l), re.I) for l in linhas):
-                continue
-            n = max(len(l) for l in linhas)
-            sozinha = lambda l: sum(1 for c in l if c) == 1      # título, segmento, rótulo: uma célula só na linha
-            larg = [max((len(l[j]) for l in linhas if j < len(l) and not sozinha(l)), default=0) for j in range(n)]
-            # na planilha a célula do elemento nunca vem quebrada em 2 linhas (isso é coisa da impressão): a linha de uma
-            # célula só começa na coluna 0, para não ser tomada como continuação do elemento da linha de baixo
-            paginas.append('\n'.join(next(c for c in l if c) if sozinha(l) else
-                                     ''.join(c.ljust(larg[j] + 3) if j + 1 < len(l) else c for j, c in enumerate(l)
-                                             if larg[j] or c).rstrip() for l in linhas))
+        return [[[(c.value, getattr(c, 'number_format', '')) for c in row] for row in ws.iter_rows()] for ws in wb.worksheets]
     finally:
         wb.close()
+
+
+def ler_planilha(dados):
+    """Páginas de texto da planilha da NS, .xlsx ou .xls (uma por aba com conteúdo de NS), com as células em colunas
+    fixas, como o pdftotext: passam pelo mesmo leitor do PDF."""
+    tipo = tipo_planilha(dados or b'')
+    if not tipo:
+        raise LeituraRecusada('A planilha da NS precisa ser a do Excel (.xlsx ou .xls).')
+    if len(dados) > LIMITE_PLANILHA:
+        raise LeituraRecusada(f'Planilha da NS maior que {LIMITE_PLANILHA // 2 ** 20} MB.')
+    if tipo == '.xlsx':
+        abas = _abas_xlsx(dados)
+    else:
+        try:
+            abas = [linhas for _, linhas in planilha_xls.abas(dados)]
+        except planilha_xls.XlsInvalido as e:
+            raise LeituraRecusada(f'Planilha .xls ilegível: {e}.') from None
+    paginas = []
+    for aba in abas:
+        linhas = [[_texto_celula(v, f or '') for v, f in row] for row in aba]
+        linhas = [l for l in linhas if any(l)]
+        if not any(re.search(r'N\.?\s?S\.?\s*n\s*[º°o]|NOTA\s+DE\s+SERVI', ' '.join(l), re.I) for l in linhas):
+            continue
+        n = max(len(l) for l in linhas)
+        sozinha = lambda l: sum(1 for c in l if c) == 1      # título, segmento, rótulo: uma célula só na linha
+        larg = [max((len(l[j]) for l in linhas if j < len(l) and not sozinha(l)), default=0) for j in range(n)]
+        # na planilha a célula do elemento nunca vem quebrada em 2 linhas (isso é coisa da impressão): a linha de uma
+        # célula só começa na coluna 0, para não ser tomada como continuação do elemento da linha de baixo
+        paginas.append('\n'.join(next(c for c in l if c) if sozinha(l) else
+                                 ''.join(c.ljust(larg[j] + 3) if j + 1 < len(l) else c for j, c in enumerate(l)
+                                         if larg[j] or c).rstrip() for l in linhas))
     if not paginas:
         raise LeituraRecusada('A planilha não tem nenhuma aba com a NS (cabeçalho "NS nº").')
     return paginas
@@ -993,16 +1014,53 @@ def _conferir(ns, outra, origem):
         ns['falhas_leitura'].append(f'{ns["fonte"].get("extrator")} e {origem} leram dados diferentes: {_diferencas(ns, outra)}')
 
 
+def conferir_texto_croqui(texto, cab):
+    """Avisos quando o texto do croqui diz outra NS: o número, o contrato ou a data escritos nele não batem com os da
+    nota. O croqui não é obrigado a trazer esses dados; só o que ele traz é conferido."""
+    t = sem_acento(texto or '').upper()
+    numeros = {int(m.group(1)) for m in re.finditer(
+        r'(?<![A-Z0-9])(?:N\s*\.?\s*S|NOTA\s+DE\s+SERVICO)\s*\.?\s*(?:N\s*[O.]\s*)?[-_:.]?\s*(\d{1,4})(?![\d/])', t)}
+    contratos = {norm_contrato(f'{a}/{b}') for a, b in    # só o número escrito depois de 'contrato' (ou 'CT')
+                 re.findall(r'(?:CONTRAT\w*|(?<![A-Z])CT)[^0-9]{0,40}?(?<![\d/])(\d{3,6})\s*/\s*((?:19|20)\d\d)(?![\d/])', t)}
+    datas = {d for d in (data_iso(m.group(0)) for m in re.finditer(
+        r'(?<![\d/])\d{1,2}/\d{1,2}/(?:\d{4}|\d{2})(?![\d/])|(?<!\d)\d{1,2}-[A-Z]{3}-\d{2,4}(?!\d)', t)) if d}
+    avisos = []
+    if numeros and cab.get('numero_int') is not None and cab['numero_int'] not in numeros:
+        avisos.append(f'o croqui é da NS {", ".join(f"{n:03d}" for n in sorted(numeros))}, e a nota é a {cab.get("numero")}')
+    contrato = norm_contrato(cab.get('contrato'))
+    if contratos and contrato and contrato not in contratos:
+        avisos.append(f'o croqui cita o contrato {", ".join(sorted(contratos))}, e a nota é do {contrato}')
+    if datas and cab.get('data') and cab['data'] not in datas:
+        br = lambda d: date.fromisoformat(d).strftime('%d/%m/%Y')
+        avisos.append(f'a data do croqui ({", ".join(br(d) for d in sorted(datas))}) não é a da nota ({br(cab["data"])})')
+    return avisos
+
+
+def conferir_croqui(dados, ns):
+    """conferir_texto_croqui com o texto do croqui em PDF. Foto, PDF sem texto ou ilegível: nada a conferir ([])."""
+    if not dados or dados[:5] != b'%PDF-':
+        return []
+    try:
+        r = _pypdf().PdfReader(io.BytesIO(dados))
+        if r.is_encrypted and not r.decrypt(''):
+            return []
+        texto = '\n'.join(p.extract_text() or '' for p in list(r.pages)[:LIMITE_PAGINAS])
+    except Exception:  # noqa: BLE001 — o croqui é guardado como vier; a conferência é só reforço
+        return []
+    return conferir_texto_croqui(texto, ns.get('cabecalho') or {})
+
+
 def ler(dados, contrato_obra=None, hoje=None, inicio_contrato=None, planilha=None, comparar=True):
-    """Lê o PDF da NS (bytes) e faz as conferências. Com a planilha .xlsx (bytes), ela confere a leitura do PDF; sem ela,
-    se o pdftotext existir, o PDF é relido com ele. Leituras iguais confirmam as células incertas; diferentes viram
-    falha de leitura (ERRO E06), com as diferenças. Arquivo que não dá para ler: LeituraRecusada."""
+    """Lê o PDF da NS (bytes) e faz as conferências. Com a planilha .xlsx ou .xls (bytes), ela confere a leitura do PDF;
+    sem ela, se o pdftotext existir, o PDF é relido com ele. Leituras iguais confirmam as células incertas; diferentes
+    viram falha de leitura (ERRO E06), com as diferenças. Arquivo que não dá para ler: LeituraRecusada."""
     paginas, meta = extrair_paginas(dados, 'auto')
     ns = parse_texto(paginas, meta)
     if planilha:
-        ns_p = parse_texto(ler_planilha(planilha), {'extrator': 'planilha .xlsx', 'posicoes_fieis': True,
+        origem = f'planilha {tipo_planilha(planilha) or ""}'.strip()
+        ns_p = parse_texto(ler_planilha(planilha), {'extrator': origem, 'posicoes_fieis': True,
                                                      'paginas': meta.get('paginas')})
-        _conferir(ns, ns_p, 'planilha .xlsx')
+        _conferir(ns, ns_p, origem)
     elif comparar and str(meta.get('extrator', '')).startswith('pypdf') and shutil.which('pdftotext'):
         try:
             pag2, meta2 = extrair_paginas(dados, 'pdftotext')

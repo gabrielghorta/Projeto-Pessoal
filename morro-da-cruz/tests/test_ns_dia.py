@@ -305,6 +305,22 @@ class TestDiarioDeObra(BaseDia):
         enc = self.ok(self.cli("enc3").get(f"/api/diario?data={dia}&equipe=Zona03"))
         self.assertEqual(len(enc["ns_dia"]), 1)
 
+    def test_croqui_de_outra_nota_avisa_no_envio_e_no_diario(self):
+        """O croqui em PDF diz outra NS: a nota é lançada do mesmo jeito, o aviso aparece no resultado do envio e vira
+        alerta no Diário de obra. A planilha .xls vai junto e confere o PDF."""
+        g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
+        errado = b64(NSS.pdf_de_texto(["CROQUI DO DIA - N.S.014 - TRECHOS EXECUTADOS"]))
+        args = dict(numero="015", contrato="10239/2026", data_ns=ONTEM, titulo=TITULO, bloco="EXECUÇÃO", grupos=g)
+        r = self.ok(self.enviar("enc3", pdf_dia(g), croqui=errado, planilha_b64=b64(NSS.xls_de_ns(**args)),
+                                planilha_nome="nota.xls"))
+        self.assertEqual(self.gravado(), [("TR006", 0.0, 293.47), ("TR007", 0.0, 2.51)])
+        self.assertEqual(r["avisos_croqui"], ["o croqui é da NS 014, e a nota é a 015"])
+        self.assertIn("o croqui é da NS 014, e a nota é a 015", r["avisos"])
+        d = self.ok(self.cli("eng1").get(f"/api/diario?data={ONTEM.isoformat()}"))
+        self.assertTrue(any("confira o croqui, o croqui é da NS 014" in a for a in d["alertas"]), d["alertas"])
+        self.assertEqual(self.c.execute("SELECT d.mime FROM notas_servico n JOIN documentos d ON d.id=n.planilha_id").fetchone()[0],
+                         "application/vnd.ms-excel")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -134,7 +134,7 @@
           <label>Croqui (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
           <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
           <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
-          <details><summary>Planilha da nota (.xlsx, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label></details>
+          <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label></details>
           <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
           <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
         </form>
@@ -296,7 +296,7 @@
         <p class="vazio" id="nsTipoDesc" style="margin:0"></p>
         <label>Nota de serviço (PDF)<input type="file" name="pdf" accept="application/pdf,.pdf" required></label>
         <label><span id="nsCroquiRot">Croqui (PDF, JPG ou PNG; opcional)</span><input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"></label>
-        <label>Planilha da nota (.xlsx, opcional: leitura exata)<input type="file" name="planilha" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
+        <label>Planilha da nota (.xlsx ou .xls, opcional: leitura exata)<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
         <details><summary>A nota não diz a zona ou a PB</summary>
           <div class="linha"><label>Zona<select name="zona" id="nsZona"><option value="">a da nota</option></select></label><label>PB<input name="pb" placeholder="ex.: PB08" autocomplete="off"></label></div>
         </details>

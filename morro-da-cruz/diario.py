@@ -120,11 +120,14 @@ def programado_executado(programacoes, producao):
 
 
 def alertas(checkins, ns_dia, nomes):
-    """Equipe com check-in e sem NS do dia, NS enviada com atraso e segmentos aguardando a engenharia."""
+    """Equipe com check-in e sem NS do dia, NS enviada com atraso, croqui que parece de outra nota e segmentos
+    aguardando a engenharia."""
     com_ns = {n["equipe_id"] for n in ns_dia}
     out = [f"{nomes.get(eq, eq)}: check-in feito e nenhuma NS do dia enviada." for eq in sorted({c["equipe_id"] for c in checkins} - com_ns)]
     out += [f"{n['referencia']} ({nomes.get(n['equipe_id'], n['equipe_id'])}): enviada com atraso, {n['atraso_dias']} dias depois da data."
             for n in ns_dia if n["atrasada"]]
+    out += [f"{n['referencia']} ({nomes.get(n['equipe_id'], n['equipe_id'])}): confira o croqui, {a}."
+            for n in ns_dia for a in n.get("avisos_croqui") or []]
     out += [f"{n['referencia']} ({nomes.get(n['equipe_id'], n['equipe_id'])}): {len(n['fila'])} segmento(s) aguardando a engenharia."
             for n in ns_dia if n["fila"]]
     return out

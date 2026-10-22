@@ -2,8 +2,9 @@
 
 Monta o texto no leiaute que o pdftotext dá para o modelo Caesb, o PDF com camada de texto (fonte Courier, uma célula
 por trecho de texto, como o Excel imprime; com `girar=True` a página tem /Rotate 90, como a NS assinada) e a planilha
-.xlsx com as mesmas células. As assinaturas levam só marcadores ([NOME], [CREA])."""
+.xlsx e .xls com as mesmas células. As assinaturas levam só marcadores ([NOME], [CREA])."""
 import io
+import struct
 from datetime import date
 
 # colunas (centro, em caracteres) do pdftotext da NS 006: inteira, +, fração, elemento, terreno, GI, profundidade,
@@ -259,6 +260,186 @@ def xlsx_de_ns(numero='012', contrato='10239/2026', data_ns=date(2026, 10, 15), 
     b = io.BytesIO()
     wb.save(b)
     return b.getvalue()
+
+
+# ------------------------------------------------------------------------------------------------ .xls (Excel 97-2003)
+def xls_de_ns(limite_registro=8224, variado=True, **kw):
+    """A mesma planilha de xlsx_de_ns em .xls (BIFF8), como o Excel da Caesb ainda salva. `limite_registro` pequeno
+    parte a tabela de textos em vários registros (CONTINUE); `variado` usa os outros registros do Excel: números
+    seguidos em MULRK, a ACUMULADA como fórmula (com o resultado guardado), 'metros' como fórmula de texto e as
+    observações como LABEL."""
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_de_ns(**kw)))
+    abas = [(ws.title, {(c.row - 1, c.column - 1): (c.value, c.number_format) for row in ws.iter_rows() for c in row
+                        if c.value is not None}) for ws in wb.worksheets]
+    return xls_de_celulas(abas, limite_registro, variado)
+
+
+def _reg(tipo, dados):
+    return struct.pack('<HH', tipo, len(dados)) + dados
+
+
+def _largo(s):
+    return any(ord(ch) > 255 for ch in s)
+
+
+def _texto_biff(s, cch_curto=False):
+    return (struct.pack('<B' if cch_curto else '<H', len(s)) + bytes([_largo(s)])
+            + s.encode('utf-16-le' if _largo(s) else 'latin-1'))
+
+
+def _sst(textos, limite):
+    """SST e CONTINUE como o Excel parte: o cabeçalho do texto não se parte; os caracteres, sim, e o pedaço seguinte
+    recomeça com o byte da largura (que pode mudar)."""
+    regs, cur = [], bytearray(struct.pack('<II', len(textos), len(textos)))
+    for s in textos:
+        if len(cur) + 3 > limite:
+            regs.append(bytes(cur))
+            cur = bytearray()
+        largo = _largo(s)
+        cur += struct.pack('<HB', len(s), largo)
+        resto = s
+        while resto:
+            cabe = (limite - len(cur)) // (2 if largo else 1)
+            if cabe == 0:
+                regs.append(bytes(cur))
+                largo = _largo(resto)
+                cur = bytearray([largo])
+                continue
+            cur += resto[:cabe].encode('utf-16-le' if largo else 'latin-1')
+            resto = resto[cabe:]
+    regs.append(bytes(cur))
+    return _reg(0x00FC, regs[0]) + b''.join(_reg(0x003C, r) for r in regs[1:])
+
+
+def _rk(v):
+    """O número no formato compacto do Excel (None se não couber)."""
+    if isinstance(v, int) and -2 ** 29 <= v < 2 ** 29:
+        return (v << 2) & 0xFFFFFFFF | 2
+    if isinstance(v, float) and abs(v) < 2 ** 28 and round(v * 100) / 100 == v:
+        return (round(v * 100) << 2) & 0xFFFFFFFF | 3
+    return None
+
+
+def xls_de_celulas(abas, limite_registro=8224, variado=True):
+    """[(nome, {(linha, coluna): (valor, formato)})] → bytes do .xls (arquivo composto com o fluxo Workbook)."""
+    from datetime import datetime
+    internos = {'General': 0, '0': 1, '0.00': 2, '#,##0': 3, '#,##0.00': 4}
+    fmts = sorted({f for _, cel in abas for _, f in cel.values() if f and f != 'General'})
+    ifmt = {f: internos.get(f, 164 + i) for i, f in enumerate(fmts)}
+    xf = {'General': 0, **{f: i + 1 for i, f in enumerate(fmts)}}
+    textos = []
+    for _, cel in abas:
+        for v, _ in cel.values():
+            if isinstance(v, str) and v not in textos:
+                textos.append(v)
+
+    def folha(cel):
+        pos = sorted(cel)
+        n_lin, n_col = (max(r for r, _ in pos) + 1, max(c for _, c in pos) + 1) if pos else (0, 0)
+        out = [_reg(0x0809, struct.pack('<HHHHII', 0x0600, 0x0010, 0x0DBB, 0x07CC, 0, 6)),
+               _reg(0x0200, struct.pack('<IIHHH', 0, n_lin, 0, n_col, 0))]
+        k = 0
+        while k < len(pos):
+            (r, c), (v, f) = pos[k], cel[pos[k]]
+            x = xf.get(f or 'General', 0)
+            cab = struct.pack('<HHH', r, c, x)
+            if isinstance(v, (datetime, date)):
+                v = (datetime(v.year, v.month, v.day) - datetime(1899, 12, 30)).days if not isinstance(v, datetime) else \
+                    (v - datetime(1899, 12, 30)).total_seconds() / 86400
+                out.append(_reg(0x0203, cab + struct.pack('<d', float(v))))
+            elif isinstance(v, str):
+                if variado and v == 'metros':
+                    out.append(_reg(0x0006, cab + bytes(6) + b'\xff\xff' + struct.pack('<HIH', 0, 0, 0)))
+                    out.append(_reg(0x0207, _texto_biff(v)))
+                elif variado and c == 15:
+                    out.append(_reg(0x0204, cab + _texto_biff(v)))
+                else:
+                    out.append(_reg(0x00FD, cab + struct.pack('<I', textos.index(v))))
+            elif isinstance(v, bool):
+                out.append(_reg(0x0205, cab + bytes([v, 0])))
+            elif variado and c == 10 and isinstance(v, (int, float)):
+                out.append(_reg(0x0006, cab + struct.pack('<dHIH', float(v), 0, 0, 0)))
+            else:
+                corrida = [k]                    # números seguidos na linha: um MULRK, como o Excel grava
+                while variado and corrida[-1] + 1 < len(pos) and pos[corrida[-1] + 1] == (r, c + len(corrida)) \
+                        and _rk(cel[pos[corrida[-1] + 1]][0]) is not None and _rk(v) is not None \
+                        and not isinstance(cel[pos[corrida[-1] + 1]][0], (str, bool)) and c + len(corrida) != 10:
+                    corrida.append(corrida[-1] + 1)
+                if len(corrida) > 1:
+                    pares = b''.join(struct.pack('<HI', xf.get(cel[pos[j]][1] or 'General', 0), _rk(cel[pos[j]][0]))
+                                     for j in corrida)
+                    out.append(_reg(0x00BD, struct.pack('<HH', r, c) + pares + struct.pack('<H', c + len(corrida) - 1)))
+                    k += len(corrida)
+                    continue
+                rk = _rk(v)
+                out.append(_reg(0x027E, cab + struct.pack('<I', rk)) if rk is not None else
+                           _reg(0x0203, cab + struct.pack('<d', float(v))))
+            k += 1
+        return b''.join(out) + _reg(0x000A, b'')
+
+    folhas = [folha(cel) for _, cel in abas]
+    inicio = [_reg(0x0809, struct.pack('<HHHHII', 0x0600, 0x0005, 0x0DBB, 0x07CC, 0, 6)), _reg(0x0022, b'\0\0')]
+    inicio += [_reg(0x041E, struct.pack('<H', ifmt[f]) + _texto_biff(f)) for f in fmts if ifmt[f] >= 164]
+    inicio += [_reg(0x00E0, struct.pack('<HH', 0, 0) + bytes(16))]
+    inicio += [_reg(0x00E0, struct.pack('<HH', 0, ifmt[f]) + bytes(16)) for f in fmts]
+    fim = _sst(textos, limite_registro) + _reg(0x000A, b'')
+    tam_folhas = sum(len(_reg(0x0085, b'\0' * 6 + _texto_biff(n, True))) for n, _ in abas)
+    pos = len(b''.join(inicio)) + tam_folhas + len(fim)
+    for (nome, _), f in zip(abas, folhas):
+        inicio.append(_reg(0x0085, struct.pack('<IBB', pos, 0, 0) + _texto_biff(nome, True)))
+        pos += len(f)
+    return composto({'Workbook': b''.join(inicio) + fim + b''.join(folhas)})
+
+
+def composto(fluxos):
+    """Arquivo composto do Office (versão 3, setores de 512 bytes) com os fluxos dados; o fluxo menor que 4096 bytes
+    vai para o mini fluxo da raiz, como o Office faz."""
+    ss, fim_, livre, setor_fat, nenhum = 512, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFD, 0xFFFFFFFF
+    setores, fat = [], []
+
+    def cadeia(dados):
+        ini, n = len(setores), max(1, -(-len(dados) // ss))
+        for k in range(n):
+            setores.append(dados[k * ss:(k + 1) * ss].ljust(ss, b'\0'))
+            fat.append(ini + k + 1 if k + 1 < n else fim_)
+        return ini
+
+    mini, minifat, entradas = bytearray(), [], []
+    for nome, dados in fluxos.items():
+        if len(dados) >= 4096:
+            entradas.append((nome, cadeia(dados), len(dados)))
+        else:
+            ini, n = len(mini) // 64, max(1, -(-len(dados) // 64))
+            mini += dados.ljust(n * 64, b'\0')
+            minifat += [ini + k + 1 if k + 1 < n else fim_ for k in range(n)]
+            entradas.append((nome, ini, len(dados)))
+    raiz = cadeia(bytes(mini)) if mini else fim_
+    n0 = len(setores)
+    minifat1 = cadeia(struct.pack(f'<{len(minifat)}I', *minifat)) if minifat else fim_
+    n_minifat = len(setores) - n0
+
+    def entrada(nome, tipo, ini, tam, direita=nenhum, filho=nenhum):
+        n = (nome + '\0').encode('utf-16-le')
+        return (n.ljust(64, b'\0') + struct.pack('<HBB', len(n), tipo, 1) + struct.pack('<III', nenhum, direita, filho)
+                + bytes(36) + struct.pack('<IQ', ini, tam))
+    dire = entrada('Root Entry', 5, raiz, len(mini), filho=1 if entradas else nenhum)
+    for i, (nome, ini, tam) in enumerate(entradas):
+        dire += entrada(nome, 2, ini, tam, direita=i + 2 if i + 1 < len(entradas) else nenhum)
+    while len(dire) % ss:
+        dire += bytes(64) + struct.pack('<HBB', 0, 0, 0) + struct.pack('<III', nenhum, nenhum, nenhum) + bytes(48)
+    dir1 = cadeia(bytes(dire))
+    n_fat = 1
+    while n_fat * (ss // 4) < len(setores) + n_fat:
+        n_fat += 1
+    fat_ini = len(setores)
+    fat += [setor_fat] * n_fat
+    fat += [livre] * (n_fat * (ss // 4) - len(fat))
+    setores += [struct.pack(f'<{ss // 4}I', *fat[k * (ss // 4):(k + 1) * (ss // 4)]) for k in range(n_fat)]
+    difat = [fat_ini + k for k in range(n_fat)] + [livre] * (109 - n_fat)
+    cab = (b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1' + bytes(16) + struct.pack('<HHHHH', 0x3E, 3, 0xFFFE, 9, 6) + bytes(6)
+           + struct.pack('<IIIIIIIII', 0, n_fat, dir1, 0, 4096, minifat1, n_minifat, fim_, 0) + struct.pack('<109I', *difat))
+    return cab + b''.join(setores)
 
 
 # ------------------------------------------------------------------------------------------------ casos desta obra

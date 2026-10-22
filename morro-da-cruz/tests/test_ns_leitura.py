@@ -1,7 +1,7 @@
 """Leitor da Nota de Serviço (ns_leitura): NS de água sintética desta obra em texto, PDF (deitado e girado) e planilha,
 a NS 006 de outra obra recusada pelo contrato, contas quebradas, PDF sem texto e nomes dos elementos da rede de água.
-Os PDFs reais (com nome e CREA de pessoas) não ficam no repositório: o teste deles só roda com MC_NS_EXEMPLOS apontando
-para a pasta local com ns_assinada.pdf e ns_nao_assinada.pdf."""
+Os arquivos reais (com nome e CREA de pessoas) não ficam no repositório: o teste deles só roda com MC_NS_EXEMPLOS
+apontando para a pasta local com ns_assinada.pdf, ns_nao_assinada.pdf, ns_planilha.xls e croqui.pdf."""
 import os
 import sys
 import unittest
@@ -24,6 +24,39 @@ def ler_texto(pags, fieis=True, **regras):
 
 def falhas(ns):
     return sorted({v['id'] for v in ns['verificacoes'] if not v['ok'] and v['nivel'] == 'ERRO'})
+
+
+class Croqui(unittest.TestCase):
+    """O croqui em PDF com texto é conferido com a nota: só o que ele traz (número da NS, contrato, data)."""
+    CAB = {'numero': '012', 'numero_int': 12, 'contrato': '10239/2026', 'data': '2026-10-15'}
+
+    def test_mesma_nota_sem_aviso(self):
+        for texto in ('TOPOGRAFIA - CROQUI DE LOCAÇÃO_N.S.012 · Número do Contrato: 10239/2026 · DATA: 15/10/2026',
+                      'NS nº : 012 · 15-out-26', 'CROQUI DA REDE (sem número, sem data)', ''):
+            self.assertEqual(L.conferir_texto_croqui(texto, self.CAB), [], texto)
+
+    def test_outra_nota_avisa_o_que_nao_bate(self):
+        avisos = L.conferir_texto_croqui('CROQUI N.S.006 · Número do Contrato:\n9702/2024 · 27/10/2025', self.CAB)
+        self.assertEqual(avisos, ['o croqui é da NS 006, e a nota é a 012',
+                                  'o croqui cita o contrato 9702/2024, e a nota é do 10239/2026',
+                                  'a data do croqui (27/10/2025) não é a da nota (15/10/2026)'])
+        self.assertEqual(L.conferir_texto_croqui('NOTA DE SERVIÇO Nº 13', self.CAB), ['o croqui é da NS 013, e a nota é a 012'])
+
+    def test_numeros_que_nao_sao_da_nota_nao_contam(self):
+        """Telefone, CREA, estaca e cota não são contrato nem número de NS; uma das datas basta."""
+        texto = ('Fone (61) 3333/2020 · CREA: 0685016350/D-SP · E1+10,490 PV-4 · T:1090,889m · revisão 01/09/2026 · '
+                 'emissão 15/10/2026 · TRANS 7')
+        self.assertEqual(L.conferir_texto_croqui(texto, self.CAB), [])
+
+    def test_pdf_com_texto_foto_e_arquivo_quebrado(self):
+        pdf = NS.pdf_de_texto(['CROQUI DE LOCAÇÃO - N.S.013', 'CONTRATO: 10239/2026   DATA: 15/10/2026'])
+        self.assertEqual(L.conferir_croqui(pdf, {'cabecalho': self.CAB}), ['o croqui é da NS 013, e a nota é a 012'])
+        self.assertEqual(L.conferir_croqui(b'\xff\xd8\xff\xe0 foto do celular', {'cabecalho': self.CAB}), [])
+        self.assertEqual(L.conferir_croqui(b'%PDF-1.4 quebrado', {'cabecalho': self.CAB}), [])
+        try:
+            self.assertEqual(L.conferir_croqui(NS.pdf_sem_texto(), {'cabecalho': self.CAB}), [])
+        except ImportError:
+            pass                                # sem Pillow: o PDF só com imagem não é montado
 
 
 class ChaveElemento(unittest.TestCase):
@@ -76,6 +109,16 @@ class NsDeAgua(unittest.TestCase):
         r = L.ler(NS.pdf_de_texto(self.pags), OBRA, HOJE, planilha=NS.xlsx_de_ns(**self.args))
         self.assertEqual(r['fonte']['conferido_com'], {'extrator': 'planilha .xlsx', 'mesma_impressao': True})
         self.assertTrue(r['resultado']['aceita'], r['resultado'])
+        r = L.ler(NS.pdf_de_texto(self.pags), OBRA, HOJE, planilha=NS.xls_de_ns(**self.args))
+        self.assertEqual(r['fonte']['conferido_com'], {'extrator': 'planilha .xls', 'mesma_impressao': True})
+        self.assertTrue(r['resultado']['aceita'], r['resultado'])
+
+    def test_planilha_xls_da_o_mesmo_texto_que_a_xlsx(self):
+        """O .xls do Excel 97-2003 (a planilha da NS ainda chega assim) vira o mesmo texto que o .xlsx, com a tabela de
+        textos partida em vários registros, com fórmulas guardadas e sem os registros variados do Excel."""
+        ref = L.ler_planilha(NS.xlsx_de_ns(**self.args))
+        for kw in ({}, {'limite_registro': 9}, {'limite_registro': 40}, {'variado': False}):
+            self.assertEqual(L.ler_planilha(NS.xls_de_ns(**self.args, **kw)), ref, kw)
 
     def test_planilha_diferente_do_pdf_e_falha_de_leitura(self):
         outra = NS.ns_zona03_pb08()
@@ -141,8 +184,10 @@ class ArquivoRecusado(unittest.TestCase):
             L.ler(b'%PDF-' + b'0' * L.LIMITE_PDF, OBRA, HOJE)
         with self.assertRaisesRegex(L.LeituraRecusada, 'folhas'):
             L.ler(NS.pdf_de_texto(['x'] * (L.LIMITE_PAGINAS + 1)), OBRA, HOJE)
-        with self.assertRaisesRegex(L.LeituraRecusada, '.xlsx'):
-            L.ler_planilha(b'\xd0\xcf\x11\xe0 planilha .xls antiga')
+        with self.assertRaisesRegex(L.LeituraRecusada, r'\.xls ilegível'):
+            L.ler_planilha(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 planilha .xls cortada')
+        with self.assertRaisesRegex(L.LeituraRecusada, r'precisa ser a do Excel \(\.xlsx ou \.xls\)'):
+            L.ler_planilha(b'ESTACA;ELEMENTO\n0;NO6.1')
 
 
 EXEMPLOS = os.environ.get('MC_NS_EXEMPLOS')
@@ -150,6 +195,25 @@ EXEMPLOS = os.environ.get('MC_NS_EXEMPLOS')
 
 @unittest.skipUnless(EXEMPLOS and os.path.isdir(EXEMPLOS), 'PDFs reais da NS 006 fora do repositório (MC_NS_EXEMPLOS)')
 class PdfsReais(unittest.TestCase):
+    def arquivo(self, nome):
+        caminho = os.path.join(EXEMPLOS, nome)
+        if not os.path.isfile(caminho):
+            self.skipTest(f'{nome} fora da pasta MC_NS_EXEMPLOS')
+        with open(caminho, 'rb') as f:
+            return f.read()
+
+    def test_planilha_xls_e_croqui_reais_da_ns_006(self):
+        """A planilha .xls e o croqui que vieram com a NS 006: a planilha confere o PDF; o croqui é da mesma NS e, posto
+        ao lado de outra nota, gera os três avisos (número, contrato e data)."""
+        pdf = self.arquivo('ns_assinada.pdf')
+        r = L.ler(pdf, OBRA, HOJE, planilha=self.arquivo('ns_planilha.xls'))
+        self.assertEqual(r['fonte']['conferido_com'], {'extrator': 'planilha .xls', 'mesma_impressao': True})
+        self.assertEqual(r['falhas_leitura'], [])
+        croqui = self.arquivo('croqui.pdf')
+        self.assertEqual(L.conferir_croqui(croqui, r), [])
+        outra = {'cabecalho': {'numero': '012', 'numero_int': 12, 'contrato': '10239/2026', 'data': '2026-10-15'}}
+        self.assertEqual(len(L.conferir_croqui(croqui, outra)), 3)
+
     def test_assinada_e_nao_assinada_mesma_impressao_e_recusadas(self):
         lidas = []
         for nome in ('ns_assinada.pdf', 'ns_nao_assinada.pdf'):
