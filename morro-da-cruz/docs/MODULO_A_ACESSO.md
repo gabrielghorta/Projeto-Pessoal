@@ -1,0 +1,76 @@
+# Módulo A — base, histórico e acesso
+
+CT 10.239/2026 · 17/10/2026 · esquema v9 · plano: `docs/PLANO_ENTREGA_COMPLETA.md` §A
+
+## Critérios de aceitação e resultado
+
+| # | Critério | Resultado | Evidência |
+|---|---|---|---|
+| A3 | Sem login, toda rota da API responde 401. Mapa e fotos também ficam fechados. Só a página de login abre. | ✔ | `TestSenhaESessao.test_sem_sessao_…` |
+| A3 | Sem nenhum usuário cadastrado, nada abre e o sistema orienta a criar o primeiro pelo terminal. O sistema nunca cria usuário sozinho. | ✔ | `TestSemUsuarios` |
+| A3 | A senha fica só como hash PBKDF2-SHA256 (200 mil iterações, com sal). Erro de login dá uma mensagem única. Depois de 5 falhas em 15 min, o login fica bloqueado. A senha nunca vai para o log. | ✔ | `TestSenhaESessao` |
+| A3 | Gravação sem o cabeçalho da aplicação é recusada (proteção contra CSRF). O cookie é HttpOnly e SameSite=Strict. | ✔ | idem |
+| A4 | Perfil sem permissão recebe 403, nada é gravado e a recusa fica na auditoria. Cada rota de gravação tem uma permissão: o servidor não sobe se faltar alguma. | ✔ | `TestPermissoesEAutoria` |
+| A4 | O perfil Equipe só lança para a própria equipe. | ✔ | idem |
+| A5 | O autor é o usuário da sessão: o nome digitado no navegador é ignorado. Assim, a regra "quem informou não verifica" passa a valer pela identidade real. | ✔ | `test_verificacao_segregada_pela_identidade_real` |
+| A5 | Toda gravação aceita ou recusada, e todo login e saída, ficam com usuário, perfil, rota, objeto, resultado e data. É possível consultar por objeto e por usuário. | ✔ | `test_auditoria_…` + aba 6 |
+| A7 | O mesmo reenvio (chave X-Idem) executa uma vez só. A chave reaproveitada em outra operação é recusada. A chave vale por usuário. | ✔ | `test_reenvio_…` |
+| A8 | Dois usuários ao mesmo tempo, com saldo de 30 e duas reservas de 20: uma é aceita e a outra recusada, e o disponível fica em 10. | ✔ | `test_dois_usuarios_…` (threads) |
+| — | Falha no meio da gravação desfaz a operação e o registro de reenvio, e grava a falha na auditoria. O reenvio depois disso executa normalmente. | ✔ | `test_falha_no_meio_…` |
+| A6 | Backup e restauração incluem usuários e auditoria (estão no banco). A inclusão dos documentos anexos fica para o módulo C. | parcial | `test_importacao` (backup) |
+| NS | Nota de serviço (v18): encarregado, almoxarife, supervisor e os perfis de consulta TOPOGRAFIA e CADASTRO recebem 403 ao ler, registrar, anexar, aplicar e anular NS de topografia, cadastro e serviço; só Engenharia e Administração (`notas_servico` + a do tipo). O encarregado vê a NS de serviço e a NS do dia da equipe dele e abre o PDF e o croqui; TOPOGRAFIA e CADASTRO só consultam o tipo deles. | ✔ | `tests/test_notas_servico.py` (`TestPermissoes`) |
+| NS | NS do dia: o encarregado envia só para a própria equipe (403 para outra) e não lê nem registra NS de outro tipo; a fila é conferida só por quem retifica; o encarregado anula o envio da equipe dele antes da primeira verificação e não depois (a engenharia anula). Trecho lançado à mão exige `lancar_sem_ns` e o motivo. | ✔ | `tests/test_ns_dia.py` (`TestPermissoes`), `test_equipe_so_lanca_para_a_propria_…` |
+| AP | Apropriação direta (v19): encarregado, almoxarife e supervisor recebem 403 ao apropriar, estornar e cadastrar item novo; só Engenharia e Administração (`apropriacao`). Registrar o código oficial e aprovar ou reprovar item novo pedem `medicao`. A aba Apropriação direta só aparece com a permissão. O encarregado vê só as apropriações da equipe dele; o responsável é o usuário da sessão. | ✔ | `tests/test_apropriacao.py` (`TestApropriacaoHttp`) |
+| NS | O base64 dos arquivos (`pdf_b64`, `croqui_b64`, `planilha_b64`, `documento_b64`, e o `conteudo_b64` das evidências da apropriação) não vai para a auditoria; envio acima de 32 MB é recusado (413) antes de ler o corpo, no servidor e na nuvem. | ✔ | `test_lida_casada_e_gravada_…`, `test_corpo_grande_recusado_sem_ler` |
+
+## Como funciona
+
+- `acesso.py` cuida de senha, sessão, permissão, auditoria e reenvio. `usuarios.py` é o terminal do servidor: criar, listar, redefinir senha, desativar e reativar.
+- `config/perfis.json` traz a matriz **provisória** (decisão D-10) com os perfis ADMINISTRACAO, ENGENHARIA, ALMOXARIFADO, SUPERVISOR (supervisor de campo), EQUIPE (restrito à equipe), TOPOGRAFIA e CADASTRO (os dois só de consulta: as equipes terceirizadas não entram no sistema, D-66), 23 permissões e as **telas** de cada perfil (D-64). A permissão `cadastro_campo` (registrar o levantamento da equipe de cadastro) e `topografia` (registrar a liberação) são só da Engenharia e da Administração; o apontamento recusa CADASTRO_CAMPO de quem não tem `cadastro_campo`. As telas Topografia e Cadastro de campo ficam no grupo Execução (antes "Campo"); LEV e Medição ficam dentro do Administrativo. O menu principal tem 4 opções: Mapa iluminado, Administrativo, Planejamento (antes Almoxarifado, D-75) e Execução (D-67). O almoxarife abre o Dados da obra (tela `mapa`): libera o material do dia (`/api/dados-obra/liberar` e `/api/dados-obra/reservar`, permissão `almox`) e recebe a devolução (`/api/checkout`); programar no mapa (`/api/dados-obra/programar` e `/api/dados-obra/cancelar-lote`) e enviar o cronograma do Project (`POST /api/cronograma`) pedem `planejar`. As consultas `/api/dados-obra/selecao` e `/api/dados-obra/estado` são da tela `mapa`; `/api/cronograma`, das telas `cronograma` e `mapa`; `/api/almox/quarentena` (aceite ou recusa do material), das telas `almox` e `compras`.
+- **Apropriação direta (D-90 em diante, 22/10/2026; `docs/MODULO_B_CAMPO.md` e `docs/MODULO_E_MEDICAO.md`):** permissão nova `apropriacao` ("Apropriação direta e cadastro de item a aprovar na base de custo"), só Engenharia e Administração: `/api/apropriacao`, `/api/apropriacao/estornar` e `/api/base-custo/item-novo`. `/api/base-custo/codigo-oficial` e `/api/base-custo/decidir` pedem `medicao`. Consultas: `/api/base-custo/busca` e `/api/base-custo/itens` (telas `campo`, `medicao`, `lev`), `/api/apropriacoes` e `/api/apropriacao/arquivo` (telas `campo`, `diario`, `medicao`), `/api/medicao/restricoes` (tela `medicao`). A tela `campo` chama-se de novo "Lançamento do dia".
+- **Nota de serviço (D-69 a D-74 e D-80 a D-85, 21/10/2026; `docs/NOTAS_DE_SERVICO.md`):**
+  - permissão nova `notas_servico` (Engenharia e Administração): ler, registrar, anexar o croqui, aplicar o que falta e anular NS de topografia, cadastro e serviço (`/api/ns/ler`, `/api/ns`, `/api/ns/anexo`, `/api/ns/aplicar`, `/api/ns/anular`); registrar, aplicar e anular exigem também `topografia` ou `cadastro_campo`, conforme o tipo;
+  - tela nova `notas` (Execução · Notas de serviço), só no catálogo de Engenharia e Administração;
+  - consulta `/api/ns`, `/api/ns/detalhe` e o arquivo `/api/ns/arquivo` (inline, `nosniff`, `Content-Security-Policy: sandbox`) pelas telas `notas`, `campo`, `diario`, `topografia` e `cadastro_campo`, cada uma vendo só os tipos dela; o encarregado vê a NS de serviço e só a NS do dia da equipe dele;
+  - NS do dia: `POST /api/ns/dia` com `campo` (o encarregado só a própria equipe; supervisor, engenharia, administração e, hoje, o almoxarife, em nome de uma equipe); `GET /api/ns/dia` pelas telas `campo`, `diario` e `notas`; `POST /api/ns/dia/conferir` com `retificar_campo`; `POST /api/ns/dia/anular` com `campo`, e quem não tem `retificar_campo` só anula o envio da própria equipe enquanto nada dele foi verificado;
+  - permissão nova `lancar_sem_ns` (Engenharia e Administração): o apontamento de trecho digitado (sem NS) passa a exigi-la e o motivo (`motivo_sem_ns`, guardado no apontamento); nó e caixa continuam com `campo`. As telas "Lançamento do dia" e "Diário de campo" passam a se chamar **Nota do dia** e **Diário de obra** (mesmos ids `campo` e `diario`).
+- **Telas por perfil (D-64, 19/10/2026):** encarregado e supervisor de campo abrem Mapa iluminado e Campo; o almoxarife abre também o Almoxarifado; Engenharia e Administração abrem tudo e têm todas as permissões, inclusive criar, desativar e excluir usuários. O servidor confere a tela em cada consulta (`TELA_GET` em `server.py`; `A.exigir_tela`), não só nas gravações.
+- **Excluir usuário:** apaga só a conta que nunca registrou nada (criada por engano); quem tem histórico é desativado, porque a auditoria nunca é apagada.
+- **Servidor.** Uma requisição de gravação é uma transação só, com:
+  - permissão;
+  - restrição de equipe;
+  - autoria;
+  - reenvio;
+  - operação;
+  - auditoria do aceite.
+
+  Na recusa, tudo é desfeito e a auditoria da recusa é gravada fora da transação. Os serviços que já usavam transação passam a usar SAVEPOINT dentro dela, e a transação externa usa BEGIN IMMEDIATE.
+- **Tela:**
+  - login;
+  - cabeçalho com nome, login e perfil, mais trocar senha e sair;
+  - formulários esmaecidos quando o perfil não tem a permissão (quem decide é o servidor);
+  - aba **6. Usuários & Histórico**: usuários (só administração) e auditoria (completa para engenharia e administração; por objeto para os demais);
+  - os campos "responsável", "informado por", "verificado por" e "conferido por" saíram dos formulários;
+  - clique repetido reaproveita a requisição em curso; falha de rede reenvia com a mesma chave.
+- **Log do servidor:** `<pasta do banco>/logs/servidor.log`, com rotação de 5 arquivos de 2 MB.
+
+## Navegador (banco isolado: v7 real migrado para v9, usuários de demonstração)
+
+- Senha errada mostra "Login ou senha inválidos." e a tela de login continua.
+- eng.ana (Engenharia):
+  - entra e vê o nome e o perfil no cabeçalho;
+  - o formulário de movimento aparece esmaecido;
+  - ao tentar lançar, recebe "Seu perfil (Engenharia) não tem a permissão…";
+  - verifica o intervalo informado por outra pessoa;
+  - a auditoria mostra verificação, recusa e login;
+  - não vê o painel de usuários.
+- enc.davi (Equipe Zona01): o clima da Zona02 é recusado com 403 e ele não consulta a auditoria geral.
+- adm.eva cria enc.helena (Equipe Zona02) pela tela. Depois de sair, volta a tela de login.
+- Defeito achado e corrigido nessa validação: a tela de login oculta continuava cobrindo a página, porque o CSS sobrepunha o `hidden`.
+- Sem erros de JavaScript.
+
+## Limitações e decisões
+
+- No computador, o acesso é só em `127.0.0.1`. Na nuvem (`nuvem.py`, D-60 revista), o servidor liga `COOKIE_SEGURO` e o HSTS, e nada é tratado como local.
+- Um processo e uma conexão: as gravações são serializadas. É seguro para o porte da obra, mas não é feito para muitos acessos simultâneos.
+- A matriz de perfis e as pessoas autorizadas dependem de você (D-10, D-11). Os usuários desta validação existem só no banco isolado.

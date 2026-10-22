@@ -1,0 +1,107 @@
+name: Morro da Cruz — programa para Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/powerbi-modifications-wqxekj]
+    paths: ["morro-da-cruz/**", "!morro-da-cruz/docs/**", "!morro-da-cruz/README.md", ".github/workflows/morro-da-cruz-windows.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  testes-windows:
+    name: Suíte de testes no Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: morro-da-cruz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install openpyxl pillow "pypdf>=6,<7"
+      - name: Testes (inclui os da base real e o ciclo da Zona01, com as planilhas do repositório)
+        run: python -m unittest discover -s tests
+
+  executavel:
+    name: MorroDaCruz.exe
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: morro-da-cruz
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyinstaller==6.22.3 openpyxl pillow "pypdf>=6,<7"
+      - run: python -m PyInstaller MorroDaCruz.spec --noconfirm
+      - name: Baixar o cloudflared (túnel do link para a equipe)
+        run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
+      - name: Montar o pacote (programa + planilhas + mapa + túnel)
+        run: |
+          New-Item -ItemType Directory -Force pacote\MorroDaCruz | Out-Null
+          Copy-Item dist\MorroDaCruz.exe, cloudflared.exe pacote\MorroDaCruz\
+          Copy-Item -Recurse planilhas, mapa pacote\MorroDaCruz\
+          Copy-Item LEIA-ME-WINDOWS.txt pacote\MorroDaCruz\LEIA-ME.txt
+      - name: Teste do pacote pelo link da equipe (abre, monta a obra, cria o administrador, entra pelo endereço público)
+        run: |
+          $d = "$env:RUNNER_TEMP\teste_pacote"
+          Copy-Item -Recurse pacote\MorroDaCruz $d
+          $p = Start-Process -FilePath "$d\MorroDaCruz.exe" -WorkingDirectory $d -PassThru
+          $local = "http://127.0.0.1:8765"
+          $ok = $false
+          for ($i = 0; $i -lt 180; $i++) { Start-Sleep 1
+            try { $r = Invoke-WebRequest "$local/" -UseBasicParsing -TimeoutSec 3
+                  if ($r.Content -match 'Gestão de Obra') { $ok = $true; break } } catch {} }
+          if (-not $ok) { throw "O sistema não abriu (montagem da obra a partir das planilhas)." }
+          $senha = "ci-" + [guid]::NewGuid().ToString("N")
+          $corpo = @{ login = "admin.ci"; nome = "Teste CI"; senha = $senha } | ConvertTo-Json
+          Invoke-WebRequest "$local/api/configurar-acesso" -Method Post -Body $corpo -ContentType "application/json" -Headers @{ "X-MC" = "1" } -UseBasicParsing | Out-Null
+          $url = $null
+          for ($i = 0; $i -lt 90; $i++) { Start-Sleep 1
+            $e = (Invoke-WebRequest "$local/api/link" -UseBasicParsing).Content | ConvertFrom-Json
+            if ($e.situacao -eq "NO_AR") { $url = $e.url; break }
+            if ($e.situacao -eq "SEM_PROGRAMA") { throw "cloudflared não encontrado no pacote." } }
+          if (-not $url) { throw "O link para a equipe não ligou: $($e.situacao) $($e.erro)" }
+          Write-Host "Link gerado: $url"
+          $pub = $null
+          for ($i = 0; $i -lt 60; $i++) { Start-Sleep 2
+            try { $pub = Invoke-WebRequest "$url/" -UseBasicParsing -TimeoutSec 10; if ($pub.Content -match 'Morro da Cruz') { break } } catch {} }
+          if (-not ($pub -and $pub.Content -match 'Morro da Cruz')) { throw "O endereço público não respondeu: $url" }
+          if ($pub.Content -match 'id="dicaDemo" class="aviso info">') { throw "Senha de demonstração exposta pelo link." }
+          $login = @{ login = "admin.ci"; senha = $senha } | ConvertTo-Json
+          $r = Invoke-WebRequest "$url/api/login" -Method Post -Body $login -ContentType "application/json" -Headers @{ "X-MC" = "1" } -SessionVariable s -UseBasicParsing
+          if ($r.Headers["Set-Cookie"] -notmatch "Secure") { throw "Cookie de sessão sem Secure atrás do HTTPS." }
+          $res = (Invoke-WebRequest "$url/api/resumo" -WebSession $s -UseBasicParsing).Content | ConvertFrom-Json
+          if ($res.trechos -ne 1436) { throw "Resumo pelo link com $($res.trechos) trechos (esperado 1436)." }
+          try { Invoke-WebRequest "$url/configurar" -UseBasicParsing | Out-Null; throw "A configuração ficou acessível pelo link." } catch { if ($_.Exception.Response.StatusCode.value__ -ne 403) { throw } }
+          Write-Host "OK: pelo link $url — login com Secure, 1436 trechos, /configurar recusado (403)."
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force
+      - name: Compactar
+        run: Compress-Archive -Path pacote\MorroDaCruz -DestinationPath MorroDaCruz-Windows.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MorroDaCruz-Windows
+          path: morro-da-cruz/MorroDaCruz-Windows.zip
+
+  publicar:
+    name: Publicar em Releases
+    needs: [testes-windows, executavel]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: MorroDaCruz-Windows
+      - name: Criar a versão
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "morro-da-cruz-v${{ github.run_number }}" MorroDaCruz-Windows.zip \
+            --title "Morro da Cruz — versão de teste ${{ github.run_number }}" \
+            --notes-file morro-da-cruz/LEIA-ME-WINDOWS.txt --target "${{ github.sha }}"
