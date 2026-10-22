@@ -166,6 +166,15 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertNotIn(".style.filter = FUNDOS", ilu)
         self.assertNotRegex(css, r"#plnSat\s*\{[^}]*filter")
         self.assertIn('class="sat-veu"', ilu)
+        # o zoom: um desenho por quadro e nada de variável na raiz do mapa (refazia o estilo de todos os elementos)
+        self.assertIn("agendarVista(ctx);", ilu)
+        self.assertNotIn("svg().style.setProperty('--k'", ilu + pln)
+
+    def test_dados_da_obra_sem_plantas_baixas(self):
+        """Pedido do responsável (22/10/2026): no Dados da obra, só as zonas; nem fotos das PBs nem a divisão delas."""
+        pln = ler("planejamento.js")
+        for proibido in ("htmlSatelite", "ligarSatelite", "detalheSatelite", "/mapa/pb/", "/mapa/geral", "plnQuadros", "g.quadros"):
+            self.assertNotIn(proibido, pln)
 
     def test_ids_unicos_e_scripts_carregados(self):
         todos = re.findall(r'id="([^"]+)"', self.html)

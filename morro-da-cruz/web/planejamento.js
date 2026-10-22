@@ -1,6 +1,7 @@
 /* Planejamento: o mapa do Dados da obra e o cronograma do MS Project.
- * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02, o satélite das PBs cortado nas zonas e o
- * visor de arrastar e aproximar) e mostra também a divisão das PBs, com o nome de cada uma.
+ * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02 e o visor de arrastar e aproximar), sem as
+ * plantas baixas: nem fotos de satélite nem divisão das PBs, só as zonas, os nomes, os trechos, os nós e os pinos
+ * (pedido do responsável em 22/10/2026; também deixa a aba leve, sem baixar imagem nenhuma).
  * Aqui se escolhem trechos: o toque escolhe um; Ctrl + clique (ou o botão "Juntar trechos", no celular) junta vários.
  * O servidor completa a seleção (/api/dados-obra/selecao): cada linha traz o trecho físico inteiro e o nó entre dois
  * trechos escolhidos entra sozinho. Com a seleção, o painel ao lado programa a equipe (período e dias), libera o material
@@ -19,10 +20,13 @@ const PLAN = [   // de baixo para cima no desenho: o último fica por cima
 const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: null, multi: false, dia: null, est: null,
   sel: [], nos: [], resp: null, aba: null, pedido: 0, equipe: null, equipeFixa: false, crono: null, foco: null, ultPx: 0,
   extra: [], qtd: {}, noIdx: null, vis: Object.fromEntries(PLAN.map(s => [s.id, true])),
-  cam: { plantas: true, quadros: true, zonas: true, nomes: true },
+  cam: { zonas: true, nomes: true },
   prefixo: 'pln', svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln };
-try { Object.assign(PLN.cam, JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}')); } catch (_) { /* sem storage */ }
-const CAMADAS_PLN = { plantas: 'Satélite (fotos das PBs)', quadros: 'Divisão das PBs', zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
+const CAMADAS_PLN = { zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
+try {                                 // só as camadas que existem: as antigas (plantas, quadros) salvas no navegador caem fora
+  const salvas = JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}');
+  Object.keys(CAMADAS_PLN).forEach(k => { if (typeof salvas[k] === 'boolean') PLN.cam[k] = salvas[k]; });
+} catch (_) { /* sem storage */ }
 const DIAS_SEMANA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 const nomeAlvoCurto = n => nomeCurto(n).replace(/^NÓ/, 'NÓ ');
 
@@ -78,11 +82,8 @@ function montarPln(g) {
     const nome = e.n.find(n => n.includes('_Rede_')) || e.n[0];          // a ponta do trecho cita o nome da Rede
     return `<circle class="pln-no" data-i="${i}" data-n="${esc(nome)}" cx="${e.x}" cy="${e.y}" r="1"><title>${esc(nomeCurto(nome))}</title></circle>`;
   }).join('');
-  const divisao = contornosTracejados(g.quadros.map(q => q.p), 'pln-quadro')
-    + g.quadros.map(q => { const [x0, y0] = limites([q.p]); return `<text class="pln-quadro-rot" x="${x0}" y="${y0}">${esc(q.id)}</text>`; }).join('');
-  svg.innerHTML = `${htmlSatelite(g, 'pln')}<g id="plnZonas">${zonas}</g><g id="plnQuadros">${divisao}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnHits">${hits}</g><g id="plnNos" class="longe">${nos}</g>
+  svg.innerHTML = `<g id="plnZonas">${zonas}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnHits">${hits}</g><g id="plnNos" class="longe">${nos}</g>
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
-  ligarSatelite(PLN, g);
   aplicarCamadasPln();
   PLN.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   PLN.vb = null; ajustarAspecto(PLN);
@@ -92,22 +93,31 @@ function montarPln(g) {
 }
 
 function desenharPln(px, zoom) {
-  if (PLN.cam.plantas) detalheSatelite(PLN, GERAL, px);
-  $('#plnLinhas').style.strokeWidth = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)) + 'px';
+  espessura($('#plnLinhas'), Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)));
   if (escalaMudou(PLN, px)) {                          // arrastar não muda a escala: só o zoom mexe em textos, pinos e nós
-    PLN.svg().style.setProperty('--k', 1 / px);
-    $('#plnSelG').style.strokeWidth = Math.min(14, 9 * Math.pow(Math.max(zoom, 1), 0.3)) + 'px';
+    $('#plnZonas').style.setProperty('--k', 1 / px);  // só no contorno tracejado: na raiz, refazia o estilo do mapa inteiro
+    espessura($('#plnSelG'), Math.min(14, 9 * Math.pow(Math.max(zoom, 1), 0.3)));
     $$('#plnNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
-    $$('#plnQuadros text').forEach(t => { t.setAttribute('font-size', 12 * px); t.setAttribute('stroke-width', 3 * px); t.setAttribute('dx', 6 * px); t.setAttribute('dy', 6 * px); });
     $$('#plnPins .ilu-pin').forEach(p => {
       const c = p.querySelector('circle'), tx = p.querySelector('text');
       c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
     });
-    $$('#plnNos circle').forEach(c => c.setAttribute('r', (c.classList.contains('sel') ? 7 : 4.5) * px));
     $('#plnNos').classList.toggle('longe', zoom < 3);
+    raioNos(px, zoom < 3);
   }
   trilha($('#plnTrilha'), PLN.zona ? `<button type="button" data-pln-tudo>Obra inteira</button> › ${esc(nomeZona(PLN.zona))}`
     : zoom > 1.15 ? '<button type="button" data-pln-tudo>Ver a obra inteira</button>' : 'Obra inteira');
+}
+
+// raio dos 1.188 nós (constante na tela): longe eles nem aparecem; perto, durante o zoom, só a cada 10 % de escala, e o
+// valor exato quando o zoom para. Mudar o raio de todos a cada quadro era o que mais pesava no zoom do Dados da obra.
+function raioNos(px, longe) {
+  clearTimeout(PLN.tNos);
+  const aplicar = () => { PLN.pxNos = px; $$('#plnNos circle').forEach(c => c.setAttribute('r', (c.classList.contains('sel') ? 7 : 4.5) * px)); };
+  if (longe) { PLN.pxNos = 0; return; }
+  if (!PLN.pxNos || Math.abs(px - PLN.pxNos) > PLN.pxNos * 0.1 || !PLN.ultPxNos) aplicar();
+  PLN.ultPxNos = px;
+  PLN.tNos = setTimeout(aplicar, 160);
 }
 
 function colorirPln() {
@@ -268,7 +278,7 @@ function abrirPopPln(nome, recarregar) {
       + '<p>Toque numa linha para mostrar ou esconder. O pino é a equipe com check-in no dia; contorno branco é a seleção e o nó com anel entrou sozinho (liga dois trechos escolhidos).</p>';
   } else if (nome === 'camadas') {
     pop.innerHTML = '<h3>Camadas</h3>' + Object.entries(CAMADAS_PLN).map(([k, rot]) => `<button type="button" class="ilu-linha" data-pln-camada="${k}" aria-pressed="${PLN.cam[k]}"><span>${PLN.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`).join('')
-      + '<p>O satélite vem das 25 PBs do projeto (REV02), cortado no limite das zonas. A divisão das PBs mostra o quadro e o nome de cada uma (só neste mapa).</p>';
+      + '<p>Sem plantas baixas neste mapa: só as zonas, os trechos e os nós. O satélite fica no Mapa iluminado.</p>';
   } else {
     const zs = [...new Set(GERAL.trechos.map(zonaDoTrecho))].sort((a, b) => (a === ZONA_ADUTORA) - (b === ZONA_ADUTORA) || String(a).localeCompare(String(b)));
     pop.innerHTML = '<h3>Zonas</h3>' + `<button type="button" class="ilu-linha" data-pln-zona="" aria-current="${!PLN.zona}"><i class="zona"></i><span>Obra inteira</span></button>`
@@ -290,7 +300,7 @@ $('#plnFerr').addEventListener('click', ev => {
   if (c) { PLN.cam[c.dataset.plnCamada] = !PLN.cam[c.dataset.plnCamada]; aplicarCamadasPln(); desenharVista(PLN); return abrirPopPln('camadas', true); }
 });
 function aplicarCamadasPln() {
-  [['plantas', satDe(PLN)], ['quadros', $('#plnQuadros')], ['zonas', $('#plnZonas')], ['nomes', $('#plnNomes')]].forEach(([k, el]) => {
+  [['zonas', $('#plnZonas')], ['nomes', $('#plnNomes')]].forEach(([k, el]) => {
     if (el) el.style.display = PLN.cam[k] ? '' : 'none';
   });
   try { localStorage.setItem('mc-pln-camadas', JSON.stringify(PLN.cam)); } catch (_) { /* sem storage */ }

@@ -169,15 +169,26 @@ function detalheSatelite(ctx, g, px) {
     quero = g.quadros.filter(q => { const [x0, y0, x1, y1] = limites([q.p]); return x1 > x && x0 < x + w && y1 > y && y0 < y + h; }).map(q => q.id);
     if (quero.length > SAT_DETALHE_MAX) quero = [];
   }
+  ctx.satQuero = quero;
   const ja = new Set($$('[data-pb]', box).map(e => e.dataset.pb));
   if (quero.length === ja.size && quero.every(id => ja.has(id))) return;
   $$('[data-pb]', box).forEach(e => { if (!quero.includes(e.dataset.pb)) e.remove(); });
   const comQuadro = new Set(g.quadros.map(q => q.id));
-  quero.filter(id => !ja.has(id)).forEach(id => {
+  ctx.satPend = ctx.satPend || new Set();
+  quero.filter(id => !ja.has(id) && !ctx.satPend.has(id)).forEach(id => {
     const im = g.imagens.find(x => x.id === id); if (!im) return;
-    box.insertAdjacentHTML('beforeend', `<g data-pb="${esc(id)}"${comQuadro.has(id) ? ` clip-path="url(#${ctx.prefixo}Q${esc(id)})"` : ''}><image href="/mapa/pb/${esc(id)}.webp?v=${g.versao}" width="${im.w}" height="${im.h}" preserveAspectRatio="none" transform="matrix(${im.m.join(' ')})"/></g>`);
+    // a foto (7 megapixels) é decodificada fora do desenho e só entra pronta: decodificar no meio do zoom travava ~1 s
+    const url = `/mapa/pb/${esc(id)}.webp?v=${g.versao}`, pre = new Image();
+    ctx.satPend.add(id); pre.src = url;
+    pre.decode().catch(() => null).then(() => {
+      ctx.satPend.delete(id);
+      if (!box.isConnected || !ctx.satQuero.includes(id) || $(`[data-pb="${id}"]`, box)) return;
+      box.insertAdjacentHTML('beforeend', `<g data-pb="${esc(id)}"${comQuadro.has(id) ? ` clip-path="url(#${ctx.prefixo}Q${esc(id)})"` : ''}><image href="${url}" width="${im.w}" height="${im.h}" preserveAspectRatio="none" transform="matrix(${im.m.join(' ')})"/></g>`);
+    });
   });
 }
+// as fotos em resolução cheia só são pedidas quando o mapa para (arrastar ou zoom): durante o gesto, fica o mosaico
+function satDepois(ctx, g, px) { clearTimeout(ctx.tSat); ctx.tSat = setTimeout(() => detalheSatelite(ctx, g, px), 180); }
 const iluSvg = () => $('#iluSvg');
 
 async function carregarIluminado() {
@@ -220,21 +231,28 @@ function encaixar([x0, y0, x1, y1], asp) {
   return [cx - w / 2, cy - h / 2, w, h];
 }
 function desenharVista(ctx = ILU) {
-  const svg = ctx.svg(), [x, y, w, h] = ctx.vb;
+  const svg = ctx.svg(), [x, y, w, h] = ctx.vb, larg = svg.getBoundingClientRect().width || 1;   // lido antes de escrever
   svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
-  ctx.desenhar(w / (svg.getBoundingClientRect().width || 1), (ctx.base[2] - ctx.base[0]) / w);   // unidades do mapa por pixel e zoom
+  ctx.desenhar(w / larg, (ctx.base[2] - ctx.base[0]) / w);   // unidades do mapa por pixel e zoom
 }
+// um desenho por quadro: o touchpad e a pinça mandam vários eventos por quadro, e cada desenho refaz estilo e layout
+function agendarVista(ctx = ILU) {
+  if (!ctx.quadro) ctx.quadro = requestAnimationFrame(() => { ctx.quadro = 0; desenharVista(ctx); });
+}
+// espessura que acompanha o zoom em degraus de 0,25 px: mudar a espessura do grupo refaz o estilo de todos os trechos
+const degrau = v => Math.round(v * 4) / 4;
+function espessura(el, px) { const v = degrau(px) + 'px'; if (el.style.strokeWidth !== v) el.style.strokeWidth = v; }
 function desenharIlu(px, zoom) {
-  if (ILU.fundo !== 'sem') detalheSatelite(ILU, GERAL, px);
+  if (ILU.fundo !== 'sem') satDepois(ILU, GERAL, px);
   if (escalaMudou(ILU, px)) {                        // arrastar não muda a escala: só o zoom mexe em traços e textos
-    ILU.svg().style.setProperty('--k', 1 / px);
-    $('#iluLinhas').style.strokeWidth = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)) + 'px';
+    $('#iluZonas').style.setProperty('--k', 1 / px);   // só no grupo do contorno: na raiz, refazia o estilo do mapa inteiro
+    espessura($('#iluLinhas'), Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)));
     $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
     $$('#iluPins .ilu-pin').forEach(p => {
       const c = p.querySelector('circle'), tx = p.querySelector('text');
       c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
     });
-    $('#iluSel').style.strokeWidth = Math.min(11, 7 * Math.pow(Math.max(zoom, 1), 0.3)) + 'px';
+    espessura($('#iluSel'), Math.min(11, 7 * Math.pow(Math.max(zoom, 1), 0.3)));
   }
   trilha($('#iluTrilha'), ILU.zona ? `<button type="button" data-ilu-tudo>Obra inteira</button> › ${esc(nomeZona(ILU.zona))}` : zoom > 1.15 ? '<button type="button" data-ilu-tudo>Ver a obra inteira</button>' : 'Obra inteira');
 }
@@ -264,7 +282,7 @@ function zoomEm(fator, cx, cy, ctx = ILU) {
   const nw = Math.max(larg / 60, Math.min(larg * 1.6, w * fator)); const k = nw / w;
   if (cx == null) { cx = x + w / 2; cy = y + h / 2; }
   ctx.vb = [cx - (cx - x) * k, cy - (cy - y) * k, w * k, h * k];
-  desenharVista(ctx);
+  agendarVista(ctx);
 }
 function pontoDoMapa(ev, ctx = ILU) {
   const r = ctx.svg().getBoundingClientRect(), [x, y, w, h] = ctx.vb;
@@ -294,7 +312,7 @@ function ligarGestos(svg, ctx = ILU) {
     if (!arrastou) { arrastou = true; svg.setPointerCapture(ev.pointerId); ctx.caixa().classList.add('arrastando'); }
     const k = inicio.vb[2] / r.width;
     ctx.vb = [inicio.vb[0] - dx * k, inicio.vb[1] - dy * k, inicio.vb[2], inicio.vb[3]];
-    desenharVista(ctx);
+    agendarVista(ctx);
   });
   const soltar = ev => {
     dedos.delete(ev.pointerId);
