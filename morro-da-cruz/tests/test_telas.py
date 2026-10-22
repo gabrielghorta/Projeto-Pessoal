@@ -130,7 +130,7 @@ class TestPaginaECodigo(unittest.TestCase):
     """Guarda contra tela quebrada: o menu, as seções e os elementos usados pelo JavaScript precisam existir no HTML."""
 
     def setUp(self):
-        self.html, self.js = ler("index.html"), ler("app.js") + ler("iluminado.js") + ler("planejamento.js") + ler("notas.js")
+        self.html, self.js = ler("index.html"), ler("app.js") + ler("iluminado.js") + ler("planejamento.js") + ler("notas.js") + ler("apropriacao.js")
         self.ids = set(re.findall(r'id="([^"]+)"', self.html))
 
     def test_cada_item_do_menu_abre_uma_tela_que_existe(self):
@@ -149,7 +149,7 @@ class TestPaginaECodigo(unittest.TestCase):
     def test_nomes_globais_sem_repeticao_entre_os_scripts(self):
         """Os scripts da página dividem o mesmo escopo global: um const/let repetido derruba o script que vem depois."""
         vistos = {}
-        for arq in ("app.js", "iluminado.js", "planejamento.js", "notas.js"):
+        for arq in ("app.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js"):
             for m in re.finditer(r"^(?:async\s+)?(?:function\s+|const\s+|let\s+)(\w+)", ler(arq), re.M):
                 self.assertNotIn(m.group(1), vistos, f"{m.group(1)} declarado em {vistos.get(m.group(1))} e em {arq}")
                 vistos[m.group(1)] = arq
@@ -158,7 +158,7 @@ class TestPaginaECodigo(unittest.TestCase):
         todos = re.findall(r'id="([^"]+)"', self.html)
         self.assertEqual(len(todos), len(set(todos)))
         self.assertIn('<script src="/app.js"></script>\n<script src="/iluminado.js"></script>\n<script src="/planejamento.js"></script>\n'
-                      '<script src="/notas.js"></script>', self.html)
+                      '<script src="/notas.js"></script>\n<script src="/apropriacao.js"></script>', self.html)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ const NS_DESC = {
   TOPOGRAFIA: 'Gera a liberação topográfica dos trechos da nota, só no que ainda não está liberado.',
   CADASTRO: 'Gera o cadastro de campo sobre o que já foi assentado até a data da nota. O resto fica pendente e entra depois, '
     + 'quando o assentamento for lançado ("Aplicar o que falta").',
-  SERVICO: 'O plano do serviço da zona: a nota e o croqui ficam para a equipe abrir na Nota do dia. Não grava avanço.',
+  SERVICO: 'O plano do serviço da zona: a nota e o croqui ficam para a equipe abrir no Lançamento do dia. Não grava avanço.',
 };
 const NS_ETAPA = { TOPOGRAFIA: 'liberação topográfica', CADASTRO: 'cadastro de campo' };
 const NS_SITU = { AUTOMATICO: ['automático', 'azul'], CONFIRMAR: ['confirmar', 'amarelo'], ERRO: ['erro', 'vermelho'],
@@ -150,7 +150,7 @@ function renderNsPrevia() {
   const r = NSV.leitura, tipo = NSV.envio.tipo, faltas = nsFaltas();
   let html;
   if (r.mesmo_numero && r.mesmo_numero.mesma_impressao) html = '<p>Só o arquivo da NS já registrada é trocado. Os registros dela continuam como estão.</p>';
-  else if (!NS_ETAPA[tipo]) html = '<p>Nada é gravado nos trechos: a nota e o croqui ficam para a equipe abrir na Nota do dia da zona.</p>';
+  else if (!NS_ETAPA[tipo]) html = '<p>Nada é gravado nos trechos: a nota e o croqui ficam para a equipe abrir no Lançamento do dia da zona.</p>';
   else {
     let total = 0, pend = 0, ja = 0;
     const linhas = r.segmentos.filter(s => !['FORA', 'ERRO', 'SEM_CORRESPONDENCIA'].includes(nsSituacao(s))).flatMap(s => {
@@ -342,6 +342,7 @@ $('#fNd').addEventListener('submit', async ev => {
 ligarBusca($('#ndAlvo'), r => selecionarCampo(r.tipo, r.id));
 // o trecho (ou nó) das soldas e fotos é um só na tela, venha da busca, do formulário de exceção ou da ficha do mapa
 function ndAlvoEscolhido(nome) {
+  if (APR.aba !== 'ns') aprMostrarAba('ns');                 // soldas e fotos ficam na aba Nota de serviço
   $('#ndAlvo').value = curto(nome); $('#ndAlvoInfo').textContent = `Soldas e fotos de ${curto(nome)}.`;
   if (!$('#ndOutros').open && !$('#ndExcecao').open) (pode('lancar_sem_ns') ? $('#ndExcecao') : $('#ndOutros')).open = true;
 }

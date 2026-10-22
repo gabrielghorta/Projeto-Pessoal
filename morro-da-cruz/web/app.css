@@ -500,3 +500,20 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .rede-zona { opacity: 1; }
 }
+
+/* ---------- apropriação direta e base de custo */
+.abas-chip.grandes button { min-height: 44px; padding: 10px 18px; font-size: 15px; }
+.apr-resultados { display: grid; gap: 6px; margin-top: 8px; max-height: 360px; overflow: auto; }
+.apr-resultados:empty { display: none; }
+.apr-res { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; text-align: left; min-height: 44px;
+  padding: 8px 10px; border: 1px solid var(--borda); border-radius: var(--raio-p); background: var(--painel2); color: var(--texto); cursor: pointer; }
+.apr-res:hover, .apr-res[aria-pressed="true"] { border-color: var(--laranja); background: var(--laranja-claro); }
+.apr-res small { color: var(--suave); }
+.apr-cartao { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: 10px 12px; background: var(--painel2); }
+.apr-cartao dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px 12px; margin: 8px 0 0; }
+.apr-cartao dt { font-size: 12px; color: var(--suave); }
+.apr-cartao dd { margin: 0; font-weight: 700; }
+.registro.estornada > div:first-child b, .registro.estornada .apr-riscado { text-decoration: line-through; opacity: .7; }
+.chip.forte { background: var(--vermelho-forte); color: #fff; font-size: 12.5px; padding: 3px 10px; }
+.rest-acao { font-size: 13px; }
+.form-inline { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; margin-top: 8px; }

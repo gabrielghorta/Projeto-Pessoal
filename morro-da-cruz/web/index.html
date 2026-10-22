@@ -48,7 +48,7 @@
       </div>
       <button type="button" class="rail-item rail-grupo" data-grupo="grupo-campo" title="Execução"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Execução</span></button>
       <div class="rail-sub" data-grupo="grupo-campo">
-        <button type="button" class="rail-item sub" data-tela="campo" title="Nota do dia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg><span class="rail-rot">Nota do dia</span></button>
+        <button type="button" class="rail-item sub" data-tela="campo" title="Lançamento do dia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg><span class="rail-rot">Lançamento do dia</span></button>
         <button type="button" class="rail-item sub" data-tela="diario" title="Diário de obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><span class="rail-rot">Diário de obra</span></button>
         <button type="button" class="rail-item sub" data-tela="interferencias" title="Interferências"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></svg><span class="rail-rot">Interferências</span></button>
         <button type="button" class="rail-item sub" data-tela="notas" title="Notas de serviço"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3"/></svg><span class="rail-rot">Notas de serviço</span></button>
@@ -125,7 +125,13 @@
 
   <!-- ======================================================= EXECUÇÃO: NOTA DO DIA (a equipe envia a NS executada e o croqui) -->
   <section class="aba" id="aba-campo">
-    <header class="cab-tela"><h1>Nota do dia</h1><p>Envie a nota de serviço do que a equipe executou e o croqui. O sistema lê a nota, acha os trechos e lança sozinho; o que ele não tiver certeza vai para a engenharia conferir.</p></header>
+    <header class="cab-tela"><h1>Lançamento do dia</h1><p>Pela nota de serviço do dia (o sistema lê, acha os trechos e lança sozinho) ou, sem nota, pela apropriação direta no item do orçamento.</p></header>
+    <div class="abas-chip grandes" id="campoAbas" role="group" aria-label="Tipo de lançamento" style="margin:0 0 16px">
+      <button type="button" data-campo-aba="ns" aria-pressed="true">Nota de serviço</button>
+      <button type="button" data-campo-aba="apropriacao" aria-pressed="false" id="campoAbaApr" hidden>Apropriação direta</button>
+    </div>
+    <div id="campoNs">
+    <p class="vazio" style="margin:0 0 12px">Envie a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a engenharia conferir.</p>
     <div class="grade-2">
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
         <form class="painel nota-dia" id="fNd" data-perm="campo">
@@ -210,6 +216,88 @@
         </form>
       </div>
     </details>
+    </div>
+
+    <!-- apropriação direta: lançamento sem nota de serviço, direto no item do orçamento (só Engenharia e Administração) -->
+    <div id="campoApr" hidden>
+      <p class="vazio" style="margin:0 0 12px">Para o que não vem por nota de serviço: o canteiro feito por uma equipe de outra obra, os gastos do canteiro e outros lançamentos avulsos. Escolha o item como no BM Vertical (grupo, material ou serviço, item) ou pela busca.</p>
+      <div class="grade-2">
+        <div style="display:grid;gap:16px;min-width:0;align-content:start">
+          <div class="painel">
+            <h3>Item do orçamento</h3>
+            <label>Buscar<input id="aprBusca" type="search" placeholder="Buscar por código, item do BM, descrição, diâmetro, material…" autocomplete="off"></label>
+            <div id="aprResultados" class="apr-resultados" aria-live="polite"></div>
+            <div class="linha" style="margin-top:10px">
+              <label>Grupo<select id="aprGrupo"></select></label>
+              <label>Material ou serviço<select id="aprTipo"><option value="">Escolha</option><option value="MATERIAL">Material</option><option value="SERVIÇO">Serviço</option></select></label>
+            </div>
+            <label style="margin-top:10px">Item<select id="aprItem"><option value="">Escolha o grupo e o tipo</option></select></label>
+            <div id="aprCartao" style="margin-top:10px"></div>
+            <div class="acoes" style="margin-top:10px"><button type="button" class="btn grande" id="aprNovoBtn" data-perm="apropriacao">O item não está na lista</button></div>
+          </div>
+          <form class="painel" id="fItemNovo" data-perm="apropriacao" hidden>
+            <h3>Item novo a aprovar na base de custo</h3>
+            <p class="vazio" style="margin:0 0 8px">Entra como "a aprovar" e já pode receber apropriação. Fica fora da medição até a Caesb dar o código oficial.</p>
+            <div class="linha">
+              <label>Grupo<select name="grupo" id="novoGrupo" required></select></label>
+              <label>Material ou serviço<select name="classificacao" required><option value="MATERIAL">Material</option><option value="SERVIÇO">Serviço</option></select></label>
+            </div>
+            <label>Descrição<input name="descricao" required placeholder="ex.: BANHEIRO QUÍMICO, LOCAÇÃO MENSAL"></label>
+            <div class="linha">
+              <label>Unidade<input name="unidade" required placeholder="UN, M, M2, MÊS…"></label>
+              <label>Descrição resumida<input name="descricao_resumida"></label>
+            </div>
+            <details><summary>Identificadores (ajudam a busca a achar o item)</summary>
+              <div class="linha" style="margin-top:8px">
+                <label>Material<input name="material" placeholder="PEAD, PVC, FOFO…"></label>
+                <label>Diâmetro<input name="diametro" placeholder="63, 110X63…"></label>
+                <label>Pressão<input name="pressao" placeholder="PN10"></label>
+                <label>Resina<input name="resina" placeholder="PE100"></label>
+                <label>Tipo de conexão<input name="tipo_conexao"></label>
+                <label>Solda<input name="solda" placeholder="ELETROFUSÃO, TOPO"></label>
+                <label>Grupo de orçamento Ankara<input name="grupo_orcamento_ankara"></label>
+              </div>
+            </details>
+            <div class="linha">
+              <label>Preço proposto (R$, sem BDI)<input type="number" step="0.01" min="0" name="preco_proposto" required></label>
+              <label>Fonte do preço<select name="fonte_preco" id="novoFonte" required></select></label>
+              <label>Código ou nº da fonte<input name="fonte_ref" placeholder="SINAPI 10775, NF 123, cotação 45"></label>
+            </div>
+            <label>Justificativa<textarea name="justificativa" rows="2" required placeholder="por que o item é preciso e por que não está no BM"></textarea></label>
+            <div id="novoParecidos"></div>
+            <div class="acoes"><button class="btn prim grande" id="novoGravar">Cadastrar o item a aprovar</button><button type="button" class="btn grande" id="novoCancelar">Cancelar</button></div>
+          </form>
+          <form class="painel" id="fApr" data-perm="apropriacao">
+            <h3>Apropriação</h3>
+            <div class="linha">
+              <label>Data<input type="date" name="data" required></label>
+              <label>Quantidade <span id="aprUnidade"></span><input type="number" step="any" min="0" name="quantidade" required></label>
+            </div>
+            <div class="linha">
+              <label>Local (opcional)<select name="local_tipo" id="aprLocalTipo"><option value="">Sem local</option><option value="CANTEIRO">Canteiro</option><option value="ZONA">Zona</option><option value="TRECHO">Trecho</option><option value="ATIVIDADE">Nó ou caixa</option></select></label>
+              <label id="aprZonaRot" hidden>Zona<select id="aprZona"></select></label>
+              <label id="aprAlvoRot" hidden>Trecho / nó / caixa<div class="busca"><input id="aprAlvo" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
+            </div>
+            <div class="linha">
+              <label>Quem executou<select name="executor_tipo" id="aprExecutor" required></select></label>
+              <label id="aprEquipeRot">Equipe da obra<select name="equipe_id" id="aprEquipe"></select></label>
+              <label id="aprObraRot" hidden>Obra ou contrato da Ankara<input name="executor_obra" placeholder="ex.: CT 9702/2024 — ETE Paranoá"></label>
+              <label id="aprNomeRot" hidden>Equipe<input name="executor_nome" placeholder="qual equipe ou nome do terceiro"></label>
+            </div>
+            <label>O que foi feito<textarea name="o_que_foi_feito" rows="2" required></textarea></label>
+            <label>Memória de cálculo da quantidade<textarea name="memoria_calculo" rows="2" required placeholder="ex.: 2 contêineres × 1 instalação"></textarea></label>
+            <label>Justificativa técnica<textarea name="justificativa" rows="2" required></textarea></label>
+            <label>Evidências: fotos, croqui ou documento (pelo menos uma)<input type="file" name="evidencias" multiple accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
+            <p class="vazio" style="margin:0">As evidências vão para o memorial da medição (galeria de fotos/croqui e justificativa técnica) e para o Drive. Correção só por estorno, com motivo.</p>
+            <div class="acoes"><button class="btn prim grande" id="aprGravar">Gravar a apropriação</button></div>
+          </form>
+        </div>
+        <div class="painel" style="min-width:0;align-self:start">
+          <h3>Apropriações recentes</h3>
+          <div id="aprLista"></div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ======================================================= EXECUÇÃO: DIÁRIO DE OBRA (montado da NS do dia) -->
@@ -237,6 +325,7 @@
         <div class="painel"><h3>Check-in: pessoas e material</h3><div id="diaCheckins"></div></div>
         <div class="painel"><h3>Interferências e ocorrências</h3><div id="diaOcorrencias"></div></div>
         <div class="painel" id="painelDiaLib"><h3>Liberação topográfica e escavação</h3><div id="diaLiberacoes"></div></div>
+        <div class="painel"><h3>Apropriações diretas do dia</h3><div id="diaApropriacoes"></div></div>
       </div>
     </div>
   </section>
@@ -855,6 +944,23 @@
         <div class="painel"><h3>Teto por subgrupo (BM Vertical)</h3><div id="medTetos" class="vazio">—</div></div>
       </div>
     </div>
+    <div class="painel" style="margin-top:16px">
+      <h3>Medível com restrição <small>(dinheiro parado)</small></h3>
+      <p class="vazio" style="margin:0 0 8px">O que foi executado ou registrado e não entra na medição: a restrição, o valor parado (sem BDI), há quantos dias e a ação que libera. Quando a restrição cai, entra sozinho na próxima medição de teste aberta.</p>
+      <div id="medRestTotais"></div>
+      <div class="acoes" style="align-items:flex-end;margin:8px 0">
+        <label>Restrição<select id="medRestFiltro"><option value="">Todas</option></select></label>
+        <label>Grupo<select id="medRestGrupo"><option value="">Todos</option></select></label>
+        <button type="button" class="btn" id="medRestCodigo">Registrar código oficial</button>
+        <button type="button" class="btn" id="medRestEsteira">Abrir a esteira do cadastro</button>
+      </div>
+      <div id="medRestricoes" class="vazio">—</div>
+    </div>
+    <div class="painel" style="margin-top:16px" id="itensAprovar">
+      <h3>Itens a aprovar na base de custo</h3>
+      <p class="vazio" style="margin:0 0 8px">Os itens do BM com código provisório (XX) e os itens novos. Registrado o código oficial da Caesb (com o ofício ou memorando em PDF), o que estava parado entra na medição de teste aberta. A planilha do BM não muda.</p>
+      <div id="medItensAprovar" class="vazio">—</div>
+    </div>
   </section>
 </main>
 </div>
@@ -881,5 +987,6 @@
 <script src="/iluminado.js"></script>
 <script src="/planejamento.js"></script>
 <script src="/notas.js"></script>
+<script src="/apropriacao.js"></script>
 </body>
 </html>

@@ -137,7 +137,7 @@ aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escur
 const TELAS = {
   inicio: { titulo: 'Início', carregar: () => renderInicio() },
   iluminado: { titulo: 'Mapa iluminado', carregar: () => carregarIluminado() },
-  campo: { titulo: 'Nota do dia', grupo: 'grupo-campo', carregar: () => carregarNotaDia() },
+  campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', carregar: () => carregarLancamentoDia() },
   diario: { titulo: 'Diário de obra', grupo: 'grupo-campo', carregar: () => carregarDiario() },
   interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
   notas: { titulo: 'Notas de serviço', grupo: 'grupo-campo', carregar: () => carregarNotas() },
@@ -1030,6 +1030,7 @@ async function carregarMedicao() {
   $('#medTetos').className = r.tetos.length ? '' : 'vazio';
   $('#medTetos').innerHTML = r.tetos.length ? `<table><thead><tr><th>Subgrupo</th><th class="n">Teto</th><th class="n">Anterior</th><th class="n">Atual</th><th class="n">Excedente</th></tr></thead><tbody>
     ${r.tetos.map(t => `<tr><td>${esc(t.subgrupo)} ${esc(t.nome || '')}</td><td class="n">${brl(t.teto)}</td><td class="n">${brl(t.anterior)}</td><td class="n">${brl(t.atual)}</td><td class="n">${t.excedente ? `<span class="chip vermelho">${brl(t.excedente)}</span>` : '—'}</td></tr>`).join('')}</tbody></table>` : 'Sem lançamentos com item de BM.';
+  aprCarregarRestricoes(id);
 }
 const SIT_REGRA = { 'CONFIRMADA': 'verde', 'PROVISÓRIA': 'amarelo', 'HIPÓTESE': 'amarelo', 'BLOQUEADA': 'vermelho', 'VÍNCULO INCOMPLETO': 'vermelho' };
 const SIT_ELEG = { PROPOSTO_NESTA: ['verde', 'proposto nesta'], APTO_SEM_OK: ['amarelo', 'completo, sem OK interno'],
@@ -1331,6 +1332,7 @@ async function carregarDiario() {
       <small>${nf(c.funcionarios, 0)} pessoa(s) · ${nf(c.maquinas, 0)} máquina(s)${c.contingencia ? ' · ' + esc(c.contingencia) : ''}</small>
       ${c.materiais.length ? `<div><small>${c.materiais.map(m => `${esc(m.tipo.toLowerCase())} ${nf(m.quantidade, 3)} ${esc(m.material_id)}`).join(' · ')}</small></div>` : ''}</div>`).join('') || '<p class="vazio">Nenhum check-in neste dia.</p>';
   $('#diaOcorrencias').innerHTML = d.ocorrencias.map(htmlInterf).join('') || '<p class="vazio">Nenhuma interferência ou ocorrência aberta neste dia.</p>';
+  $('#diaApropriacoes').innerHTML = d.apropriacoes.map(a => aprHtml(a, false)).join('') || '<p class="vazio">Nenhuma apropriação direta neste dia.</p>';
   $('#painelDiaLib').hidden = !!d.equipe;
   $('#diaLiberacoes').innerHTML = d.liberacoes.map(l => `<div class="dia-equipe"><b>${esc(ROT_ETAPA[l.etapa] || l.etapa)}</b><span>${esc(curto(l.trecho))} · ${nf(l.ini_m)}–${nf(l.fim_m)} m</span>
       <small>${esc([l.registrado_por, l.referencia].filter(Boolean).join(' · '))}</small></div>`).join('') || nada;
@@ -1617,15 +1619,17 @@ function htmlBM(r) {
   const vert = r.planilha === 'VERTICAL';
   let sub = null;
   const linhas = r.itens.flatMap(i => {
-    const grupo = vert && i.subgrupo !== sub ? (sub = i.subgrupo, [`<tr class="grupo"><td colspan="7">${esc(i.subgrupo)} · ${esc(i.subgrupo_nome || '')}</td></tr>`]) : [];
-    return [...grupo, `<tr><td>${esc(vert ? i.item_bm || i.item : i.item)}</td><td>${esc(i.codigo_caesb || '')}</td><td>${esc(i.descricao)}</td><td>${esc(i.unidade || '')}</td>
+    const grupo = vert && i.subgrupo !== sub ? (sub = i.subgrupo, [`<tr class="grupo"><td colspan="8">${esc(i.subgrupo)} · ${esc(i.subgrupo_nome || '')}</td></tr>`]) : [];
+    const sit = vert ? `<td><span class="chip ${i.situacao === 'APROVADO' ? 'verde' : 'vermelho'}">${esc(i.situacao === 'APROVADO' ? 'aprovado' : 'a aprovar')}</span>
+      <br><small>${esc(i.origem_rotulo || '')}${i.codigo_oficial ? ' · oficial ' + esc(i.codigo_oficial) : ''}${i.conciliado ? ' · ' + esc(i.conciliado) : ''}</small></td>` : '';
+    return [...grupo, `<tr><td>${esc(vert ? i.item_bm || i.item : i.item)}</td><td>${esc(i.codigo_caesb || '')}</td>${sit}<td>${esc(i.descricao)}</td><td>${esc(i.unidade || '')}</td>
       <td class="n">${nf(i.quantidade, 3)}</td><td class="n">${reais(i.preco_unitario)}</td><td class="n">${reais(i.valor_total)}</td></tr>`];
   });
   return `<div class="kpis"><div class="kpi"><span>Total ${vert ? 'BM Vertical' : 'BM'} (sem BDI)</span><b>${reais(r.total)}</b></div>
       ${Object.entries(r.por_classe).map(([k, v]) => `<div class="kpi"><span>${esc(k)}</span><b>${reais(v)}</b></div>`).join('')}
       <div class="kpi"><span>BDI material · serviço</span><b>${r.bdi == null ? '—' : pct(+r.bdi, 2)} · ${r.bdi_servico == null ? '—' : pct(+r.bdi_servico, 2)}</b></div></div>
     <p class="vazio" style="margin:0 0 8px">${nf(r.itens.length, 0)} itens${$('#levBusca').value.trim() ? ' encontrados' : ''}. Preços sem BDI (contrato, cláusula 5.2).</p>
-    ${r.itens.length ? tabelaHtml('<th>Item</th><th>Cód. Caesb</th><th>Descrição</th><th>Und.</th><th class="n">Quantidade</th><th class="n">Preço unit.</th><th class="n">Total</th>', linhas)
+    ${r.itens.length ? tabelaHtml(`<th>Item</th><th>Cód. Caesb</th>${vert ? '<th>Situação</th>' : ''}<th>Descrição</th><th>Und.</th><th class="n">Quantidade</th><th class="n">Preço unit.</th><th class="n">Total</th>`, linhas)
       : '<p class="vazio">Nenhum item com essa busca.</p>'}`;
 }
 function htmlRedes(r) {
