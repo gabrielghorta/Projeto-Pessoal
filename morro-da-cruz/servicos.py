@@ -1498,11 +1498,11 @@ def caminho_medicao(conn, ref):
     itens = [
         {"id": "topografia", "nome": "Liberação topográfica", "feito": lib >= ext - R.TOL_M,
          "detalhe": f"{m(lib)} m de {m(ext)} m" if lib else "sem NS de topografia",
-         "quem": "Topografia", "onde": "NS de topografia (tela Topografia)"},
+         "quem": "Topografia", "onde": "Topografia › Enviar NS de topografia"},
         {"id": "execucao", "nome": "Executado 100 % (assentado" + ("" if mnd else " e reaterrado") + ")", "feito": concluido,
          "detalhe": f"assentado {m(ass)} m" + ("" if mnd else f" · reaterrado {m(rea)} m") + f" de {m(ext)} m"
                     + (" · avanço anterior sem posição: concilie antes" if legado else ""),
-         "quem": "Equipe, pela NS do dia", "onde": "Lançamento do dia"},
+         "quem": "Equipe, pela NS do dia", "onde": "Notas de serviço › NS do dia"},
         {"id": "verificacao", "nome": "Verificado pelo supervisor", "feito": bool(n) and not falta_ver,
          "detalhe": f"{n - len(falta_ver)} de {n} intervalo(s) verificado(s)" if n else "nada informado ainda",
          "quem": "Supervisor (quem informou não verifica)", "onde": "aqui: Verificar", "pendentes": len(falta_ver)},
@@ -1511,7 +1511,7 @@ def caminho_medicao(conn, ref):
          "quem": "Quem envia a NS do dia, ou o supervisor na verificação", "onde": "aqui, junto da verificação"},
         {"id": "cadastro_campo", "nome": "Cadastro de campo", "feito": cad >= ext - R.TOL_M,
          "detalhe": f"{m(cad)} m de {m(ext)} m" if cad else "sem NS de cadastro",
-         "quem": "Cadastro, pela NS de cadastro", "onde": "tela Cadastro de campo"},
+         "quem": "Cadastro, pela NS de cadastro", "onde": "Cadastro de campo › Enviar NS de cadastro"},
         {"id": "ok", "nome": "OK interno", "feito": bool(ok),
          "detalhe": (f"em {ok} por {ex.get('ok_fiscal_por')} · " + (f"{med['numero']}ª medição ({med['tipo'].lower()})" if med
                      else "espera a medição de teste abrir")) if ok else "conferência interna da Ankara (não é aprovação da Caesb)",

@@ -46,11 +46,11 @@
       <button type="button" class="rail-item rail-grupo" data-grupo="grupo-campo" title="Execução"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Execução</span></button>
       <div class="rail-sub" data-grupo="grupo-campo">
         <button type="button" class="rail-item sub" data-tela="campo" title="Lançamento do dia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg><span class="rail-rot">Lançamento do dia</span></button>
-        <button type="button" class="rail-item sub" data-tela="diario" title="Diário de obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><span class="rail-rot">Diário de obra</span></button>
-        <button type="button" class="rail-item sub" data-tela="interferencias" title="Interferências"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></svg><span class="rail-rot">Interferências</span></button>
         <button type="button" class="rail-item sub" data-tela="notas" title="Notas de serviço"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3"/></svg><span class="rail-rot">Notas de serviço</span></button>
         <button type="button" class="rail-item sub" data-tela="topografia" title="Topografia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg><span class="rail-rot">Topografia</span></button>
         <button type="button" class="rail-item sub" data-tela="cadastro_campo" title="Cadastro de campo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 18l5-5 4 4 7-7M4 6h6M4 10h3M17 10h3v3"/></svg><span class="rail-rot">Cadastro de campo</span></button>
+        <button type="button" class="rail-item sub" data-tela="interferencias" title="Interferências"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></svg><span class="rail-rot">Interferências</span></button>
+        <button type="button" class="rail-item sub" data-tela="diario" title="Diário de obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><span class="rail-rot">Diário de obra</span></button>
       </div>
   </div>
   <div class="rail-pe">
@@ -121,39 +121,49 @@
     </div>
   </section>
 
-  <!-- ======================================================= EXECUÇÃO: NOTA DO DIA (a equipe envia a NS executada e o croqui) -->
+  <!-- ======================================================= EXECUÇÃO: LANÇAMENTO DO DIA (o lançamento solto, sem nota de serviço) -->
   <section class="aba" id="aba-campo">
-    <header class="cab-tela"><h1>Lançamento do dia</h1><p>Pela nota de serviço do dia (o sistema lê, acha os trechos e lança sozinho) ou, sem nota, pela apropriação direta no item do orçamento.</p></header>
-    <div class="abas-chip grandes" id="campoAbas" role="group" aria-label="Tipo de lançamento" style="margin:0 0 16px">
-      <button type="button" data-campo-aba="ns" aria-pressed="true">Nota de serviço</button>
-      <button type="button" data-campo-aba="apropriacao" aria-pressed="false" id="campoAbaApr" hidden>Apropriação direta</button>
-    </div>
-    <div id="campoNs">
-    <p class="vazio" style="margin:0 0 12px">Envie a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a engenharia conferir.</p>
-    <div class="grade-2">
-      <div style="display:grid;gap:16px;min-width:0;align-content:start">
-        <form class="painel nota-dia" id="fNd" data-perm="campo">
-          <label>Equipe<select id="ndEquipe" required></select></label>
-          <label>Nota de serviço do dia (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
-          <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
-          <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
-          <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
-          <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
-          <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
-          <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
+    <header class="cab-tela"><h1>Lançamento do dia</h1><p>Lançamentos sem nota de serviço. A NS do dia é enviada em Execução › Notas de serviço.</p></header>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas do Lançamento do dia" style="margin:0 0 16px"></div>
+
+    <!-- apontamento à mão, sem nota do dia (só Engenharia e Administração) -->
+    <div class="painel" data-pagina="apontamento" hidden>
+        <h3>Apontamento à mão</h3>
+        <p class="vazio" style="margin:0 0 8px">Só para a engenharia e a administração, quando não há nota do dia. O motivo fica guardado junto do apontamento.</p>
+        <form id="fApont" data-perm="lancar_sem_ns">
+          <div class="linha">
+            <label>Data<input type="date" name="data" required></label>
+            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
+          </div>
+          <div class="linha">
+            <label>Clima — manhã<select name="MANHA" class="selClima" required></select></label>
+            <label>Clima — tarde<select name="TARDE" class="selClima" required></select></label>
+          </div>
+          <label>Por que sem a nota do dia (obrigatório para trecho)<input name="motivo_sem_ns" placeholder="ex.: a nota do dia molhou; lançado pela caderneta do encarregado"></label>
+          <label>Trecho / nó / caixa
+            <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div>
+          </label>
+          <div id="apAlvo"></div>
+          <div id="apMetros">
+            <p class="vazio" style="margin:4px 0">Intervalos em metros a partir do início do trecho (sentido da 06.1). Sobreposição e repetição são recusadas; reaterro só sobre o assentado. Liberação topográfica e cadastro de campo são de equipes terceirizadas e registrados pela engenharia, nas abas Topografia e Cadastro de campo.</p>
+            <div class="linha"><label>Assentado de (m)<input type="number" step="any" min="0" name="ass_ini"></label><label>até (m)<input type="number" step="any" min="0" name="ass_fim"></label></div>
+            <div class="linha"><label>Reaterrado de (m)<input type="number" step="any" min="0" name="rea_ini"></label><label>até (m)<input type="number" step="any" min="0" name="rea_fim"></label></div>
+            <div class="linha"><label>Estaca inicial (NS, referência)<input name="estaca_ini"></label><label>Estaca final<input name="estaca_fim"></label></div>
+          </div>
+          <label class="check"><input type="checkbox" name="concluido_100"> 100 % concluído (preenche as lacunas de assentado e reaterro)</label>
+          <div class="acoes"><button type="button" class="btn azul" id="apPrevisto">Calcular previsto</button></div>
+          <div id="apQuant"></div>
         </form>
-        <div class="painel" id="ndLote" hidden aria-live="polite"></div>
-      </div>
-      <div style="display:grid;gap:16px;min-width:0;align-content:start">
-        <div class="painel"><h3>Notas enviadas</h3><div id="ndEnviadas"></div></div>
-        <div class="painel"><h3>Notas de serviço da zona</h3><p class="vazio" style="margin:0 0 6px">O plano do serviço (nota e croqui) enviado pela engenharia.</p><div id="ndServico"></div></div>
-      </div>
     </div>
-    <details class="painel" id="ndOutros" style="margin-top:16px"><summary>Outros registros do dia (opcional): soldas e fotos</summary>
-      <div class="grade-2" style="margin-top:10px">
+
+    <!-- fotos obrigatórias e soldas do trecho ou nó -->
+    <div class="painel" data-pagina="fotos" hidden>
+      <p class="vazio" style="margin:0 0 8px">Escolha o trecho, o nó ou a caixa pela busca (com o nome completo) ou no Mapa iluminado, e envie as fotos obrigatórias e as soldas.</p>
+      <div class="grade-2">
         <div style="min-width:0">
-          <label>Trecho / nó / caixa das soldas e fotos
-            <div class="busca"><input id="ndAlvo" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
+          <label>Trecho, nó ou caixa das soldas e fotos
+            <div class="busca"><input id="ndAlvo" placeholder="Zona 03 PB06 TR14, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
+          <div class="acoes"><button type="button" class="btn" id="ndNoMapa">Escolher no Mapa iluminado</button></div>
           <div id="ndAlvoInfo" class="vazio">Escolha o trecho ou o nó.</div>
         </div>
         <div class="painel" style="min-width:0">
@@ -183,41 +193,21 @@
           <div id="soldas" style="margin-top:8px"></div>
         </div>
       </div>
-    </details>
-    <details class="painel" id="ndExcecao" style="margin-top:16px"><summary>Sem nota de serviço (exceção)</summary>
-      <div style="margin-top:10px">
-        <h3>Apontamento à mão</h3>
-        <p class="vazio" style="margin:0 0 8px">Só para a engenharia e a administração, quando não há nota do dia. O motivo fica guardado junto do apontamento.</p>
-        <form id="fApont" data-perm="lancar_sem_ns">
-          <div class="linha">
-            <label>Data<input type="date" name="data" required></label>
-            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
-          </div>
-          <div class="linha">
-            <label>Clima — manhã<select name="MANHA" class="selClima" required></select></label>
-            <label>Clima — tarde<select name="TARDE" class="selClima" required></select></label>
-          </div>
-          <label>Por que sem a nota do dia (obrigatório para trecho)<input name="motivo_sem_ns" placeholder="ex.: a nota do dia molhou; lançado pela caderneta do encarregado"></label>
-          <label>Trecho / nó / caixa
-            <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div>
-          </label>
-          <div id="apAlvo"></div>
-          <div id="apMetros">
-            <p class="vazio" style="margin:4px 0">Intervalos em metros a partir do início do trecho (sentido da 06.1). Sobreposição e repetição são recusadas; reaterro só sobre o assentado. Liberação topográfica e cadastro de campo são de equipes terceirizadas e registrados pela engenharia, nas abas Topografia e Cadastro de campo.</p>
-            <div class="linha"><label>Assentado de (m)<input type="number" step="any" min="0" name="ass_ini"></label><label>até (m)<input type="number" step="any" min="0" name="ass_fim"></label></div>
-            <div class="linha"><label>Reaterrado de (m)<input type="number" step="any" min="0" name="rea_ini"></label><label>até (m)<input type="number" step="any" min="0" name="rea_fim"></label></div>
-            <div class="linha"><label>Estaca inicial (NS, referência)<input name="estaca_ini"></label><label>Estaca final<input name="estaca_fim"></label></div>
-          </div>
-          <label class="check"><input type="checkbox" name="concluido_100"> 100 % concluído (preenche as lacunas de assentado e reaterro)</label>
-          <div class="acoes"><button type="button" class="btn azul" id="apPrevisto">Calcular previsto</button></div>
-          <div id="apQuant"></div>
-        </form>
-      </div>
-    </details>
+    </div>
+
+    <!-- clima do dia da equipe, para o diário dos dias sem nota do dia -->
+    <div data-pagina="clima" hidden>
+      <form class="painel nota-dia" id="fClima" data-perm="campo">
+        <p class="vazio" style="margin:0">O clima do dia da equipe, para o diário dos dias sem nota do dia. Quem envia a NS do dia já grava o clima junto.</p>
+        <div class="linha"><label>Equipe<select id="climaEquipe" required></select></label><label>Dia<input type="date" name="data" required></label></div>
+        <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
+        <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
+        <button class="btn prim grande">Gravar o clima do dia</button>
+      </form>
     </div>
 
     <!-- apropriação direta: lançamento sem nota de serviço, direto no item do orçamento (só Engenharia e Administração) -->
-    <div id="campoApr" hidden>
+    <div id="campoApr" data-pagina="apropriacao" hidden>
       <p class="vazio" style="margin:0 0 12px">Para o que não vem por nota de serviço: o canteiro feito por uma equipe de outra obra, os gastos do canteiro e outros lançamentos avulsos. Escolha o item como no BM Vertical (grupo, material ou serviço, item) ou pela busca.</p>
       <div class="grade-2">
         <div style="display:grid;gap:16px;min-width:0;align-content:start">
@@ -360,13 +350,49 @@
     </div>
   </section>
 
-  <!-- ======================================================= EXECUÇÃO: NOTAS DE SERVIÇO (engenharia e administração) -->
+  <!-- ======================================================= EXECUÇÃO: NOTAS DE SERVIÇO (as do campo da obra) -->
   <section class="aba" id="aba-notas">
-    <header class="cab-tela"><h1>Notas de serviço</h1><p>Envie a nota de serviço em PDF: topografia, cadastro de campo ou serviço de obra. O sistema lê, confere as contas e casa cada trecho da nota com os trechos da obra. Nada é gravado antes de você conferir e tocar em "Registrar".</p></header>
+    <header class="cab-tela"><h1>Notas de serviço</h1><p>As notas do campo da obra: a NS do dia (o que a equipe executou, com o croqui e o clima) e a NS de serviço de obra (o plano da zona). As de topografia e de cadastro são enviadas nas abas Topografia e Cadastro de campo.</p></header>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Tipo da nota" style="margin:0 0 16px"></div>
+
+    <!-- NS do dia: a equipe envia o que executou (o encarregado, só da própria equipe) -->
+    <div data-pagina="dia" hidden>
+      <p class="vazio" style="margin:0 0 12px">Envie a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a engenharia conferir.</p>
     <div class="grade-2">
-      <div style="display:grid;gap:16px;min-width:0">
-        <div class="painel" id="nsLote" hidden></div>
-        <div class="painel" id="nsResultado"><p class="vazio">Escolha o tipo e os PDFs das notas e toque em "Ler as notas". As que precisarem de conferência abrem aqui.</p></div>
+      <div style="display:grid;gap:16px;min-width:0;align-content:start">
+        <form class="painel nota-dia" id="fNd" data-perm="campo">
+          <label>Equipe<select id="ndEquipe" required></select></label>
+          <label>Nota de serviço do dia (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
+          <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
+          <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
+          <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
+          <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
+          <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
+          <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
+        </form>
+        <div class="painel" id="ndLote" hidden aria-live="polite"></div>
+      </div>
+      <div style="display:grid;gap:16px;min-width:0;align-content:start">
+        <div class="painel"><h3>Notas do dia enviadas</h3><div class="linha"><label>Dia (vazio: os últimos 7)<input type="date" id="ndDia"></label></div><div id="ndEnviadas" style="margin-top:8px"></div></div>
+        <div class="painel"><h3>Notas de serviço da zona</h3><p class="vazio" style="margin:0 0 6px">O plano do serviço (nota e croqui) enviado pela engenharia.</p><div id="ndServico"></div></div>
+      </div>
+    </div>
+    <div class="painel" id="nsFilaPainel" style="margin-top:16px" hidden>
+      <h3>NS do dia a conferir</h3>
+      <p class="vazio" style="margin:0 0 6px">O que o sistema não lançou sozinho das notas do dia das equipes. Escolha o trecho (e com ele o sentido) e aceite, ou deixe de fora com o motivo; depois, "Registrar o que foi conferido".</p>
+      <div id="nsFila"></div>
+    </div>
+    </div>
+
+    <!-- NS de serviço de obra: o plano da zona, enviado pela engenharia -->
+    <div data-pagina="servico" hidden>
+      <div class="aviso info" style="margin:0 0 12px"><b>A NS de serviço de obra é o plano da zona: não acende o executado.</b> A nota e o croqui ficam para a equipe abrir aqui, na página NS do dia. O que acende o executado é a NS do dia.</div>
+      <div id="nsEnvioServico"></div>
+    </div>
+
+    <!-- a conferência dos segmentos de uma nota da fila: vai para a página que está conferindo (Serviço, Topografia ou Cadastro) -->
+    <div id="nsConferencia" hidden style="display:grid;gap:16px;min-width:0">
+        <div class="painel" id="nsResultado"></div>
         <div class="painel" id="nsSegPainel" hidden>
           <h3>Segmentos da nota × trechos da obra</h3>
           <div id="nsSegmentos"></div>
@@ -374,40 +400,14 @@
           <div id="nsPrevia"></div>
           <div class="acoes" style="margin-top:10px"><button type="button" class="btn prim" id="nsRegistrar" disabled>Registrar</button><span id="nsFalta" class="vazio"></span></div>
         </div>
-      </div>
-      <form class="painel" id="fNs" data-perm="notas_servico">
-        <h3 style="margin:0">Enviar notas de serviço</h3>
-        <div class="abas-chip" id="nsTipo" role="group" aria-label="Tipo da nota">
-          <button type="button" data-ns-tipo="TOPOGRAFIA" aria-pressed="true">Topografia</button>
-          <button type="button" data-ns-tipo="CADASTRO" aria-pressed="false">Cadastro de campo</button>
-          <button type="button" data-ns-tipo="SERVICO" aria-pressed="false">Serviço de obra</button>
-        </div>
-        <p class="vazio" id="nsTipoDesc" style="margin:0"></p>
-        <label>Notas de serviço (PDF; várias de uma vez, até 20 arquivos por lote)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
-        <label><span id="nsCroquiRot">Croquis (PDF, JPG ou PNG; opcional)</span><input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple></label>
-        <label>Planilhas das notas (.xlsx ou .xls, opcional: leitura exata)<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label>
-        <p class="vazio" style="margin:0">O croqui e a planilha casam com cada nota pelo número escrito neles e, na falta dele, pelo nome do arquivo. O que não casar aparece na fila para você ligar à nota certa.</p>
-        <details><summary>A nota não diz a zona ou a PB</summary>
-          <div class="linha"><label>Zona<select name="zona" id="nsZona"><option value="">a da nota</option></select></label><label>PB<input name="pb" placeholder="ex.: PB08" autocomplete="off"></label></div>
-        </details>
-        <div class="acoes"><button class="btn prim">Ler as notas</button></div>
-        <p class="vazio" style="margin:0">Ler não grava nada: cada nota entra na fila ao lado. As lidas sem pendência são registradas juntas, uma por vez; as outras você confere uma a uma.</p>
-      </form>
-    </div>
-    <div class="painel" id="nsFilaPainel" style="margin-top:16px" hidden>
-      <h3>NS do dia a conferir</h3>
-      <p class="vazio" style="margin:0 0 6px">O que o sistema não lançou sozinho das notas do dia das equipes. Escolha o trecho (e com ele o sentido) e aceite, ou deixe de fora com o motivo; depois, "Registrar o que foi conferido".</p>
-      <div id="nsFila"></div>
     </div>
     <div class="painel" style="margin-top:16px">
-      <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Notas recebidas</h3>
+      <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Notas recebidas da obra</h3>
         <label class="check"><input type="checkbox" id="nsAnuladas"> mostrar as anuladas</label></div>
       <div class="abas-chip" id="nsFiltro" role="group" aria-label="Tipo">
-        <button type="button" data-ns-filtro="" aria-pressed="true">Todas</button>
-        <button type="button" data-ns-filtro="TOPOGRAFIA" aria-pressed="false">Topografia</button>
-        <button type="button" data-ns-filtro="CADASTRO" aria-pressed="false">Cadastro de campo</button>
+        <button type="button" data-ns-filtro="" aria-pressed="true">Todas da obra</button>
+        <button type="button" data-ns-filtro="EXECUCAO" aria-pressed="false">Do dia</button>
         <button type="button" data-ns-filtro="SERVICO" aria-pressed="false">Serviço de obra</button>
-        <button type="button" data-ns-filtro="EXECUCAO" aria-pressed="false">Do dia (execução)</button>
       </div>
       <div id="nsLista" style="margin-top:10px"></div>
       <details id="nsForaPainel" hidden style="margin-top:14px"><summary>Fora de ordem (legado): <span id="nsForaN">0</span> registro(s)</summary>
@@ -416,29 +416,14 @@
     </div>
   </section>
 
-  <!-- ======================================================= CAMPO: TOPOGRAFIA (terceirizada, registrada pela engenharia) -->
+  <!-- ======================================================= EXECUÇÃO: TOPOGRAFIA (terceirizada) -->
   <section class="aba" id="aba-topografia">
-    <header class="cab-tela"><h1>Topografia</h1><p>Liberação topográfica feita pela equipe terceirizada (nota de serviço / locação), registrada pela engenharia. O trecho pode ser liberado todo ou em partes.</p></header>
-    <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
-      <label>Frente<select id="topFrente"><option value="">Obra inteira</option></select></label>
-    </div>
-    <div class="painel" style="margin-bottom:16px">
-      <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Notas de serviço de topografia</h3>
-        <button type="button" class="btn prim" data-ns-enviar="TOPOGRAFIA" id="topNsEnviar" hidden>Enviar nota de serviço</button></div>
-      <div id="topNsLista" style="margin-top:10px"></div>
-    </div>
-    <div class="kpis" id="topKpis"></div>
-    <div class="grade-2">
-      <div class="painel" style="min-width:0">
-        <div class="abas-chip" id="topLista" role="group" aria-label="Lista">
-          <button type="button" data-top-lista="programados" aria-pressed="true">Programado sem liberação</button>
-          <button type="button" data-top-lista="executados" aria-pressed="false">Executado sem liberação</button>
-          <button type="button" data-top-lista="parciais" aria-pressed="false">Liberados em parte</button>
-          <button type="button" data-top-lista="recentes" aria-pressed="false">Liberações registradas</button>
-        </div>
-        <div id="topConteudo" style="margin-top:10px"></div>
-      </div>
-      <details class="painel" id="topExcecao"><summary>Sem nota de serviço (exceção)</summary>
+    <header class="cab-tela"><h1>Topografia</h1><p>A liberação topográfica feita pela equipe terceirizada: envie as notas de serviço de topografia e veja o resumo do que já foi liberado, todo ou em partes.</p></header>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas da Topografia" style="margin:0 0 16px"></div>
+
+    <div data-pagina="enviar" hidden>
+      <div id="topEnvio"></div>
+      <details class="painel" id="topExcecao" style="margin-top:16px"><summary>Sem nota de serviço (exceção)</summary>
       <form id="fTop" data-perm="topografia">
         <h3 style="margin:0">Registrar liberação à mão</h3>
         <label>Trecho
@@ -452,31 +437,34 @@
       </form>
       </details>
     </div>
+
+    <div data-pagina="resumo" hidden>
+      <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
+        <label>Frente<select id="topFrente"><option value="">Obra inteira</option></select></label>
+        <button type="button" class="btn" id="topMapa">Ver no Mapa iluminado</button>
+      </div>
+      <div class="kpis" id="topKpis"></div>
+      <div class="painel" style="min-width:0">
+        <div class="abas-chip" id="topLista" role="group" aria-label="Lista">
+          <button type="button" data-top-lista="programados" aria-pressed="true">Programado sem liberação</button>
+          <button type="button" data-top-lista="executados" aria-pressed="false">Executado sem liberação</button>
+          <button type="button" data-top-lista="parciais" aria-pressed="false">Liberados em parte</button>
+          <button type="button" data-top-lista="recentes" aria-pressed="false">Liberações registradas</button>
+        </div>
+        <div id="topConteudo" style="margin-top:10px"></div>
+      </div>
+      <div class="painel" style="margin-top:16px"><h3 style="margin:0">Notas de serviço de topografia</h3><div id="topNsLista" style="margin-top:10px"></div></div>
+    </div>
   </section>
 
-  <!-- ======================================================= CAMPO: CADASTRO DE CAMPO (terceirizada, registrado pela engenharia) -->
+  <!-- ======================================================= EXECUÇÃO: CADASTRO DE CAMPO (terceirizado) -->
   <section class="aba" id="aba-cadastro_campo">
-    <header class="cab-tela"><h1>Cadastro de campo</h1><p>Levantamento com a vala aberta, antes do reaterro, feito pela equipe terceirizada e registrado pela engenharia. Só vale sobre o que já foi assentado.</p></header>
-    <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
-      <label>Frente<select id="cadFrente"><option value="">Obra inteira</option></select></label>
-    </div>
-    <div id="cadAviso"></div>
-    <div class="painel" style="margin-bottom:16px">
-      <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Notas de serviço de cadastro</h3>
-        <button type="button" class="btn prim" data-ns-enviar="CADASTRO" id="cadNsEnviar" hidden>Enviar nota de serviço</button></div>
-      <div id="cadNsLista" style="margin-top:10px"></div>
-    </div>
-    <div class="kpis" id="cadKpis"></div>
-    <div class="grade-2">
-      <div class="painel" style="min-width:0">
-        <div class="abas-chip" id="cadLista" role="group" aria-label="Lista">
-          <button type="button" data-cad-lista="aberta" aria-pressed="true">Vala aberta sem levantamento</button>
-          <button type="button" data-cad-lista="reaterrados" aria-pressed="false">Reaterrado sem levantamento</button>
-          <button type="button" data-cad-lista="recentes" aria-pressed="false">Levantamentos registrados</button>
-        </div>
-        <div id="cadConteudo" style="margin-top:10px"></div>
-      </div>
-      <div style="display:grid;gap:16px;min-width:0;align-content:start">
+    <header class="cab-tela"><h1>Cadastro de campo</h1><p>O levantamento com a vala aberta, antes do reaterro, feito pela equipe terceirizada: envie as notas de serviço de cadastro e veja o que já foi feito. Só vale sobre o que já foi executado.</p></header>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas do Cadastro de campo" style="margin:0 0 16px"></div>
+
+    <div data-pagina="enviar" hidden>
+      <div id="cadEnvio"></div>
+      <div style="display:grid;gap:16px;min-width:0;margin-top:16px">
         <details class="painel" id="cadExcecao"><summary>Sem nota de serviço (exceção)</summary>
         <form id="fCad" data-perm="cadastro_campo">
           <h3 style="margin:0">Registrar levantamento à mão</h3>
@@ -493,6 +481,26 @@
         </details>
         <div id="cadRetif"></div>
       </div>
+    </div>
+
+    <div data-pagina="feito" hidden>
+      <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
+        <label>Frente<select id="cadFrente"><option value="">Obra inteira</option></select></label>
+        <button type="button" class="btn" id="cadMapa">Ver no Mapa iluminado</button>
+      </div>
+      <div id="cadAviso"></div>
+      <div class="kpis" id="cadKpis"></div>
+      <div class="painel" style="min-width:0">
+        <div class="abas-chip" id="cadLista" role="group" aria-label="Lista">
+          <button type="button" data-cad-lista="aberta" aria-pressed="true">Vala aberta sem levantamento</button>
+          <button type="button" data-cad-lista="reaterrados" aria-pressed="false">Reaterrado sem levantamento</button>
+          <button type="button" data-cad-lista="recentes" aria-pressed="false">Levantamentos registrados</button>
+        </div>
+        <div id="cadConteudo" style="margin-top:10px"></div>
+      </div>
+      <div class="painel" style="margin-top:16px"><h3 style="margin:0">Notas de serviço de cadastro</h3>
+        <p class="vazio" style="margin:6px 0 0">O que cada nota gravou e o que foi recusado pela ordem obrigatória (só vale sobre o executado até a data da nota). "Aplicar de novo" grava a parte recusada que agora cabe.</p>
+        <div id="cadNsLista" style="margin-top:10px"></div></div>
     </div>
   </section>
 

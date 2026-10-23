@@ -504,7 +504,8 @@ ROTAS_PLANEJAMENTO = {"/api/dados-obra/programar": ("planejar", p_dados_obra_pro
 
 # ------------------------------------------------------------------ nota de serviço por upload (v18)
 # Quem abre a tela vê as NS daquele tipo; o encarregado vê as de serviço e as do dia da equipe dele.
-TIPOS_DA_TELA = {"notas": set(NS.TIPOS), "topografia": {"TOPOGRAFIA"}, "cadastro_campo": {"CADASTRO"},
+# a aba Notas de serviço é das NS do campo da obra (a do dia e a de serviço); topografia e cadastro têm a aba deles
+TIPOS_DA_TELA = {"notas": {"SERVICO", "EXECUCAO"}, "topografia": {"TOPOGRAFIA"}, "cadastro_campo": {"CADASTRO"},
                  "campo": {"SERVICO", "EXECUCAO"}, "diario": {"SERVICO", "EXECUCAO"}}
 
 

@@ -232,6 +232,7 @@ async function carregarIluminado() {
   if (!ILU.lista && pode('verificar')) $('#iluBlocoLista').hidden = false;          // supervisor: "Aguardando verificação"
   else if (ILU.lista && ILU.lista.verificacao) { ILU.lista = null; if (ILU.pop === 'lista') abrirPop('lista', true); }   // relê depois de verificar
   if (ILU.abrirLista && ILU.est) { ILU.abrirLista = false; abrirPop('lista', true); }
+  if (ILU.ver && ILU.est) { const v = ILU.ver; ILU.ver = null; if (v.tipo === 'ZONA') { if (v.nome) focarZona(v.nome); else verTudo(); } else focarAlvo(v.tipo, v.nome); }
 }
 function avisoIlu(msg) { const a = $('#iluAviso'); a.textContent = msg; a.hidden = !msg; }
 
@@ -622,6 +623,7 @@ function abrirPop(nome, recarregar) {
 }
 // lista de trechos à parte: "Aguardando verificação" (supervisor, o mais perto primeiro quando o celular dá a posição) ou
 // a que a tela Medição abriu. Tocar leva ao trecho e abre a ficha, onde está a ação
+function verNoMapa(tipo, nome) { ILU.ver = { tipo, nome }; return abrirAba('iluminado'); }
 function abrirListaIlu(titulo, nomes) {
   ILU.lista = { titulo, itens: nomes.map(n => ({ nome: n })) };
   $('#iluBtLista').textContent = titulo; $('#iluBlocoLista').hidden = false;
@@ -724,9 +726,9 @@ $('#iluFicha').addEventListener('click', async ev => {
   const f = $('#iluFicha');
   if (ev.target.closest('.fechar')) return fecharFicha();
   if (ev.target.closest('[data-ficha-completa]')) { await abrirAba('mapa'); return mostrarFiscal(f.dataset.tipo, f.dataset.id); }
-  if (ev.target.closest('[data-ficha-campo]')) {
-    abrirAba('campo');
-    const inp = $('#fApont input[name=alvo_txt]'); inp.value = curto(ILU.sel.nome); inp.dataset.tipo = f.dataset.tipo; inp.dataset.id = f.dataset.id;
+  if (ev.target.closest('[data-ficha-campo]')) {               // Lançamento do dia: o apontamento sem NS ou as fotos e soldas
+    abrirAba('campo/' + (pode('lancar_sem_ns') ? 'apontamento' : 'fotos'));
+    const inp = $('#fApont input[name=alvo_txt]'); inp.value = nomeCompleto(ILU.sel.nome); inp.dataset.tipo = f.dataset.tipo; inp.dataset.id = f.dataset.id;
     return selecionarCampo(f.dataset.tipo, f.dataset.id);
   }
 });
