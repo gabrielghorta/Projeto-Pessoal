@@ -60,6 +60,7 @@ class Cliente:
 
 
 class BaseHTTP(Base):
+    LIBERAR_TUDO = True
     usuarios = (("eng1", "ENGENHARIA", None), ("eng2", "ENGENHARIA", None), ("almox1", "ALMOXARIFADO", None),
                 ("almox2", "ALMOXARIFADO", None), ("enc1", "EQUIPE", "Zona01"), ("adm", "ADMINISTRACAO", None))
 

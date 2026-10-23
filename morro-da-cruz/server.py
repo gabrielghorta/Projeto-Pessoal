@@ -586,6 +586,11 @@ def p_ns_dia(b, c, usuario):
                          {k: b.get(f"{k}_nome") for k in ("pdf", "croqui", "planilha")}, b.get("clima"))
 
 
+def p_ns_numero(b, c, usuario):
+    """Envio em lote: o número da NS escrito no PDF, no croqui ou na planilha (só lê, nada é gravado)."""
+    return {"numeros": sorted(NS.L.numeros_documento(NS._bytes(b.get("arquivo_b64"), "o arquivo", NS.LIMITE_CROQUI)))}
+
+
 def p_ns_dia_conferir(b, c, usuario):
     return NS.conferir_dia(c, int(b["ns_id"]), b.get("decisoes") or [], b["por"])
 
@@ -603,7 +608,7 @@ def p_ns_dia_anular(b, c, usuario):
     return NS.anular(c, ns["id"], b.get("motivo"), b["por"])
 
 
-ROTAS_NS_DIA = {"/api/ns/dia": ("campo", p_ns_dia), "/api/ns/dia/conferir": ("retificar_campo", p_ns_dia_conferir),
+ROTAS_NS_DIA = {"/api/ns/dia": ("campo", p_ns_dia), "/api/ns/numero": ("campo", p_ns_numero), "/api/ns/dia/conferir": ("retificar_campo", p_ns_dia_conferir),
                 "/api/ns/dia/anular": ("campo", p_ns_dia_anular)}
 
 
@@ -825,7 +830,7 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
-               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
+               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/fora-de-ordem": lambda q, c: S.fora_de_ordem(c), "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
@@ -900,7 +905,7 @@ TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX 
             "/api/cadastro-campo": ("cadastro_campo",), "/api/topologia": ("mapa", "iluminado"),
             "/api/dados-obra/selecao": ("mapa",), "/api/dados-obra/estado": ("mapa",), "/api/cronograma": ("cronograma", "mapa"),
             "/api/almox/quarentena": ("almox", "compras"), "/api/almox/notas": ("almox", "compras"),
-            "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS, "/api/ns/dia": ("campo", "diario", "notas"),
+            "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS, "/api/ns/fora-de-ordem": ("notas",), "/api/ns/dia": ("campo", "diario", "notas"),
             "/api/base-custo/busca": TELAS_BASE_CUSTO, "/api/base-custo/itens": TELAS_BASE_CUSTO,
             "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}

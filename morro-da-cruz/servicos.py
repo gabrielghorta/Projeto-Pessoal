@@ -899,6 +899,46 @@ def _exigir_sem_legado(conn, t, acao):
             f"posição desses metros (conciliação do legado) antes de {acao}.")
 
 
+def cobertura_liberacao(conn, trecho_id, ate_data=None):
+    """Liberação topográfica efetiva (não anulada) do trecho, até a data."""
+    return R.unir_intervalos([(e["ini_m"], e["fim_m"]) for e in etapas_complementares(conn, trecho_id, "LIBERACAO_TOPOGRAFICA")
+                              if ate_data is None or e["data"] <= ate_data])
+
+
+def exigir_liberacao(conn, t, ini_m, fim_m, data):
+    """Execução (assentamento e escavação) só sobre o que tem liberação topográfica até a data (D-20, bloqueio)."""
+    falta = [(a, b) for a, b in R.fora_da_cobertura((float(ini_m), float(fim_m)), cobertura_liberacao(conn, t["id"], data))
+             if b - a > R.TOL_M]
+    if falta:
+        raise RegraViolada(R.falta_na_ordem(t["ponto"], falta, "a liberação topográfica", "registre a NS de topografia antes"))
+
+
+def fora_de_ordem(conn):
+    """Legado fora da ordem topografia → serviço → cadastro (D-20), de antes do bloqueio: assentado ou escavado sem a
+    liberação topográfica até a data, e cadastro de campo sem o assentado até a data. Só lista, nada é apagado: a
+    engenharia registra a etapa que falta (a NS de topografia, por exemplo) ou retifica o registro."""
+    out = []
+    ids = [r[0] for r in conn.execute(
+        f"""SELECT id FROM trechos WHERE vigente=1 AND (id IN (SELECT trecho_id FROM intervalos_execucao WHERE {EFETIVO})
+            OR id IN (SELECT trecho_id FROM etapas_complementares WHERE etapa='ESCAVADO' AND anulado_em IS NULL)) ORDER BY ponto""")]
+    for tid in ids:
+        t = alvo(conn, "TRECHO", tid)
+        regs = [dict(i, origem_reg=_ref_intervalo(i)) for i in intervalos(conn, tid) if i["etapa"] in ("ASSENTADO", "CADASTRO_CAMPO")]
+        regs += [dict(e, origem_reg=f"escavação registrada por {e['registrado_por']}") for e in etapas_complementares(conn, tid, "ESCAVADO")]
+        for i in regs:
+            if i["etapa"] == "CADASTRO_CAMPO":
+                falta, o_que = R.fora_da_cobertura((i["ini_m"], i["fim_m"]), _cobertura(conn, tid, "ASSENTADO", ate_data=i["data"])), \
+                    "cadastro de campo sem execução até a data"
+            else:
+                falta, o_que = R.fora_da_cobertura((i["ini_m"], i["fim_m"]), cobertura_liberacao(conn, tid, i["data"])), \
+                    ("assentado" if i["etapa"] == "ASSENTADO" else "escavado") + " sem liberação topográfica até a data"
+            falta = [(round(a, 3), round(b, 3)) for a, b in falta if b - a > R.TOL_M]
+            if falta:
+                out.append({"trecho_id": tid, "nome": t["ponto"], "o_que": o_que, "faixas": falta, "data": i["data"],
+                            "registro": i["origem_reg"], "texto": R.falta_na_ordem(t["ponto"], falta, "a etapa anterior", o_que)})
+    return out
+
+
 def _validar_intervalos(conn, t, novos, excluir=()):
     """Valida o CONJUNTO resultante do trecho: efetivos − `excluir` (anulados por uma retificação) + `novos`.
 
@@ -919,6 +959,8 @@ def _validar_intervalos(conn, t, novos, excluir=()):
             raise RegraViolada("Trecho MND não tem vala: registre só ASSENTADO e CADASTRO_CAMPO.")
         if not (0 <= a < b <= ext + R.TOL_M):
             raise RegraViolada(f"{e} {a:g}–{b:g} m fora do trecho (0–{ext:g} m) ou com início ≥ fim.")
+        if e == "ASSENTADO" and n.get("origem") != "LEGADO":       # o legado conciliado só ganha posição (lista "fora de ordem")
+            exigir_liberacao(conn, t, a, b, n["data"])
         existentes = [(i["ini_m"], i["fim_m"]) for i in restantes if i["etapa"] == e]
         sob = R.sobreposicao((a, b), existentes + por_etapa[e])
         if sob:
@@ -1546,6 +1588,8 @@ def registrar_etapa_complementar(conn, trecho_ref, etapa, ini_m, fim_m, data, re
     sob = R.sobreposicao((a, b), [(e["ini_m"], e["fim_m"]) for e in etapas_complementares(conn, t["id"], etapa)])
     if sob:
         raise RegraViolada(f"{etapa} {a:g}–{b:g} m sobrepõe registro existente ({sob[0]:g}–{sob[1]:g} m).")
+    if etapa == "ESCAVADO":
+        exigir_liberacao(conn, t, a, b, data)
     return conn.execute(
         """INSERT INTO etapas_complementares(trecho_id,etapa,ini_m,fim_m,data,registrado_por,referencia,obs,registrado_em,
              ns_segmento_id) VALUES (?,?,?,?,?,?,?,?,?,?)""",
@@ -1561,12 +1605,24 @@ def anular_etapa_complementar(conn, registro_id, motivo, por):
         raise RegraViolada("Registro já anulado.")
     if not str(motivo or "").strip():
         raise RegraViolada("A anulação exige o motivo.")
+    if e["etapa"] == "LIBERACAO_TOPOGRAFICA":         # não deixa execução sem a liberação que a permitiu
+        resto = R.unir_intervalos([(x["ini_m"], x["fim_m"]) for x in etapas_complementares(conn, e["trecho_id"], "LIBERACAO_TOPOGRAFICA")
+                                   if x["id"] != e["id"]])
+        perde = R.fora_da_cobertura((e["ini_m"], e["fim_m"]), resto)
+        exe = [(i["ini_m"], i["fim_m"]) for i in intervalos(conn, e["trecho_id"]) if i["etapa"] == "ASSENTADO"] + \
+              [(x["ini_m"], x["fim_m"]) for x in etapas_complementares(conn, e["trecho_id"], "ESCAVADO")]
+        sob = [(max(a, c), min(b, d)) for a, b in perde for c, d in exe if min(b, d) - max(a, c) > R.TOL_M]
+        if sob:
+            t = alvo(conn, "TRECHO", e["trecho_id"])
+            raise RegraViolada(R.falta_na_ordem(t["ponto"], R.unir_intervalos(sob), "a liberação que a execução já usou",
+                                                "retifique antes a execução; a liberação não é anulada"))
     conn.execute("UPDATE etapas_complementares SET anulado_em=?, anulado_por=?, anulado_motivo=? WHERE id=?",
                  (_agora(), por, motivo.strip(), registro_id))
 
 
 def situacao_complementar(conn, t, sit):
-    """Liberação e escavação do trecho, com o que foi assentado ou escavado sem liberação ATÉ a data (alerta, D-20)."""
+    """Liberação e escavação do trecho, com o que foi assentado ou escavado sem liberação ATÉ a data (legado de antes do
+    bloqueio, D-20: hoje a execução sem liberação é recusada)."""
     regs = etapas_complementares(conn, t["id"])
     cob = lambda e, ate=None: R.unir_intervalos([(r["ini_m"], r["fim_m"]) for r in regs if r["etapa"] == e and (ate is None or r["data"] <= ate)])
     out = {e: {"cobertura": cob(e), "metros": R.comprimento(cob(e)), "registros": [r for r in regs if r["etapa"] == e]}
@@ -1578,7 +1634,7 @@ def situacao_complementar(conn, t, sit):
         faltas = [(i, R.fora_da_cobertura((i["ini_m"], i["fim_m"]), cob("LIBERACAO_TOPOGRAFICA", i["data"]))) for i in lst]
         faltas = [(i, f) for i, f in faltas if f]
         if faltas:
-            out["alertas"].append(f"{nome} sem liberação topográfica até a data (alerta): "
+            out["alertas"].append(f"{nome} sem liberação topográfica até a data (legado fora de ordem): "
                                   + "; ".join(f"{_faixas(f)} ({i['data']})" for i, f in faltas))
     return out
 

@@ -27,6 +27,8 @@ D = "2026-10-15"
 
 
 class BaseCampo(Base):
+    LIBERAR_TUDO = True
+
     def setUp(self):
         super().setUp()
         self.aplicar()
@@ -242,6 +244,8 @@ def banco_legado(test, versao=5):
 
 
 class TestF01AvancoLegado(Base):
+    LIBERAR_TUDO = True
+
     def setUp(self):
         super().setUp()
         banco_legado(self).close()

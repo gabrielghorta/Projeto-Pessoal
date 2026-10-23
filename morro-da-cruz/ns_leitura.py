@@ -1015,12 +1015,40 @@ def _conferir(ns, outra, origem):
         ns['falhas_leitura'].append(f'{ns["fonte"].get("extrator")} e {origem} leram dados diferentes: {_diferencas(ns, outra)}')
 
 
+# "N.S. 006", "NS-012", "Nota de serviço nº 15": o número da NS escrito num documento
+RX_NUMERO_NS = re.compile(r'(?<![A-Z0-9])(?:N\s*\.?\s*S|NOTA\s+DE\s+SERVICO)\s*\.?\s*(?:N\s*[O.]\s*)?[-_:.]?\s*(\d{1,4})(?![\d/])')
+
+
+def numeros_ns(texto):
+    """Números de NS escritos no texto (sem acento, maiúsculo)."""
+    return {int(m.group(1)) for m in RX_NUMERO_NS.finditer(sem_acento(texto or '').upper())}
+
+
+def numeros_documento(dados):
+    """Números de NS escritos num documento do envio em lote (PDF com texto, ou planilha .xlsx/.xls): é por eles que o
+    croqui e a planilha casam com a nota. Foto, PDF sem texto ou arquivo ilegível: conjunto vazio (casa pelo nome)."""
+    try:
+        if dados[:5] == b'%PDF-':
+            r = _pypdf().PdfReader(io.BytesIO(dados))
+            if r.is_encrypted and not r.decrypt(''):
+                return set()
+            achados = numeros_ns('\n'.join(p.extract_text() or '' for p in list(r.pages)[:LIMITE_PAGINAS]))
+            if not achados:                            # a própria NS: o número está no cabeçalho, que o leitor entende
+                n = parse_texto(*extrair_paginas(dados, 'auto')).get('cabecalho', {}).get('numero_int')
+                achados = {n} if n is not None else set()
+            return achados
+        if tipo_planilha(dados):
+            return numeros_ns('\n'.join(ler_planilha(dados)))
+    except Exception:  # noqa: BLE001 — só ajuda a casar; sem número, casa pelo nome do arquivo
+        return set()
+    return set()
+
+
 def conferir_texto_croqui(texto, cab):
     """Avisos quando o texto do croqui diz outra NS: o número, o contrato ou a data escritos nele não batem com os da
     nota. O croqui não é obrigado a trazer esses dados; só o que ele traz é conferido."""
     t = sem_acento(texto or '').upper()
-    numeros = {int(m.group(1)) for m in re.finditer(
-        r'(?<![A-Z0-9])(?:N\s*\.?\s*S|NOTA\s+DE\s+SERVICO)\s*\.?\s*(?:N\s*[O.]\s*)?[-_:.]?\s*(\d{1,4})(?![\d/])', t)}
+    numeros = numeros_ns(t)
     contratos = {norm_contrato(f'{a}/{b}') for a, b in    # só o número escrito depois de 'contrato' (ou 'CT')
                  re.findall(r'(?:CONTRAT\w*|(?<![A-Z])CT)[^0-9]{0,40}?(?<![\d/])(\d{3,6})\s*/\s*((?:19|20)\d\d)(?![\d/])', t)}
     datas = {d for d in (data_iso(m.group(0)) for m in re.finditer(

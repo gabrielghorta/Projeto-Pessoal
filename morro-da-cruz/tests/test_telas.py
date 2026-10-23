@@ -63,6 +63,8 @@ class TestVisaoGeral(unittest.TestCase):
 
 
 class TestCamadasELigacoes(BaseHTTP):
+    LIBERAR_TUDO = False                  # a camada da liberação topográfica é o assunto
+
     def test_liberacao_topografica_total_e_parcial(self):
         t1, t2 = self.q("SELECT id, extensao_m FROM trechos WHERE vigente=1 AND metodologia='VCA' ORDER BY id LIMIT 2")
         S.registrar_etapa_complementar(self.c, t1[0], "LIBERACAO_TOPOGRAFICA", 0, t1[1], "2026-10-15", "eng1", "NS 01")

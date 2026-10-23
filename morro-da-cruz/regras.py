@@ -223,6 +223,13 @@ def etapa_trecho(liberado=False, equipe_hoje=False, informado_hoje=False, execut
     return "execucao" if equipe_hoje else "liberado" if liberado else "nao"
 
 
+def falta_na_ordem(nome, faixas, o_que, como):
+    """Ordem obrigatória topografia → serviço → cadastro (D-20): diz exatamente o que falta. Ex.: "Zona 03 · PB06 · TR014,
+    de 12,0 m a 30,0 m: falta a liberação topográfica (registre a NS de topografia antes)"."""
+    m = lambda v: f"{v:.1f}".replace(".", ",")
+    return f"{nome_completo(nome)}, " + ", ".join(f"de {m(a)} m a {m(b)} m" for a, b in faixas) + f": falta {o_que} ({como})"
+
+
 def distancia_m(lat1, lon1, lat2, lon2):
     """Distância em metros entre dois pontos (graus), pela esfera: basta para pôr o mais perto primeiro."""
     p1, p2 = math.radians(lat1), math.radians(lat2)

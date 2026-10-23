@@ -134,15 +134,15 @@
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
         <form class="painel nota-dia" id="fNd" data-perm="campo">
           <label>Equipe<select id="ndEquipe" required></select></label>
-          <label>Nota de serviço do dia (PDF)<input type="file" name="pdf" accept="application/pdf,.pdf" required></label>
-          <label>Croqui (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
+          <label>Nota de serviço do dia (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
+          <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
           <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
           <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
-          <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label></details>
+          <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
           <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
           <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
         </form>
-        <div class="painel" id="ndResultado" hidden aria-live="polite"></div>
+        <div class="painel" id="ndLote" hidden aria-live="polite"></div>
       </div>
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
         <div class="painel"><h3>Notas enviadas</h3><div id="ndEnviadas"></div></div>
@@ -365,7 +365,8 @@
     <header class="cab-tela"><h1>Notas de serviço</h1><p>Envie a nota de serviço em PDF: topografia, cadastro de campo ou serviço de obra. O sistema lê, confere as contas e casa cada trecho da nota com os trechos da obra. Nada é gravado antes de você conferir e tocar em "Registrar".</p></header>
     <div class="grade-2">
       <div style="display:grid;gap:16px;min-width:0">
-        <div class="painel" id="nsResultado"><p class="vazio">Escolha o tipo e o PDF da nota e toque em "Ler a nota".</p></div>
+        <div class="painel" id="nsLote" hidden></div>
+        <div class="painel" id="nsResultado"><p class="vazio">Escolha o tipo e os PDFs das notas e toque em "Ler as notas". As que precisarem de conferência abrem aqui.</p></div>
         <div class="painel" id="nsSegPainel" hidden>
           <h3>Segmentos da nota × trechos da obra</h3>
           <div id="nsSegmentos"></div>
@@ -375,21 +376,22 @@
         </div>
       </div>
       <form class="painel" id="fNs" data-perm="notas_servico">
-        <h3 style="margin:0">Enviar nota de serviço</h3>
+        <h3 style="margin:0">Enviar notas de serviço</h3>
         <div class="abas-chip" id="nsTipo" role="group" aria-label="Tipo da nota">
           <button type="button" data-ns-tipo="TOPOGRAFIA" aria-pressed="true">Topografia</button>
           <button type="button" data-ns-tipo="CADASTRO" aria-pressed="false">Cadastro de campo</button>
           <button type="button" data-ns-tipo="SERVICO" aria-pressed="false">Serviço de obra</button>
         </div>
         <p class="vazio" id="nsTipoDesc" style="margin:0"></p>
-        <label>Nota de serviço (PDF)<input type="file" name="pdf" accept="application/pdf,.pdf" required></label>
-        <label><span id="nsCroquiRot">Croqui (PDF, JPG ou PNG; opcional)</span><input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"></label>
-        <label>Planilha da nota (.xlsx ou .xls, opcional: leitura exata)<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
+        <label>Notas de serviço (PDF; várias de uma vez, até 20 arquivos por lote)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
+        <label><span id="nsCroquiRot">Croquis (PDF, JPG ou PNG; opcional)</span><input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple></label>
+        <label>Planilhas das notas (.xlsx ou .xls, opcional: leitura exata)<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label>
+        <p class="vazio" style="margin:0">O croqui e a planilha casam com cada nota pelo número escrito neles e, na falta dele, pelo nome do arquivo. O que não casar aparece na fila para você ligar à nota certa.</p>
         <details><summary>A nota não diz a zona ou a PB</summary>
           <div class="linha"><label>Zona<select name="zona" id="nsZona"><option value="">a da nota</option></select></label><label>PB<input name="pb" placeholder="ex.: PB08" autocomplete="off"></label></div>
         </details>
-        <div class="acoes"><button class="btn prim">Ler a nota</button></div>
-        <p class="vazio" style="margin:0">Ler não grava nada. O PDF e o croqui abrem aqui mesmo, no navegador, antes de registrar.</p>
+        <div class="acoes"><button class="btn prim">Ler as notas</button></div>
+        <p class="vazio" style="margin:0">Ler não grava nada: cada nota entra na fila ao lado. As lidas sem pendência são registradas juntas, uma por vez; as outras você confere uma a uma.</p>
       </form>
     </div>
     <div class="painel" id="nsFilaPainel" style="margin-top:16px" hidden>
@@ -408,6 +410,9 @@
         <button type="button" data-ns-filtro="EXECUCAO" aria-pressed="false">Do dia (execução)</button>
       </div>
       <div id="nsLista" style="margin-top:10px"></div>
+      <details id="nsForaPainel" hidden style="margin-top:14px"><summary>Fora de ordem (legado): <span id="nsForaN">0</span> registro(s)</summary>
+        <p class="vazio" style="margin:6px 0">Registros de antes do bloqueio da ordem topografia → serviço → cadastro. Nada é apagado: registre a etapa que falta (a NS de topografia, por exemplo) ou retifique o registro na ficha do trecho.</p>
+        <div id="nsFora"></div></details>
     </div>
   </section>
 

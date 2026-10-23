@@ -35,6 +35,8 @@ def pdf_dia(grupos, numero="015", data=ONTEM, titulo=TITULO, contrato="10239/202
 
 
 class BaseDia(BaseReal):
+    LIBERAR_TUDO = True
+
     def enviar(self, login, pdf, equipe="Zona03", croqui=CROQUI, clima=CLIMA, **kw):
         corpo = dict(pdf_b64=b64(pdf), pdf_nome="ns_do_dia.pdf", croqui_b64=croqui, croqui_nome="croqui.jpg", clima=clima, **kw)
         if equipe:

@@ -5,9 +5,9 @@
 
 const NS_TIPOS = { TOPOGRAFIA: 'Topografia', CADASTRO: 'Cadastro de campo', SERVICO: 'Serviço de obra', EXECUCAO: 'Do dia (execução)' };
 const NS_DESC = {
-  TOPOGRAFIA: 'Gera a liberação topográfica dos trechos da nota, só no que ainda não está liberado.',
-  CADASTRO: 'Gera o cadastro de campo sobre o que já foi assentado até a data da nota. O resto fica pendente e entra depois, '
-    + 'quando o assentamento for lançado ("Aplicar o que falta").',
+  TOPOGRAFIA: 'Gera a liberação topográfica dos trechos da nota, só no que ainda não está liberado. É a primeira etapa: sem ela, a execução é recusada.',
+  CADASTRO: 'Gera o cadastro de campo só sobre o que já foi executado (assentado) até a data da nota. O resto é recusado, com o que falta; '
+    + 'se o assentamento até essa data for registrado depois, use "Aplicar de novo" na nota.',
   SERVICO: 'NS de serviço de obra é o plano: a nota e o croqui ficam para a equipe abrir no Lançamento do dia, e nada acende no mapa. O que acende o executado é a NS do dia, enviada em Lançamento do dia.',
 };
 const NS_ETAPA = { TOPOGRAFIA: 'liberação topográfica', CADASTRO: 'cadastro de campo' };
@@ -31,6 +31,14 @@ async function carregarNotas() {
   $('#nsAnuladas').checked = NSV.anuladas;
   nsCarregarFila();
   await nsCarregarLista(NSV.filtro, '#nsLista', { anuladas: NSV.anuladas });
+  nsForaDeOrdem();
+}
+// legado fora da ordem obrigatória (D-20): só a lista, para a engenharia tratar trecho a trecho
+async function nsForaDeOrdem() {
+  const l = await api('/api/ns/fora-de-ordem').catch(() => []);
+  $('#nsForaPainel').hidden = !l.length; $('#nsForaN').textContent = l.length;
+  $('#nsFora').innerHTML = l.map(x => `<div class="registro"><div><b>${esc(nomeCompleto(x.nome))}</b><span class="chip amarelo">${esc(x.o_que)}</span></div>
+    <small>${x.faixas.map(([a, b]) => `${nf(a, 1)}–${nf(b, 1)} m`).join(', ')} · ${dataBR(x.data)} · ${esc(x.registro)}</small></div>`).join('');
 }
 function nsMarcarTipo() {
   $$('#nsTipo button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.nsTipo === NSV.tipo)));
@@ -39,9 +47,9 @@ function nsMarcarTipo() {
 }
 function nsLimpar(form = true) {
   if (NSV.envio) Object.values(NSV.envio.arquivos).forEach(a => a && URL.revokeObjectURL(a.url));
-  NSV.envio = NSV.leitura = null; NSV.decisoes = {}; NSV.marcado = {};
+  NSV.envio = NSV.leitura = NSV.cartao = null; NSV.decisoes = {}; NSV.marcado = {};
   if (form) $('#fNs').reset();
-  $('#nsResultado').innerHTML = '<p class="vazio">Escolha o tipo e o PDF da nota e toque em "Ler a nota".</p>';
+  $('#nsResultado').innerHTML = '<p class="vazio">Escolha o tipo e os PDFs das notas e toque em "Ler as notas". As que precisarem de conferência abrem aqui.</p>';
   $('#nsSegPainel').hidden = true;
 }
 async function nsArquivo(input) {
@@ -54,22 +62,173 @@ $('#nsTipo').addEventListener('click', ev => {
   NSV.tipo = b.dataset.nsTipo; nsMarcarTipo();
 });
 const nsTravar = sim => { $$('#nsTipo button, #fNs button.prim').forEach(b => { b.disabled = sim; }); };
+/* ---------------------------------------------------------------- envio em lote (componente de qualquer tela)
+ * criarFilaNs({ caixa, tipo, trocaTipo, extra, conferir, depois }): a fila de NS de uma tela.
+ *  - tipo(): o tipo das NS que entram (o chip escolhido, ou EXECUCAO na NS do dia); trocaTipo: cada cartão pode trocar;
+ *  - extra(): os campos a mais de cada envio (zona e PB; na NS do dia, a equipe e o clima), ou lança o que falta;
+ *  - conferir(cartao): abre a conferência que já existe (as NS lidas antes de registrar); depois(): o que recarregar.
+ * Vários PDFs de uma vez (até 20 arquivos por lote), com croquis e planilhas também em lote: casam com cada NS pelo
+ * número escrito no documento e, na falta dele, pelo nome do arquivo; o que não casar fica visível para ligar à mão.
+ * Cada NS vira um cartão: lida, precisa conferir, recusada (com o motivo), registrada ou repetida (mesmo arquivo).
+ * "Registrar todas" grava uma NS por pedido, em sequência, com o progresso (o servidor atende um pedido por vez); a
+ * falha de uma não para as outras. A NS do dia não tem leitura antes: é registrada ao enviar e o servidor decide. */
+const LIMITE_LOTE = 20;
+const SIT_LOTE = { lendo: ['lendo…', 'cinza'], lida: ['lida, sem pendência', 'azul'], pronta: ['pronta para enviar', 'azul'],
+  conferir: ['precisa conferir', 'amarelo'], recusada: ['recusada', 'vermelho'], registrada: ['registrada', 'verde'], repetida: ['repetida', 'cinza'] };
+const numeroNoNome = nome => { const m = /(?:N\s*\.?\s*S|NOTA)[\s._-]*0*(\d{1,4})(?!\d)/i.exec(nome || ''); return m ? +m[1] : null; };
+async function hashArquivo(arq) {          // sem https (rede local) não há crypto.subtle: nome, tamanho e data servem
+  if (!(window.crypto && crypto.subtle)) return `${arq.name}|${arq.size}|${arq.lastModified}`;
+  const d = await crypto.subtle.digest('SHA-256', await arq.arrayBuffer());
+  return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function criarFilaNs(op) {
+  const F = { cartoes: [], soltos: [], seq: 0, ocupado: false };
+  const dia = () => op.tipo() === 'EXECUCAO';
+  const numeros = async arq => (await api('/api/ns/numero', { arquivo_b64: await lerOriginal(arq) }).catch(() => ({ numeros: [] }))).numeros;
+  const b64 = async a => a ? { b64: await lerOriginal(a), nome: a.name } : {};
+  const progresso = t => { const p = $('[data-lote-progresso]', op.caixa); if (p) p.textContent = t; };
+  F.adicionar = async (pdfs, croquis = [], planilhas = []) => {
+    if (F.ocupado) return toast('Espere terminar o lote em andamento.', 'erro');
+    if (!pdfs.length) return toast('Escolha o PDF da nota de serviço.', 'erro');
+    if (pdfs.length + croquis.length + planilhas.length > LIMITE_LOTE) return toast(`No máximo ${LIMITE_LOTE} arquivos por lote.`, 'erro');
+    let extra; try { extra = op.extra(); } catch (e) { return toast(e.message, 'erro'); }
+    F.ocupado = true; F.render();
+    try {
+      const novos = [];
+      for (const [k, arq] of pdfs.entries()) {
+        progresso(`Lendo o número da nota ${k + 1} de ${pdfs.length}…`);
+        const hash = await hashArquivo(arq).catch(() => arq.name + arq.size);
+        const c = { id: ++F.seq, pdf: arq, hash, tipo: op.tipo(), extra, numeros: await numeros(arq), estado: 'lendo', croqui: null, planilha: null };
+        const rep = F.cartoes.concat(novos).find(x => x.hash === hash);
+        if (rep) Object.assign(c, { estado: 'repetida', motivo: `o mesmo arquivo de ${rep.pdf.name}` });
+        novos.push(c);
+      }
+      F.cartoes.push(...novos);
+      const anexos = [...croquis.map(a => [a, 'croqui']), ...planilhas.map(a => [a, 'planilha'])];
+      for (const [k, [arq, qual]] of anexos.entries()) {
+        progresso(`Casando croquis e planilhas: ${k + 1} de ${anexos.length}…`);
+        const ns = await numeros(arq), nome = numeroNoNome(arq.name), livre = novos.filter(x => !x[qual] && x.estado !== 'repetida');
+        const c = livre.find(x => x.numeros.some(n => ns.includes(n))) || (nome != null && livre.find(x => x.numeros.includes(nome)))
+          || (livre.length === 1 && novos.length === 1 ? livre[0] : null);            // uma nota só no lote: o anexo é dela
+        if (c) c[qual] = arq; else F.soltos.push({ id: ++F.seq, arq, qual });
+      }
+      for (const [k, c] of novos.entries()) { if (c.estado !== 'repetida') { progresso(`Lendo a nota ${k + 1} de ${novos.length}…`); await F.ler(c); } }
+    } finally { F.ocupado = false; progresso(''); F.render(); }
+    if (dia()) await F.registrarTodas();                  // a NS do dia é registrada ao enviar
+  };
+  // classifica o cartão: lida (sem pendência), precisa conferir, recusada ou repetida
+  F.ler = async c => {
+    c.motivo = null; c.leitura = null;
+    if (c.tipo === 'EXECUCAO') { Object.assign(c, c.croqui ? { estado: 'pronta' } : { estado: 'conferir', motivo: 'falta o croqui: ligue o croqui a esta nota' }); return; }
+    c.estado = 'lendo'; F.render();
+    const [pdf, cro, pla] = [await b64(c.pdf), await b64(c.croqui), await b64(c.planilha)];
+    const r = await api('/api/ns/ler', { tipo: c.tipo, pdf_b64: pdf.b64, planilha_b64: pla.b64, croqui_b64: cro.b64, zona: c.extra.zona, pb: c.extra.pb })
+      .catch(e => ({ erro: e.message }));
+    if (r.erro) return Object.assign(c, { estado: 'recusada', motivo: r.erro });
+    c.leitura = r; c.numero = r.leitura.numero;
+    const res = r.leitura.resultado, falta = [];
+    if (!r.contrato_ok) return Object.assign(c, { estado: 'recusada', motivo: `a nota é de outro contrato (${r.leitura.contrato || 'sem contrato'})` });
+    if (!res.aceita) return Object.assign(c, { estado: 'recusada', motivo: res.motivos.join('; ') });
+    if (r.ja_registrada) return Object.assign(c, { estado: 'repetida', motivo: `este arquivo já foi registrado (NS ${r.ja_registrada.numero})` });
+    if (r.mesmo_numero && !r.mesmo_numero.mesma_impressao) falta.push(`a NS ${r.mesmo_numero.numero} já está registrada com outro conteúdo: anule a anterior`);
+    if (c.tipo === 'SERVICO' && !c.croqui && !r.mesmo_numero) falta.push('o croqui (obrigatório no serviço de obra)');
+    const seg = r.segmentos.filter(s => s.situacao !== 'AUTOMATICO').map(s => s.ordem);
+    if (seg.length && !(r.mesmo_numero && r.mesmo_numero.mesma_impressao)) falta.push(`conferir o(s) segmento(s) ${seg.join(', ')}`);
+    (r.avisos_croqui || []).forEach(t => falta.push('confira o croqui: ' + t));
+    if (r.aviso_tipo) falta.push('confira o tipo: ' + r.aviso_tipo);
+    if (!podeNs(c.tipo)) falta.push('seu perfil não registra notas de serviço deste tipo');
+    Object.assign(c, falta.length ? { estado: 'conferir', motivo: falta.join('; ') } : { estado: 'lida' });
+  };
+  F.registrar = async c => {
+    const [pdf, cro, pla] = [await b64(c.pdf), await b64(c.croqui), await b64(c.planilha)];
+    const corpo = { pdf_b64: pdf.b64, pdf_nome: pdf.nome, croqui_b64: cro.b64, croqui_nome: cro.nome, planilha_b64: pla.b64, planilha_nome: pla.nome, ...c.extra };
+    try {
+      const r = c.tipo === 'EXECUCAO' ? await api('/api/ns/dia', corpo) : await api('/api/ns', { tipo: c.tipo, decisoes: c.decisoes || [], ...corpo });
+      F.marcar(c, r);
+    } catch (e) { Object.assign(c, { estado: 'recusada', motivo: e.message }); }
+  };
+  F.marcar = (c, r) => { Object.assign(c, { estado: 'registrada', resultado: r, motivo: null }); F.render(); };
+  F.registrarTodas = async () => {
+    const lista = F.cartoes.filter(c => c.estado === 'lida' || c.estado === 'pronta');
+    if (!lista.length || F.ocupado) return;
+    F.ocupado = true; F.render();
+    try {
+      for (const [k, c] of lista.entries()) { progresso(`Registrando ${k + 1} de ${lista.length}…`); await F.registrar(c); F.render(); }
+    } finally { F.ocupado = false; progresso(''); F.render(); }
+    const ok = lista.filter(c => c.estado === 'registrada').length;
+    toast(`${ok} de ${lista.length} nota(s) registrada(s)${ok < lista.length ? '; veja o motivo das outras na fila' : ''}.`, ok < lista.length ? 'erro' : 'ok');
+    if (ok && op.depois) op.depois();
+  };
+  const resumo = c => {
+    const r = c.resultado; if (!r) return '';
+    if (c.tipo === 'EXECUCAO') return htmlNdNota(r);
+    const pend = (r.segmentos || []).flatMap(s => s.pendencias || []);
+    return `<small>${r.arquivo_trocado ? 'Só o arquivo da NS já registrada foi trocado.' : NS_ETAPA[c.tipo] ? `${nf(r.gravado_m)} m de ${NS_ETAPA[c.tipo]} gravados` + (r.pendente_m > 0.001 ? `; ${nf(r.pendente_m)} m recusados` : '') : 'Registrada.'}</small>`
+      + pend.slice(0, 3).map(t => `<div><small>${esc(t)}</small></div>`).join('');
+  };
+  const nomeCartao = c => c.numero ? `NS ${c.numero}` : c.numeros.length ? `NS ${String(c.numeros[0]).padStart(3, '0')}` : c.pdf.name;
+  F.render = () => {
+    const cx = op.caixa; cx.hidden = !F.cartoes.length && !F.soltos.length;
+    const opcoes = F.cartoes.filter(c => c.estado !== 'registrada' && c.estado !== 'repetida');
+    const prontas = F.cartoes.filter(c => c.estado === 'lida' || c.estado === 'pronta').length;
+    cx.innerHTML = `<div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Fila do envio (${F.cartoes.length})</h3>
+        <span data-lote-progresso class="vazio"></span></div>
+      ${F.soltos.length ? `<div class="aviso info"><b>Sem nota casada:</b> ligue cada arquivo à nota certa.
+        ${F.soltos.map(x => `<div class="linha" data-solto="${x.id}"><span>${x.qual === 'croqui' ? 'Croqui' : 'Planilha'}: ${esc(x.arq.name)}</span>
+          <select data-ligar><option value="">ligar à nota…</option>${opcoes.map(c => `<option value="${c.id}">${esc(nomeCartao(c))} · ${esc(c.pdf.name)}</option>`).join('')}</select></div>`).join('')}</div>` : ''}
+      ${F.cartoes.map(c => `<div class="registro cartao-ns" data-cartao="${c.id}"><div><b>${esc(nomeCartao(c))}</b>
+          <span class="chip ${SIT_LOTE[c.estado][1]}">${SIT_LOTE[c.estado][0]}</span></div>
+        <small>${esc(c.pdf.name)} · croqui: ${c.croqui ? esc(c.croqui.name) : 'nenhum'} · planilha: ${c.planilha ? esc(c.planilha.name) : 'nenhuma'}</small>
+        ${op.trocaTipo && !['registrada', 'repetida'].includes(c.estado) ? `<label class="tipo-cartao">Tipo<select data-tipo-cartao>${Object.entries(NS_TIPOS).filter(([k]) => k !== 'EXECUCAO')
+          .map(([k, v]) => `<option value="${k}"${k === c.tipo ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>` : ''}
+        ${c.motivo ? `<div class="${c.estado === 'recusada' ? 'aviso problema' : 'aviso info'}">${esc(c.motivo)}</div>` : ''}${resumo(c)}
+        <div class="acoes">${c.estado === 'conferir' && c.leitura && op.conferir ? '<button type="button" class="btn azul" data-conferir-cartao>Conferir</button>' : ''}
+          ${['lida', 'pronta'].includes(c.estado) ? '<button type="button" class="btn" data-registrar-cartao>Registrar esta</button>' : ''}
+          ${c.estado !== 'registrada' ? '<button type="button" class="btn" data-tirar-cartao>Tirar da fila</button>' : ''}</div></div>`).join('')}
+      <div class="acoes"><button type="button" class="btn prim" data-registrar-todas ${prontas && !F.ocupado ? '' : 'disabled'}>Registrar todas as conferidas sem pendência (${prontas})</button>
+        ${F.cartoes.some(c => c.estado === 'registrada') ? '<button type="button" class="btn" data-limpar-fila>Limpar as registradas</button>' : ''}</div>`;
+    $$('button, select', cx).forEach(b => { if (F.ocupado) b.disabled = true; });
+  };
+  const cartao = el => F.cartoes.find(c => c.id === +(el.closest('[data-cartao]') || {}).dataset?.cartao);
+  op.caixa.addEventListener('click', async ev => {
+    const b = ev.target.closest('button'); if (!b || F.ocupado) return;
+    const c = cartao(b);
+    if (b.matches('[data-registrar-todas]')) return F.registrarTodas();
+    if (b.matches('[data-limpar-fila]')) { F.cartoes = F.cartoes.filter(x => x.estado !== 'registrada'); return F.render(); }
+    if (!c) return;
+    if (b.matches('[data-tirar-cartao]')) { F.cartoes = F.cartoes.filter(x => x !== c); return F.render(); }
+    if (b.matches('[data-conferir-cartao]')) return op.conferir(c);
+    if (b.matches('[data-registrar-cartao]')) { F.ocupado = true; F.render(); try { await F.registrar(c); } finally { F.ocupado = false; F.render(); }
+      if (c.estado === 'registrada' && op.depois) op.depois(); }
+  });
+  op.caixa.addEventListener('change', async ev => {
+    const s = ev.target; if (F.ocupado) return;
+    if (s.matches('[data-tipo-cartao]')) { const c = cartao(s); c.tipo = s.value; await F.ler(c); return F.render(); }
+    if (s.matches('[data-ligar]') && s.value) {
+      const solto = F.soltos.find(x => x.id === +s.closest('[data-solto]').dataset.solto), c = F.cartoes.find(x => x.id === +s.value);
+      c[solto.qual] = solto.arq; F.soltos = F.soltos.filter(x => x !== solto);
+      await F.ler(c); F.render();
+    }
+  });
+  return F;
+}
+// a conferência de um cartão da fila é a mesma da nota avulsa: os segmentos, o que fica de fora e "Registrar"
+async function nsConferirCartao(c) {
+  nsLimpar(false);
+  const arq = async a => a ? { b64: await lerOriginal(a), nome: a.name, url: URL.createObjectURL(a) } : null;
+  NSV.envio = { tipo: c.tipo, arquivos: { pdf: await arq(c.pdf), croqui: await arq(c.croqui), planilha: await arq(c.planilha) }, zona: c.extra.zona, pb: c.extra.pb };
+  NSV.leitura = c.leitura; NSV.cartao = c;
+  renderNsLeitura(); if (c.leitura.contrato_ok) renderNsSegmentos();
+  $('#nsResultado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+const NS_LOTE = criarFilaNs({ caixa: $('#nsLote'), tipo: () => NSV.tipo, trocaTipo: true, conferir: nsConferirCartao,
+  extra: () => { const o = formObj($('#fNs')); return { zona: o.zona || null, pb: o.pb || null }; },
+  depois: () => { NSV.filtro = ''; carregarNotas(); recarregarCamadaMapa(); driveEmSegundoPlano(); } });
 $('#fNs').addEventListener('submit', async ev => {
   ev.preventDefault();
-  const f = ev.target, o = formObj(f), tipo = NSV.tipo;          // o tipo fica preso durante a leitura
-  nsLimpar(false);
-  const arquivos = { pdf: await nsArquivo(f.pdf), croqui: await nsArquivo(f.croqui), planilha: await nsArquivo(f.planilha) };
-  if (!arquivos.pdf) return toast('Escolha o PDF da nota de serviço.', 'erro');
-  $('#nsResultado').innerHTML = '<p class="vazio">Lendo a nota…</p>';
-  nsTravar(true);
-  const r = await acao(() => api('/api/ns/ler', { tipo, pdf_b64: arquivos.pdf.b64, planilha_b64: arquivos.planilha && arquivos.planilha.b64,
-    croqui_b64: arquivos.croqui && arquivos.croqui.b64,
-    zona: o.zona || null, pb: o.pb || null })).catch(() => null).finally(() => nsTravar(false));
-  if (!r || r.tipo !== NSV.tipo) { $('#nsResultado').innerHTML = '<p class="vazio">A nota não foi lida. Veja o aviso acima.</p>'; return; }
-  NSV.envio = { tipo: r.tipo, arquivos, zona: o.zona || null, pb: o.pb || null };
-  NSV.leitura = r; NSV.decisoes = {}; NSV.marcado = {};
-  renderNsLeitura();
-  if (r.contrato_ok) renderNsSegmentos();             // nota de outra obra: não há o que conferir
+  const f = ev.target;
+  await NS_LOTE.adicionar([...f.pdf.files], [...f.croqui.files], [...f.planilha.files]);
+  f.pdf.value = f.croqui.value = f.planilha.value = '';
 });
 
 function renderNsLeitura() {
@@ -203,8 +362,9 @@ $('#nsRegistrar').addEventListener('click', async () => {
     zona: e.zona, pb: e.pb, decisoes: Object.values(NSV.decisoes) })).catch(() => null);
   if (!r) return;
   toast(r.arquivo_trocado ? 'Arquivo da NS trocado (a versão anterior ficou guardada).'
-    : `NS registrada${NS_ETAPA[e.tipo] ? `: ${nf(r.gravado_m)} m de ${NS_ETAPA[e.tipo]} gravados${r.pendente_m > 0.001 ? `, ${nf(r.pendente_m)} m pendentes` : ''}` : ''}.`, 'ok');
-  nsLimpar(); NSV.filtro = e.tipo; carregarNotas(); recarregarCamadaMapa(); driveEmSegundoPlano();
+    : `NS registrada${NS_ETAPA[e.tipo] ? `: ${nf(r.gravado_m)} m de ${NS_ETAPA[e.tipo]} gravados${r.pendente_m > 0.001 ? `, ${nf(r.pendente_m)} m recusados (o que falta está na nota)` : ''}` : ''}.`, 'ok');
+  if (NSV.cartao) NS_LOTE.marcar(NSV.cartao, r);                       // o cartão da fila que foi conferido
+  nsLimpar(false); NSV.filtro = e.tipo; carregarNotas(); recarregarCamadaMapa(); driveEmSegundoPlano();
 });
 
 /* ---------------------------------------------------------------- notas recebidas (tela Notas e abas Topografia / Cadastro) */
@@ -227,7 +387,7 @@ function htmlNsLista(lista) {
       <td>${driveNs((n.drive || {}).pdf)}</td>
       <td><div class="acoes">${linkNs(n.id, 'pdf', 'PDF')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Croqui') : ''}
         <button type="button" class="btn" data-ns-ver="${n.id}">Ver</button>
-        ${podeNs(n.tipo) && n.status === 'REGISTRADA' && NS_ETAPA[n.tipo] && n.pendente_m > 0.001 ? `<button type="button" class="btn azul" data-ns-aplicar="${n.id}">Aplicar o que falta</button>` : ''}
+        ${podeNs(n.tipo) && n.status === 'REGISTRADA' && NS_ETAPA[n.tipo] && n.pendente_m > 0.001 ? `<button type="button" class="btn azul" data-ns-aplicar="${n.id}">Aplicar de novo</button>` : ''}
         ${podeNs(n.tipo) && n.status === 'REGISTRADA' && n.tipo !== 'EXECUCAO' ? `<button type="button" class="btn" data-ns-anular="${n.id}">Anular</button>` : ''}</div></td></tr>
       <tr hidden data-ns-detalhe="${n.id}"><td colspan="9"></td></tr>`));
 }
@@ -320,23 +480,21 @@ $('#fNd').addEventListener('click', ev => {
   ND.clima[box.dataset.turno] = b.dataset.clima;
   $$('button', box).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
 });
+// a NS do dia usa a mesma fila do envio em lote: cada nota é registrada ao enviar, e o resultado fica no cartão dela
+const ND_LOTE = criarFilaNs({ caixa: $('#ndLote'), tipo: () => 'EXECUCAO',
+  extra: () => {
+    const eq = $('#ndEquipe').value;
+    if (!eq) throw new Error('Escolha a equipe.');
+    if (!ND.clima.MANHA || !ND.clima.TARDE) throw new Error('Toque no clima da manhã e no da tarde.');
+    return { equipe_id: eq, clima: { ...ND.clima } };
+  },
+  depois: () => { ndListas(); recarregarCamadaMapa(); driveEmSegundoPlano(); } });
 $('#fNd').addEventListener('submit', async ev => {
   ev.preventDefault();
-  const f = ev.target, eq = $('#ndEquipe').value, pdf = f.pdf.files[0], cro = f.croqui.files[0], pla = f.planilha.files[0];
-  if (!eq) return toast('Escolha a equipe.', 'erro');
-  if (!pdf || !cro) return toast('Escolha a nota do dia (PDF) e o croqui.', 'erro');
-  if (!ND.clima.MANHA || !ND.clima.TARDE) return toast('Toque no clima da manhã e no da tarde.', 'erro');
-  const bt = $('#ndEnviar'); bt.disabled = true; bt.textContent = 'Enviando…';
+  const f = ev.target, bt = $('#ndEnviar'); bt.disabled = true; bt.textContent = 'Enviando…';
   try {
-    const corpo = { equipe_id: eq, pdf_b64: await lerOriginal(pdf), pdf_nome: pdf.name, croqui_b64: await lerOriginal(cro), croqui_nome: cro.name, clima: ND.clima };
-    if (pla) Object.assign(corpo, { planilha_b64: await lerOriginal(pla), planilha_nome: pla.name });
-    const r = await acao(() => api('/api/ns/dia', corpo)).catch(() => null);
-    if (!r) return;
-    toast(r.arquivo_trocado ? 'Arquivo da nota trocado (a versão anterior ficou guardada).'
-      : r.fila.length ? 'Nota enviada: o que deu para lançar foi lançado; o resto aguarda a engenharia.' : 'Nota enviada e lançada.', 'ok');
-    const res = $('#ndResultado'); res.hidden = false; res.innerHTML = `<h3>Resultado do envio</h3>${htmlNdNota(r)}`;
-    f.reset(); $('#ndEquipe').value = eq;
-    ndListas(); recarregarCamadaMapa(); driveEmSegundoPlano();
+    await ND_LOTE.adicionar([...f.pdf.files], [...f.croqui.files], [...f.planilha.files]);
+    f.pdf.value = f.croqui.value = f.planilha.value = '';
   } finally { bt.disabled = false; bt.textContent = 'Enviar a nota do dia'; }
 });
 ligarBusca($('#ndAlvo'), r => selecionarCampo(r.tipo, r.id));
@@ -351,7 +509,7 @@ document.addEventListener('click', async ev => {
   const motivo = prompt('Motivo da anulação (o que esta nota lançou também é anulado; nada é apagado):'); if (!motivo || !motivo.trim()) return;
   const r = await acao(() => api('/api/ns/dia/anular', { ns_id: +b.dataset.ndAnular, motivo: motivo.trim() }), 'Envio anulado.').catch(() => null);
   if (!r) return;
-  if (TELA === 'campo') { $('#ndResultado').hidden = true; ndListas(); } else if (TELA === 'diario') carregarDiario();
+  if (TELA === 'campo') ndListas(); else if (TELA === 'diario') carregarDiario();
   recarregarCamadaMapa();
 });
 

@@ -168,6 +168,8 @@ class TestRetificacao(BaseRetif):
 
 
 class TestRetificacaoDoLegado(Base):
+    LIBERAR_TUDO = True
+
     def setUp(self):
         super().setUp()
         banco_legado(self).close()
@@ -316,6 +318,8 @@ class TestVisaoIntegrada(BaseRetif):
 
 
 class TestMigracaoV7ParaV8(Base):
+    LIBERAR_TUDO = True
+
     def test_v7_com_legado_conciliado_e_intervalos_continua_e_retifica(self):
         c = banco_legado(self, versao=7)
         c.execute("INSERT INTO conciliacoes_legado(trecho_id,metros_assentado,metros_reaterrado,motivo,responsavel,em) "

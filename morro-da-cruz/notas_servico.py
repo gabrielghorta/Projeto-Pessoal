@@ -3,9 +3,10 @@ linha da 06.1, o que a NS registra. Nada é gravado sem conferência humana: ler
 a pessoa conferiu, numa transação.
 
 * TOPOGRAFIA: liberação topográfica só no que ainda não está liberado.
-* CADASTRO: cadastro de campo só sobre o assentado até a data; o resto fica pendente no segmento e aplicar() completa
-  quando o assentado chegar.
-* SERVICO: o plano do serviço da zona (PDF + croqui); não grava nada.
+* CADASTRO: cadastro de campo só sobre o executado (assentado) até a data da nota; o resto é recusado, fica escrito no
+  segmento e só entra à mão ("Aplicar de novo", aplicar()) se o assentamento até essa data for registrado depois.
+* SERVICO: o plano do serviço da zona (PDF + croqui); não grava nada, mas cada trecho precisa estar liberado pela
+  topografia até a data da nota (ordem obrigatória topografia → serviço → cadastro, D-20).
 * EXECUCAO: a NS do dia (ver a seção "NS do dia" mais abaixo).
 A 06.1 continua sendo a unidade do BM e da medição: o trecho físico (topologia.py) só converte metros da NS em metros de
 cada linha. Pesquisa: docs/ns/01_NS_x_trechos_e_registros.md e docs/ns/03_armazenamento_e_upload.md.
@@ -417,8 +418,8 @@ def _aplicar_segmento(conn, ns, seg, por):
                 motivos.append(f"{_curto(item['ponto'])} {_m(a)}–{_m(b)} m: {e}")
         if item["pendente"]:
             pendente += R.comprimento(item["pendente"])
-            motivos.append(f"{_curto(item['ponto'])} {', '.join(f'{_m(a)}–{_m(b)}' for a, b in item['pendente'])} m: ainda não "
-                           f"assentado até {_data_br(ns['data'])}")
+            motivos.append("recusado: " + R.falta_na_ordem(item["ponto"], item["pendente"], f"a execução até {_data_br(ns['data'])}",
+                                                         "registre a NS do dia antes e use \"Aplicar de novo\""))
     return round(gravado, 3), round(pendente, 3), motivos
 
 
@@ -650,7 +651,7 @@ def registrar(conn, tipo, pdf_b64, por, decisoes=None, croqui_b64=None, planilha
         _decidir(segs, decisoes, por)
         ns_id = _inserir_ns(conn, tipo, ns, ctx, pdf_id, croqui_id, planilha_id, por)
         reg = _one(conn, "SELECT * FROM notas_servico WHERE id=?", ns_id)
-        out = []
+        out, falta = [], []
         for s in segs:
             sid = _inserir_segmento(conn, ns_id, s, por)
             r = {"ordem": s["ordem"], "id": sid, "situacao": s["situacao"], "gravado_m": 0.0, "pendente_m": 0.0, "pendencias": []}
@@ -658,9 +659,24 @@ def registrar(conn, tipo, pdf_b64, por, decisoes=None, croqui_b64=None, planilha
                 seg = _one(conn, "SELECT * FROM ns_segmentos WHERE id=?", sid)
                 r["gravado_m"], r["pendente_m"], r["pendencias"] = _aplicar_segmento(conn, reg, seg, por)
                 _marcar(conn, sid, r)
+            if tipo == "SERVICO" and s["situacao"] in APLICADAS:
+                falta += _sem_liberacao(conn, _one(conn, "SELECT * FROM ns_segmentos WHERE id=?", sid), reg["data"])
             out.append(r)
+        if falta:                                     # a transação desfaz tudo: nada é gravado
+            raise RegraViolada("NS de serviço só sobre trecho liberado pela topografia até a data da nota. "
+                               + "; ".join(falta[:6]) + (f"; e mais {len(falta) - 6}" if len(falta) > 6 else "") + ". Nada foi gravado.")
     return {"id": ns_id, "arquivo_trocado": False, "segmentos": out, "gravado_m": round(sum(r["gravado_m"] for r in out), 3),
             "pendente_m": round(sum(r["pendente_m"] for r in out), 3), "avisos_croqui": ns["avisos_croqui"]}
+
+
+def _sem_liberacao(conn, seg, data):
+    """O que o segmento da NS de serviço toca sem liberação topográfica até a data, uma mensagem por linha da 06.1."""
+    out = []
+    for p in TP.para_linhas(_fisico_salvo(seg), seg["ini_fisico_m"], seg["fim_fisico_m"]):
+        falta = _faixas(R.fora_da_cobertura((p["ini_m"], p["fim_m"]), S.cobertura_liberacao(conn, p["trecho_id"], data)))
+        if falta:
+            out.append(R.falta_na_ordem(p["ponto"], falta, "a liberação topográfica", "registre a NS de topografia antes"))
+    return out
 
 
 def _marcar(conn, seg_id, r):
@@ -677,8 +693,9 @@ def _ns(conn, ns_id):
 
 
 def aplicar(conn, ns_id, por):
-    """Grava o que ficou pendente (CADASTRO: o que já foi assentado; qualquer tipo: o que uma recusa deixou de fora).
-    Pode rodar de novo: só grava o que ainda falta (nunca duas vezes o mesmo pedaço)."""
+    """"Aplicar de novo": grava a parte recusada que agora cabe (CADASTRO: o que foi assentado até a data da nota;
+    qualquer tipo: o que uma recusa deixou de fora). Só à mão, nunca sozinho. Pode rodar de novo: só grava o que ainda
+    falta (nunca duas vezes o mesmo pedaço)."""
     ns = _ns(conn, int(ns_id))
     if ns["status"] != "REGISTRADA":
         raise RegraViolada(f"NS {ns['numero']} está {ns['status'].lower()}: nada a aplicar.")

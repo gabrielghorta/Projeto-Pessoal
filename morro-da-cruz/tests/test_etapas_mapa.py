@@ -70,6 +70,8 @@ class BaseEtapas(BaseCampo):
 
 
 class TestEtapasNoMapa(BaseEtapas):
+    LIBERAR_TUDO = False                  # a liberação é uma das etapas
+
     def test_do_nao_iniciado_ao_cadastro_aprovado(self):
         self.assertEqual(self.etapa()["s"], "nao")
         S.registrar_etapa_complementar(self.c, TR, "LIBERACAO_TOPOGRAFICA", 0, self.L, D, "topo1", "NS-TOPO-1")
@@ -125,7 +127,7 @@ class TestOkInterno(BaseEtapas):
         self.assertFalse(cam["pronto_para_ok"])
         self.assertEqual(cam["falta_para_ok"], ["Verificado pelo supervisor"])
         self.assertEqual({i["id"]: i["feito"] for i in cam["itens"]},
-                         {"topografia": False, "execucao": True, "verificacao": False, "fotos": True, "cadastro_campo": False, "ok": False})
+                         {"topografia": True, "execucao": True, "verificacao": False, "fotos": True, "cadastro_campo": False, "ok": False})
         S.verificar_trecho(self.c, TR, "sup1")
         self.assertTrue(S.caminho_medicao(self.c, TR)["pronto_para_ok"])
 
