@@ -10,6 +10,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
 sys.path.insert(0, AQUI)
 import importacao as I  # noqa: E402
+import regras as R  # noqa: E402
 import servicos as S  # noqa: E402
 from test_acesso import D, TR, BaseHTTP  # noqa: E402
 
@@ -17,9 +18,14 @@ D2 = "2026-10-16"
 
 
 class TestTerceirizadas(BaseHTTP):
+    LIBERAR_TUDO = False                  # a fila da topografia é o assunto: a liberação vem em cada teste
     usuarios = BaseHTTP.usuarios + (("topo1", "TOPOGRAFIA", None), ("cad1", "CADASTRO", None))
 
-    def assentar(self, ini, fim, data=D, extra=()):
+    def assentar(self, ini, fim, data=D, extra=(), liberar=True):
+        if liberar:                                                     # a execução exige a liberação até a data (D-20)
+            t = S.alvo(self.c, "TRECHO", TR)
+            for a, b in R.fora_da_cobertura((ini, fim), S.cobertura_liberacao(self.c, t["id"])):
+                S.registrar_etapa_complementar(self.c, TR, "LIBERACAO_TOPOGRAFICA", a, b, "2026-10-01", "topo", "NS do teste")
         enc = self.cliente("enc1")
         self.assertEqual(enc.post("/api/clima", {"data": data, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})[0], 200)
         st, r = self.cliente("eng1").post("/api/apontamento", {          # sem NS do dia: à mão, pela engenharia, com motivo
@@ -59,17 +65,28 @@ class TestTerceirizadas(BaseHTTP):
         self.assertIsNone(f)                                                 # todo o assentado levantado
 
     def test_filas_de_cadastro_e_de_topografia(self):
-        self.assentar(0, 30)
-        r, f = self.fila()
-        self.assertEqual((f["vala_aberta"], f["reaterrado_sem_cadastro"], f["alertas_reaterro"]), ([[0.0, 30.0]], [], 0))
-        self.assertGreaterEqual(r["totais"]["vala_aberta_m"], 30)
-        self.assertEqual(self.cliente("cad1").get("/api/cadastro-campo")[0], 200)     # CADASTRO só consulta
-        for login in ("enc1", "almox1", "topo1"):
-            self.assertEqual(self.cliente(login).get("/api/cadastro-campo")[0], 403, login)
         lib = {"trecho_id": TR, "ini_m": 0, "fim_m": 20, "data": D, "referencia": "NS 012"}
         self.assertEqual(self.cliente("topo1").post("/api/liberacao", lib)[0], 403)   # TOPOGRAFIA só consulta
         st, r = self.cliente("eng1").post("/api/liberacao", lib)
         self.assertEqual(st, 200, r)
+        self.assertEqual(self.cliente("enc1").post("/api/clima", {"data": D, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "SOL"})[0], 200)
+        st, r = self.cliente("eng1").post("/api/apontamento", {"data": D, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
+                                                               "motivo_sem_ns": "teste", "intervalos": [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 30}]})
+        self.assertEqual(st, 422)                                         # a ordem é obrigatória (D-20)
+        self.assertIn("de 20,0 m a 30,0 m: falta a liberação topográfica", r["erro"])
+        self.assentar(0, 20, liberar=False)
+        r, f = self.fila()
+        self.assertEqual((f["vala_aberta"], f["reaterrado_sem_cadastro"], f["alertas_reaterro"]), ([[0.0, 20.0]], [], 0))
+        self.assertGreaterEqual(r["totais"]["vala_aberta_m"], 20)
+        self.assertEqual(self.cliente("cad1").get("/api/cadastro-campo")[0], 200)     # CADASTRO só consulta
+        for login in ("enc1", "almox1", "topo1"):
+            self.assertEqual(self.cliente(login).get("/api/cadastro-campo")[0], 403, login)
+        # legado de antes do bloqueio: assentado sem liberação continua aparecendo para a topografia (e fora de ordem)
+        tid = S.alvo(self.c, "TRECHO", TR)["id"]
+        self.c.execute("""INSERT INTO intervalos_execucao(trecho_id,etapa,ini_m,fim_m,data,origem,registrado_em)
+                          VALUES (?, 'ASSENTADO', 20, 30, ?, 'INFORMADO', 'legado')""", (tid, D))
+        self.c.commit()
+        self.assertEqual([(x["nome"], x["faixas"]) for x in S.fora_de_ordem(self.c)], [(TR, [(20.0, 30.0)])])
         st, t = self.cliente("topo1").get("/api/topografia")
         self.assertEqual(st, 200, t)
         x = next(x for x in t["executado_sem_liberacao"] if x["ponto"] == TR)

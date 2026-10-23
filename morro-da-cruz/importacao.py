@@ -1130,6 +1130,29 @@ def preparar_v19(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v20(conn):
+    """Esquema v19 → v20: checkin_alvos, os trechos e nós de cada check-in (a liberação do Dados da obra cobre vários), e
+    as colunas da nota fiscal sem pedido (sem_pedido, aprovada_por, aprovada_em) e da remessa da Caesb (romaneio_caesb).
+    Preenchida com o alvo de cada check-in e os alvos das programações que cada um realizou: origem PROGRAMACAO quando a
+    equipe estava programada para o alvo (a programação foi realizada pelo check-in); senão CHECKIN. Confere a contagem:
+    cada par (check-in, alvo) dos registros antigos vira exatamente uma linha."""
+    S.aplicar_esquema(conn)
+    for tabela, coluna, tipo in (("notas_fiscais", "sem_pedido", "INTEGER NOT NULL DEFAULT 0"), ("notas_fiscais", "aprovada_por", "TEXT"),
+                                 ("notas_fiscais", "aprovada_em", "TEXT"), ("nf_linhas", "romaneio_caesb", "INTEGER NOT NULL DEFAULT 0")):
+        if coluna not in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:      # nota sem pedido e remessa da Caesb
+            conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
+    pares = {}
+    for cid, tipo, aid in conn.execute("SELECT id, alvo_tipo, alvo_id FROM checkins WHERE alvo_id IS NOT NULL"):
+        pares[(cid, tipo, aid)] = "CHECKIN"
+    for cid, tipo, aid in conn.execute("SELECT checkin_id, alvo_tipo, alvo_id FROM programacoes WHERE checkin_id IS NOT NULL"):
+        pares[(cid, tipo, aid)] = "PROGRAMACAO"
+    antes = conn.execute("SELECT COUNT(*) FROM checkin_alvos").fetchone()[0]
+    conn.executemany("INSERT OR IGNORE INTO checkin_alvos VALUES (?,?,?,?)", [(*k, o) for k, o in pares.items()])
+    depois = conn.execute("SELECT COUNT(*) FROM checkin_alvos").fetchone()[0]
+    if depois - antes != len(pares):
+        raise RuntimeError(f"checkin_alvos: {len(pares)} pares nos registros antigos, {depois - antes} gravados")
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

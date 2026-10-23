@@ -101,3 +101,18 @@ Documentos de compra (NF, laudo) ficam na aba 2.1, porque se ligam à nota e nã
 
 - A cobertura dos pins (o local de cada equipe) continua vindo do check-in, como "programado". A programação antecipada aparece na camada Planejado.
 - O filtro por frente vale para números, programação e faltantes. No desenho, a navegação por frente e PB é a da REV02.
+
+## O dia da equipe no Dados da obra (esquema v20, 23/10/2026)
+
+Saem os menus Programação das equipes e Check-in e check-out (D-102, D-103); os links antigos `#prog` e `#ponto` levam ao Dados da obra. O macro é o Cronograma; o micro é o Dados da obra, que é **o dia** (D-104):
+1. **Programar:** equipe + trechos escolhidos no mapa para um dia (`dados_obra.programar`). Outra equipe no mesmo trecho no mesmo dia pede confirmação.
+2. **Liberar o material do dia:** o almoxarife abre a equipe do dia (também pela lista "Equipes programadas hoje" em Estoque e movimentos) e libera as peças; o check-in grava todos os trechos (`checkin_alvos`, D-116).
+3. **Mapa:** na hora, os trechos ficam "em execução hoje" e o pino da equipe aparece em cada um, no Mapa iluminado e na tela Início, até a NS do dia de hoje chegar.
+4. **Devolução** no fim do dia, pela mesma tela.
+
+O mapa do Dados da obra (D-108):
+- tela cheia de verdade (⛶), com o painel como gaveta ou folha de baixo;
+- o mapa não se move sozinho (⌖ para ver a obra inteira; a última vista fica guardada na sessão);
+- zonas sempre com a cor delas, e o primeiro toque em outra zona troca o foco;
+- nomes completos ("Zona 03 · PB06 · TR014");
+- busca pelo código inteiro (D-120).

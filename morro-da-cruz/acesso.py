@@ -17,10 +17,11 @@ import os
 import re
 import secrets
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import caminhos
 import regras as R
+import relogio as RL
 
 BASE = caminhos.PASTA
 ITERACOES = 200_000
@@ -44,7 +45,7 @@ def carregar_perfis():
 
 
 def _agora():
-    return datetime.now()
+    return RL.agora()
 
 
 def _iso(dt):

@@ -14,9 +14,10 @@ import shutil
 import subprocess
 import sys
 import threading
-from datetime import datetime
+
 
 import caminhos as C
+import relogio as RL
 
 URL = re.compile(r"https://(?!api\.)[a-z0-9]+(?:-[a-z0-9]+)+\.trycloudflare\.com")
 ARQUIVO = "LINK_DA_EQUIPE.txt"
@@ -42,7 +43,7 @@ def _gravar(url):
     try:
         with open(os.path.join(C.PASTA, ARQUIVO), "w", encoding="utf-8") as f:
             f.write(f"Link para a equipe (vale enquanto o programa estiver aberto neste computador):\n{url}\n"
-                    f"Gerado em {datetime.now():%d/%m/%Y %H:%M}\n")
+                    f"Gerado em {RL.agora():%d/%m/%Y %H:%M}\n")
     except OSError:
         pass
 
@@ -58,7 +59,7 @@ def iniciar(porta, ao_conectar=None):
             estado.update(situacao="SEM_PROGRAMA", url=None,
                           erro="cloudflared não encontrado na pasta do programa (ele vem no pacote do Windows).")
             return dict(estado)
-        estado.update(situacao="CONECTANDO", url=None, erro=None, desde=datetime.now().isoformat(timespec="seconds"))
+        estado.update(situacao="CONECTANDO", url=None, erro=None, desde=RL.agora().isoformat(timespec="seconds"))
         try:
             cmd = [sys.executable, exe] if exe.endswith(".py") else [exe]          # .py: substituto usado nos testes
             _proc = subprocess.Popen(cmd + ["tunnel", "--url", f"http://127.0.0.1:{porta}", "--no-autoupdate"],

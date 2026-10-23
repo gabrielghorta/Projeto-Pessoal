@@ -345,6 +345,10 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
   touch-action: none; user-select: none; }
 .ilu > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
 .ilu.arrastando > svg { cursor: grabbing; }
+.ilu.sobre-trecho:not(.arrastando) > svg { cursor: pointer; }   /* o trecho é achado por cálculo (iluminado.js, trechoPerto) */
+/* cópia leve do mapa por baixo do SVG, movida junto no gesto (iluminado.js); parada, o fundo opaco do desenho a esconde */
+.vista-copia { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; pointer-events: none; }
+.vista-fundo { fill: #0B0B0B; pointer-events: none; }
 .ilu-ferr { position: absolute; top: 16px; left: 16px; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 100px); }
 .ilu-bloco { position: relative; }
 .ilu-bt { min-height: 42px; padding: 0 16px; border-radius: var(--raio-p); border: 1px solid #3A3A3A; background: rgba(20, 20, 20, .92); color: #F2F2F2; font-weight: 700; cursor: pointer;
@@ -386,7 +390,6 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .ilu-ficha .acoes .btn.prim { color: #1A1008; border-color: #F15922; }
 .ilu-aviso { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 12; padding: 10px 16px; border-radius: var(--raio-p); background: rgba(20, 20, 20, .95); border: 1px solid #3A3A3A; color: #FAD27A; font-size: 14px; max-width: calc(100% - 32px); }
 .ilu-tr { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
-.ilu-hit { fill: none; stroke: transparent; stroke-width: 14px; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
 .ilu-zf { stroke: none; cursor: pointer; transition: fill-opacity .3s; }
 .ilu-zl { fill: none; stroke: #F2F2F2; stroke-opacity: .6; stroke-width: 1.6px; stroke-dasharray: 7 5; vector-effect: non-scaling-stroke; pointer-events: none; }
 .ilu-nome { fill: #F2F2F2; font-weight: 700; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: #101010; pointer-events: none; font-family: var(--fonte); }
@@ -399,9 +402,7 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .pln { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
 .pln .ilu { height: calc(100vh - 150px); }
 .pln-sel { stroke-opacity: .9; }
-#plnSat { filter: brightness(.55) saturate(.7); }
-.pln-quadro { fill: none; stroke: #6CB8F0; stroke-opacity: .75; stroke-width: 1.2px; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; pointer-events: none; }
-.pln-quadro-rot { fill: #6CB8F0; font-weight: 700; dominant-baseline: hanging; paint-order: stroke; stroke: #101010; pointer-events: none; font-family: var(--fonte); }
+.sat-veu { fill: #000; pointer-events: none; }
 .pln-no { fill: #101010; stroke: #F2F2F2; stroke-width: 1.5px; vector-effect: non-scaling-stroke; cursor: pointer; }
 .pln-no.sel { fill: #F15922; stroke: #FFFFFF; stroke-width: 2px; }
 .pln-no.auto { fill: #6CB8F0; stroke: #FFFFFF; stroke-width: 3px; }
@@ -518,3 +519,56 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .rest-acao { font-size: 13px; }
 #campoApr .btn { min-height: 44px; }
 .form-inline { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; margin-top: 8px; }
+/* Notas a receber (Estoque e movimentos) */
+.nota-card > div + div, .nota-card > .acoes { margin-top: 8px; }
+.nota-card > div:first-child { flex-wrap: wrap; justify-content: flex-start; }
+.nota-card > div:first-child b { flex-basis: 100%; }
+.nota-l { border-top: 1px solid var(--borda); padding: 8px 0; }
+.nota-l .linha { grid-template-columns: 1fr 96px; margin: 6px 0 2px; }
+.nota-chegou, .nota-insp { border-top: 1px solid var(--borda); padding-top: 8px; }
+
+/* Para entrar na medição (ficha do trecho) e o resumo do topo da Medição */
+.caminho-box { margin-top: 14px; border-top: 1px solid var(--borda); padding-top: 10px; }
+.caminho-box h3 { margin: 4px 0 8px; font-size: 16px; }
+.caminho { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.caminho li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; font-size: 14px; }
+.caminho .marca { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #8C8C8C; display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+.caminho li.feito .marca { border-color: #A77BF3; background: #A77BF3; color: #0B0B0B; }
+.caminho li.falta b { color: inherit; }
+.caminho .quem { opacity: .75; }
+.caminho .acoes { margin-top: 6px; }
+.caminho .btn { min-height: 44px; }
+.caminho .linha { margin-top: 6px; grid-template-columns: 1fr; }
+.esteira-ficha { margin-top: 12px; border-top: 1px solid var(--borda); padding-top: 10px; }
+.esteira-ficha .form { display: grid; gap: 6px; margin-top: 8px; }
+.esteira-ficha details { margin-top: 8px; }
+.numeros-caminho { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.numero-caminho { display: grid; gap: 4px; text-align: left; min-height: 44px; padding: 10px 12px; border-radius: var(--raio-p); border: 1px solid var(--borda); background: var(--painel2); color: inherit; font: inherit; cursor: pointer; }
+.numero-caminho b { font-size: 26px; line-height: 1; }
+.numero-caminho span { font-size: 13px; opacity: .85; }
+.numero-caminho:disabled { cursor: default; opacity: .55; }
+.ilu-pop h4 { margin: 10px 0 4px; font-size: 13px; opacity: .8; }
+/* Dados da obra em tela cheia: o mapa e o painel, sem sair da tela; o painel vira gaveta ao lado (computador) ou
+   folha de baixo (celular). A classe tela-cheia é a alternativa sem a API (Safari do iPhone) */
+.icone-glifo { font-size: 20px; line-height: 1; }
+#pln:fullscreen, #pln.tela-cheia { position: fixed; inset: 0; z-index: 900; margin: 0; padding: 10px; gap: 10px; background: #0B0B0B;
+  grid-template-columns: minmax(0, 1fr) min(400px, 36vw); align-items: stretch; }
+#pln:fullscreen .ilu, #pln.tela-cheia .ilu { height: 100%; min-height: 0; }
+#pln:fullscreen .pln-painel, #pln.tela-cheia .pln-painel { position: static; max-height: none; height: 100%; overflow: auto; }
+@media (max-width: 1100px) {
+  #pln:fullscreen, #pln.tela-cheia { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; padding: 0; gap: 0; }
+  #pln:fullscreen .ilu, #pln.tela-cheia .ilu { border: 0; border-radius: 0; }
+  #pln:fullscreen .pln-painel, #pln.tela-cheia .pln-painel { height: auto; max-height: 42vh; border-radius: 16px 16px 0 0; }
+}
+/* o trecho achado na busca pisca antes de ficar escolhido */
+.pln-pisca { fill: none; stroke: #FFFFFF; stroke-width: 10px; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none;
+  animation: pisca-trecho .43s ease-in-out 3; }
+@keyframes pisca-trecho { 50% { stroke-opacity: .1; } }
+.zona-cor { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+/* menu lateral fechado (só ícones): sem barra de rolagem visível; a roda do mouse continua rolando */
+.rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }
+.rail:not(.aberto):not(.fixo) .rail-itens::-webkit-scrollbar { display: none; }
+@media (max-width: 760px) { body.menu-aberto .rail .rail-itens { scrollbar-width: thin; } }
+/* a caixa das ferramentas do mapa não engole o toque no mapa (no celular ela quebra em várias linhas): só os botões */
+.ilu-ferr { pointer-events: none; }
+.ilu-ferr > * { pointer-events: auto; }

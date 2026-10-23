@@ -163,6 +163,8 @@ def elegibilidade(conn, medicao_id):
         elif e.get("medicao_id"):
             n = _one(conn, "SELECT numero FROM medicoes WHERE id=?", e["medicao_id"])
             l["situacao"], l["medido_na"] = "MEDIDO_ANTES", n["numero"] if n else None
+        elif e.get("ok_fiscal_em"):
+            l["situacao"] = "OK_SEM_MEDICAO"           # entra quando houver medição de teste aberta para a data
         elif e.get("concluido"):
             l["situacao"] = "APTO_SEM_OK"
             falt = S.fotos_faltando(conn, tipo, aid)
@@ -178,7 +180,7 @@ def elegibilidade(conn, medicao_id):
         if p and l["assentado_periodo_m"] and l["verificado_periodo_m"] < l["assentado_periodo_m"] - R.TOL_M:
             l["alertas"].append(f"{l['assentado_periodo_m'] - l['verificado_periodo_m']:g} m assentados no período sem verificação (D-18)")
         linhas.append(l)
-    ordem = {"PROPOSTO_NESTA": 0, "APTO_SEM_OK": 1, "PARCIAL_NAO_ELEGIVEL": 2, "MEDIDO_ANTES": 3}
+    ordem = {"PROPOSTO_NESTA": 0, "OK_SEM_MEDICAO": 1, "APTO_SEM_OK": 2, "PARCIAL_NAO_ELEGIVEL": 3, "MEDIDO_ANTES": 4}
     linhas.sort(key=lambda l: (ordem[l["situacao"]], l["frente_id"] or "", l["nome"]))
     cont = {s: sum(1 for l in linhas if l["situacao"] == s) for s in ordem}
     cad = defaultdict(int)

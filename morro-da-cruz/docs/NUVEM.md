@@ -104,3 +104,7 @@ Os limites acima foram conferidos nas páginas públicas em 18/10/2026: [PythonA
 
 - O `MorroDaCruz.exe` continua funcionando como antes: no próprio computador, com o link temporário pelo túnel.
 - As regras de negócio, as permissões por perfil, a auditoria e as travas da medição são as mesmas. O site da nuvem usa o mesmo servidor, sem cópia de regra.
+
+## 5. Data de Brasília (23/10/2026)
+
+O PythonAnywhere roda em UTC. Das 21h à meia-noite de Brasília, o servidor já estava no dia seguinte: o pino e o laranja da equipe liberada no dia sumiam do mapa, e datas de hoje eram recusadas como futuras. Desde 23/10/2026 todo o código usa `relogio.py` (`hoje()` e `agora()` de Brasília, `America/Sao_Paulo`, com UTC−3 de reserva se o fuso não existir). Os carimbos novos são gravados em horário de Brasília, no mesmo formato ISO; os antigos (UTC) não são reescritos (D-109). Não há nada a configurar no PythonAnywhere.

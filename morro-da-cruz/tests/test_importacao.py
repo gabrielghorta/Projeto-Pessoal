@@ -55,6 +55,21 @@ def arquivos_abertos_em(pasta):
     return sorted(out)
 
 
+def liberar_tudo(db, data="2026-01-01"):
+    """Liberação topográfica de todos os trechos vigentes, para os testes que lançam execução: a ordem topografia →
+    serviço → cadastro é obrigatória (D-20) e a execução sem liberação é recusada."""
+    c = sqlite3.connect(db)
+    try:
+        with c:
+            c.execute("""INSERT INTO etapas_complementares(trecho_id,etapa,ini_m,fim_m,data,registrado_por,referencia,registrado_em)
+                         SELECT id,'LIBERACAO_TOPOGRAFICA',0,extensao_m,?,'topo','NS de topografia do teste',?
+                         FROM trechos WHERE vigente=1 AND extensao_m>0
+                           AND id NOT IN (SELECT trecho_id FROM etapas_complementares WHERE etapa='LIBERACAO_TOPOGRAFICA')""",
+                      (data, data + "T00:00:00"))
+    finally:
+        c.close()
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -75,8 +90,13 @@ class Base(unittest.TestCase):
         if abertos:
             self.fail(f"arquivos ainda abertos ao fim do teste: {abertos}")
 
+    LIBERAR_TUDO = False          # testes de execução: a liberação topográfica de todos os trechos, antes (D-20)
+
     def aplicar(self, **kw):
-        return importar.aplicar(self.db, self.planilhas, cfg=self.cfg, dir_relatorios=self.rels, **kw)
+        rel = importar.aplicar(self.db, self.planilhas, cfg=self.cfg, dir_relatorios=self.rels, **kw)
+        if self.LIBERAR_TUDO and rel.get("status") == "CONCLUIDA":
+            liberar_tudo(self.db)
+        return rel
 
     def regerar(self, **kw):
         self.cfg = PS.gerar(self.planilhas, **kw)
@@ -736,6 +756,7 @@ class TestA10ObjetoRetirado(Base):
 
     def test_checkin_aberto_em_trecho_retirado_fica_para_tratamento_explicito(self):
         self.aplicar()
+        liberar_tudo(self.db)
         c = self.conectar()
         tid = self.tid(TR002)
         ck = S.checkin(c, D, "Zona01", "TRECHO", TR002)

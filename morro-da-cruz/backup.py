@@ -25,9 +25,10 @@ import socket
 import sqlite3
 import sys
 from contextlib import contextmanager
-from datetime import datetime
+
 
 import caminhos
+import relogio as RL
 
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
@@ -69,7 +70,7 @@ def marcar_servidor(pasta_db, host, porta):
     p = os.path.join(pasta_db, MARCA_SERVIDOR)
     with open(p, "w", encoding="utf-8") as f:
         json.dump({"pid": os.getpid(), "host": host, "porta": porta,
-                   "desde": datetime.now().isoformat(timespec="seconds")}, f)
+                   "desde": RL.agora().isoformat(timespec="seconds")}, f)
     return p
 
 
@@ -115,7 +116,7 @@ def trava_manutencao(pasta_db, operacao):
             dono = f.read().strip()
         raise EmManutencao(f"Manutenção em andamento ({dono}). Se nenhuma operação estiver rodando, apague {p}.") from None
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(f"{operacao} · pid {os.getpid()} · {datetime.now().isoformat(timespec='seconds')}")
+        f.write(f"{operacao} · pid {os.getpid()} · {RL.agora().isoformat(timespec='seconds')}")
     try:
         yield
     finally:
@@ -216,7 +217,7 @@ def copiar_banco(origem, destino):
 
 
 def _pasta_nova(destino, rotulo):
-    base = os.path.join(destino, datetime.now().strftime("%Y%m%d-%H%M%S-%f") + (f"_{rotulo}" if rotulo else ""))
+    base = os.path.join(destino, RL.agora().strftime("%Y%m%d-%H%M%S-%f") + (f"_{rotulo}" if rotulo else ""))
     pasta, n = base, 1
     while True:
         try:
@@ -263,7 +264,7 @@ def criar(db=DB_PADRAO, destino=DESTINO_PADRAO, dir_fotos=DIR_FOTOS, rotulo=None
         raise RuntimeError(f"Cópia do banco falhou no integrity_check: {integridade}")
     arquivos = [os.path.basename(db)] + copiados
     manifesto = {
-        "criado_em": datetime.now().isoformat(timespec="seconds"),
+        "criado_em": RL.agora().isoformat(timespec="seconds"),
         "banco_origem": os.path.abspath(db),
         "fotos_origem": os.path.abspath(dir_fotos) if os.path.isdir(dir_fotos) else None,
         "integrity_check": integridade,

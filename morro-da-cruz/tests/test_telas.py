@@ -63,6 +63,8 @@ class TestVisaoGeral(unittest.TestCase):
 
 
 class TestCamadasELigacoes(BaseHTTP):
+    LIBERAR_TUDO = False                  # a camada da liberação topográfica é o assunto
+
     def test_liberacao_topografica_total_e_parcial(self):
         t1, t2 = self.q("SELECT id, extensao_m FROM trechos WHERE vigente=1 AND metodologia='VCA' ORDER BY id LIMIT 2")
         S.registrar_etapa_complementar(self.c, t1[0], "LIBERACAO_TOPOGRAFICA", 0, t1[1], "2026-10-15", "eng1", "NS 01")
@@ -145,6 +147,9 @@ class TestPaginaECodigo(unittest.TestCase):
         usados = set(re.findall(r"\$\('#([\w-]+)'\)", self.js))
         criados = set(re.findall(r'id="([\w-]+)"', self.js))      # elementos que o próprio JavaScript desenha
         self.assertFalse(sorted(usados - self.ids - criados))
+        # campo achado pelo nome na página inteira: sem ele o início da página parava (contingência do check-in que saiu)
+        nomes = set(re.findall(r"\$\('\w*\[name=(\w+)\]'\)", self.js))
+        self.assertFalse(sorted(n for n in nomes if f'name="{n}"' not in self.html))
 
     def test_nomes_globais_sem_repeticao_entre_os_scripts(self):
         """Os scripts da página dividem o mesmo escopo global: um const/let repetido derruba o script que vem depois."""
@@ -153,6 +158,177 @@ class TestPaginaECodigo(unittest.TestCase):
             for m in re.finditer(r"^(?:async\s+)?(?:function\s+|const\s+|let\s+)(\w+)", ler(arq), re.M):
                 self.assertNotIn(m.group(1), vistos, f"{m.group(1)} declarado em {vistos.get(m.group(1))} e em {arq}")
                 vistos[m.group(1)] = arq
+
+    def test_mapas_sem_o_que_travava_de_perto(self):
+        """Medido em 22/10/2026: a rede inteira num caminho tracejado só e o filtro CSS no satélite levavam de 0,5 a 1,7 s
+        por quadro ao arrastar de perto. O tracejado vai em pedaços (um caminho por trecho, contorno em pedaços) e o
+        escurecimento é um véu por cima das fotos."""
+        ilu, pln, css = ler("iluminado.js"), ler("planejamento.js"), ler("app.css")
+        for js in (ilu, pln):
+            self.assertIn("linhasTracejadas(por[s.id]", js)
+            self.assertIn("contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl')", js)
+            self.assertNotIn("<polyline class=\"ilu-zl\" points=", js)
+        self.assertNotIn(".style.filter = FUNDOS", ilu)
+        self.assertNotRegex(css, r"#plnSat\s*\{[^}]*filter")
+        self.assertIn('class="sat-veu"', ilu)
+        # o zoom: um desenho por quadro e nada de variável na raiz do mapa (refazia o estilo de todos os elementos)
+        self.assertIn("agendarVista(ctx);", ilu)
+        self.assertNotIn("svg().style.setProperty('--k'", ilu + pln)
+
+    def test_gesto_pela_placa_de_video(self):
+        """Mapas fluidos (23/10/2026): durante o gesto (arrastar, roda, pinça, botões, focar zona) o SVG só é movido e
+        ampliado por transform; o desenho de verdade (viewBox) vem quando o gesto para, e o will-change sai no redesenho
+        (ligado depois, o navegador guardava a escala de pintura do gesto e o mapa ficava preto ao aproximar)."""
+        ilu = ler("iluminado.js")
+        corpo = lambda nome: re.search(r"\nfunction " + nome + r"\(.*?\n\}", ilu, re.S).group(0)
+        self.assertIn("(ctx.gesto ? moverVista : desenharVista)(ctx)", corpo("agendarVista"))
+        self.assertIn("svg.style.transform = transformVista(", corpo("moverVista"))
+        self.assertIn("svg.style.willChange = 'transform'", corpo("moverVista"))
+        self.assertIn("svg.style.willChange = ''", corpo("desenharVista"))
+        self.assertIn("setTimeout(() => soltarVista(ctx), espera)", corpo("gestoVista"))
+        self.assertIn("gestoVista(ctx)", corpo("zoomEm"))
+        gestos = corpo("ligarGestos")
+        self.assertIn("gestoVista(ctx)", gestos)                       # arrastar
+        self.assertIn("soltarVista(ctx);", gestos)                     # soltar o dedo: o desenho na hora
+        self.assertNotIn("__GPU", ilu)                                 # o protótipo virou o comportamento normal
+        # a animação de irPara roda no compositor e desenha uma vez, no fim
+        self.assertIn(".animate(", corpo("irPara"))
+        self.assertIn("redesenhar(ctx)", corpo("irPara"))
+        # o tamanho vem da caixa, nunca do SVG (transformado durante o gesto)
+        for nome in ("pontoDoMapa", "irPara", "ajustarAspecto", "desenharVista", "moverVista"):
+            self.assertIn("ctx.caixa().getBoundingClientRect()", corpo(nome), nome)
+            self.assertNotIn("svg().getBoundingClientRect()", corpo(nome), nome)
+
+    def test_borda_do_gesto_e_redesenho_leve(self):
+        """5.2 e 5.3 dos mapas fluidos: a cópia leve por baixo cobre a borda do gesto; o clique acha o trecho por cálculo
+        (sem 1.436 caminhos invisíveis); os nós do Dados da obra só existem onde aparecem; o tracejado vai por zona."""
+        ilu, pln, css = ler("iluminado.js"), ler("planejamento.js"), ler("app.css")
+        self.assertIn("class=\"vista-fundo\"", ilu)                    # fundo opaco do desenho esconde a cópia parada
+        self.assertRegex(css, r"\.vista-fundo \{[^}]*fill: #0B0B0B")
+        self.assertRegex(css, r"\.ilu \{[^}]*background: #0B0B0B")     # a mesma cor do fundo da caixa
+        self.assertRegex(css, r"\.vista-copia \{[^}]*pointer-events: none")
+        for js, ctx in ((ilu, "ILU"), (pln, "PLN")):
+            self.assertNotIn("ilu-hit", js)
+            self.assertRegex(js, r"const " + ctx + r" = \{[^;]*copia: \(g, u\) =>[^;]*copiaChave: ")
+        self.assertIn("trechoPerto(ctx, pontoDoMapa(", ilu)
+        self.assertIn("function cliquePln(alvo, ev, i)", pln)
+        self.assertNotIn("${nos}</g>", pln)                            # nós sob demanda (desenharNos)
+        self.assertIn("function desenharNos(", pln)
+        self.assertIn("zonaDoTrecho(t)", re.search(r"function linhasTracejadas\(.*?\n\}", ilu, re.S).group(0))
+
+    def test_mapa_do_dados_da_obra_tela_cheia_vista_e_zonas(self):
+        """Fluxo integrado (23/10/2026): tela cheia de verdade (API e a classe para o Safari do iPhone), a vista guardada na
+        sessão (o mapa não volta sozinho para a obra inteira), zonas nunca cinzas e o primeiro toque em outra zona
+        troca o foco; a caixa das ferramentas não engole o toque; o menu fechado sem barra de rolagem."""
+        pln, ilu, css, html = ler("planejamento.js"), ler("iluminado.js"), ler("app.css"), self.html
+        for trecho in ("requestFullscreen", "classList.add('tela-cheia')", "fullscreenchange", "aria-pressed"):
+            self.assertIn(trecho, pln)
+        self.assertIn('id="plnTela"', html)
+        self.assertIn("⌖", html)
+        self.assertIn("sessionStorage.setItem(VISTA_PLN", pln)
+        self.assertNotIn("0.08", re.search(r"function aplicarCamadas\(\).*?\n\}", ilu, re.S).group(0))
+        for js, ctx in ((ilu, "ILU"), (pln, "PLN")):
+            self.assertIn(f"if (outra && outra !== {ctx}.zona)", js)
+        self.assertRegex(css, r"\.ilu-ferr \{ pointer-events: none; \}")
+        self.assertIn(".rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }", css)
+        self.assertIn("::-webkit-scrollbar { display: none; }", css)
+
+    def secao(self, tela):
+        return re.search(r'<section class="aba" id="aba-' + tela + r'">.*?\n  </section>', self.html, re.S).group(0)
+
+    def test_execucao_reorganizada(self):
+        """Execução reorganizada (23/10/2026): o menu na ordem combinada; Notas de serviço só com as NS do campo da obra;
+        Lançamento do dia sem NS; Topografia e Cadastro de campo com a página de envio e a do resumo; um componente
+        de páginas só (chips, endereço, lembrança na sessão)."""
+        app = ler("app.js")
+        corpo = re.search(r"const TELAS = \{.*?\n\};", app, re.S).group(0)
+        execucao = re.findall(r"^\s{2}(\w+): \{ titulo: '[^']+', grupo: 'grupo-campo'", corpo, re.M)
+        ordem = ["campo", "notas", "topografia", "cadastro_campo", "interferencias", "diario"]
+        self.assertEqual(execucao, ordem)
+        rail = re.search(r'data-grupo="grupo-campo".*?</div>', self.html, re.S).group(0)
+        self.assertEqual(re.findall(r'data-tela="(\w+)"', rail), ordem)
+        # as páginas de cada aba: as mesmas no código e no HTML
+        blocos = re.split(r"^\s{2}(\w+): \[", re.search(r"const PAGINAS = \{.*?\n\};", app, re.S).group(0), flags=re.M)[1:]
+        paginas = {t: re.findall(r"\['(\w+)', '[^']+', \(\) =>", b) for t, b in zip(blocos[::2], blocos[1::2])}
+        self.assertEqual(paginas, {"campo": ["apropriacao", "apontamento", "fotos", "clima"], "notas": ["dia", "servico"],
+                                   "topografia": ["enviar", "resumo"], "cadastro_campo": ["enviar", "feito"]})
+        for tela, ps in paginas.items():
+            sec = self.secao(tela)
+            self.assertEqual(sorted(re.findall(r'data-pagina="(\w+)"', sec)), sorted(ps), tela)
+            self.assertIn('class="abas-chip grandes paginas-aba"', sec)     # alvos de 44 px, quebrando a linha
+        self.assertEqual(app.count("function mostrarPagina("), 1)
+        self.assertIn("sessionStorage.setItem('mc-pagina-' + tela, pag)", app)
+        self.assertIn("'#' + id + (pag ? '/' + pag : '')", app)            # a página no endereço (voltar e avançar)
+        # Notas de serviço: só a NS do dia e a de serviço de obra
+        notas = self.secao("notas")
+        self.assertNotIn("TOPOGRAFIA", notas)
+        self.assertNotIn("CADASTRO", notas)
+        self.assertNotIn('id="nsTipo"', self.html)
+        self.assertIn('id="fNd"', notas)
+        self.assertIn("não acende o executado", notas)
+        # Lançamento do dia: nada de nota de serviço
+        campo = self.secao("campo")
+        for fora in ('id="fNd"', 'id="ndEnviadas"', 'id="ndServico"', 'id="campoAbas"', 'name="pdf"', 'name="croqui"'):
+            self.assertNotIn(fora, campo)
+        self.assertIn("A NS do dia é enviada em Execução › Notas de serviço.", campo)
+        # Topografia e Cadastro: o envio na própria aba (sai o botão que levava para Notas de serviço), exceção recolhida
+        self.assertNotIn("data-ns-enviar", self.html + self.js)
+        self.assertIn("inp.value = nomeCompleto(d.nome)", app)              # o trecho escolhido com o nome completo
+        for tela, envio, excecao in (("topografia", "topEnvio", "fTop"), ("cadastro_campo", "cadEnvio", "fCad")):
+            sec = self.secao(tela)
+            self.assertIn(f'id="{envio}"', sec)
+            self.assertRegex(sec, r'<details class="painel" id="\w+Excecao"[^>]*>\s*<summary>Sem nota de serviço \(exceção\)</summary>\s*<form id="' + excecao)
+        notasjs = ler("notas.js")
+        for caixa, tipo in (("#nsEnvioServico", "SERVICO"), ("#topEnvio", "TOPOGRAFIA"), ("#cadEnvio", "CADASTRO")):
+            self.assertIn(f"montarEnvioNs($('{caixa}'), '{tipo}')", notasjs)
+
+    def test_scripts_da_pagina_sem_erro_de_sintaxe(self):
+        """Um erro de sintaxe derruba o script inteiro (a tela dele não abre): node --check em cada um, se houver Node."""
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("sem Node")
+        for arq in ("app.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
+            r = subprocess.run([node, "--check", os.path.join(WEB, arq)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, f"{arq}: {r.stderr[-400:]}")
+
+    def test_trecho_mais_perto_do_toque(self):
+        """O clique por cálculo acha o trecho da mesma forma que o antigo caminho de 14 px: até 7 px da tela; com duas
+        linhas sobrepostas, a de cima no desenho (índice maior). Roda o código da tela no Node, se houver."""
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("sem Node")
+        js = ler("iluminado.js")
+        trecho = lambda nome: (re.search(r"\nfunction " + nome + r"\(.*?\n\}\n", js, re.S)
+                               or re.search(r"\n(?:const|let) " + nome + r"\b[^\n]*\n", js)).group(0)
+        codigo = "".join(trecho(n) for n in ("limites", "GRADE", "gradeTrechos", "distSegmento", "trechoPerto", "TOQUE_PX"))
+        roteiro = codigo + """
+const GERAL = { trechos: [
+  { n: 'A', p: [[0, 0, 100, 0]] },            // horizontal em y = 0
+  { n: 'B', p: [[0, 10, 100, 10]] },          // horizontal em y = 10
+  { n: 'C', p: [[50, -50, 50, 50]] },         // vertical em x = 50 (cruza A e B)
+  { n: 'D', p: [[0, 10, 100, 10]] },          // igual a B (sobreposta, desenhada depois)
+] };
+const ctx = { vb: [0, -50, 200, 100], caixa: () => ({ getBoundingClientRect: () => ({ width: 200 }) }) };   // 1 unidade = 1 px
+const r = [[20, 1], [20, 6], [20, 9], [20, 30], [52, 30], [52, 0.5], [300, 300]].map(p => trechoPerto(ctx, p));
+ctx.tocavel = t => t.n !== 'D';
+r.push(trechoPerto(ctx, [20, 9]));
+console.log(JSON.stringify(r));
+"""
+        saida = subprocess.run([node, "-e", roteiro], capture_output=True, text=True, timeout=30)
+        self.assertEqual(saida.returncode, 0, saida.stderr)
+        # perto de A; entre A e B fica B (mais perto); sobre B e D, a de cima (D); longe de tudo (> 7 px) nada;
+        # perto de C; no cruzamento, o mais perto (A); fora do mapa nada; D intocável → B
+        self.assertEqual(eval(saida.stdout.strip()), [0, 3, 3, -1, 2, 0, -1, 1])
+
+    def test_dados_da_obra_sem_plantas_baixas(self):
+        """Pedido do responsável (22/10/2026): no Dados da obra, só as zonas; nem fotos das PBs nem a divisão delas."""
+        pln = ler("planejamento.js")
+        for proibido in ("htmlSatelite", "ligarSatelite", "detalheSatelite", "/mapa/pb/", "/mapa/geral", "plnQuadros", "g.quadros"):
+            self.assertNotIn(proibido, pln)
 
     def test_ids_unicos_e_scripts_carregados(self):
         todos = re.findall(r'id="([^"]+)"', self.html)

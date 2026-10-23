@@ -11,6 +11,7 @@ from datetime import date, timedelta
 
 import compras as C
 import regras as R
+import relogio as RL
 import servicos as S
 from servicos import RegraViolada, _agora, _one, _rows, transacao
 
@@ -94,7 +95,7 @@ def programacoes(conn, ini, fim, frente=None, equipe=None):
 def resumo(conn, ini, fim, frente=None, equipe=None):
     ps = programacoes(conn, ini, fim, frente, equipe)
     cont = {s: sum(1 for p in ps if p["status"] == s) for s in ("PLANEJADA", "REALIZADA", "NAO_REALIZADA", "CANCELADA")}
-    passadas = [p for p in ps if p["data"] < date.today().isoformat() and p["status"] != "CANCELADA"]
+    passadas = [p for p in ps if p["data"] < RL.hoje().isoformat() and p["status"] != "CANCELADA"]
     return {"contagem": cont, "realizadas_no_passado": sum(1 for p in passadas if p["status"] == "REALIZADA"), "programadas_no_passado": len(passadas)}
 
 
@@ -138,26 +139,23 @@ def nomes_vigentes(conn):
 
 
 def em_campo(conn, data=None, nomes=None):
-    """Onde cada equipe está no dia: o alvo do check-in aberto e os alvos das programações que esse check-in realizou
-    (a liberação de material pelo mapa do Dados da obra cobre vários trechos de uma vez).
-    {nome visível: {"equipe": id, "checkin_id": id}}."""
-    data = data or date.today().isoformat()
+    """Onde cada equipe está no dia: todos os trechos e nós do check-in aberto (checkin_alvos: a liberação do Dados da obra
+    cobre vários de uma vez). {nome visível: {"equipe": id, "checkin_id": id}}."""
+    data = data or RL.hoje().isoformat()
     nomes = nomes if nomes is not None else nomes_vigentes(conn)
     out = {}
-    for cid, eq, tipo, aid in conn.execute("SELECT id, equipe_id, alvo_tipo, alvo_id FROM checkins WHERE encerrado=0 AND data=? "
-                                           "ORDER BY id", (data,)).fetchall():
-        alvos = ([(tipo, aid)] if aid else []) + [tuple(r) for r in conn.execute(
-            "SELECT alvo_tipo, alvo_id FROM programacoes WHERE checkin_id=? ORDER BY id", (cid,))]
-        for a in alvos:
-            if a in nomes:
-                out.setdefault(nomes[a], {"equipe": eq, "checkin_id": cid})
+    for cid, eq, tipo, aid in conn.execute("""SELECT c.id, c.equipe_id, a.alvo_tipo, a.alvo_id FROM checkins c
+                                              JOIN checkin_alvos a ON a.checkin_id=c.id
+                                              WHERE c.encerrado=0 AND c.data=? ORDER BY c.id, a.rowid""", (data,)).fetchall():
+        if (tipo, aid) in nomes:
+            out.setdefault(nomes[(tipo, aid)], {"equipe": eq, "checkin_id": cid})
     return out
 
 
 def camadas_mapa(conn, hoje=None, dias=7):
     """Por nome visível (objetos vigentes): planejado (próximos dias), material disponibilizado, cadastro, pendências,
     liberação topográfica e onde cada equipe está hoje (em_campo)."""
-    hoje = hoje or date.today().isoformat()
+    hoje = hoje or RL.hoje().isoformat()
     ate = (date.fromisoformat(hoje) + timedelta(days=dias)).isoformat()
     nomes = nomes_vigentes(conn)
     planejado = {}
@@ -208,8 +206,39 @@ def camadas_mapa(conn, hoje=None, dias=7):
         n = nomes.get(("TRECHO", r[0]))
         if n:
             liberado[n] = "TOTAL" if r[1] >= (ext.get(r[0]) or 0) - 0.01 else "PARCIAL"
+    campo = em_campo(conn, hoje, nomes)
     return {"planejado": planejado, "material": material, "cadastro": cadastro, "pendencias": pend, "liberado": liberado,
-            "em_campo": em_campo(conn, hoje, nomes), "hoje": hoje, "ate": ate}
+            "em_campo": campo, "etapas": etapas_mapa(conn, hoje, nomes, liberado, campo), "hoje": hoje, "ate": ate}
+
+
+def etapas_mapa(conn, hoje, nomes, liberado, campo_hoje):
+    """Etapa de cada trecho vigente (regras.etapa_trecho), por nome visível: {"s": etapa, "parcial": execução
+    incompleta}. Só os que saíram de "não iniciado"."""
+    ex = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT alvo_id, concluido, ok_fiscal_em FROM execucao WHERE alvo_tipo='TRECHO'")}
+    fotos = {}
+    for r in conn.execute(f"SELECT alvo_id, categoria FROM fotos WHERE alvo_tipo='TRECHO' AND {S.FOTO_VALIDA}"):
+        fotos.setdefault(r[0], []).append(r[1])
+    inter = {r[0]: r[1:] for r in conn.execute(
+        f"""SELECT trecho_id, SUM(etapa<>'CADASTRO_CAMPO'), COUNT(*), SUM(verificado_em IS NOT NULL),
+                   MAX(CASE WHEN etapa<>'CADASTRO_CAMPO' THEN data END)
+            FROM intervalos_execucao WHERE {S.EFETIVO} GROUP BY trecho_id""")}
+    legado = {r[0] for r in conn.execute(f"SELECT DISTINCT ap.alvo_id {S._SQL_LEGADO}")}
+    levant = _levantamentos(conn)
+    esteira = {r[0]: r[1] for r in conn.execute("SELECT trecho_id, etapa FROM cadastro")}
+    out = {}
+    for (tipo, tid), nome in nomes.items():
+        if tipo != "TRECHO":
+            continue
+        concl, ok = ex.get(tid, (0, None))
+        n_exec, n, n_ver, ult = inter.get(tid, (0, 0, 0, None))
+        executado = bool(n_exec) or tid in legado or tid in ex
+        s = R.etapa_trecho(liberado=nome in liberado, equipe_hoje=nome in campo_hoje, informado_hoje=ult == hoje,
+                           executado=executado, concluido=bool(concl), verificado=bool(n) and n_ver >= n and tid not in legado,
+                           fotos_ok=not R.fotos_pendentes("TRECHO", fotos.get(tid, []), False),
+                           campo=levant.get(tid) == "LEVANTAMENTO_COMPLETO", ok=bool(ok), esteira=esteira.get(tid))
+        if s != "nao":
+            out[nome] = {"s": s, "parcial": executado and not concl}
+    return out
 
 
 def _levantamentos(conn):
@@ -222,3 +251,24 @@ def _levantamentos(conn):
         if tid in ext:
             out[tid] = "LEVANTAMENTO_COMPLETO" if R.comprimento(lst) >= float(ext[tid]) - R.TOL_M else "LEVANTAMENTO_PARCIAL"
     return out
+
+
+def caminho_da_medicao(conn, medicao_id=None):
+    """Resumo do topo da tela Medição: trechos com OK interno nesta medição, prontos para o OK, aguardando verificação e
+    executados sem as fotos. Cada número vem com os nomes, para abrir a lista no mapa."""
+    nomes = nomes_vigentes(conn)
+    et = etapas_mapa(conn, RL.hoje().isoformat(), nomes, {}, {})
+    nesta = [nomes[("TRECHO", r[0])] for r in conn.execute(
+        "SELECT alvo_id FROM execucao WHERE alvo_tipo='TRECHO' AND medicao_id=?", (medicao_id,)) if ("TRECHO", r[0]) in nomes]
+    sem_med = [nomes[("TRECHO", r["alvo_id"])] for r in S.oks_sem_medicao(conn)
+               if r["alvo_tipo"] == "TRECHO" and ("TRECHO", r["alvo_id"]) in nomes]
+    fotos = {}
+    for r in conn.execute(f"SELECT alvo_id, categoria FROM fotos WHERE alvo_tipo='TRECHO' AND {S.FOTO_VALIDA}"):
+        fotos.setdefault(r[0], []).append(r[1])
+    sem_fotos = [nomes[("TRECHO", r[0])] for r in conn.execute(
+        "SELECT alvo_id FROM execucao WHERE alvo_tipo='TRECHO' AND concluido=1 AND ok_fiscal_em IS NULL")
+        if ("TRECHO", r[0]) in nomes and R.fotos_pendentes("TRECHO", fotos.get(r[0], []), False)]
+    lista = lambda xs: sorted(set(xs))
+    return {"ok_nesta": lista(nesta), "ok_sem_medicao": lista(sem_med),
+            "prontos": lista(n for n, e in et.items() if e["s"] == "pronto"),
+            "aguardando_verificacao": lista(x["nome"] for x in S.aguardando_verificacao(conn)), "sem_fotos": lista(sem_fotos)}
