@@ -621,9 +621,10 @@ function abrirPop(nome, recarregar) {
       + '<h3 style="margin-top:14px">Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes');
   }
 }
+// abre o Mapa iluminado já focado: a zona (sem nome, a obra inteira) ou o trecho (Topografia e Cadastro de campo)
+function verNoMapa(tipo, nome) { ILU.ver = { tipo, nome }; return abrirAba('iluminado'); }
 // lista de trechos à parte: "Aguardando verificação" (supervisor, o mais perto primeiro quando o celular dá a posição) ou
 // a que a tela Medição abriu. Tocar leva ao trecho e abre a ficha, onde está a ação
-function verNoMapa(tipo, nome) { ILU.ver = { tipo, nome }; return abrirAba('iluminado'); }
 function abrirListaIlu(titulo, nomes) {
   ILU.lista = { titulo, itens: nomes.map(n => ({ nome: n })) };
   $('#iluBtLista').textContent = titulo; $('#iluBlocoLista').hidden = false;
