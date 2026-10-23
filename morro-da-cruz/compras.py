@@ -594,6 +594,7 @@ def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, m
         raise RegraViolada("Informe o motivo da recusa.")
     if r > 0 and not str(laudo or "").strip():
         raise RegraViolada("Com recusa, informe a referência do laudo da inspeção.")
+    tem_laudo = bool(str(laudo or "").strip())
     laudo = str(laudo or "").strip() or f"conferido por {por}"           # sem recusa, o laudo é opcional
     if not data or data < ri["data_entrega"]:
         raise RegraViolada("Data da inspeção ausente ou anterior à entrega.")
@@ -609,7 +610,8 @@ def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, m
             mid = conn.execute(
                 """INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,status,nf_id,responsavel,ref_tipo,ref_id)
                    VALUES (?,?,'ENTRADA_NF',?,?, 'ACEITO', ?, ?, 'INSPECAO', ?)""",
-                (data, ri["material_id"], a, f"NF {nf['numero']} · laudo {laudo}", ri["nf_id"], por, iid)).lastrowid
+                (data, ri["material_id"], a, f"NF {nf['numero']} · " + (f"laudo {laudo}" if tem_laudo else f"aceito sem laudo por {por}"),
+                 ri["nf_id"], por, iid)).lastrowid
             conn.execute("UPDATE inspecoes SET movimento_aceito_id=? WHERE id=?", (mid, iid))
         _encerrar_se_completa(conn, ri["nf_id"])
     return iid

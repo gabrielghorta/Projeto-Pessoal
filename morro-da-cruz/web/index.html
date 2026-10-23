@@ -551,7 +551,7 @@
       <div class="painel">
         <h3>3. Nota fiscal</h3>
         <form id="fXml" data-perm="receber">
-          <label>XML da NF-e<input type="file" name="arquivo" accept=".xml,text/xml,application/xml" required></label>
+          <label>XML da NF-e (um ou vários)<input type="file" name="arquivos" accept=".xml,text/xml,application/xml" multiple required></label>
           <div class="acoes"><button class="btn prim">Importar XML (fica a conferir)</button></div>
         </form>
         <details style="margin-top:8px"><summary>Sem XML: digitar a partir do PDF/imagem da nota</summary>
@@ -603,9 +603,12 @@
         <div id="almoxDia" class="vazio">Carregando…</div>
       </div>
       <div class="painel largo">
-        <h3>Aceite ou recusa do material entregue</h3>
-        <p class="vazio" style="margin:0 0 8px">Material que chegou e está em quarentena. O aceito entra no estoque; o recusado não entra. É o mesmo aceite da tela Compras e notas.</p>
-        <div id="aceiteLista" class="vazio">Nada aguardando o aceite.</div>
+        <h3>Notas a receber</h3>
+        <p class="vazio" style="margin:0 0 8px">Importe o XML da nota fiscal (pode escolher vários de uma vez). Em cada nota: confira o material de cada linha (vem sugerido), registre o que chegou (entra em quarentena) e aceite ou recuse. Nota sem pedido: o aceito só vai para as equipes depois da aprovação de Engenharia ou Administração. Tubo da Caesb (remessa) entra como romaneio, sem quarentena.</p>
+        <form id="fXmlAlmox" class="linha" data-perm="receber"><label>XML da NF-e<input type="file" name="arquivos" accept=".xml,text/xml,application/xml" multiple required></label>
+          <div class="acoes"><button class="btn prim">Importar</button></div></form>
+        <datalist id="listaMateriais"></datalist>
+        <div id="notasReceber" class="vazio">Nenhuma nota a receber.</div>
       </div>
       <div class="painel">
         <h3>Entradas no almoxarifado</h3>

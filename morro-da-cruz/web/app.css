@@ -519,3 +519,10 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .rest-acao { font-size: 13px; }
 #campoApr .btn { min-height: 44px; }
 .form-inline { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; margin-top: 8px; }
+/* Notas a receber (Estoque e movimentos) */
+.nota-card > div + div, .nota-card > .acoes { margin-top: 8px; }
+.nota-card > div:first-child { flex-wrap: wrap; justify-content: flex-start; }
+.nota-card > div:first-child b { flex-basis: 100%; }
+.nota-l { border-top: 1px solid var(--borda); padding: 8px 0; }
+.nota-l .linha { grid-template-columns: 1fr 96px; margin: 6px 0 2px; }
+.nota-chegou, .nota-insp { border-top: 1px solid var(--borda); padding-top: 8px; }

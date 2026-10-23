@@ -394,7 +394,7 @@ async function carregarAlmox() {
   $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
   if (TELA === 'almox' && pode('almox') && podeTela('mapa')) almoxEquipesDoDia();
-  if (podeTela('almox') || podeTela('compras')) renderAceite(await api('/api/almox/quarentena'));
+  if (podeTela('almox') || podeTela('compras')) renderNotasReceber(await api('/api/almox/notas'));
   const res = await api('/api/reservas');
   $('#reservasLista').innerHTML = res.length ? `<table><thead><tr><th>Dia</th><th>Equipe</th><th>Material</th><th class="n">Qtd.</th><th></th></tr></thead><tbody>${res.map(r => `<tr><td>${esc(r.data)}</td><td>${esc(r.equipe_id)}</td><td>${esc(r.material_id)}</td><td class="n">${nf(r.quantidade, 3)}</td><td><button class="btn" data-cancelar-reserva="${r.id}">Cancelar</button></td></tr>`).join('')}</tbody></table>` : '<span class="vazio">Nenhuma reserva ativa.</span>';
   const cons = await api('/api/consumo');
@@ -414,31 +414,95 @@ async function carregarAlmox() {
   if (!$('#hIni').value) { $('#hIni').value = hoje().slice(0, 8) + '01'; $('#hFim').value = hoje(); }
   carregarHistograma();
 }
-// aceite ou recusa do material entregue (quarentena do fluxo de compras): o mesmo registro da tela Compras e notas
-function renderAceite(itens) {
-  $('#aceiteLista').className = itens.length ? '' : 'vazio';
-  $('#aceiteLista').innerHTML = itens.length ? itens.map(r => `<div class="linha lin-aceite" data-ri="${r.id}">
-      <span><b>${esc(r.material_id)}</b> · ${nf(r.quantidade, 3)} ${esc(r.unidade || '')}<br><small>${esc((r.descricao || '').slice(0, 80))} · NF ${esc(r.numero)}${r.fornecedor ? ' · ' + esc(r.fornecedor) : ''} · entregue em ${esc(r.data)}</small></span>
-      <label>Aceito<input data-k="aceito" type="number" step="any" min="0" value="${r.quantidade}"></label>
-      <label>Recusado<input data-k="recusado" type="number" step="any" min="0" value="0"></label>
-      <label>Laudo ou inspeção<input data-k="laudo" placeholder="nº do laudo ou quem conferiu"></label>
-      <label>Motivo da recusa<input data-k="motivo_recusa"></label>
-      ${pode('receber') ? `<div class="acoes"><button type="button" class="btn prim" data-aceite="${r.id}">Registrar</button></div>` : ''}</div>`).join('')
-    : 'Nada aguardando o aceite.';
+/* ---- Notas a receber (Estoque e movimentos): da importação do XML ao aceite, na tela do almoxarife */
+const ST_NOTA = { A_CONFERIR: ['a conferir', 'amarelo'], CONFERIDA: ['a receber', 'azul'], ENCERRADA: ['recebida', 'verde'] };
+function renderNotasReceber(notas) {
+  const box = $('#notasReceber'), rec = pode('receber');
+  $('#listaMateriais').innerHTML = MATERIAIS.map(m => `<option value="${esc(m.id)}">${esc(m.descricao.slice(0, 70))} (${esc(m.unidade)})</option>`).join('');
+  box.className = notas.length ? '' : 'vazio';
+  if (!notas.length) { box.textContent = 'Nenhuma nota a receber.'; return; }
+  box.innerHTML = notas.map(n => {
+    const st = ST_NOTA[n.status] || [n.status.toLowerCase(), ''], sug = Object.fromEntries((n.sugestoes || []).map(x => [x.linha_id, x]));
+    const aprovar = n.sem_pedido && !n.aprovada_em;
+    let corpo = '';
+    if (n.status === 'A_CONFERIR' && rec) {
+      corpo = `<div class="nota-conf"><label>Pedido<select data-c="pedido"><option value="">sem pedido (precisa de aprovação)</option>${n.pedidos.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('')}</select></label>
+        ${n.linhas.map(l => { const s = sug[l.id] || {};
+          return `<div class="nota-l" data-l="${l.id}"><div>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(l.quantidade, 4)} ${esc(l.unidade)}${l.codigo ? ' · código ' + esc(l.codigo) : ''}</small></div>
+            <div class="linha"><label>Material<input data-k="material_id" list="listaMateriais" value="${esc(s.material_id || '')}" placeholder="vazio = fora do estoque"></label>
+              <label>Fator<input data-k="fator" type="number" step="any" min="0" value="${s.fator || ''}" placeholder="1" title="quantidade no material = quantidade da nota × fator"></label></div>
+            <small>${s.material_id ? `sugerido (${esc(s.motivo)}): ${esc(((MATERIAIS.find(m => m.id === s.material_id) || {}).descricao || '').slice(0, 60))}${s.caesb ? ' · tubo da Caesb: entra como romaneio' : ''}` : 'sem sugestão: escolha o material ou deixe vazio (frete, serviço)'}</small></div>`; }).join('')}
+        <div class="acoes"><button type="button" class="btn prim" data-nota-conferir="${n.id}">Conferir as linhas</button></div></div>`;
+    } else if (n.status === 'CONFERIDA') {
+      const falta = n.itens.filter(i => i.quantidade - i.recebido > 1e-9);
+      corpo = (falta.length && rec ? `<div class="nota-chegou"><b>O que chegou</b>${falta.map(i => `<div class="linha" data-ni="${i.id}"><span>${esc(i.material_id)} <small>${esc((i.descricao || '').slice(0, 60))}${i.romaneio_caesb ? ' · romaneio Caesb' : ''}</small><br><small>na nota ${nf(i.quantidade, 3)} · já chegou ${nf(i.recebido, 3)} ${esc(i.unidade || '')}</small></span>
+          <label>Chegou<input data-chegou type="number" step="any" min="0" value="${+(i.quantidade - i.recebido).toFixed(6)}"></label></div>`).join('')}
+          <div class="linha"><input data-doc-entrega placeholder="canhoto / romaneio da entrega"><button type="button" class="btn prim" data-nota-receber="${n.id}">Registrar o que chegou</button></div></div>` : '')
+        + n.entregas.map(e => `<div class="nota-insp" data-rec="${e.id}"><b>Em quarentena · entrega de ${dataBR(e.data)}${e.documento ? ' · ' + esc(e.documento) : ''}</b>
+          ${e.itens.map(i => `<div class="linha" data-ri="${i.id}"><span>${esc(i.material_id)} · ${nf(i.quantidade, 3)} ${esc(i.unidade || '')}</span>
+            <label>Aceito<input data-k="aceito" type="number" step="any" min="0" value="${i.quantidade}"></label><label>Recusado<input data-k="recusado" type="number" step="any" min="0" value="0"></label></div>`).join('')}
+          ${rec ? `<div class="linha"><input data-laudo placeholder="laudo da entrega (obrigatório só com recusa)"><input data-motivo placeholder="motivo da recusa"></div>
+          <div class="acoes"><button type="button" class="btn prim" data-nota-aceitar="${e.id}">Aceitar tudo desta entrega</button><button type="button" class="btn" data-nota-inspecionar="${e.id}">Registrar a inspeção</button></div>` : ''}</div>`).join('');
+    }
+    const aprovacao = !aprovar ? '' : pode('compras_aprovar') && USUARIO.login !== n.registrada_por
+      ? `<div class="acoes"><button type="button" class="btn ok" data-nota-aprovar="${n.id}">Aprovar a nota sem pedido</button></div>`
+      : '<div class="aviso info">Nota sem pedido: o material aceito fica no almoxarifado, mas só vai para as equipes depois da aprovação de Engenharia ou Administração (outra pessoa, não quem importou).</div>';
+    return `<div class="registro nota-card"><div><b>NF ${esc(n.numero)}${n.serie ? '/' + esc(n.serie) : ''} · ${esc(n.fornecedor || '')}</b>
+        <span class="chip ${st[1]}">${esc(st[0])}</span>${n.sem_pedido ? ` <span class="chip ${n.aprovada_em ? 'verde' : 'amarelo'}">sem pedido · ${n.aprovada_em ? 'aprovada por ' + esc(n.aprovada_por) : 'aguardando aprovação'}</span>` : ''}</div>
+      <small>emissão ${esc(dataBR(n.data_emissao || ''))} · ${n.linhas.length} linha${n.linhas.length > 1 ? 's' : ''} · ${brl(n.valor_total)} · importada por ${esc(n.registrada_por || '')}</small>
+      ${corpo}${aprovacao}</div>`;
+  }).join('');
 }
-$('#aceiteLista').addEventListener('click', async ev => {
-  const b = ev.target.closest('[data-aceite]'); if (!b) return;
-  const l = b.closest('.lin-aceite'), o = Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value]));
-  const r = await acao(() => api('/api/inspecao', { recebimento_item_id: l.dataset.ri, ...o, data: hoje() }),
-    +o.recusado > 0 ? 'Inspeção registrada: o aceito entrou no estoque e o recusado ficou de fora.' : 'Material aceito: entrou no estoque.').catch(() => null);
+// vários XML de uma vez, um pedido por nota; o fornecedor que falta é cadastrado pelo próprio XML, com confirmação.
+// O mesmo nas telas Estoque e movimentos e Compras e notas.
+async function importarNotasXml(form, depois) {
+  const arqs = [...form.arquivos.files], feitas = [], erros = [];
+  for (const arq of arqs) {
+    try {
+      const corpo = { conteudo_b64: await lerOriginal(arq), nome: arq.name };
+      let r = await api('/api/nf/importar-xml', corpo);
+      if (r.fornecedor_novo) {
+        const f = r.fornecedor_novo;
+        if (!confirm(`NF ${r.numero}: o emitente ${f.nome} (CNPJ ${f.cnpj}) não está cadastrado. Cadastrar pelo XML e importar a nota?`)) continue;
+        r = await api('/api/nf/importar-xml', { ...corpo, cadastrar_fornecedor: true });
+      }
+      feitas.push(`NF ${r.numero}`);
+    } catch (e) { erros.push(`${arq.name}: ${e.message}`); }
+  }
+  if (feitas.length) toast(`Importada${feitas.length > 1 ? 's' : ''}: ${feitas.join(', ')}. Confira as linhas antes de receber.`, 'ok');
+  if (erros.length) toast(erros.join(' · '), 'erro');
+  form.reset(); depois(); driveEmSegundoPlano(depois);
+}
+$('#fXmlAlmox').addEventListener('submit', ev => { ev.preventDefault(); importarNotasXml(ev.target, carregarAlmox); });
+$('#notasReceber').addEventListener('click', async ev => {
+  const q = s => ev.target.closest(s);
+  let r = null;
+  if (q('[data-nota-conferir]')) {
+    const box = q('.nota-conf');
+    const linhas = $$('[data-l]', box).map(l => { const m = $('[data-k=material_id]', l).value.trim();
+      return m ? { linha_id: l.dataset.l, material_id: m, fator: $('[data-k=fator]', l).value || null } : { linha_id: l.dataset.l, fora_do_estoque: true }; });
+    r = await acao(() => api('/api/nf/conferir', { nf_id: q('[data-nota-conferir]').dataset.notaConferir, pedido_id: $('[data-c=pedido]', box).value || 0, linhas }),
+      'Nota conferida: registre o que chegou.').catch(() => null);
+  } else if (q('[data-nota-receber]')) {
+    const box = q('.nota-chegou'), itens = $$('[data-ni]', box).map(l => ({ nf_item_id: l.dataset.ni, quantidade: +$('[data-chegou]', l).value || 0 })).filter(i => i.quantidade > 0);
+    r = await acao(() => api('/api/recebimento', { nf_id: q('[data-nota-receber]').dataset.notaReceber, data: hoje(), itens, documento: $('[data-doc-entrega]', box).value }),
+      'Entrega registrada: o material está em quarentena (o tubo da Caesb entrou como romaneio).').catch(() => null);
+  } else if (q('[data-nota-aceitar]') || q('[data-nota-inspecionar]')) {
+    const box = q('.nota-insp'), tudo = !!q('[data-nota-aceitar]');
+    const itens = tudo ? [] : $$('[data-ri]', box).map(l => ({ recebimento_item_id: l.dataset.ri, aceito: $('[data-k=aceito]', l).value, recusado: $('[data-k=recusado]', l).value }));
+    r = await acao(() => api('/api/inspecao/entrega', { recebimento_id: box.dataset.rec, itens, laudo: $('[data-laudo]', box).value, motivo_recusa: $('[data-motivo]', box).value, data: hoje() }),
+      tudo ? 'Entrega aceita: o material entrou no estoque.' : 'Inspeção registrada: o aceito entrou no estoque e o recusado ficou de fora.').catch(() => null);
+  } else if (q('[data-nota-aprovar]')) {
+    r = await acao(() => api('/api/nf/aprovar', { nf_id: q('[data-nota-aprovar]').dataset.notaAprovar }), 'Nota aprovada: o material aceito já pode ser liberado às equipes.').catch(() => null);
+  } else return;
   if (r) { carregarAlmox(); driveEmSegundoPlano(); }
 });
 function renderEstoque() {
   const f = $('#estFiltro').value, so = $('#estSaldo').checked;
-  const lst = MATERIAIS.filter(m => (!f || m.propriedade === f) && (!so || m.saldo_almox || m.custodia || m.quarentena || m.reservado));
-  $('#estoque').innerHTML = lst.length ? `<table><thead><tr><th>Material</th><th>Propriedade</th><th>Unid.</th><th class="n">Saldo físico</th><th class="n">Reservado</th><th class="n">Disponível</th><th class="n">Quarentena</th><th class="n">Com as equipes</th><th class="n">Preço BM</th></tr></thead><tbody>
+  const lst = MATERIAIS.filter(m => (!f || m.propriedade === f) && (!so || m.saldo_almox || m.custodia || m.quarentena || m.reservado || m.aguardando_aprovacao));
+  $('#estoque').innerHTML = lst.length ? `<table><thead><tr><th>Material</th><th>Propriedade</th><th>Unid.</th><th class="n">Saldo físico</th><th class="n">Reservado</th><th class="n">Disponível</th><th class="n">Quarentena</th><th class="n">Aguardando aprovação da nota</th><th class="n">Com as equipes</th><th class="n">Preço BM</th></tr></thead><tbody>
     ${lst.map(m => `<tr><td>${esc(m.id)} — ${esc(m.descricao.slice(0, 80))}</td><td><span class="chip ${m.propriedade === 'CAESB' ? 'azul' : m.propriedade === 'ANKARA' ? 'laranja' : ''}">${m.propriedade}</span></td><td>${esc(m.unidade)}</td>
-      <td class="n">${nf(m.saldo_almox, 3)}</td><td class="n">${nf(m.reservado, 3)}</td><td class="n"><b>${nf(m.disponivel, 3)}</b></td><td class="n">${nf(m.quarentena, 3)}</td><td class="n">${nf(m.custodia, 3)}</td><td class="n">${m.propriedade === 'CAESB' ? 'R$ 0,00' : brl(m.preco_unitario)}</td></tr>`).join('')}</tbody></table>`
+      <td class="n">${nf(m.saldo_almox, 3)}</td><td class="n">${nf(m.reservado, 3)}</td><td class="n"><b>${nf(m.disponivel, 3)}</b></td><td class="n">${nf(m.quarentena, 3)}</td><td class="n">${m.aguardando_aprovacao ? `<span class="chip amarelo">${nf(m.aguardando_aprovacao, 3)}</span>` : '—'}</td><td class="n">${nf(m.custodia, 3)}</td><td class="n">${m.propriedade === 'CAESB' ? 'R$ 0,00' : brl(m.preco_unitario)}</td></tr>`).join('')}</tbody></table>`
     : '<div class="vazio" style="padding:10px">Nenhum material com movimento.</div>';
 }
 $('#estFiltro').addEventListener('change', renderEstoque);
@@ -604,11 +668,7 @@ $('#fPedido').addEventListener('submit', async ev => {
   const r = await acao(() => api('/api/pedido', { ...o, faturamento_etapas: !!o.faturamento_etapas, itens }), 'Pedido emitido (não altera o estoque).').catch(() => null);
   if (r) { ev.target.reset(); carregarCompras(); }
 });
-$('#fXml').addEventListener('submit', async ev => {
-  ev.preventDefault(); const arq = ev.target.arquivo.files[0];
-  const r = await acao(async () => api('/api/nf/importar-xml', { conteudo_b64: await lerOriginal(arq), nome: arq.name }), 'NF-e importada: confira as linhas antes de receber.').catch(() => null);
-  if (r) { ev.target.reset(); carregarCompras(); driveEmSegundoPlano(carregarCompras); }
-});
+$('#fXml').addEventListener('submit', ev => { ev.preventDefault(); importarNotasXml(ev.target, carregarCompras); });
 $('#fNfDig').addEventListener('submit', async ev => {
   ev.preventDefault(); const o = formObj(ev.target), arq = ev.target.arquivo.files[0];
   const r = await acao(async () => api('/api/nf/digitar', { numero: o.numero, data_emissao: o.data_emissao, fornecedor_id: o.fornecedor_id, chave: o.chave,
@@ -1644,7 +1704,6 @@ async function iniciar() {
   RESUMO = await api('/api/resumo');
   $$('.selEquipe').forEach(s => s.innerHTML = '<option value="">—</option>' + RESUMO.equipes.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join(''));
   $$('.selClima').forEach(s => s.innerHTML = '<option value="">—</option>' + Object.entries(RESUMO.clima).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''));
-  $('select[name=contingencia]').innerHTML += RESUMO.contingencias.map(c => `<option>${esc(c)}</option>`).join('');
   $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   if (podeTela('medicao')) { const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }
   abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });

@@ -145,6 +145,9 @@ class TestPaginaECodigo(unittest.TestCase):
         usados = set(re.findall(r"\$\('#([\w-]+)'\)", self.js))
         criados = set(re.findall(r'id="([\w-]+)"', self.js))      # elementos que o próprio JavaScript desenha
         self.assertFalse(sorted(usados - self.ids - criados))
+        # campo achado pelo nome na página inteira: sem ele o início da página parava (contingência do check-in que saiu)
+        nomes = set(re.findall(r"\$\('\w*\[name=(\w+)\]'\)", self.js))
+        self.assertFalse(sorted(n for n in nomes if f'name="{n}"' not in self.html))
 
     def test_nomes_globais_sem_repeticao_entre_os_scripts(self):
         """Os scripts da página dividem o mesmo escopo global: um const/let repetido derruba o script que vem depois."""
