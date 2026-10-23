@@ -6,12 +6,13 @@ Seleção no mapa (linhas da 06.1 escolhidas com Ctrl+clique):
     zona etc. não separam o tubo);
   * a conexão que liga dois trechos escolhidos entra sozinha (dois cliques, não três); outro nó entra se for tocado;
   * ponta que não é nó da 06.2 vigente fica de fora da sugestão de peças e vira aviso.
-Com a seleção:
-  * programar: equipe, serviço e período (com os dias da semana de trabalho) → uma programação por alvo e por dia, todas
-    com o mesmo carimbo de criação (o "lote", que se cancela de uma vez). É a tabela de sempre (planejamento.py): não é
-    presença nem execução;
+Com a seleção (o Dados da obra é o DIA da equipe; o macro de 18 meses é o Cronograma):
+  * programar: equipe, serviço e UM dia → uma programação por alvo, todas com o mesmo carimbo de criação (o "lote", que
+    se cancela de uma vez). Não é presença nem execução. O mesmo alvo para outra equipe no dia pede confirmação;
   * liberar: o almoxarife entrega o material do dia — abre o check-in da equipe (ou soma ao check-in aberto dela no mesmo
-    dia) e as programações daquele dia para a seleção ficam realizadas por esse check-in;
+    dia) com TODOS os trechos e nós da seleção (checkin_alvos: PROGRAMACAO o que estava programado, CHECKIN o acrescentado
+    na hora), e as programações daquele dia para a seleção ficam realizadas por esse check-in. Na hora, os trechos ficam
+    "em execução hoje" e o pino da equipe aparece no Mapa iluminado e no mapa da tela Início;
   * reservar: para um dia que ainda não chegou, o material fica separado para a equipe (servicos.reservar);
   * devolução das peças não usadas: o check-out de sempre (servicos.checkout), com o que está com a equipe (estado()).
 O material sugerido vem do projeto: tubo da 06.1 pelo que falta assentar em cada linha e as peças da 06.2 dos nós, pelo
@@ -28,9 +29,7 @@ from servicos import RegraViolada, _agora, _one, _rows, transacao
 
 TOL = 1e-6
 LIMITE_LINHAS = 400
-LIMITE_DIAS = 62
-LIMITE_PROGRAMACOES = 1500
-DIAS_PADRAO = (0, 1, 2, 3, 4, 5)                  # segunda a sábado (date.weekday)
+LIMITE_PROGRAMACOES = 400
 # o mesmo item da Juntada aparece em mais de um subgrupo do BM Vertical (ex.: tubo 1.14.77 no canteiro e no
 # hidromecânico): para peça de nó vale o primeiro subgrupo desta ordem que tiver o item
 PREFERENCIA_BM = ("HIDROMEC", "REDES", "CAIXAS", "INTERLIGA", "LIGA", "CANTEIRO")
@@ -222,8 +221,7 @@ def _checkins(conn, nomes, hoje, filtro=None):
     cat = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT id, descricao, unidade FROM materiais")}
     out = []
     for c in S.checkins_abertos(conn):
-        alvos = ([(c["alvo_tipo"], c["alvo_id"])] if c["alvo_id"] else []) + [tuple(r) for r in conn.execute(
-            "SELECT alvo_tipo, alvo_id FROM programacoes WHERE checkin_id=? ORDER BY id", (c["id"],))]
+        alvos = [(a["alvo_tipo"], a["alvo_id"]) for a in c["alvos"]]
         if filtro and not filtro(c, alvos):
             continue
         out.append({"id": c["id"], "data": c["data"], "equipe_id": c["equipe_id"], "contingencia": c["contingencia"],
@@ -262,56 +260,44 @@ def selecao(conn, linhas, nos=(), data=None, equipe=None):
 
 
 # ------------------------------------------------------------------ programar, liberar, reservar
-def dias_do_periodo(data_ini, data_fim=None, dias_semana=None):
-    ini, fim = _data(data_ini, "início"), _data(data_fim or data_ini, "fim")
-    if fim < ini:
-        raise RegraViolada("O fim do período é antes do início.")
-    if (fim - ini).days + 1 > LIMITE_DIAS:
-        raise RegraViolada(f"Período longo demais (até {LIMITE_DIAS} dias por vez).")
-    semana = DIAS_PADRAO if dias_semana is None else dias_semana
-    try:
-        semana = {int(d) for d in semana}
-    except (TypeError, ValueError):
-        raise RegraViolada("Dias da semana inválidos.") from None
-    if not semana or not semana <= set(range(7)):
-        raise RegraViolada("Escolha os dias da semana de trabalho (segunda a domingo).")
-    dias = [(ini + timedelta(days=k)).isoformat() for k in range((fim - ini).days + 1) if (ini + timedelta(days=k)).weekday() in semana]
-    if not dias:
-        raise RegraViolada("Nenhum dia do período cai nos dias da semana escolhidos.")
-    return dias
-
-
-def programar(conn, linhas, nos, equipe_id, servico, data_ini, data_fim, por, dias_semana=None, obs=None):
-    """A equipe executa o serviço na seleção nos dias do período: uma programação por alvo (linha ou nó) e por dia, todas
-    com o mesmo carimbo de criação (o lote). Programação igual já existente (mesmo dia, equipe, alvo e serviço) é mantida."""
+def programar(conn, linhas, nos, equipe_id, servico, data, por, obs=None, confirmar=False):
+    """O que a equipe executa NAQUELE dia (o macro de 18 meses é o Cronograma; o dia é aqui): uma programação por alvo
+    (linha ou nó), todas com o mesmo carimbo de criação (o lote). Programação igual já existente é mantida. O alvo já
+    programado para OUTRA equipe no mesmo dia não é gravado sem confirmação: devolve {"confirmar": texto} e nada muda;
+    com confirmar=True grava assim mesmo (duas equipes no mesmo trecho)."""
     if not _one(conn, "SELECT 1 FROM equipes WHERE id=?", equipe_id):
         raise RegraViolada("Equipe não cadastrada.")
     if servico not in P.SERVICOS:
         raise RegraViolada("Serviço inválido.")
-    dias = dias_do_periodo(data_ini, data_fim, dias_semana)
+    dia = _data(data, "programação").isoformat()
     alvos = _alvos(_selecao(conn, linhas, nos))
     if not alvos:
         raise RegraViolada("Escolha no mapa ao menos um trecho.")
-    if len(alvos) * len(dias) > LIMITE_PROGRAMACOES:
-        raise RegraViolada(f"São {len(alvos)} alvos × {len(dias)} dias = {len(alvos) * len(dias)} programações; o limite por vez "
-                           f"é {LIMITE_PROGRAMACOES}. Divida o período ou a seleção.")
+    if len(alvos) > LIMITE_PROGRAMACOES:
+        raise RegraViolada(f"São {len(alvos)} alvos; o limite por vez é {LIMITE_PROGRAMACOES}. Divida a seleção.")
+    nomes = P.nomes_vigentes(conn)
+    outras = [(nomes.get((t, a), a), r["equipe_id"]) for t, a in alvos for r in conn.execute(
+        "SELECT DISTINCT equipe_id FROM programacoes WHERE data=? AND alvo_tipo=? AND alvo_id=? AND equipe_id<>? AND status='PLANEJADA'",
+        (dia, t, a, equipe_id))]
+    if outras and not confirmar:
+        lista = "; ".join(f"{R.nome_completo(n)} (equipe {eq})" for n, eq in outras[:6]) + (" e outros" if len(outras) > 6 else "")
+        return {"confirmar": f"Já programado para outra equipe em {dia}: {lista}. Programar também a equipe {equipe_id}?"}
     # o carimbo de criação é a identidade do lote: com microssegundos, dois pedidos seguidos não viram um lote só
     agora, criadas, existentes = RL.agora().isoformat(timespec="microseconds"), 0, 0
     obs = str(obs or "").strip() or None
     with transacao(conn):
-        for d in dias:
-            for tipo, aid in alvos:
-                if _one(conn, "SELECT 1 FROM programacoes WHERE data=? AND equipe_id=? AND alvo_tipo=? AND alvo_id=? AND servico=? "
-                              "AND status='PLANEJADA'", d, equipe_id, tipo, aid, servico):
-                    existentes += 1
-                    continue
-                conn.execute("""INSERT INTO programacoes(data,equipe_id,alvo_tipo,alvo_id,servico,obs,criada_por,criada_em)
-                                VALUES (?,?,?,?,?,?,?,?)""", (d, equipe_id, tipo, aid, servico, obs, por, agora))
-                criadas += 1
+        for tipo, aid in alvos:
+            if _one(conn, "SELECT 1 FROM programacoes WHERE data=? AND equipe_id=? AND alvo_tipo=? AND alvo_id=? AND servico=? "
+                          "AND status='PLANEJADA'", dia, equipe_id, tipo, aid, servico):
+                existentes += 1
+                continue
+            conn.execute("""INSERT INTO programacoes(data,equipe_id,alvo_tipo,alvo_id,servico,obs,criada_por,criada_em)
+                            VALUES (?,?,?,?,?,?,?,?)""", (dia, equipe_id, tipo, aid, servico, obs, por, agora))
+            criadas += 1
     if not criadas:
-        raise RegraViolada("Nada novo: a equipe já está programada para esse serviço em todos esses dias e alvos.")
+        raise RegraViolada("Nada novo: a equipe já está programada para esse serviço nesse dia em todos esses alvos.")
     return {"lote": f"{agora}|{por}|{equipe_id}|{servico}", "criadas": criadas, "ja_existiam": existentes,
-            "dias": len(dias), "alvos": len(alvos), "de": dias[0], "ate": dias[-1]}
+            "alvos": len(alvos), "data": dia}
 
 
 def cancelar_lote(conn, lote, motivo, por, a_partir_de=None):
@@ -373,6 +359,9 @@ def liberar(conn, data, equipe_id, linhas, nos, materiais, por, funcionarios=(),
             cid, novo = S.checkin(conn, data, equipe_id, tipo, ref, [int(i) for i in funcionarios or ()],
                                   [int(i) for i in maquinas or ()], itens), True
         n = _realizar(conn, cid, equipe_id, data, alvos)
+        for t, a in alvos:                         # todos os trechos do dia (v20): o programado e o acrescentado na hora
+            prog = _one(conn, "SELECT 1 FROM programacoes WHERE checkin_id=? AND alvo_tipo=? AND alvo_id=?", cid, t, a)
+            conn.execute("INSERT OR IGNORE INTO checkin_alvos VALUES (?,?,?,?)", (cid, t, a, "PROGRAMACAO" if prog else "CHECKIN"))
     return {"checkin_id": cid, "novo": novo, "itens": len(itens), "programacoes_realizadas": n}
 
 
@@ -409,7 +398,8 @@ def estado(conn, data=None, dias=21):
         if not n or p["status"] != "PLANEJADA":
             continue
         x = programado.setdefault(n, {}).setdefault((p["equipe_id"], p["servico"]), {
-            "equipe": p["equipe_id"], "servico": p["servico"], "de": p["data"], "ate": p["data"], "dias": 0, "hoje": False})
+            "equipe": p["equipe_id"], "servico": p["servico"], "tipo": p["alvo_tipo"], "de": p["data"], "ate": p["data"], "dias": 0,
+            "hoje": False})
         x["de"], x["ate"], x["dias"] = min(x["de"], p["data"]), max(x["ate"], p["data"]), x["dias"] + 1
         x["hoje"] = x["hoje"] or p["data"] == hoje
     return {"hoje": hoje, "ate": ate,

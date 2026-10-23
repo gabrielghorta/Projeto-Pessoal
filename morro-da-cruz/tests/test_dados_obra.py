@@ -85,7 +85,7 @@ class TestSelecao(BaseDadosObra):
             self.assertEqual([f["membros"] for f in r["fisicos"]], [[TR, TR2]])
             self.assertEqual([t["ponto"] for t in r["linhas"]], [TR, TR2])
             self.assertEqual(r["nos"], [])                           # o NÓ2.7 é cruzamento, não ponta do trecho físico
-            x = DO.programar(self.c, [TR], [], "Zona01", "ASSENTAMENTO", SEG, SEG, "eng1")
+            x = DO.programar(self.c, [TR], [], "Zona01", "ASSENTAMENTO", SEG, "eng1")
             self.assertEqual((x["criadas"], x["alvos"]), (2, 2))
         finally:
             TP.CONFIG, TP.CONFIG_PROGRAMA = antigo
@@ -101,35 +101,34 @@ class TestSelecao(BaseDadosObra):
             DO.selecao(self.c, [TR3])
 
 
-class TestProgramacaoEmLote(BaseDadosObra):
-    def test_periodo_dias_da_semana_lote_e_cancelamento(self):
-        x = DO.programar(self.c, [TR2, TR3], [], "Zona01", "ASSENTAMENTO", SEG, DOM, "eng1")
-        self.assertEqual((x["criadas"], x["alvos"], x["dias"], x["de"], x["ate"]), (18, 3, 6, SEG, SAB))   # seg a sáb × TR002, TR003, DF-33
-        self.assertEqual(self.n("programacoes", "criada_em=? AND criada_por='eng1'", x["lote"].split("|")[0]), 18)
+class TestProgramacaoDoDia(BaseDadosObra):
+    """O Dados da obra é o DIA da equipe (o macro é o Cronograma): programar vale para um dia só."""
+    def test_um_dia_lote_confirmacao_e_cancelamento(self):
+        x = DO.programar(self.c, [TR2, TR3], [], "Zona01", "ASSENTAMENTO", SEG, "eng1")
+        self.assertEqual((x["criadas"], x["alvos"], x["data"]), (3, 3, SEG))       # TR002, TR003 e o DF-33 que os liga
+        self.assertEqual(self.n("programacoes", "criada_em=? AND criada_por='eng1'", x["lote"].split("|")[0]), 3)
         with self.assertRaisesRegex(S.RegraViolada, "Nada novo"):
-            DO.programar(self.c, [TR2, TR3], [], "Zona01", "ASSENTAMENTO", SEG, SAB, "eng1")
-        y = DO.programar(self.c, [TR2, TR3], [], "Zona01", "ASSENTAMENTO", SEG, DOM, "eng1", dias_semana=[6], obs="mutirão")
-        self.assertEqual((y["criadas"], y["de"]), (3, DOM))
-        for args, msg in (((SEG, "2026-12-31"), "longo demais"), ((SAB, SEG), "antes do início"), ((SEG, SEG, []), "dias da semana"),
-                          ((SEG, SAB, [9]), "dias da semana"), ((DOM, DOM, [0]), "Nenhum dia")):
+            DO.programar(self.c, [TR2, TR3], [], "Zona01", "ASSENTAMENTO", SEG, "eng1")
+        y = DO.programar(self.c, [TR2, TR3], [], "Zona01", "ASSENTAMENTO", DOM, "eng1", obs="mutirão")
+        self.assertEqual((y["criadas"], y["data"]), (3, DOM))
+        # outra equipe no mesmo trecho e dia: pede confirmação e não grava nada; confirmada, grava
+        r = DO.programar(self.c, [TR2], [], "Zona02", "REATERRO", SEG, "eng1")
+        self.assertIn("Zona 01 · PB01 · TR002 (equipe Zona01)", r["confirmar"])
+        self.assertEqual(self.n("programacoes", "equipe_id='Zona02'"), 0)
+        self.assertEqual(DO.programar(self.c, [TR2], [], "Zona02", "REATERRO", SEG, "eng1", confirmar=True)["criadas"], 1)
+        for args, msg in (((TR2, "VOAR", "Zona01", SEG), "Serviço inválido"), ((TR2, "REATERRO", "ZonaXX", SEG), "Equipe não cadastrada"),
+                          ((None, "REATERRO", "Zona01", SEG), "ao menos um trecho"), ((TR2, "REATERRO", "Zona01", "amanhã"), "inválida")):
             with self.assertRaisesRegex(S.RegraViolada, msg):
-                DO.programar(self.c, [TR2], [], "Zona01", "REATERRO", *args[:2], "eng1", *args[2:])
-        with self.assertRaisesRegex(S.RegraViolada, "Serviço inválido"):
-            DO.programar(self.c, [TR2], [], "Zona01", "VOAR", SEG, SEG, "eng1")
-        with self.assertRaisesRegex(S.RegraViolada, "Equipe não cadastrada"):
-            DO.programar(self.c, [TR2], [], "ZonaXX", "REATERRO", SEG, SEG, "eng1")
-        with self.assertRaisesRegex(S.RegraViolada, "ao menos um trecho"):
-            DO.programar(self.c, [], [], "Zona01", "REATERRO", SEG, SEG, "eng1")
+                DO.programar(self.c, [args[0]] if args[0] else [], [], args[2], args[1], args[3], "eng1")
         e = DO.estado(self.c, SEG)
-        self.assertEqual(e["programado"][TR2], [{"equipe": "Zona01", "servico": "ASSENTAMENTO", "de": SEG, "ate": DOM, "dias": 7, "hoje": True}])
+        self.assertEqual(e["programado"][TR2][0], {"equipe": "Zona01", "servico": "ASSENTAMENTO", "tipo": "TRECHO", "de": SEG,
+                                                   "ate": DOM, "dias": 2, "hoje": True})
         self.assertIn(DF33, e["programado"])
-        self.assertEqual(sorted(l["dias"] for l in e["lotes"]), [1, 6])
-        n = DO.cancelar_lote(self.c, x["lote"], "chuva na semana", "eng1", a_partir_de="2026-10-15")
-        self.assertEqual(n, 9)                                                    # quinta, sexta e sábado × 3 alvos
-        self.assertEqual(self.prog(TR2, "2026-10-14"), [("PLANEJADA", None)])
-        self.assertEqual(self.prog(TR2, "2026-10-16"), [("CANCELADA", None)])
+        self.assertEqual(sorted(l["dias"] for l in e["lotes"]), [1, 1, 1])
+        self.assertEqual(DO.cancelar_lote(self.c, x["lote"], "chuva", "eng1"), 3)
+        self.assertEqual(self.prog(TR2, SEG), [("CANCELADA", None), ("PLANEJADA", None)])   # a da Zona02 continua
         with self.assertRaisesRegex(S.RegraViolada, "Nada a cancelar"):
-            DO.cancelar_lote(self.c, x["lote"], "de novo", "eng1", a_partir_de="2026-10-15")
+            DO.cancelar_lote(self.c, x["lote"], "de novo", "eng1")
         with self.assertRaisesRegex(S.RegraViolada, "motivo"):
             DO.cancelar_lote(self.c, y["lote"], " ", "eng1")
         with self.assertRaisesRegex(S.RegraViolada, "Lote inválido"):
@@ -142,8 +141,8 @@ class TestLiberacaoEDevolucao(BaseDadosObra):
         S.entrada_material(self.c, D, TUBO, 200, "ROMANEIO_CAESB", "ROM 1", "almox1")
 
     def test_liberar_abre_o_checkin_soma_no_mesmo_dia_e_realiza_a_programacao(self):
-        DO.programar(self.c, [TR2, TR3], [], "Zona01", "ASSENTAMENTO", D, D, "eng1")
-        DO.programar(self.c, [TR], [], "Zona01", "ESCAVACAO", D, D, "eng1")
+        DO.programar(self.c, [TR2, TR3], [], "Zona01", "ASSENTAMENTO", D, "eng1")
+        DO.programar(self.c, [TR], [], "Zona01", "ESCAVACAO", D, "eng1")
         x = DO.liberar(self.c, D, "Zona01", [TR2, TR3], [], [{"material_id": TUBO, "quantidade": 50}, {"material_id": TUBO, "quantidade": 0}], "almox1")
         self.assertEqual((x["novo"], x["itens"], x["programacoes_realizadas"]), (True, 1, 3))
         ck = x["checkin_id"]
@@ -160,9 +159,22 @@ class TestLiberacaoEDevolucao(BaseDadosObra):
         self.assertEqual([(c["id"], c["materiais"][0]["quantidade"]) for c in est["checkins"]], [(ck, 60)])
         self.assertEqual(est["em_campo"][TR3]["checkin_id"], ck)
         self.assertEqual(P.camadas_mapa(self.c, D)["em_campo"][TR2]["equipe"], "Zona01")
+        # o check-in cobre todos os trechos do dia (v20); o pino da equipe vai em cada um
+        self.assertEqual(self.q("SELECT a.alvo_id, a.origem FROM checkin_alvos a WHERE checkin_id=? ORDER BY rowid", ck),
+                         [("TR-00002", "PROGRAMACAO"), ("TR-00099", "PROGRAMACAO"), (self.q("SELECT id FROM atividades WHERE nomenclatura=?", DF33)[0][0], "PROGRAMACAO"),
+                          ("TR-00001", "PROGRAMACAO")])
+        self.assertEqual(sorted(p["alvo_id"] for p in S.estado_mapa(self.c, data=D)["pins"]), sorted([TR, TR2, TR3, DF33]))
         S.checkout(self.c, ck, [{"material_id": TUBO, "aplicado": 45, "sobra": 15}])     # devolução do fim do dia
         self.assertEqual((S.saldo_almox(self.c, TUBO)[0], S.custodia_equipe(self.c, "Zona01", TUBO)), (155, 0))
         self.assertEqual(P.em_campo(self.c, D), {})
+        self.assertEqual(S.estado_mapa(self.c, data=D)["pins"], [])                     # fechar a devolução tira o pino
+
+    def test_trecho_fora_da_programacao_entra_na_hora(self):
+        DO.programar(self.c, [TR2], [], "Zona01", "ASSENTAMENTO", D, "eng1")
+        ck = DO.liberar(self.c, D, "Zona01", [TR2, TR], [], [], "almox1")["checkin_id"]    # TR001 não estava programado
+        self.assertEqual(self.q("SELECT alvo_id, origem FROM checkin_alvos WHERE checkin_id=? ORDER BY rowid", ck),
+                         [("TR-00002", "PROGRAMACAO"), ("TR-00001", "CHECKIN")])
+        self.assertEqual(set(P.em_campo(self.c, D)), {TR, TR2})
 
     def test_recusas_da_liberacao(self):
         with self.assertRaisesRegex(S.RegraViolada, "data futura"):
@@ -195,7 +207,7 @@ class TestHTTPDadosObra(BaseDadosObra):
         st, r = almox.get(sel)
         self.assertEqual((st, [n["nome"] for n in r["nos"]]), (200, [DF33]))
         self.assertEqual(enc.get(sel)[0], 403)                                      # o encarregado não abre o Dados da obra
-        prog = {"linhas": [TR2, TR3], "equipe_id": "Zona01", "servico": "ASSENTAMENTO", "data_ini": D, "data_fim": D}
+        prog = {"linhas": [TR2, TR3], "equipe_id": "Zona01", "servico": "ASSENTAMENTO", "data": D}
         self.assertEqual(almox.post("/api/dados-obra/programar", prog)[0], 403)     # programar é da engenharia
         st, x = eng.post("/api/dados-obra/programar", prog)
         self.assertEqual((st, x.get("criadas")), (200, 3), x)

@@ -163,19 +163,16 @@ class CicloZona01(unittest.TestCase):
 
     # ---------------------------------------------------------------- 1. planejar
     def test_01_planejar(self):
-        self.recusa("enc1", "/api/programacao", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                                 "servico": "ASSENTAMENTO"}, 403)
-        r = self.ok("eng1", "/api/programacao", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                                 "servico": "ASSENTAMENTO", "ini_m": 0, "fim_m": self.L,
-                                                 "materiais": [{"material_id": self.tubo, "quantidade": 40},
-                                                               {"material_id": self.luva, "quantidade": 6}]})
-        type(self).prog_id = r["id"]
-        p = self.get(f"/api/programacoes?ini={D2}&fim={D2}&frente=Zona01")
-        falt = {f["material_id"]: f for f in p["faltantes"]}
-        self.assertEqual((falt[self.tubo]["previsto"], falt[self.tubo]["faltante"]), (40, 40))
+        prog = {"linhas": [TR], "equipe_id": "Zona01", "servico": "ASSENTAMENTO", "data": D2}
+        self.recusa("enc1", "/api/dados-obra/programar", prog, 403)
+        r = self.ok("eng1", "/api/dados-obra/programar", prog)                  # o dia da equipe, no Dados da obra
+        self.assertEqual((r["criadas"], r["data"]), (1, D2))
+        type(self).prog_id = self.q("SELECT id FROM programacoes WHERE data=? AND equipe_id='Zona01'", D2)[0][0]
+        sel = self.get(f"/api/dados-obra/selecao?linhas={TR}&data={D2}&equipe=Zona01")
+        tubo = {m["material_id"]: m for m in sel["materiais"]}[self.tubo]
+        self.assertEqual(tubo["previsto"], round(self.L, 3))                   # o projeto sugere o tubo do trecho inteiro
         self.assertEqual(self.q("SELECT COUNT(*) FROM movimentos")[0][0], 0)                   # planejar não movimenta
-        self.ev["1_planejar"] = {"programacao": p["programacoes"][0]["status"], "faltante_tubo": falt[self.tubo]["faltante"],
-                                 "faltante_luva": falt[self.luva]["faltante"]}
+        self.ev["1_planejar"] = {"programacao": "PLANEJADA", "tubo_sugerido": tubo["sugerido"], "falta_no_almox": tubo["falta_no_almox"]}
 
     # ---------------------------------------------------------------- 2. solicitar e comprar
     def test_02_solicitar_e_comprar(self):
@@ -228,10 +225,11 @@ class CicloZona01(unittest.TestCase):
         self.assertEqual(r1, r2)
         self.assertEqual(self.q("SELECT COUNT(*) FROM reservas WHERE material_id=?", self.tubo)[0][0], 1)
         self.ok("almox1", "/api/reserva", dict(corpo, material_id=self.luva, quantidade=6))
-        self.assertEqual(self.get(f"/api/programacoes?ini={D2}&fim={D2}")["faltantes"][0]["faltante"], 0)
-        ck = self.ok("almox1", "/api/checkin", {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                                "materiais": [{"material_id": self.tubo, "quantidade": 40},
-                                                              {"material_id": self.luva, "quantidade": 6}]})["id"]
+        sel = self.get(f"/api/dados-obra/selecao?linhas={TR}&data={D2}&equipe=Zona01")
+        self.assertEqual({m["material_id"]: m for m in sel["materiais"]}[self.tubo]["reservado_equipe"], 40)
+        ck = self.ok("almox1", "/api/dados-obra/liberar", {"data": D2, "equipe_id": "Zona01", "linhas": [TR],     # o check-in
+                                                            "materiais": [{"material_id": self.tubo, "quantidade": 40},
+                                                                          {"material_id": self.luva, "quantidade": 6}]})["checkin_id"]
         type(self).ck1 = ck
         self.assertEqual(self.q("SELECT status, checkin_id FROM programacoes WHERE id=?", self.prog_id), [("REALIZADA", ck)])
         self.assertEqual(self.q("SELECT COUNT(*) FROM reservas WHERE status='ATIVA'")[0][0], 0)       # consumidas na retirada
@@ -323,8 +321,8 @@ class CicloZona01(unittest.TestCase):
     # ---------------------------------------------------------------- 8. concluir, verificar e atualizar o mapa
     def test_08_concluir_verificar_mapa(self):
         self.ok("enc1", "/api/clima", {"data": D3, "equipe_id": "Zona01", "MANHA": "SOL", "TARDE": "CHUVA_FRACA_TENDA"})
-        ck = self.ok("almox1", "/api/checkin", {"data": D3, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
-                                                "materiais": [{"material_id": self.tubo, "quantidade": 50}]})["id"]
+        ck = self.ok("almox1", "/api/dados-obra/liberar", {"data": D3, "equipe_id": "Zona01", "linhas": [TR],
+                                                            "materiais": [{"material_id": self.tubo, "quantidade": 50}]})["checkin_id"]
         resto = round(self.L - 28, 6)
         self.ok("eng1", "/api/apontamento", {"data": D3, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR,
                                              "intervalos": [{"etapa": "ASSENTADO", "ini_m": 28, "fim_m": self.L},

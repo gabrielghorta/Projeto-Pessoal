@@ -430,6 +430,17 @@ CREATE TABLE IF NOT EXISTS checkins (
   encerrado INTEGER NOT NULL DEFAULT 0
 );
 
+-- v20: os trechos e nós que o check-in do dia cobre (a liberação do Dados da obra cobre vários de uma vez). origem:
+-- PROGRAMACAO (a equipe estava programada para o alvo no dia) ou CHECKIN (acrescentado na hora pelo almoxarife). O pino da
+-- equipe, a equipe em campo e o laranja "em execução hoje" saem daqui, de todos os alvos, e não só do primeiro.
+CREATE TABLE IF NOT EXISTS checkin_alvos (
+  checkin_id INTEGER NOT NULL REFERENCES checkins(id),
+  alvo_tipo TEXT NOT NULL,
+  alvo_id TEXT NOT NULL,
+  origem TEXT NOT NULL CHECK (origem IN ('PROGRAMACAO','CHECKIN')),
+  PRIMARY KEY (checkin_id, alvo_tipo, alvo_id)
+);
+
 -- Saldo que fica com a equipe no check-out (contado com o encarregado); volta como custódia no dia seguinte
 CREATE TABLE IF NOT EXISTS custodia_declarada (
   checkin_id INTEGER NOT NULL REFERENCES checkins(id),

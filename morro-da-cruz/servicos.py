@@ -26,7 +26,7 @@ import relogio as RL
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 19
+VERSAO_ESQUEMA = 20
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -70,7 +70,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "apropriação direta, itens a aprovar na base de custo e gaveta 5 da medição"))
+                 (VERSAO_ESQUEMA, _agora(), "check-in com vários trechos e nós (checkin_alvos), o dia da equipe no Dados da obra"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -658,9 +658,10 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
         cid = conn.execute("INSERT INTO checkins(data,equipe_id,alvo_tipo,alvo_id,contingencia) VALUES (?,?,?,?,?)",
                            (data, equipe_id, tipo, ref, contingencia)).lastrowid
         if ref:                                    # o planejado daquele dia e alvo passa a realizado (módulo D)
-            conn.execute("""UPDATE programacoes SET status='REALIZADA', checkin_id=?, encerrada_em=?
-                            WHERE equipe_id=? AND data=? AND alvo_tipo=? AND alvo_id=? AND status='PLANEJADA'""",
-                         (cid, _agora(), equipe_id, data, tipo, ref))
+            n = conn.execute("""UPDATE programacoes SET status='REALIZADA', checkin_id=?, encerrada_em=?
+                                WHERE equipe_id=? AND data=? AND alvo_tipo=? AND alvo_id=? AND status='PLANEJADA'""",
+                             (cid, _agora(), equipe_id, data, tipo, ref)).rowcount
+            conn.execute("INSERT INTO checkin_alvos VALUES (?,?,?,?)", (cid, tipo, ref, "PROGRAMACAO" if n else "CHECKIN"))
         for f in funcionarios:
             conn.execute("INSERT INTO checkin_presencas VALUES (?, 'FUNCIONARIO', ?)", (cid, f))
         for m in maquinas:
@@ -737,12 +738,20 @@ def checkout(conn, checkin_id, itens):
         conn.execute("UPDATE checkins SET encerrado=1 WHERE id=?", (checkin_id,))
 
 
+def alvos_do_checkin(conn, checkin_id):
+    """Os trechos e nós que o check-in cobre (v20), na ordem em que entraram: o alvo dele primeiro."""
+    return [{"alvo_tipo": t, "alvo_id": a, "origem": o, "nome": nome_alvo(conn, t, a), "retirado": _retirado(conn, t, a)}
+            for t, a, o in conn.execute("SELECT alvo_tipo, alvo_id, origem FROM checkin_alvos WHERE checkin_id=? ORDER BY rowid",
+                                        (checkin_id,))]
+
+
 def checkins_abertos(conn, data=None):
     sql = "SELECT * FROM checkins WHERE encerrado=0" + (" AND data=?" if data else "") + " ORDER BY equipe_id"
     out = _rows(conn.execute(sql, (data,) if data else ()))
     for c in out:
         c["alvo_nome"] = nome_alvo(conn, c["alvo_tipo"], c["alvo_id"]) if c["alvo_id"] else None
         c["alvo_retirado"] = bool(c["alvo_id"]) and _retirado(conn, c["alvo_tipo"], c["alvo_id"])
+        c["alvos"] = alvos_do_checkin(conn, c["id"])
         hoje = {r[0]: r[1] for r in conn.execute(
             f"SELECT material_id, SUM(quantidade) FROM movimentos WHERE checkin_id=? AND tipo='CUSTODIA' AND {VALIDO} "
             "GROUP BY material_id", (c["id"],))}
@@ -2361,12 +2370,12 @@ def detalhe(conn, alvo_tipo, ref):
 
 # Tabelas com registro operacional ligado a um alvo. A importação não retira um alvo com histórico sem
 # conciliação, e o mapa lista os retirados que têm histórico. Uma definição só, usada pelos dois.
-HISTORICO_POR_ALVO = ["checkins", "apontamentos", "fotos", "execucao", "movimentos", "medicao_lancamentos", "soldas",
-                      "reservas", "ocorrencias", "programacoes"]
+HISTORICO_POR_ALVO = ["checkins", "checkin_alvos", "apontamentos", "fotos", "execucao", "movimentos", "medicao_lancamentos",
+                      "soldas", "reservas", "ocorrencias", "programacoes"]
 HISTORICO_POR_TRECHO = [("cadastro", "trecho_id"), ("ligacoes_prediais", "trecho_id"), ("intervalos_execucao", "trecho_id"),
                         ("conciliacoes_legado", "trecho_id"), ("retificacoes_intervalos", "trecho_id"),
                         ("revisoes_cadastro", "trecho_id"), ("etapas_complementares", "trecho_id")]
-NOMES_HISTORICO = {"checkins": "check-in", "apontamentos": "apontamento", "fotos": "foto", "execucao": "execução",
+NOMES_HISTORICO = {"checkins": "check-in", "checkin_alvos": "check-in", "apontamentos": "apontamento", "fotos": "foto", "execucao": "execução",
                    "movimentos": "movimento de material", "medicao_lancamentos": "lançamento de medição (teste)",
                    "soldas": "soldas", "reservas": "reserva de material", "cadastro": "esteira de cadastro",
                    "ligacoes_prediais": "ligação predial", "intervalos_execucao": "intervalos executados",
@@ -2435,18 +2444,17 @@ def estado_mapa(conn, medicao_atual_id=None, data=None):
             n = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM soldas WHERE alvo_tipo=? AND alvo_id=?", (tipo, aid)).fetchone()[0]
             if n:
                 retirados[(tipo, aid)]["situacoes"].append(f"{n} solda(s) registrada(s)")
-    pins = []
+    pins = []                                  # um pino da equipe em cada trecho ou nó do check-in do dia (v20)
     for c in checkins_abertos(conn, data or RL.hoje().isoformat()):
-        if not c["alvo_id"]:
-            continue
-        if c["alvo_retirado"]:
-            r = retirados.setdefault((c["alvo_tipo"], c["alvo_id"]), {
-                "alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_id"], "nome": c["alvo_nome"], "historico": ["check-in"],
-                "situacoes": []})
-            r["situacoes"].append(f"check-in {c['id']} aberto ({c['equipe_id']}) — encerrar no check-out")
-            continue
-        pins.append({"equipe": c["equipe_id"], "alvo_tipo": c["alvo_tipo"], "alvo_id": c["alvo_nome"], "checkin": c["id"],
-                     "data": c["data"], "origem": "programação do check-in"})
+        for a in c["alvos"]:
+            if a["retirado"]:
+                r = retirados.setdefault((a["alvo_tipo"], a["alvo_id"]), {
+                    "alvo_tipo": a["alvo_tipo"], "alvo_id": a["alvo_id"], "nome": a["nome"], "historico": ["check-in"],
+                    "situacoes": []})
+                r["situacoes"].append(f"check-in {c['id']} aberto ({c['equipe_id']}) — encerrar no check-out")
+                continue
+            pins.append({"equipe": c["equipe_id"], "alvo_tipo": a["alvo_tipo"], "alvo_id": a["nome"], "checkin": c["id"],
+                         "data": c["data"], "origem": "programação do dia" if a["origem"] == "PROGRAMACAO" else "acrescentado na liberação"})
     return {
         "status": status,
         "verificacao": verificacao,

@@ -70,14 +70,14 @@ class TestProgramacao(BaseCampo):
 class TestPlanejamentoPeloHTTP(BaseHTTP):
     def test_permissao_frente_e_estado_do_mapa(self):
         enc, eng = self.cliente("enc1"), self.cliente("eng1")
-        corpo = {"data": D2, "equipe_id": "Zona01", "alvo_tipo": "TRECHO", "alvo_id": TR, "servico": "ASSENTAMENTO"}
-        self.assertEqual(enc.post("/api/programacao", corpo)[0], 403)
-        st, r = eng.post("/api/programacao", corpo)
+        corpo = {"data": D2, "equipe_id": "Zona01", "linhas": [TR], "servico": "ASSENTAMENTO"}   # o dia da equipe (Dados da obra)
+        self.assertEqual(enc.post("/api/dados-obra/programar", corpo)[0], 403)
+        st, r = eng.post("/api/dados-obra/programar", corpo)
         self.assertEqual(st, 200, r)
         self.assertEqual(self.q("SELECT criada_por FROM programacoes"), [("eng1",)])
-        st, lst = eng.get(f"/api/programacoes?ini={D}&fim={D2}&frente=Zona01")
-        self.assertEqual([p["alvo_nome"] for p in lst["programacoes"]], [TR])
-        self.assertEqual(eng.get(f"/api/programacoes?ini={D}&fim={D2}&frente=Zona02")[1]["programacoes"], [])
+        self.assertEqual(eng.post("/api/programacao", corpo)[0], 404)              # a tela Programação das equipes saiu
+        st, est = eng.get(f"/api/dados-obra/estado?data={D2}")
+        self.assertEqual(list(est["programado"]), [TR])
         st, z1 = eng.get("/api/resumo?frente=Zona01")
         self.assertEqual(z1["trechos"], self.q("SELECT COUNT(*) FROM trechos WHERE vigente=1 AND frente_id='Zona01'")[0][0])
         self.assertLess(z1["trechos"], eng.get("/api/resumo")[1]["trechos"])

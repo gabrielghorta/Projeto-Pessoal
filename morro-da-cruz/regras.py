@@ -50,6 +50,15 @@ def somar_por_unidade(itens):
     return tot
 
 
+def nome_completo(nome):
+    """Nome do trecho ou nó para quem lê: Zona03_PB06_Rede_TR014 → "Zona 03 · PB06 · TR014". A numeração TR recomeça a
+    cada PB (o TR001 existe em dezenas de PBs): o número sozinho não identifica o trecho."""
+    m = re.match(r"^(?:Zona(\d+)|(ADUTORA))_(PB\d+)_(?:Rede_)?(.+)$", str(nome or ""))
+    if not m:
+        return str(nome or "")
+    return f"{'Zona ' + m.group(1) if m.group(1) else 'Adutora'} · {m.group(3)} · {m.group(4)}"
+
+
 def fmt_num(v, casas=2):
     s = f"{v:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")
     if casas and "," in s:

@@ -40,11 +40,9 @@
       <button type="button" class="rail-item rail-grupo" data-grupo="planejamento" title="Planejamento"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8.5 15l2.5 2.5 4.5-4.5"/></svg><span class="rail-rot">Planejamento</span></button>
       <div class="rail-sub" data-grupo="planejamento">
         <button type="button" class="rail-item sub" data-tela="mapa" title="Dados da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg><span class="rail-rot">Dados da obra</span></button>
-        <button type="button" class="rail-item sub" data-tela="prog" title="Programação das equipes"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg><span class="rail-rot">Programação das equipes</span></button>
         <button type="button" class="rail-item sub" data-tela="cronograma" title="Cronograma da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4v16h18M7 7h6M9 11h8M12 15h7"/></svg><span class="rail-rot">Cronograma da obra</span></button>
         <button type="button" class="rail-item sub" data-tela="almox" title="Estoque e movimentos"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h2M8 16.5h2"/></svg><span class="rail-rot">Estoque e movimentos</span></button>
         <button type="button" class="rail-item sub" data-tela="compras" title="Compras e notas"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4"/></svg><span class="rail-rot">Compras e notas</span></button>
-        <button type="button" class="rail-item sub" data-tela="ponto" title="Check-in e check-out"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"/></svg><span class="rail-rot">Check-in e check-out</span></button>
       </div>
       <button type="button" class="rail-item rail-grupo" data-grupo="grupo-campo" title="Execução"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Execução</span></button>
       <div class="rail-sub" data-grupo="grupo-campo">
@@ -514,35 +512,6 @@
     </div>
   </section>
 
-  <!-- ======================================================= PLANEJAMENTO: PROGRAMAÇÃO DAS EQUIPES -->
-  <section class="aba" id="aba-prog">
-    <header class="cab-tela"><h1>Programação das equipes</h1><p>O que cada equipe vai atacar nos próximos dias e o material que falta. Para programar vários trechos e dias de uma vez, use o mapa do Dados da obra.</p></header>
-    <div class="grade-2">
-      <div class="painel">
-        <h3>Programação das equipes (planejado)</h3>
-        <div class="linha"><label>De<input type="date" id="pgIni"></label><label>Até<input type="date" id="pgFim"></label>
-          <label>Frente<select id="pgFrente"><option value="">todas</option></select></label><label>Equipe<select id="pgEquipe" class="selEquipe"></select></label></div>
-        <div id="pgResumo" style="margin:8px 0"></div>
-        <div class="tabela" id="pgLista"></div>
-        <h3 style="margin-top:14px">Materiais previstos × disponíveis (faltantes)</h3>
-        <div class="tabela" id="pgFaltantes"></div>
-      </div>
-      <div class="painel">
-        <h3>Programar</h3>
-        <form id="fProg" data-perm="planejar">
-          <div class="linha"><label>Data<input type="date" name="data" required></label><label>Equipe<select name="equipe_id" class="selEquipe" required></select></label></div>
-          <label>Trecho / nó / caixa<div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8…" autocomplete="off" required><ul hidden></ul></div></label>
-          <div class="linha"><label>Serviço<select name="servico" id="selServProg" required></select></label><label>De (m)<input name="ini_m" type="number" step="any" min="0"></label><label>Até (m)<input name="fim_m" type="number" step="any" min="0"></label></div>
-          <div class="editor-itens" data-itens="prog"></div>
-          <button type="button" class="btn" data-mais-item="prog">+ material previsto</button>
-          <label>Observação<input name="obs"></label>
-          <p class="vazio" style="margin:0">Programação não é presença nem execução: o check-in da equipe naquele dia e alvo a marca como realizada.</p>
-          <div class="acoes"><button class="btn prim">Programar</button></div>
-        </form>
-      </div>
-    </div>
-  </section>
-
   <!-- ======================================================= PLANEJAMENTO: COMPRAS -->
   <section class="aba" id="aba-compras">
     <header class="cab-tela"><h1>Compras e notas</h1><p>Da solicitação ao pedido, à nota fiscal e ao recebimento conferido.</p></header>
@@ -626,8 +595,13 @@
 
   <!-- ======================================================= PLANEJAMENTO: ESTOQUE E MOVIMENTOS -->
   <section class="aba" id="aba-almox">
-    <header class="cab-tela"><h1>Estoque e movimentos</h1><p>O aceite ou a recusa do material que chegou, entradas, reservas, estoque e movimentos.</p></header>
+    <header class="cab-tela"><h1>Estoque e movimentos</h1><p>As equipes do dia, o aceite ou a recusa do material que chegou, entradas, reservas, estoque e movimentos.</p></header>
     <div class="grade">
+      <div class="painel largo" id="almoxDiaPainel" hidden>
+        <h3>Equipes programadas hoje</h3>
+        <p class="vazio" style="margin:0 0 8px">O que cada equipe vai executar hoje, programado no Dados da obra, e as peças que o projeto sugere. "Liberar" abre o Dados da obra com o dia da equipe escolhido: confira as quantidades e libere. Na hora, os trechos ficam em execução no Mapa iluminado, com o pino da equipe.</p>
+        <div id="almoxDia" class="vazio">Carregando…</div>
+      </div>
       <div class="painel largo">
         <h3>Aceite ou recusa do material entregue</h3>
         <p class="vazio" style="margin:0 0 8px">Material que chegou e está em quarentena. O aceito entra no estoque; o recusado não entra. É o mesmo aceite da tela Compras e notas.</p>
@@ -690,34 +664,6 @@
           <label class="check"><input type="checkbox" id="estSaldo" checked> só com movimento</label>
         </div>
         <div class="tabela" id="estoque"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ======================================================= PLANEJAMENTO: CHECK-IN E CHECK-OUT -->
-  <section class="aba" id="aba-ponto">
-    <header class="cab-tela"><h1>Check-in e check-out</h1><p>A saída de cada equipe pela manhã, com o material retirado, e o fechamento no fim do dia.</p></header>
-    <div class="grade">
-      <div class="painel">
-        <h3>Check-in da manhã</h3>
-        <form id="fCheckin" data-perm="almox">
-          <div class="linha">
-            <label>Data<input type="date" name="data" required></label>
-            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
-          </div>
-          <label>Presentes (gera o histograma)<div class="checks" id="ckPresentes"><span class="vazio">Escolha a equipe.</span></div></label>
-          <label>Trecho / nó que vai atacar hoje
-            <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div>
-          </label>
-          <label>…ou contingência (falta de tubo/conexão)<select name="contingencia"><option value="">—</option></select></label>
-          <label>Materiais retirados do almoxarifado</label>
-          <div id="ckMateriais" class="form"></div>
-          <div class="acoes"><button type="button" class="btn" id="ckAddMat">+ material</button><button class="btn prim">Registrar check-in e acender pin</button></div>
-        </form>
-      </div>
-      <div class="painel">
-        <h3>Check-out do fim do dia</h3>
-        <div id="checkoutLista" class="vazio">Nenhum check-in aberto.</div>
       </div>
     </div>
   </section>

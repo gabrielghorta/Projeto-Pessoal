@@ -631,6 +631,12 @@ $('#iluTrilha').addEventListener('click', ev => { if (ev.target.closest('[data-i
 
 /* ---- ficha do trecho (ou do nó) tocado no mapa */
 const nomeCurto = n => String(n || '').split('_').pop();          // Zona03_PB06_Rede_TR014 → TR014
+// o nome para quem escolhe ou confere: Zona03_PB06_Rede_TR014 → "Zona 03 · PB06 · TR014". A numeração TR recomeça a cada PB
+// (o TR001 existe em dezenas delas): o TR sozinho não identifica o trecho (regras.nome_completo, no servidor)
+const nomeCompleto = n => {
+  const m = /^(?:Zona(\d+)|(ADUTORA))_(PB\d+)_(?:Rede_)?(.+)$/.exec(String(n || ''));
+  return m ? `${m[1] ? 'Zona ' + m[1] : 'Adutora'} · ${m[3]} · ${m[4]}` : String(n || '');
+};
 const FOTO_NOME = { SINALIZACAO: 'sinalização', EXECUCAO: 'execução', CONCLUIDO: 'concluído' };
 // o trecho tocado e, se ele faz parte de um trecho físico (cruzamento, divisa de zona…), as outras linhas dele
 function marcarSelecao() {

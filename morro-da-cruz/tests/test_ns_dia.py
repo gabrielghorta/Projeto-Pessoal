@@ -52,7 +52,7 @@ class BaseDia(BaseReal):
         return [(NS._curto(p), a, b) for p, a, b in self.c.execute(sql, (etapa,))]
 
     def programar(self, linhas, data, equipe="Zona03"):
-        DO.programar(self.c, linhas, [], equipe, "ASSENTAMENTO", data.isoformat(), data.isoformat(), "eng1", list(range(7)))
+        DO.programar(self.c, linhas, [], equipe, "ASSENTAMENTO", data.isoformat(), "eng1")
 
 
 class TestLancamento(BaseDia):

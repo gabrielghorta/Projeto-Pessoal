@@ -28,7 +28,6 @@ try {                                 // só as camadas que existem: as antigas 
   const salvas = JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}');
   Object.keys(CAMADAS_PLN).forEach(k => { if (typeof salvas[k] === 'boolean') PLN.cam[k] = salvas[k]; });
 } catch (_) { /* sem storage */ }
-const DIAS_SEMANA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 const nomeAlvoCurto = n => nomeCurto(n).replace(/^NÓ/, 'NÓ ');
 
 function planSitu(nome, mapa) {
@@ -54,6 +53,7 @@ async function carregarDadosObra() {
   if (!PLN.pronto) montarPln(g); else ajustarAspecto(PLN);
   if (!MATERIAIS.length && pode('almox')) MATERIAIS = await api('/api/estoque').catch(() => []);
   await recarregarPln();
+  if (PLN.abrir) { const a = PLN.abrir; PLN.abrir = null; escolherEquipeDoDia(a.equipe, a.aba); }   // vindo do Estoque
   if (podeTela('cronograma') && !PLN.crono) api('/api/cronograma').then(c => { PLN.crono = c.vazio ? null : c; if (PLN.crono) renderPainel(); }).catch(() => null);
   if (PLN.foco) aplicarFoco();
 }
@@ -129,13 +129,13 @@ function colorirPln() {
     return s.tracejado ? linhasTracejadas(por[s.id], `${attrs} stroke-dasharray="${s.tracejado}"`) : `<path ${attrs} d="${caminho(por[s.id].flatMap(t => t.p))}"/>`;
   }).join('');
   $$('#plnLinhas .ilu-tr').forEach(p => p.style.display = PLN.vis[p.dataset.situ] ? '' : 'none');
-  const doDia = ((PLN.est || {}).checkins || []).filter(c => c.data === PLN.dia && c.alvo_nome);
-  $('#plnPins').innerHTML = doDia.map(c => {
-    const tipo = indexar(GERAL).trecho.has(c.alvo_nome) ? 'TRECHO' : 'ATIVIDADE', pos = posicaoAlvo(GERAL, tipo, c.alvo_nome);
+  const doDia = ((PLN.est || {}).checkins || []).filter(c => c.data === PLN.dia);
+  $('#plnPins').innerHTML = doDia.flatMap(c => c.alvos.map(n => {        // o pino da equipe em cada trecho e nó do dia
+    const tipo = indexar(GERAL).trecho.has(n) ? 'TRECHO' : 'ATIVIDADE', pos = posicaoAlvo(GERAL, tipo, n);
     if (!pos) return '';
-    return `<g class="ilu-pin" data-alvo="${esc(c.alvo_nome)}"><title>${esc(equipeNome(c.equipe_id))}: ${esc(c.alvos.map(nomeCurto).join(', '))} (check-in de ${dataBR(c.data)})</title>
+    return `<g class="ilu-pin" data-alvo="${esc(n)}"><title>${esc(equipeNome(c.equipe_id))}: ${esc(c.alvos.map(nomeCompleto).join(', '))} (check-in de ${dataBR(c.data)})</title>
       <circle cx="${pos.xy[0]}" cy="${pos.xy[1]}"/><text x="${pos.xy[0]}" y="${pos.xy[1]}">${esc(rotuloEquipe(c.equipe_id))}</text></g>`;
-  }).join('');
+  })).join('');
   PLN.ultPx = 0; desenharVista(PLN); marcarSelPln(); agendarCopia(PLN);
   if (PLN.pop) abrirPopPln(PLN.pop, true);
 }
@@ -366,7 +366,8 @@ function corpoDia() {
   const lista = Object.entries(eqs).sort(([a], [b]) => a.localeCompare(b)).map(([eq, x]) => `<div class="registro"><div><b>${esc(equipeNome(eq))}</b>
       ${x.campo.size ? `<span class="chip laranja">em campo · ${x.campo.size} alvo${x.campo.size > 1 ? 's' : ''}</span>` : '<span class="chip">sem check-in</span>'}</div>
     <small>${x.prog.size ? `programada: ${esc([...x.serv].map(serv).join(', '))} em ${esc([...x.prog].map(nomeCurto).slice(0, 8).join(', '))}${x.prog.size > 8 ? '…' : ''}` : 'sem programação no dia'}</small>
-    <div class="acoes"><button type="button" class="btn" data-pln-equipe-dia="${esc(eq)}">Escolher no mapa</button></div></div>`).join('');
+    <div class="acoes"><button type="button" class="btn" data-pln-equipe-dia="${esc(eq)}">Escolher no mapa</button>
+      ${pode('almox') && !futuro() ? `<button type="button" class="btn prim" data-pln-equipe-dia="${esc(eq)}" data-aba="liberar">Liberar o material do dia</button>` : ''}</div></div>`).join('');
   const lotes = (e.lotes || []).filter(l => (l.status.PLANEJADA || 0) > 0);
   return `<h3>Equipes no dia</h3>${lista || '<div class="vazio">Nenhuma equipe programada nem com check-in neste dia.</div>'}
     <h3 style="margin-top:14px">Programado nas próximas semanas</h3>${lotes.length ? lotes.map(htmlLote).join('') : '<div class="vazio">Nada programado.</div>'}`;
@@ -384,11 +385,10 @@ function corpoProgramar(r) {
   return `<form class="form" id="plnFormProg">
       <div class="linha"><label>Equipe<select name="equipe_id" data-pln-equipe required><option value="">—</option>${htmlEquipes(PLN.equipe)}</select></label>
         <label>Serviço<select name="servico" required>${serv}</select></label></div>
-      <div class="linha"><label>De<input type="date" name="data_ini" value="${PLN.dia}" required></label><label>Até<input type="date" name="data_fim" value="${maisDias(PLN.dia, 4)}" required></label></div>
-      <fieldset class="pln-semana"><legend>Dias de trabalho</legend>${DIAS_SEMANA.map((d, i) => `<label class="check"><input type="checkbox" name="dia" value="${i}"${i < 6 ? ' checked' : ''}> ${d}</label>`).join('')}</fieldset>
+      <div class="linha"><label>Dia<input type="date" name="data" value="${PLN.dia}" required></label></div>
       <label>Observação<input name="obs" placeholder="ex.: começar pelo NÓ2.7"></label>
-      <p class="vazio" style="margin:0">Uma programação por trecho e por dia de trabalho. Programar não é presença nem execução: o check-in da equipe naquele dia marca como realizada.</p>
-      <div class="acoes"><button class="btn prim">Programar</button></div></form>
+      <p class="vazio" style="margin:0">O que a equipe executa <b>nesse dia</b>, uma programação por trecho. O almoxarife libera as peças do dia para estes trechos e, na hora, eles ficam "em execução hoje" no Mapa iluminado, com o pino da equipe. Os 18 meses da obra ficam no Cronograma.</p>
+      <div class="acoes"><button class="btn prim">Programar para o dia</button></div></form>
     <h3 style="margin-top:14px">Já programado nestes trechos</h3>${r.programacoes.length ? r.programacoes.map(htmlLote).join('') : '<div class="vazio">Nada programado.</div>'}`;
 }
 function checkinDaEquipe(r) { return (r.checkins || []).find(c => c.equipe_id === PLN.equipe); }
@@ -466,6 +466,47 @@ function corpoTrechos(r) {
     ${r.nos.length ? `<h3 style="margin-top:12px">Nós</h3>${r.nos.map(n => `<div><small><b>${esc(n.numero)}</b> · ${esc(n.tipo)} · ${n.automatico ? 'entrou sozinho: liga ' + esc(n.liga.join(' e ')) : 'tocado no mapa'}</small></div>`).join('')}` : ''}`;
 }
 
+// os trechos e nós do dia de uma equipe (o programado e o que já está no check-in) ficam escolhidos no mapa
+function escolherEquipeDoDia(eq, aba) {
+  const e = PLN.est || { programado: {}, em_campo: {} }, ix = indexar(GERAL);
+  const alvos = Object.entries(e.programado).filter(([, ps]) => ps.some(p => p.hoje && p.equipe === eq)).map(([n]) => n)
+    .concat(Object.entries(e.em_campo).filter(([, c]) => c.equipe === eq).map(([n]) => n));
+  PLN.sel = [...new Set(alvos.filter(n => ix.trecho.has(n)))]; PLN.nos = [...new Set(alvos.filter(n => !ix.trecho.has(n)))];
+  PLN.equipe = eq; PLN.equipeFixa = true; if (aba) PLN.aba = aba;
+  if (alvos.length) focarNomes(alvos);
+  atualizarSelecao();
+}
+// Estoque e movimentos › "Equipes programadas hoje": cada equipe com os trechos do dia (nome completo) e as peças
+// sugeridas pelo projeto; "Liberar" abre o Dados da obra com o dia da equipe escolhido, na aba Liberar material
+async function almoxEquipesDoDia() {
+  const box = $('#almoxDia'), dia = hoje();
+  $('#almoxDiaPainel').hidden = false;
+  const e = await api('/api/dados-obra/estado?data=' + dia).catch(() => null); if (!e) return;
+  const eqs = {};
+  Object.entries(e.programado).forEach(([n, ps]) => ps.filter(p => p.hoje).forEach(p => {
+    const x = eqs[p.equipe] = eqs[p.equipe] || { linhas: new Set(), nos: new Set() }; (p.tipo === 'TRECHO' ? x.linhas : x.nos).add(n);
+  }));
+  const ids = Object.keys(eqs).sort();
+  if (!ids.length) { box.className = 'vazio'; box.textContent = 'Nenhuma equipe programada para hoje (programe no Dados da obra).'; return; }
+  const sels = await Promise.all(ids.map(eq => api('/api/dados-obra/selecao?' + new URLSearchParams({ linhas: [...eqs[eq].linhas].join(','),
+    nos: [...eqs[eq].nos].join(','), data: dia, equipe: eq })).catch(() => null)));
+  box.className = '';
+  box.innerHTML = ids.map((eq, i) => {
+    const r = sels[i], alvos = [...eqs[eq].linhas, ...eqs[eq].nos], ja = Object.values(e.em_campo).some(c => c.equipe === eq);
+    const mats = r ? r.materiais.filter(m => m.sugerido > 0) : [];
+    return `<div class="registro"><div><b>${esc(equipeNome(eq))}</b> ${ja ? '<span class="chip laranja">material liberado · em campo</span>' : '<span class="chip amarelo">aguardando a liberação</span>'}</div>
+      <small>${alvos.map(n => esc(nomeCompleto(n))).join(' · ')}</small>
+      ${mats.length ? `<div><small>Peças sugeridas: ${mats.slice(0, 8).map(m => `${esc(m.material_id)} ${nf(m.liberavel, 3)} ${esc(m.unidade)}${m.falta_no_almox > 0 ? ` (faltam ${nf(m.falta_no_almox, 3)})` : ''}`).join(' · ')}${mats.length > 8 ? ' …' : ''}</small></div>` : ''}
+      <div class="acoes"><button type="button" class="btn prim" data-almox-liberar="${esc(eq)}">${ja ? 'Somar material no Dados da obra' : 'Liberar o material do dia'}</button></div></div>`;
+  }).join('');
+}
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-almox-liberar]'); if (!b) return;
+  PLN.dia = hoje(); if ($('#plnDia')) $('#plnDia').value = PLN.dia;
+  PLN.abrir = { equipe: b.dataset.almoxLiberar, aba: 'liberar' };
+  abrirAba('mapa');
+});
+
 /* ---------------------------------------------------------------- ações do painel */
 const PAINEL = $('#plnPainel');
 PAINEL.addEventListener('click', async ev => {
@@ -476,13 +517,7 @@ PAINEL.addEventListener('click', async ev => {
     const r = PLN.resp, [tipo, id] = r.linhas.length ? ['TRECHO', r.linhas[0].id] : ['ATIVIDADE', r.nos[0].atividade_id];
     await mostrarFiscal(tipo, id); return $('#fiscDetalhe').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-  if (q('[data-pln-equipe-dia]')) {
-    const eq = q('[data-pln-equipe-dia]').dataset.plnEquipeDia, e = PLN.est, ix = indexar(GERAL);
-    const alvos = Object.entries(e.programado).filter(([, ps]) => ps.some(p => p.hoje && p.equipe === eq)).map(([n]) => n)
-      .concat(Object.entries(e.em_campo).filter(([, c]) => c.equipe === eq).map(([n]) => n));
-    PLN.sel = [...new Set(alvos.filter(n => ix.trecho.has(n)))]; PLN.nos = [...new Set(alvos.filter(n => !ix.trecho.has(n)))];
-    PLN.equipe = eq; PLN.equipeFixa = true; focarNomes(alvos); return atualizarSelecao();
-  }
+  if (q('[data-pln-equipe-dia]')) return escolherEquipeDoDia(q('[data-pln-equipe-dia]').dataset.plnEquipeDia, q('[data-pln-equipe-dia]').dataset.aba);
   if (q('[data-pln-lote-ver]')) {
     const l = [...((PLN.est || {}).lotes || []), ...((PLN.resp || {}).programacoes || [])].find(x => x.lote === q('[data-pln-lote-ver]').dataset.plnLoteVer);
     if (!l) return;
@@ -513,10 +548,14 @@ PAINEL.addEventListener('submit', async ev => {
   ev.preventDefault();
   const f = ev.target, r = PLN.resp, sel = { linhas: PLN.sel, nos: PLN.nos };
   if (f.id === 'plnFormProg') {
-    const o = formObj(f), dias = $$('input[name=dia]:checked', f).map(i => +i.value);
-    const x = await acao(() => api('/api/dados-obra/programar', { ...sel, equipe_id: o.equipe_id, servico: o.servico, data_ini: o.data_ini, data_fim: o.data_fim, dias_semana: dias, obs: o.obs })).catch(() => null);
+    const o = formObj(f), corpo = { ...sel, equipe_id: o.equipe_id, servico: o.servico, data: o.data, obs: o.obs };
+    let x = await acao(() => api('/api/dados-obra/programar', corpo)).catch(() => null);
+    if (x && x.confirmar) {                                        // outra equipe já está nesse trecho no dia
+      if (!confirm(x.confirmar)) return;
+      x = await acao(() => api('/api/dados-obra/programar', { ...corpo, confirmar: true })).catch(() => null);
+    }
     if (!x) return;
-    toast(`Programado: ${x.criadas} programaç${x.criadas > 1 ? 'ões' : 'ão'} (${x.alvos} alvo${x.alvos > 1 ? 's' : ''} × ${x.dias} dia${x.dias > 1 ? 's' : ''}, ${dataBR(x.de)} a ${dataBR(x.ate)})${x.ja_existiam ? `; ${x.ja_existiam} já existia${x.ja_existiam > 1 ? 'm' : ''}` : ''}.`, 'ok');
+    toast(`Programado para ${dataBR(x.data)}: ${x.criadas} trecho${x.criadas > 1 ? 's' : ''} e nó${x.criadas > 1 ? 's' : ''}${x.ja_existiam ? `; ${x.ja_existiam} já estava${x.ja_existiam > 1 ? 'm' : ''}` : ''}.`, 'ok');
     return recarregarCamadaMapa();
   }
   if (f.id === 'plnFormLib') {

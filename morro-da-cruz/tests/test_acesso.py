@@ -181,7 +181,7 @@ class TestPermissoesEAutoria(BaseHTTP):
             self.assertEqual((enc.get(rota)[0], almox.get(rota)[0]), (200, 200), rota)
         for rota in ("/api/estoque", "/api/movimentos", "/api/compras", "/api/medicoes", "/api/relatorios", "/api/planilhas"):
             self.assertEqual(enc.get(rota)[0], 403, rota)                                   # encarregado: mapa e campo
-        for rota in ("/api/estoque", "/api/movimentos", "/api/compras", "/api/checkins"):
+        for rota in ("/api/estoque", "/api/movimentos", "/api/compras", "/api/reservas", f"/api/dados-obra/estado?data={D}"):
             self.assertEqual(almox.get(rota)[0], 200, rota)                                 # almoxarife: + almoxarifado
         for rota in ("/api/medicoes", "/api/relatorios", "/api/planilhas", "/api/usuarios"):
             self.assertEqual(almox.get(rota)[0], 403, rota)

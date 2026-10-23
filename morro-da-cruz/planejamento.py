@@ -139,19 +139,16 @@ def nomes_vigentes(conn):
 
 
 def em_campo(conn, data=None, nomes=None):
-    """Onde cada equipe está no dia: o alvo do check-in aberto e os alvos das programações que esse check-in realizou
-    (a liberação de material pelo mapa do Dados da obra cobre vários trechos de uma vez).
-    {nome visível: {"equipe": id, "checkin_id": id}}."""
+    """Onde cada equipe está no dia: todos os trechos e nós do check-in aberto (checkin_alvos: a liberação do Dados da obra
+    cobre vários de uma vez). {nome visível: {"equipe": id, "checkin_id": id}}."""
     data = data or RL.hoje().isoformat()
     nomes = nomes if nomes is not None else nomes_vigentes(conn)
     out = {}
-    for cid, eq, tipo, aid in conn.execute("SELECT id, equipe_id, alvo_tipo, alvo_id FROM checkins WHERE encerrado=0 AND data=? "
-                                           "ORDER BY id", (data,)).fetchall():
-        alvos = ([(tipo, aid)] if aid else []) + [tuple(r) for r in conn.execute(
-            "SELECT alvo_tipo, alvo_id FROM programacoes WHERE checkin_id=? ORDER BY id", (cid,))]
-        for a in alvos:
-            if a in nomes:
-                out.setdefault(nomes[a], {"equipe": eq, "checkin_id": cid})
+    for cid, eq, tipo, aid in conn.execute("""SELECT c.id, c.equipe_id, a.alvo_tipo, a.alvo_id FROM checkins c
+                                              JOIN checkin_alvos a ON a.checkin_id=c.id
+                                              WHERE c.encerrado=0 AND c.data=? ORDER BY c.id, a.rowid""", (data,)).fetchall():
+        if (tipo, aid) in nomes:
+            out.setdefault(nomes[(tipo, aid)], {"equipe": eq, "checkin_id": cid})
     return out
 
 

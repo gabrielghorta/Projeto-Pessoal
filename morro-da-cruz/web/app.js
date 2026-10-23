@@ -144,11 +144,9 @@ const TELAS = {
   topografia: { titulo: 'Topografia', grupo: 'grupo-campo', carregar: () => carregarTopografia() },
   cadastro_campo: { titulo: 'Cadastro de campo', grupo: 'grupo-campo', carregar: () => carregarCadCampo() },
   mapa: { titulo: 'Dados da obra', grupo: 'planejamento', carregar: () => carregarDadosObra() },
-  prog: { titulo: 'Programação das equipes', grupo: 'planejamento', carregar: () => carregarProg() },
   cronograma: { titulo: 'Cronograma da obra', grupo: 'planejamento', carregar: () => carregarCronograma() },
   almox: { titulo: 'Estoque e movimentos', grupo: 'planejamento', carregar: () => carregarAlmox() },
   compras: { titulo: 'Compras e notas', grupo: 'planejamento', carregar: () => carregarCompras() },
-  ponto: { titulo: 'Check-in e check-out', grupo: 'planejamento', carregar: () => carregarAlmox() },
   equipes: { titulo: 'Equipes', grupo: 'administrativo', carregar: () => carregarAlmox() },
   esteira: { titulo: 'Cadastro', grupo: 'administrativo', carregar: () => carregarEsteira() },
   relatorios: { titulo: 'Relatórios', grupo: 'administrativo', carregar: () => carregarRelatorios() },
@@ -161,7 +159,13 @@ const GRUPOS = { 'grupo-campo': 'Execução', planejamento: 'Planejamento', admi
 const podeTela = id => id === 'inicio' || !!(USUARIO && USUARIO.telas.includes(id));
 const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeTela(t));
 let TELA = null;
+// telas que saíram (link salvo): abrem a tela nova certa, com um aviso curto
+const TELAS_ANTIGAS = {
+  prog: ['mapa', 'A programação das equipes agora é feita no Dados da obra: o dia de cada equipe.'],
+  ponto: ['mapa', 'O check-in e o check-out agora são a liberação e a devolução, no Dados da obra.'],
+};
 function abrirAba(id, opcoes = {}) {
+  if (TELAS_ANTIGAS[id]) { toast(TELAS_ANTIGAS[id][1]); id = TELAS_ANTIGAS[id][0]; opcoes = { ...opcoes, substituir: true }; }
   if (GRUPOS[id]) id = telasDoGrupo(id)[0];          // o grupo abre a primeira tela dele que o perfil usa
   if (!TELAS[id] || !podeTela(id)) id = 'inicio';
   TELA = id;
@@ -211,7 +215,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
   'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: a nota do dia de cada equipe, o diário de obra, interferências, as notas de serviço e, das equipes terceirizadas, topografia e cadastro de campo.' },
-  planejamento: { nome: 'Planejamento', desc: 'O mapa do Dados da obra (programar as equipes, liberar o material do dia e receber a devolução), a programação, o cronograma do Project, o estoque com o aceite do material, compras e notas e o check-in.' },
+  planejamento: { nome: 'Planejamento', desc: 'O dia de cada equipe no mapa do Dados da obra (programar, liberar o material e receber a devolução), o cronograma do Project (os 18 meses), o estoque com as notas a receber e o aceite do material, e compras.' },
   administrativo: { nome: 'Administrativo', desc: 'Equipes, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
 };
 // a ordem do Menu segue o trabalho de cada perfil; o que o perfil não abre fica de fora
@@ -389,6 +393,7 @@ async function carregarAlmox() {
   $$('.selMaterialAnkara').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade === 'ANKARA').map(opt).join(''));
   $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
+  if (TELA === 'almox' && pode('almox') && podeTela('mapa')) almoxEquipesDoDia();
   if (podeTela('almox') || podeTela('compras')) renderAceite(await api('/api/almox/quarentena'));
   const res = await api('/api/reservas');
   $('#reservasLista').innerHTML = res.length ? `<table><thead><tr><th>Dia</th><th>Equipe</th><th>Material</th><th class="n">Qtd.</th><th></th></tr></thead><tbody>${res.map(r => `<tr><td>${esc(r.data)}</td><td>${esc(r.equipe_id)}</td><td>${esc(r.material_id)}</td><td class="n">${nf(r.quantidade, 3)}</td><td><button class="btn" data-cancelar-reserva="${r.id}">Cancelar</button></td></tr>`).join('')}</tbody></table>` : '<span class="vazio">Nenhuma reserva ativa.</span>';
@@ -406,7 +411,6 @@ async function carregarAlmox() {
   $('#nfLista').innerHTML = nfs.length ? `<table><thead><tr><th>NF</th><th>Entrega</th><th>Status</th><th></th></tr></thead><tbody>${nfs.map(n => `<tr><td>${esc(n.numero)}${n.faturamento_etapas ? ' <span class="chip azul">etapas</span>' : ''}</td><td>${esc(n.data_entrega)}</td>
     <td><span class="chip ${n.status === 'ACEITO' ? 'verde' : 'amarelo'}">${n.status}</span></td>
     <td>${n.status === 'QUARENTENA' ? `<input placeholder="laudo (arquivo)" data-laudo="${n.id}" style="width:120px"> <button class="btn" data-aceitar="${n.id}">Aceitar</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '';
-  await carregarCheckouts();
   if (!$('#hIni').value) { $('#hIni').value = hoje().slice(0, 8) + '01'; $('#hFim').value = hoje(); }
   carregarHistograma();
 }
@@ -487,46 +491,6 @@ $('#fRecurso').addEventListener('submit', async ev => {
   toast('Equipe atualizada.', 'ok'); ev.target.reset();
 });
 
-// check-in
-const fCk = $('#fCheckin');
-ligarBusca($('input[name=alvo_txt]', fCk));
-$('select[name=equipe_id]', fCk).addEventListener('change', async ev => {
-  const eq = await api('/api/equipe?id=' + ev.target.value);
-  const it = [...eq.funcionarios.map(f => ['f', f.id, `${f.nome}${f.funcao ? ' · ' + f.funcao : ''}`]), ...eq.maquinas.map(m => ['m', m.id, '🚜 ' + m.descricao])];
-  $('#ckPresentes').innerHTML = it.length ? it.map(([t, id, n]) => `<label class="check"><input type="checkbox" data-t="${t}" value="${id}" checked> ${esc(n)}</label>`).join('')
-    : '<span class="vazio">Cadastre funcionários e máquinas da equipe abaixo.</span>';
-});
-$('#ckAddMat').addEventListener('click', () => {
-  const div = document.createElement('div'); div.className = 'linha';
-  div.innerHTML = `<select data-mat>${MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.saldo_almox > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} + reserva da equipe · ${esc(m.unidade)})</option>`).join('') || '<option value="">sem saldo no almoxarifado</option>'}</select><input type="number" step="any" min="0" data-qtd placeholder="quantidade">`;
-  $('#ckMateriais').append(div);
-});
-fCk.addEventListener('submit', async ev => {
-  ev.preventDefault(); const o = formObj(fCk), alvo = $('input[name=alvo_txt]', fCk);
-  const corpo = { data: o.data, equipe_id: o.equipe_id, contingencia: o.contingencia || null,
-    alvo_tipo: alvo.dataset.tipo || null, alvo_id: alvo.dataset.id || null,
-    funcionarios: $$('#ckPresentes input[data-t=f]:checked').map(i => +i.value), maquinas: $$('#ckPresentes input[data-t=m]:checked').map(i => +i.value),
-    materiais: $$('#ckMateriais .linha').map(l => ({ material_id: $('[data-mat]', l).value, quantidade: +$('[data-qtd]', l).value || 0 })).filter(m => m.material_id && m.quantidade > 0) };
-  await acao(() => api('/api/checkin', corpo), `Check-in registrado — pin de programação da ${o.equipe_id} no mapa.`);
-  $('#ckMateriais').innerHTML = ''; alvo.value = ''; carregarAlmox();
-});
-async function carregarCheckouts() {
-  const cks = await api('/api/checkins');
-  $('#checkoutLista').className = cks.length ? '' : 'vazio';
-  $('#checkoutLista').innerHTML = cks.length ? cks.map(c => `<form class="form" data-co="${c.id}" style="border-bottom:1px solid var(--borda);padding-bottom:10px;margin-bottom:10px">
-    <div><b>${esc(c.equipe_id)}</b> · ${esc(c.data)} · ${c.alvo_id ? '📍 ' + esc(curto(c.alvo_nome)) : esc(c.contingencia || '')}</div>
-    ${c.materiais.length ? `<table><thead><tr><th>Material</th><th class="n">Com a equipe</th><th>Aplicado</th><th>Sobra (devolve)</th><th>Perda</th><th>Fica com a equipe</th><th>Motivo da perda</th></tr></thead><tbody>
-      ${c.materiais.map(m => `<tr data-m="${esc(m.material_id)}"><td>${esc(m.material_id)}</td><td class="n">${nf(m.quantidade, 3)}${m.trazido ? `<br><small>trazido ${nf(m.trazido, 3)}</small>` : ''}</td>
-      <td><input type="number" step="any" min="0" name="aplicado" value="${m.quantidade}"></td><td><input type="number" step="any" min="0" name="sobra" value="0"></td>
-      <td><input type="number" step="any" min="0" name="perda" value="0"></td><td><input type="number" step="any" min="0" name="fica_com_equipe" value="0"></td><td><input name="motivo"></td></tr>`).join('')}</tbody></table>
-      <p class="vazio" style="margin:4px 0">Aplicado + sobra + perda + fica com a equipe = material com a equipe. O que fica volta no próximo check-in.</p>` : '<span class="vazio">Sem materiais em custódia.</span>'}
-    <div class="acoes"><button class="btn ok">Confirmar check-out com o encarregado</button></div></form>`).join('') : 'Nenhum check-in aberto.';
-}
-$('#checkoutLista').addEventListener('submit', async ev => {
-  ev.preventDefault(); const f = ev.target;
-  const itens = $$('tr[data-m]', f).map(tr => ({ material_id: tr.dataset.m, aplicado: +$('[name=aplicado]', tr).value || 0, sobra: +$('[name=sobra]', tr).value || 0, perda: +$('[name=perda]', tr).value || 0, fica_com_equipe: +$('[name=fica_com_equipe]', tr).value || 0, motivo: $('[name=motivo]', tr).value }));
-  await acao(() => api('/api/checkout', { checkin_id: f.dataset.co, itens }), 'Check-out confirmado.'); carregarAlmox();
-});
 async function carregarHistograma() {
   const h = await api(`/api/histograma?ini=${$('#hIni').value}&fim=${$('#hFim').value}`);
   const mx = Math.max(1, ...h.map(x => x.funcionarios + x.maquinas));
@@ -536,49 +500,7 @@ async function carregarHistograma() {
 $('#hIni').addEventListener('change', carregarHistograma);
 $('#hFim').addEventListener('change', carregarHistograma);
 
-/* ---------------------------------------------------------------- 1.1 programação */
-const fProg = $('#fProg');
-ligarBusca($('input[name=alvo_txt]', fProg));
 const maisDias = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
-async function carregarProg() {
-  if (!MATERIAIS.length) MATERIAIS = await api('/api/estoque');
-  if (!carregarProg.feito) { carregarProg.feito = true; $('#pgIni').value = hoje(); $('#pgFim').value = maisDias(hoje(), 7); fProg.data.value = maisDias(hoje(), 1); }
-  if ($('#pgFrente').options.length < 2) $('#pgFrente').innerHTML += (RESUMO.frentes || []).map(f => `<option>${esc(f)}</option>`).join('');
-  if (!$('#selServProg').options.length) $('#selServProg').innerHTML = Object.entries(RESUMO.servicos_programacao || {}).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
-  const e = $('.editor-itens[data-itens=prog]'); if (!e.children.length) e.innerHTML = LINHA_ITEM.prog();
-  const q = new URLSearchParams({ ini: $('#pgIni').value, fim: $('#pgFim').value });
-  if ($('#pgFrente').value) q.set('frente', $('#pgFrente').value);
-  if ($('#pgEquipe').value) q.set('equipe', $('#pgEquipe').value);
-  const r = await api('/api/programacoes?' + q);
-  const c = r.resumo.contagem;
-  $('#pgResumo').innerHTML = `<span class="chip amarelo">planejadas ${c.PLANEJADA}</span> <span class="chip azul">realizadas ${c.REALIZADA}</span> <span class="chip vermelho">não realizadas ${c.NAO_REALIZADA}</span> <span class="chip">canceladas ${c.CANCELADA}</span>
-    ${r.resumo.programadas_no_passado ? ` · programado × realizado (dias passados): <b>${r.resumo.realizadas_no_passado}/${r.resumo.programadas_no_passado}</b>` : ''}`;
-  $('#pgLista').innerHTML = r.programacoes.length ? `<table><thead><tr><th>Data</th><th>Equipe</th><th>Alvo</th><th>Serviço</th><th>Materiais previstos</th><th>Situação</th></tr></thead><tbody>${r.programacoes.map(p => `<tr>
-    <td>${esc(p.data)}</td><td>${esc(p.equipe_id)}</td><td><button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(curto(p.alvo_nome))}</button></td>
-    <td>${esc(p.servico_nome)}${p.ini_m != null ? `<br><small>${nf(p.ini_m)}–${nf(p.fim_m)} m</small>` : ''}</td>
-    <td>${p.materiais.map(m => `${esc(m.material_id)}: ${nf(m.quantidade, 3)}`).join('<br>') || '—'}</td>
-    <td><span class="chip ${p.status === 'REALIZADA' ? 'azul' : p.status === 'PLANEJADA' ? 'amarelo' : p.status === 'NAO_REALIZADA' ? 'vermelho' : ''}">${esc(p.status.toLowerCase().replace('_', ' '))}</span>
-      ${p.motivo ? `<br><small>${esc(p.motivo)}</small>` : ''}${p.status === 'PLANEJADA' && pode('planejar') ? `<br><button type="button" class="btn" data-prog-enc="${p.id}" data-st="NAO_REALIZADA">Não realizada</button> <button type="button" class="btn" data-prog-enc="${p.id}" data-st="CANCELADA">Cancelar</button>` : ''}</td></tr>`).join('')}</tbody></table>`
-    : '<div class="vazio" style="padding:8px">Nada programado no período.</div>';
-  $('#pgFaltantes').innerHTML = r.faltantes.length ? `<table><thead><tr><th>Material</th><th class="n">Previsto</th><th class="n">Reservado p/ a programação</th><th class="n">Disponível</th><th class="n">A receber (pedidos)</th><th class="n">Faltante</th></tr></thead><tbody>${r.faltantes.map(f => `<tr>
-    <td>${esc(f.material_id)}<br><small>${esc(f.descricao.slice(0, 60))} (${esc(f.unidade)})</small></td><td class="n">${nf(f.previsto, 3)}</td><td class="n">${nf(f.reservado, 3)}</td><td class="n">${nf(f.disponivel, 3)}</td><td class="n">${nf(f.a_receber, 3)}</td>
-    <td class="n">${f.faltante > 0 ? `<span class="chip vermelho">${nf(f.faltante, 3)}</span>` : '<span class="chip azul">0</span>'}</td></tr>`).join('')}</tbody></table>`
-    : '<div class="vazio" style="padding:8px">Nenhum material previsto nas programações do período.</div>';
-}
-['#pgIni', '#pgFim', '#pgFrente', '#pgEquipe'].forEach(x => $(x).addEventListener('change', carregarProg));
-fProg.addEventListener('submit', async ev => {
-  ev.preventDefault(); const o = formObj(fProg), alvo = $('input[name=alvo_txt]', fProg);
-  if (!alvo.dataset.id) return toast('Escolha o trecho/nó na lista da busca.', 'erro');
-  const r = await acao(() => api('/api/programacao', { data: o.data, equipe_id: o.equipe_id, alvo_tipo: alvo.dataset.tipo, alvo_id: alvo.dataset.id, servico: o.servico,
-    ini_m: o.ini_m, fim_m: o.fim_m, obs: o.obs, materiais: lerItens(fProg, 'prog') }), 'Programação registrada.').catch(() => null);
-  if (r) { alvo.value = ''; alvo.dataset.id = ''; $('.editor-itens[data-itens=prog]').innerHTML = ''; carregarProg(); recarregarCamadaMapa(); }
-});
-document.addEventListener('click', async ev => {
-  const b = ev.target.closest('[data-prog-enc]'); if (!b) return;
-  const motivo = prompt(b.dataset.st === 'CANCELADA' ? 'Motivo do cancelamento:' : 'Por que não foi realizada?'); if (!motivo) return;
-  const r = await acao(() => api('/api/programacao/encerrar', { programacao_id: b.dataset.progEnc, status: b.dataset.st, motivo }), 'Programação encerrada.').catch(() => null);
-  if (r) carregarProg();
-});
 
 /* ---------------------------------------------------------------- 2.1 compras & recebimento */
 let COMPRAS = null;
@@ -587,7 +509,6 @@ const LINHA_ITEM = {
   solic: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(m => m.propriedade !== 'CAESB')}</select><input data-k="quantidade" type="number" step="any" min="0" placeholder="quantidade"><button type="button" class="btn" data-remover-linha>×</button></div>`,
   nfdig: () => `<div class="linha lin-iv lin-item"><input data-k="descricao" placeholder="descrição na nota"><input data-k="unidade" placeholder="unid." style="max-width:80px"><input data-k="quantidade" type="number" step="any" min="0" placeholder="qtd."><input data-k="valor_unitario" type="number" step="any" min="0" placeholder="valor unit."><button type="button" class="btn" data-remover-linha>×</button></div>`,
   inv: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(() => true)}</select><input data-k="contado" type="number" step="any" min="0" placeholder="contado"><button type="button" class="btn" data-remover-linha>×</button></div>`,
-  prog: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(m => m.propriedade !== 'CONSUMO')}</select><input data-k="quantidade" type="number" step="any" min="0" placeholder="quantidade prevista"><button type="button" class="btn" data-remover-linha>×</button></div>`,
 };
 const lerItens = (raiz, tipo) => $$(`.editor-itens[data-itens=${tipo}] .lin-item`, raiz).map(l => Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value])))
   .filter(o => Object.values(o).some(v => v !== '') && (o.quantidade !== '' || o.contado !== ''));
