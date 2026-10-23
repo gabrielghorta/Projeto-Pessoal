@@ -31,7 +31,7 @@ Código: `ns_leitura.py` (leitor), `notas_servico.py` (casamento, registro e NS 
    `.xlsx` ou no `.xls` do Excel 97-2003 (como a Caesb manda): quando vem, é a leitura exata e o sistema confere se diz
    o mesmo que o PDF.
 3. Se a nota não disser a zona e a PB, abra "A nota não diz a zona ou a PB" e escolha (aceita "8", "pb8" ou "PB08").
-4. Toque em **Ler a nota**. Ler não grava nada. O PDF e o croqui abrem no próprio navegador.
+4. Toque em **Ler as notas** (várias de uma vez, em lote). Ler não grava nada. O PDF e o croqui abrem no próprio navegador.
 
 **Croqui de outra nota.** Quando o croqui é PDF com texto (o que sai do AutoCAD), o sistema confere o número da NS, o
 contrato e a data escritos nele com os da nota. O que não bate aparece em "Confira o croqui" (por exemplo, "o croqui é
