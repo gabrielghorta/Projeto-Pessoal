@@ -21,7 +21,8 @@ const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: nul
   sel: [], nos: [], resp: null, aba: null, pedido: 0, equipe: null, equipeFixa: false, crono: null, foco: null, ultPx: 0,
   extra: [], qtd: {}, noIdx: null, vis: Object.fromEntries(PLAN.map(s => [s.id, true])),
   cam: { zonas: true, nomes: true },
-  prefixo: 'pln', svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln };
+  prefixo: 'pln', svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln,
+  copia: (g, u) => copiaPln(g, u), copiaChave: () => [PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0].join('|') };
 const CAMADAS_PLN = { zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
 try {                                 // só as camadas que existem: as antigas (plantas, quadros) salvas no navegador caem fora
   const salvas = JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}');
@@ -75,14 +76,9 @@ function montarPln(g) {
   const svg = PLN.svg();
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}" fill-opacity=".16"/>`).join('')
     + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
-  const hits = g.trechos.map((t, i) => `<path class="ilu-hit" data-i="${i}" d="${caminho(t.p)}"/>`).join('');
   PLN.noIdx = new Map();
-  const nos = g.els.map((e, i) => {
-    e.n.forEach(n => PLN.noIdx.set(n, i));
-    const nome = e.n.find(n => n.includes('_Rede_')) || e.n[0];          // a ponta do trecho cita o nome da Rede
-    return `<circle class="pln-no" data-i="${i}" data-n="${esc(nome)}" cx="${e.x}" cy="${e.y}" r="1"><title>${esc(nomeCurto(nome))}</title></circle>`;
-  }).join('');
-  svg.innerHTML = `<g id="plnZonas">${zonas}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnHits">${hits}</g><g id="plnNos" class="longe">${nos}</g>
+  g.els.forEach((e, i) => e.n.forEach(n => PLN.noIdx.set(n, i)));
+  svg.innerHTML = `<g id="plnZonas">${zonas}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnNos" class="longe"></g>
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
   aplicarCamadasPln();
   PLN.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
@@ -102,28 +98,32 @@ function desenharPln(px, zoom) {
       const c = p.querySelector('circle'), tx = p.querySelector('text');
       c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
     });
-    $('#plnNos').classList.toggle('longe', zoom < 3);
-    raioNos(px, zoom < 3);
   }
+  desenharNos(px, zoom < 3);
   trilha($('#plnTrilha'), PLN.zona ? `<button type="button" data-pln-tudo>Obra inteira</button> › ${esc(nomeZona(PLN.zona))}`
     : zoom > 1.15 ? '<button type="button" data-pln-tudo>Ver a obra inteira</button>' : 'Obra inteira');
 }
 
-// raio dos 1.188 nós (constante na tela): longe eles nem aparecem; perto, durante o zoom, só a cada 10 % de escala, e o
-// valor exato quando o zoom para. Mudar o raio de todos a cada quadro era o que mais pesava no zoom do Dados da obra.
-function raioNos(px, longe) {
-  clearTimeout(PLN.tNos);
-  const aplicar = () => { PLN.pxNos = px; $$('#plnNos circle').forEach(c => c.setAttribute('r', (c.classList.contains('sel') ? 7 : 4.5) * px)); };
-  if (longe) { PLN.pxNos = 0; return; }
-  if (!PLN.pxNos || Math.abs(px - PLN.pxNos) > PLN.pxNos * 0.1 || !PLN.ultPxNos) aplicar();
-  PLN.ultPxNos = px;
-  PLN.tNos = setTimeout(aplicar, 160);
+// os nós só existem onde aparecem: de perto (zoom ≥ 3), os da área visível com folga; de longe, só os escolhidos. Os
+// 1.188 círculos sempre no SVG (escondidos de longe) pesavam em cada redesenho. Raio constante na tela, exato a cada desenho.
+function desenharNos(px, longe) {
+  const g = GERAL, caixa = $('#plnNos'), sel = PLN.noSel || new Map(), [x, y, w, h] = PLN.vb;
+  const dentro = e => e.x > x - w / 2 && e.x < x + w * 1.5 && e.y > y - h / 2 && e.y < y + h * 1.5;
+  const chave = `${longe}|${px.toPrecision(3)}|${longe ? '' : PLN.vb.map(v => Math.round(v)).join(',')}|${[...sel].join(',')}`;
+  if (caixa.dataset.chave === chave) return;
+  caixa.dataset.chave = chave; caixa.classList.toggle('longe', longe);
+  caixa.innerHTML = g.els.map((e, i) => {
+    const k = sel.get(i); if (longe ? !k : !k && !dentro(e)) return '';
+    const nome = e.n.find(n => n.includes('_Rede_')) || e.n[0];          // a ponta do trecho cita o nome da Rede
+    return `<circle class="pln-no${k ? ' sel' : ''}${k === 'auto' ? ' auto' : ''}" data-i="${i}" data-n="${esc(nome)}" cx="${e.x}" cy="${e.y}" r="${(k ? 7 : 4.5) * px}"><title>${esc(nomeCurto(nome))}</title></circle>`;
+  }).join('');
 }
 
 function colorirPln() {
   if (!PLN.pronto || !GERAL) return;
   const mapa = ESTADO_MAPA, por = Object.fromEntries(PLAN.map(s => [s.id, []]));
   GERAL.trechos.forEach(t => { t.ps = planSitu(t.n, mapa); por[t.ps].push(t); });
+  PLN.cores = (PLN.cores || 0) + 1;
   $('#plnLinhas').innerHTML = PLAN.map(s => {
     const attrs = `class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}"${s.opacidade ? ` stroke-opacity="${s.opacidade}"` : ''}`;
     return s.tracejado ? linhasTracejadas(por[s.id], `${attrs} stroke-dasharray="${s.tracejado}"`) : `<path ${attrs} d="${caminho(por[s.id].flatMap(t => t.p))}"/>`;
@@ -136,8 +136,13 @@ function colorirPln() {
     return `<g class="ilu-pin" data-alvo="${esc(c.alvo_nome)}"><title>${esc(equipeNome(c.equipe_id))}: ${esc(c.alvos.map(nomeCurto).join(', '))} (check-in de ${dataBR(c.data)})</title>
       <circle cx="${pos.xy[0]}" cy="${pos.xy[1]}"/><text x="${pos.xy[0]}" y="${pos.xy[1]}">${esc(rotuloEquipe(c.equipe_id))}</text></g>`;
   }).join('');
-  PLN.ultPx = 0; desenharVista(PLN); marcarSelPln();
+  PLN.ultPx = 0; desenharVista(PLN); marcarSelPln(); agendarCopia(PLN);
   if (PLN.pop) abrirPopPln(PLN.pop, true);
+}
+// a cópia leve do gesto (iluminado.js): as zonas e as linhas por situação do dia
+function copiaPln(g, u) {
+  if (PLN.cam.zonas) zonasCopia(g, u, () => 0.16);
+  linhasCopia(g, u, PLAN.filter(s => PLN.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado, opacidade: s.opacidade, trechos: GERAL.trechos.filter(t => t.ps === s.id) })));
 }
 
 /* ---------------------------------------------------------------- seleção */
@@ -147,14 +152,12 @@ function marcarSelPln() {
   const nomes = new Set([...PLN.sel, ...(r ? r.fisicos.flatMap(f => f.membros) : [])]);
   const ts = [...nomes].map(n => ix.trecho.get(n)).filter(Boolean);
   $('#plnSelG').innerHTML = ts.length ? `<path class="ilu-sel pln-sel" d="${caminho(ts.flatMap(t => t.p))}"/>` : '';
-  const auto = new Set((r ? r.nos.filter(n => n.automatico) : []).map(n => PLN.noIdx.get(n.nome)));
-  const tocados = new Set([...PLN.nos, ...(r ? r.nos.filter(n => !n.automatico).map(n => n.nome) : [])].map(n => PLN.noIdx.get(n)));
-  $$('#plnNos circle').forEach(c => {
-    const i = +c.dataset.i, sel = auto.has(i) || tocados.has(i);
-    if (sel !== c.classList.contains('sel')) PLN.ultPx = 0;
-    c.classList.toggle('sel', sel); c.classList.toggle('auto', auto.has(i));
-  });
-  if (!PLN.ultPx && PLN.vb) desenharVista(PLN);
+  const sel = new Map();                                              // nó escolhido: 'sel', ou 'auto' (entrou sozinho)
+  [...PLN.nos, ...(r ? r.nos.filter(n => !n.automatico).map(n => n.nome) : [])].forEach(n => sel.set(PLN.noIdx.get(n), 'sel'));
+  (r ? r.nos.filter(n => n.automatico) : []).forEach(n => sel.set(PLN.noIdx.get(n.nome), 'auto'));
+  sel.delete(undefined);
+  PLN.noSel = sel;
+  if (PLN.vb && PLN.ultPx) desenharNos(PLN.ultPx, (PLN.base[2] - PLN.base[0]) / PLN.vb[2] < 3);
 }
 function membrosDe(nome) {
   const f = PLN.resp && PLN.resp.fisicos.find(x => x.membros.includes(nome));
@@ -210,14 +213,15 @@ async function buscarSelecao() {
 }
 
 /* ---------------------------------------------------------------- clique no mapa, busca e foco */
-function cliquePln(alvo, ev) {
+// i: o trecho mais perto do toque (trechoPerto, iluminado.js), ou -1; nó e pino ficam por cima do trecho, como no desenho
+function cliquePln(alvo, ev, i) {
   fecharPopPln();
   const perto = s => alvo.closest && alvo.closest(s);
-  const no = perto('.pln-no'), hit = perto('.ilu-hit'), pin = perto('.ilu-pin'), zona = perto('.ilu-zf');
+  const no = perto('.pln-no'), pin = perto('.ilu-pin'), zona = perto('.ilu-zf');
   const juntar = PLN.multi || !!(ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey));
   if (no && !$('#plnNos').classList.contains('longe')) return alternarNo(no.dataset.n);
-  if (hit) return escolherTrecho(GERAL.trechos[+hit.dataset.i].n, juntar);
   if (pin) { PLN.sel = [pin.dataset.alvo].filter(n => indexar(GERAL).trecho.has(n)); return atualizarSelecao(); }
+  if (i >= 0) return escolherTrecho(GERAL.trechos[i].n, juntar);
   if (zona && !juntar) return focarZonaPln(zona.dataset.zona);
 }
 function focarZonaPln(z) {
@@ -304,6 +308,7 @@ function aplicarCamadasPln() {
     if (el) el.style.display = PLN.cam[k] ? '' : 'none';
   });
   try { localStorage.setItem('mc-pln-camadas', JSON.stringify(PLN.cam)); } catch (_) { /* sem storage */ }
+  agendarCopia(PLN);
 }
 document.addEventListener('pointerdown', ev => { if (PLN.pop && !ev.target.closest('#plnFerr .ilu-bloco')) fecharPopPln(); });
 document.addEventListener('keydown', ev => {
