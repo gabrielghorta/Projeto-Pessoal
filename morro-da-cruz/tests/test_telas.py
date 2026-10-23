@@ -170,6 +170,78 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertIn("agendarVista(ctx);", ilu)
         self.assertNotIn("svg().style.setProperty('--k'", ilu + pln)
 
+    def test_gesto_pela_placa_de_video(self):
+        """Mapas fluidos (23/10/2026): durante o gesto (arrastar, roda, pinça, botões, focar zona) o SVG só é movido e
+        ampliado por transform; o desenho de verdade (viewBox) vem quando o gesto para, e o will-change sai no redesenho
+        (ligado depois, o navegador guardava a escala de pintura do gesto e o mapa ficava preto ao aproximar)."""
+        ilu = ler("iluminado.js")
+        corpo = lambda nome: re.search(r"\nfunction " + nome + r"\(.*?\n\}", ilu, re.S).group(0)
+        self.assertIn("(ctx.gesto ? moverVista : desenharVista)(ctx)", corpo("agendarVista"))
+        self.assertIn("svg.style.transform = transformVista(", corpo("moverVista"))
+        self.assertIn("svg.style.willChange = 'transform'", corpo("moverVista"))
+        self.assertIn("svg.style.willChange = ''", corpo("desenharVista"))
+        self.assertIn("setTimeout(() => soltarVista(ctx), espera)", corpo("gestoVista"))
+        self.assertIn("gestoVista(ctx)", corpo("zoomEm"))
+        gestos = corpo("ligarGestos")
+        self.assertIn("gestoVista(ctx)", gestos)                       # arrastar
+        self.assertIn("soltarVista(ctx);", gestos)                     # soltar o dedo: o desenho na hora
+        self.assertNotIn("__GPU", ilu)                                 # o protótipo virou o comportamento normal
+        # a animação de irPara roda no compositor e desenha uma vez, no fim
+        self.assertIn(".animate(", corpo("irPara"))
+        self.assertIn("redesenhar(ctx)", corpo("irPara"))
+        # o tamanho vem da caixa, nunca do SVG (transformado durante o gesto)
+        for nome in ("pontoDoMapa", "irPara", "ajustarAspecto", "desenharVista", "moverVista"):
+            self.assertIn("ctx.caixa().getBoundingClientRect()", corpo(nome), nome)
+            self.assertNotIn("svg().getBoundingClientRect()", corpo(nome), nome)
+
+    def test_borda_do_gesto_e_redesenho_leve(self):
+        """5.2 e 5.3 dos mapas fluidos: a cópia leve por baixo cobre a borda do gesto; o clique acha o trecho por cálculo
+        (sem 1.436 caminhos invisíveis); os nós do Dados da obra só existem onde aparecem; o tracejado vai por zona."""
+        ilu, pln, css = ler("iluminado.js"), ler("planejamento.js"), ler("app.css")
+        self.assertIn("class=\"vista-fundo\"", ilu)                    # fundo opaco do desenho esconde a cópia parada
+        self.assertRegex(css, r"\.vista-fundo \{[^}]*fill: #0B0B0B")
+        self.assertRegex(css, r"\.ilu \{[^}]*background: #0B0B0B")     # a mesma cor do fundo da caixa
+        self.assertRegex(css, r"\.vista-copia \{[^}]*pointer-events: none")
+        for js, ctx in ((ilu, "ILU"), (pln, "PLN")):
+            self.assertNotIn("ilu-hit", js)
+            self.assertRegex(js, r"const " + ctx + r" = \{[^;]*copia: \(g, u\) =>[^;]*copiaChave: ")
+        self.assertIn("trechoPerto(ctx, pontoDoMapa(", ilu)
+        self.assertIn("function cliquePln(alvo, ev, i)", pln)
+        self.assertNotIn("${nos}</g>", pln)                            # nós sob demanda (desenharNos)
+        self.assertIn("function desenharNos(", pln)
+        self.assertIn("zonaDoTrecho(t)", re.search(r"function linhasTracejadas\(.*?\n\}", ilu, re.S).group(0))
+
+    def test_trecho_mais_perto_do_toque(self):
+        """O clique por cálculo acha o trecho da mesma forma que o antigo caminho de 14 px: até 7 px da tela; com duas
+        linhas sobrepostas, a de cima no desenho (índice maior). Roda o código da tela no Node, se houver."""
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("sem Node")
+        js = ler("iluminado.js")
+        trecho = lambda nome: (re.search(r"\nfunction " + nome + r"\(.*?\n\}\n", js, re.S)
+                               or re.search(r"\n(?:const|let) " + nome + r"\b[^\n]*\n", js)).group(0)
+        codigo = "".join(trecho(n) for n in ("limites", "GRADE", "gradeTrechos", "distSegmento", "trechoPerto", "TOQUE_PX"))
+        roteiro = codigo + """
+const GERAL = { trechos: [
+  { n: 'A', p: [[0, 0, 100, 0]] },            // horizontal em y = 0
+  { n: 'B', p: [[0, 10, 100, 10]] },          // horizontal em y = 10
+  { n: 'C', p: [[50, -50, 50, 50]] },         // vertical em x = 50 (cruza A e B)
+  { n: 'D', p: [[0, 10, 100, 10]] },          // igual a B (sobreposta, desenhada depois)
+] };
+const ctx = { vb: [0, -50, 200, 100], caixa: () => ({ getBoundingClientRect: () => ({ width: 200 }) }) };   // 1 unidade = 1 px
+const r = [[20, 1], [20, 6], [20, 9], [20, 30], [52, 30], [52, 0.5], [300, 300]].map(p => trechoPerto(ctx, p));
+ctx.tocavel = t => t.n !== 'D';
+r.push(trechoPerto(ctx, [20, 9]));
+console.log(JSON.stringify(r));
+"""
+        saida = subprocess.run([node, "-e", roteiro], capture_output=True, text=True, timeout=30)
+        self.assertEqual(saida.returncode, 0, saida.stderr)
+        # perto de A; entre A e B fica B (mais perto); sobre B e D, a de cima (D); longe de tudo (> 7 px) nada;
+        # perto de C; no cruzamento, o mais perto (A); fora do mapa nada; D intocável → B
+        self.assertEqual(eval(saida.stdout.strip()), [0, 3, 3, -1, 2, 0, -1, 1])
+
     def test_dados_da_obra_sem_plantas_baixas(self):
         """Pedido do responsável (22/10/2026): no Dados da obra, só as zonas; nem fotos das PBs nem a divisão delas."""
         pln = ler("planejamento.js")
