@@ -71,10 +71,10 @@ Programação, reserva e período de medição continuam podendo ser futuros. Te
 
 Decisões D-90 a D-97 (`docs/DECISOES_PENDENTES.md`, seção 8). Código: `apropriacao.py`, `web/apropriacao.js`.
 
-A tela **Lançamento do dia** (Execução, tela `campo`) tem duas abas: **Nota de serviço** (a NS do dia e o croqui,
-`docs/NOTAS_DE_SERVICO.md`) e **Apropriação direta**, o lançamento sem nota de serviço direto no item do orçamento. Ex.: o
-canteiro feito por uma equipe de outra obra da Ankara no período entre obras e os gastos do canteiro. A segunda aba só
-aparece com a permissão `apropriacao` (Engenharia e Administração); para os outros perfis o servidor responde 403.
+A **Apropriação direta** é uma página da tela **Lançamento do dia** (Execução, tela `campo`; ver "Execução
+reorganizada" no fim): o lançamento sem nota de serviço direto no item do orçamento. Ex.: o canteiro feito por uma
+equipe de outra obra da Ankara no período entre obras e os gastos do canteiro. A página só aparece com a permissão
+`apropriacao` (Engenharia e Administração); para os outros perfis o servidor responde 403.
 
 **Escolha do item, como no BM Vertical:** grupo (Canteiro, Redes, Caixas, Interligação, Ligações, Hidromecânico,
 Administração local) → material ou serviço (os dois dão o subgrupo) → item. A **busca única** no topo acha o item por
@@ -129,11 +129,11 @@ Testes: `tests/test_apropriacao.py` (`TestBusca`, `TestApropriacaoHttp`).
 ## Fluxo integrado (esquema v20, 23/10/2026): o caminho até a medição e a ordem obrigatória
 
 **Caminho até a medição** (ficha do trecho, bloco "Para entrar na medição", `servicos.caminho_medicao`), cada item com quem faz e onde:
-1. liberação topográfica (Topografia, NS de topografia);
-2. executado 100 %, assentado e reaterrado (a equipe, pela NS do dia no Lançamento do dia);
+1. liberação topográfica (Topografia, NS de topografia, em Topografia › Enviar NS de topografia);
+2. executado 100 %, assentado e reaterrado (a equipe, pela NS do dia em Notas de serviço › NS do dia);
 3. verificado pelo supervisor (botão "Verificar" na ficha; quem informou não verifica; `servicos.verificar_trecho`);
 4. as 3 fotos (sinalização, execução, concluído), enviadas por quem manda a NS do dia ou pelo supervisor, no mesmo lugar da verificação;
-5. cadastro de campo (Cadastro, pela NS de cadastro);
+5. cadastro de campo (Cadastro, pela NS de cadastro, em Cadastro de campo › Enviar NS de cadastro);
 6. OK interno (Engenharia ou Administração, botão "OK interno" na ficha).
 
 O OK interno exige 2, 3 e 4 (D-112), e não depende mais de medição aberta (D-113). O supervisor tem a lista "Aguardando verificação" no Mapa iluminado, por zona, com o mais perto primeiro quando o celular dá a posição.
@@ -141,3 +141,30 @@ O OK interno exige 2, 3 e 4 (D-112), e não depende mais de medição aberta (D-
 **Ordem obrigatória** (D-20 DECIDIDA, D-115): assentamento e escavação só sobre a liberação topográfica até a data, venham do apontamento, da NS do dia ou da retificação. A mensagem diz o que falta, por exemplo "Zona 03 · PB06 · TR014, de 12,0 m a 30,0 m: falta a liberação topográfica (registre a NS de topografia antes)". A liberação que a execução já usou não é anulada. O legado conciliado só ganha posição; o legado fora de ordem fica listado em Notas de serviço › "Fora de ordem (legado)" (`servicos.fora_de_ordem`), sem apagar nada. A apropriação direta fica fora da regra.
 
 **O que acende no mapa** (`regras.etapa_trecho`, D-118): não iniciado → liberado → em execução hoje → executado, aguardando verificação (parcial ou não) → verificado → cadastro de campo feito → pronto para o OK → OK interno, na medição → cadastro em andamento → cadastro aprovado pela Caesb. Testes: `tests/test_etapas_mapa.py`, `tests/test_ordem_obra.py` e o ponta a ponta `tests/test_fluxo_integrado.py`.
+
+## Execução reorganizada (23/10/2026): o Lançamento do dia é o lançamento solto
+
+Decisões D-121 a D-130 (`docs/DECISOES_PENDENTES.md`, seção 11). As regras não mudaram; só onde cada coisa fica.
+
+**Menu Execução, nesta ordem:** Lançamento do dia, Notas de serviço, Topografia, Cadastro de campo, Interferências e
+ocorrências, Diário de obra.
+
+**Lançamento do dia** ("Lançamentos sem nota de serviço. A NS do dia é enviada em Execução › Notas de serviço."). Quatro
+páginas; cada perfil vê só as que pode usar:
+
+| Página | O que tem | Quem vê |
+|---|---|---|
+| Apropriação direta | o lançamento direto no item do orçamento (acima) | Engenharia e Administração (`apropriacao`) |
+| Apontamento sem NS | o antigo "Sem nota de serviço (exceção)": trecho, nó ou caixa, metros, motivo obrigatório | Engenharia e Administração (`lancar_sem_ns`) |
+| Fotos e soldas | o trecho ou nó pela busca com o nome completo ("Zona 03 · PB06 · TR014") ou pelo Mapa iluminado ("Lançar avanço" na ficha); as 3 fotos obrigatórias e as soldas | quem tem `campo` (encarregado, supervisor, almoxarifado, Engenharia, Administração) |
+| Clima do dia | a equipe e os dois toques (manhã e tarde), gravados na tabela `clima`, onde a NS do dia grava; para o diário dos dias sem NS | quem tem `campo`; o encarregado, só a equipe dele |
+
+**Saiu daqui:** a NS do dia (o formulário, "Notas do dia enviadas" e "Notas de serviço da zona"), que foi para
+**Notas de serviço › NS do dia** (`docs/NOTAS_DE_SERVICO.md`, seção 6).
+
+**Páginas dentro da aba** (um componente só em `web/app.js`: `PAGINAS`, `paginaDe`, `mostrarPagina`):
+- chips no topo, de 44 px, quebrando a linha no celular;
+- a página fica no endereço (`#campo/fotos`, `#topografia/resumo`, `#cadastro_campo/feito`…) e funciona com voltar e
+  avançar do navegador;
+- cada aba lembra a última página na sessão (`sessionStorage`, chave `mc-pagina-<tela>`);
+- link antigo sem página, ou com uma página que o perfil não usa, abre na primeira que ele usa.

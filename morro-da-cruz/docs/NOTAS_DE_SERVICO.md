@@ -7,23 +7,26 @@ formato da Caesb. O diário de obra também: a equipe envia **a NS do dia** (o q
 lança sozinho o que é inequívoco. A 06.1 continua sendo a unidade do BM e da medição: tudo o que vem da NS é gravado
 por linha da 06.1, convertendo pelo trecho físico (`topologia.py`, `docs/TOPOLOGIA_TRECHOS.md`).
 
-| Tipo | Quem envia | Arquivos | O que gera |
-|---|---|---|---|
-| Topografia | Engenharia e Administração | PDF | liberação topográfica |
-| Cadastro de campo | Engenharia e Administração | PDF | cadastro de campo, só sobre o assentado |
-| Serviço de obra | Engenharia e Administração | PDF + croqui | o plano da zona (nada gravado nos trechos) |
-| Do dia (execução) | o encarregado (só a equipe dele) ou, em nome da equipe, supervisor, engenharia e administração | PDF + croqui | assentado, reaterrado e escavado, informados |
+| Tipo | Onde envia (Execução ›) | Quem envia | Arquivos | O que gera |
+|---|---|---|---|---|
+| Topografia | Topografia › Enviar NS de topografia | Engenharia e Administração | PDF | liberação topográfica |
+| Cadastro de campo | Cadastro de campo › Enviar NS de cadastro | Engenharia e Administração | PDF | cadastro de campo, só sobre o assentado |
+| Serviço de obra | Notas de serviço › Serviço de obra | Engenharia e Administração | PDF + croqui | o plano da zona (nada gravado nos trechos) |
+| Do dia (execução) | Notas de serviço › NS do dia | o encarregado (só a equipe dele) ou, em nome da equipe, supervisor, engenharia e administração | PDF + croqui | assentado, reaterrado e escavado, informados |
 
 Código: `ns_leitura.py` (leitor), `notas_servico.py` (casamento, registro e NS do dia), rotas `/api/ns*` em
 `server.py`, telas em `web/notas.js`. Pesquisa que deu origem: `docs/ns/`.
 
 ---
 
-## 1. Notas de topografia, cadastro e serviço (Execução · Notas de serviço)
+## 1. Notas de topografia, cadastro e serviço (cada tipo na sua aba)
 
 ### Como enviar
 
-1. Escolha o tipo: **Topografia**, **Cadastro de campo** ou **Serviço de obra**.
+1. Abra a página do tipo, com o tipo fixo:
+   - **Topografia › Enviar NS de topografia**;
+   - **Cadastro de campo › Enviar NS de cadastro**;
+   - **Notas de serviço › Serviço de obra**.
 2. Escolha o PDF da nota. O croqui é opcional (obrigatório no serviço de obra). A planilha da nota é opcional, no
    `.xlsx` ou no `.xls` do Excel 97-2003 (como a Caesb manda): quando vem, é a leitura exata e o sistema confere se diz
    o mesmo que o PDF.
@@ -35,9 +38,14 @@ contrato e a data escritos nele com os da nota. O que não bate aparece em "Conf
 da NS 006, e a nota é a 012"). É só aviso: não bloqueia e não grava nada. O aviso fica guardado com a nota e some quando
 o croqui certo é enviado. Foto e PDF sem texto não são conferidos. O desenho do croqui continua sem ser lido (D-74).
 
-As abas **Topografia** e **Cadastro de campo** têm o botão **Enviar nota de serviço** (abre esta tela com o tipo
-escolhido) e a lista das notas do tipo. O formulário digitado antigo continua, recolhido em
-**Sem nota de serviço (exceção)**. As filas e os indicadores das abas não mudaram.
+**Topografia** e **Cadastro de campo** têm duas páginas cada:
+- **Enviar NS:** o envio em lote e a conferência. No fim, recolhido, o formulário digitado antigo, **Sem nota de serviço
+  (exceção)**, só para quem tem a permissão do tipo.
+- **Resumo** (na topografia) e **O que foi feito** (no cadastro): a frente, os indicadores, as listas de sempre, as NS do
+  tipo (ver o PDF, anular com motivo e, no cadastro, a parte recusada pela ordem com "Aplicar de novo") e o atalho
+  **Ver no Mapa iluminado** para a frente escolhida.
+
+Os perfis Topografia e Cadastro, que só consultam, abrem direto no resumo.
 
 ### O que o sistema confere na leitura
 
@@ -78,7 +86,7 @@ O botão **Registrar** só libera com todos os segmentos conferidos. Numa transa
 - **Cadastro:** grava o cadastro de campo **só sobre o assentado até a data da nota**; o resto fica **pendente** no
   segmento ("ainda não assentado até 15/10/2026"). Quando o assentamento for lançado (com data até a da nota),
   **Aplicar o que falta** grava o que faltava. Repetir não grava duas vezes.
-- **Serviço de obra:** guarda a nota e o croqui. Nada é gravado nos trechos; a equipe abre a nota no Lançamento do dia (aba Nota de serviço).
+- **Serviço de obra:** guarda a nota e o croqui. Nada é gravado nos trechos; a equipe abre a nota em Notas de serviço › NS do dia (lista "Notas de serviço da zona").
 - Cada registro leva a referência `NS 012 fl. 01/01` e o segmento da nota de onde veio (`ns_segmento_id`).
 
 ### Reenvio e anulação
@@ -112,9 +120,11 @@ com `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` e `Content-
 
 ---
 
-## 2. NS do dia (Execução · Lançamento do dia, aba Nota de serviço)
+## 2. NS do dia (Execução · Notas de serviço, página NS do dia)
 
-A tela de campo voltou a se chamar **Lançamento do dia** (22/10/2026) e tem duas abas: **Nota de serviço** (esta) e **Apropriação direta**, o lançamento sem nota de serviço da Engenharia e da Administração (`docs/MODULO_B_CAMPO.md`, D-90 em diante).
+Desde 23/10/2026 (Execução reorganizada, seção 6) a NS do dia é enviada em **Notas de serviço › NS do dia**. O
+encarregado e o supervisor veem essa aba só com esta página. O **Lançamento do dia** ficou com o lançamento solto, sem
+nota de serviço (`docs/MODULO_B_CAMPO.md`).
 
 ### Como enviar pelo celular
 
@@ -125,7 +135,7 @@ A tela de campo voltou a se chamar **Lançamento do dia** (22/10/2026) e tem dua
 4. **Enviar a nota do dia**. A data é a da nota.
 
 Nada a digitar sobre o que foi feito: vem da nota. Mais de uma nota por equipe e dia é permitido (folhas ou frentes
-diferentes). Soldas e fotos continuam como antes, em **Outros registros do dia (opcional)**.
+diferentes). Soldas e fotos ficam em **Lançamento do dia › Fotos e soldas**.
 
 ### O que o sistema recusa
 
@@ -172,7 +182,7 @@ arquivo.
 
 ### Lançamento à mão (exceção)
 
-O formulário digitado (trecho + metros) saiu da tela do encarregado. Fica em **Sem nota de serviço (exceção)**, só para
+O formulário digitado (trecho + metros) saiu da tela do encarregado. Fica em **Lançamento do dia › Apontamento sem NS**, só para
 a engenharia e a administração (permissão `lancar_sem_ns`), com o **motivo obrigatório**, guardado no apontamento.
 Nó e caixa continuam no mesmo formulário.
 
@@ -210,14 +220,15 @@ No Drive: `03_EXECUCAO_DE_CAMPO/02_Notas_de_Servico/Execucao/<Zona>/<AAAA-MM>/`,
 de célula, mini fluxo, arquivo cortado, laço e senha), `tests/test_notas_servico.py` (migração v18, casamento, registro por tipo,
 permissões, arquivo e 413) e `tests/test_ns_dia.py` (NS do dia: inteiro, parcial, parada pela programação e pela
 engenharia, continuação e já lançado, reaterro e escavação, MND, conexão no meio da linha, sem etapa, recusas, atraso,
-permissões, anulação e Diário de obra), sobre a base real das planilhas (`tests/base_real.py`). Os PDFs reais de
+permissões, anulação e Diário de obra) e `tests/test_execucao.py` (cada NS na sua aba: o encarregado, o perfil
+Topografia, o cadastro), sobre a base real das planilhas (`tests/base_real.py`). Os PDFs reais de
 exemplo não ficam no repositório: `MC_NS_EXEMPLOS=<pasta>` roda o teste deles (`ns_assinada.pdf`,
 `ns_nao_assinada.pdf`, `ns_planilha.xls` e `croqui.pdf` da NS 006).
 
 ## 5. Fluxo integrado (23/10/2026): o lote, a ordem e o que acende no mapa
 
 - **Envio em lote:**
-  - Notas de serviço e a NS do dia no Lançamento do dia aceitam vários PDFs de uma vez, com croquis e planilhas também em lote (até 20 arquivos);
+  - as páginas de envio (NS do dia e Serviço de obra; Enviar NS em Topografia e em Cadastro de campo) aceitam vários PDFs de uma vez, com croquis e planilhas também em lote (até 20 arquivos);
   - o croqui e a planilha casam com cada NS pelo número escrito neles (`/api/ns/numero`, `ns_leitura.numeros_documento`) e, na falta, pelo nome do arquivo; o que não casa fica na fila para ligar à mão;
   - cada NS vira um cartão: lida, precisa conferir (abre a conferência de sempre), recusada (com o motivo), registrada ou repetida (mesmo arquivo);
   - "Registrar todas as conferidas sem pendência" grava uma NS por pedido, em sequência, e a falha de uma não para as outras;
@@ -231,3 +242,22 @@ exemplo não ficam no repositório: `MC_NS_EXEMPLOS=<pasta>` roda o teste deles 
   - NS do dia → executado, aguardando verificação;
   - NS de cadastro → cadastro de campo feito;
   - a NS de serviço de obra é o plano da zona e não acende nada.
+
+## 6. Execução reorganizada (23/10/2026): cada NS na sua aba
+
+As regras não mudaram (o que cada NS grava, a ordem obrigatória, a medição); só onde cada coisa fica (D-121 a D-130).
+
+| Tipo | Aba (Execução ›) | Página | Quem envia | Quem consulta |
+|---|---|---|---|---|
+| Do dia (execução) | Notas de serviço | NS do dia | o encarregado (só a equipe dele); supervisor, Engenharia e Administração escolhem a equipe | os mesmos; o Diário de obra |
+| Serviço de obra | Notas de serviço | Serviço de obra | Engenharia e Administração (`notas_servico`) | todos que abrem Notas de serviço, Lançamento do dia ou o Diário (lista "Notas de serviço da zona") |
+| Topografia | Topografia | Enviar NS de topografia | Engenharia e Administração (`notas_servico` + `topografia`) | o perfil Topografia, no Resumo |
+| Cadastro de campo | Cadastro de campo | Enviar NS de cadastro | Engenharia e Administração (`notas_servico` + `cadastro_campo`) | o perfil Cadastro, em O que foi feito |
+
+- A lista "Notas recebidas da obra", em Notas de serviço, mostra só a NS do dia e a de serviço de obra. As de
+  topografia e de cadastro ficam no resumo das abas delas.
+- A fila "NS do dia a conferir" (Engenharia) e o legado "Fora de ordem" (só com `notas_servico`) continuam em Notas
+  de serviço.
+- O botão "Enviar nota de serviço", que levava da Topografia e do Cadastro de campo para Notas de serviço, saiu.
+- As rotas e as permissões são as mesmas: `/api/ns/dia` com `campo`; ler e registrar com `notas_servico` e, na
+  topografia e no cadastro, também a permissão do tipo.

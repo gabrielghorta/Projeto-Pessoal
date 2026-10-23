@@ -16,14 +16,15 @@ O que acende no mapa aparece no **Mapa iluminado**, no botão **Situação**. Em
 
 ## 1. Topografia libera o trecho
 
-**Quem:** Engenharia. **Tela:** Execução › **Notas de serviço**.
+**Quem:** Engenharia. **Tela:** Execução › **Topografia**, página **Enviar NS de topografia**.
 
-1. Toque no chip **Topografia**.
+1. Abra a página **Enviar NS de topografia** (o tipo já vem fixo).
 2. Escolha o PDF da NS de topografia. Pode ser mais de uma; o croqui e a planilha são opcionais.
 3. Toque em **Ler as notas**.
 4. Na fila, a nota fica **"lida, sem pendência"** ou **"precisa conferir"**. Se precisar, toque em **Conferir**, resolva os segmentos e toque em **Registrar**. Se não, use **Registrar todas as conferidas sem pendência**.
 
-**No mapa:** o trecho fica azul, **"Liberado pela topografia"**.
+**No mapa:** o trecho fica azul, **"Liberado pela topografia"**. Na página **Resumo** da mesma aba, a nota aparece em
+"Notas de serviço de topografia", com o que liberou.
 
 > Sem esta nota, nada anda. A NS do dia, a NS de serviço e o lançamento à mão são recusados com a mensagem do que falta, por exemplo: "Zona 03 · PB08 · TR020, de 0,0 m a 278,0 m: falta a liberação topográfica (registre a NS de topografia antes)".
 
@@ -39,7 +40,9 @@ O que acende no mapa aparece no **Mapa iluminado**, no botão **Situação**. Em
 
 ## 3. A equipe manda a NS do dia
 
-**Quem:** o encarregado da equipe (ou a Engenharia). **Tela:** Execução › **Lançamento do dia**, aba **Nota de serviço**.
+**Quem:** o encarregado da equipe (ou o supervisor, ou a Engenharia). **Tela:** Execução › **Notas de serviço**, página **NS do dia**.
+
+> A NS do dia saiu do Lançamento do dia (23/10/2026). O Lançamento do dia ficou com o que não depende de nota: apropriação direta, apontamento sem NS, fotos e soldas e clima do dia.
 
 1. Escolha a equipe e toque no clima da manhã e da tarde.
 2. Escolha a NS do dia e o croqui. Pode ser mais de uma; cada croqui casa com a sua nota.
@@ -62,10 +65,10 @@ O que acende no mapa aparece no **Mapa iluminado**, no botão **Situação**. Em
 
 ## 5. O cadastro de campo
 
-**Quem:** Engenharia. **Tela:** Execução › **Notas de serviço**, chip **Cadastro de campo**.
+**Quem:** Engenharia. **Tela:** Execução › **Cadastro de campo**, página **Enviar NS de cadastro**.
 
 1. Mande a NS de cadastro, como no passo 1.
-2. Ela grava só sobre o que já foi executado até a data da nota. O resto é recusado e fica escrito na nota. Se o assentamento até essa data for lançado depois, toque em **Aplicar de novo** na lista "Notas recebidas".
+2. Ela grava só sobre o que já foi executado até a data da nota. O resto é recusado e fica escrito na nota. Se o assentamento até essa data for lançado depois, abra a página **O que foi feito** e toque em **Aplicar de novo** na nota, em "Notas de serviço de cadastro".
 
 **No mapa:** ciano, **"Cadastro de campo feito"**. O supervisor confere também o levantamento: toque em **Verificar** de novo na ficha, e o trecho volta a **"Pronto para o OK interno"**.
 
