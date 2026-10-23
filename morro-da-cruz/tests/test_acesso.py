@@ -189,6 +189,15 @@ class TestPermissoesEAutoria(BaseHTTP):
             self.assertEqual((eng.get(rota)[0], adm.get(rota)[0]), (200, 200), rota)         # engenharia e adm: tudo
         st, r = enc.get("/api/estoque")
         self.assertIn("não abre esta tela", r["erro"])
+        self.assertEqual(eng.get("/api/ns/fora-de-ordem"), (200, []))                       # o legado fora de ordem
+        self.assertEqual(almox.get("/api/ns/fora-de-ordem")[0], 403)
+
+    def test_rotas_de_consulta_recebem_o_que_o_servidor_passa(self):
+        """Rota com o usuário recebe (consulta, conexão, usuário); as outras, (consulta, conexão): errado, dava erro 500."""
+        import inspect
+        for tabela, n in ((server.GET, 2), (server.GET_USUARIO, 3), ({r: f for r, (f, _) in server.GET_PERM.items()}, 2)):
+            for rota, fn in tabela.items():
+                self.assertEqual(len(inspect.signature(fn).parameters), n, rota)
 
     def test_excluir_so_conta_sem_historico(self):
         eng = self.cliente("eng1")

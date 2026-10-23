@@ -827,10 +827,11 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/cronograma": r_cronograma, "/api/almox/quarentena": r_quarentena, "/api/almox/notas": lambda q, c: C.notas_a_receber(c),
        "/api/base-custo/busca": r_base_custo_busca, "/api/base-custo/itens": r_base_custo_itens,
        "/api/medicao/restricoes": r_medicao_restricoes}
-GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
+GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios"),
+            "/api/ns/fora-de-ordem": (lambda q, c: S.fora_de_ordem(c), "notas_servico")}      # o legado: só a engenharia
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
-               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/fora-de-ordem": lambda q, c: S.fora_de_ordem(c), "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
+               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
