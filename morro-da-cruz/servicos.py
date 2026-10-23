@@ -302,14 +302,25 @@ CUSTODIA_SQL = """COALESCE(SUM(CASE WHEN tipo IN ('CUSTODIA','TRANSF_ENTRADA') T
 VALIDO = "id NOT IN (SELECT movimento_id FROM estornos)"
 
 
+# aceito de nota conferida SEM pedido e ainda não aprovada (compras.aprovar_nf_sem_pedido): no almoxarifado, fora do saldo
+NF_SEM_APROVACAO = "nf_id IN (SELECT id FROM notas_fiscais WHERE sem_pedido=1 AND aprovada_em IS NULL)"
+
+
 def saldo_almox(conn, material_id):
     r = conn.execute(
         f"""SELECT
-              COALESCE(SUM(CASE WHEN tipo IN {ENTRA_ALMOX} AND COALESCE(status,'ACEITO')='ACEITO' THEN quantidade END),0)
+              COALESCE(SUM(CASE WHEN tipo IN {ENTRA_ALMOX} AND COALESCE(status,'ACEITO')='ACEITO'
+                                     AND NOT (tipo='ENTRADA_NF' AND COALESCE({NF_SEM_APROVACAO}, 0)) THEN quantidade END),0)
             - COALESCE(SUM(CASE WHEN tipo IN {SAI_ALMOX} THEN quantidade END),0) AS saldo,
               COALESCE(SUM(CASE WHEN tipo='ENTRADA_NF' AND status='QUARENTENA' THEN quantidade END),0) AS quarentena
             FROM movimentos WHERE material_id=? AND {VALIDO}""", (material_id,)).fetchone()
     return r["saldo"], r["quarentena"]
+
+
+def aguardando_aprovacao(conn, material_id):
+    """Aceito de nota sem pedido ainda não aprovada: está no almoxarifado, mas não pode ser liberado às equipes."""
+    return conn.execute(f"""SELECT COALESCE(SUM(quantidade),0) FROM movimentos WHERE material_id=? AND tipo='ENTRADA_NF'
+                            AND status='ACEITO' AND {NF_SEM_APROVACAO} AND {VALIDO}""", (material_id,)).fetchone()[0]
 
 
 def reservado(conn, material_id, equipe_id=None, data=None):
@@ -363,6 +374,7 @@ def estoque(conn):
             f"""SELECT {CUSTODIA_SQL}
                 FROM movimentos WHERE material_id=? AND checkin_id IS NOT NULL AND {VALIDO}""", (m["id"],)).fetchone()[0]
         out.append({**m, "saldo_almox": round(saldo, 3), "quarentena": round(quar, 3), "reservado": round(res, 3),
+                    "aguardando_aprovacao": round(aguardando_aprovacao(conn, m["id"]), 3),
                     "disponivel": round(saldo - res, 3), "custodia": round(cust, 3),
                     "baixa_teorica_legada": round(_soma(conn, m["id"], "BAIXA_TEORICA"), 3)})
     return out

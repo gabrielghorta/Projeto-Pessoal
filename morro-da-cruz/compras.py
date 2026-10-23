@@ -2,8 +2,13 @@
 
 Fluxo: fornecedor → solicitação (aprovada por outra pessoa) → pedido → nota fiscal (XML da NF-e ou dados digitados
 do PDF/imagem) → CONFERÊNCIA (de-para de cada linha para um material, com fator de conversão de unidade) → entregas
-parciais em QUARENTENA → inspeção item a item (aceito entra no estoque; recusado volta na entrega) → devolução ao
-fornecedor do que já foi aceito.
+parciais em QUARENTENA → inspeção item a item ou da entrega inteira (aceito entra no estoque; recusado volta na entrega)
+→ devolução ao fornecedor do que já foi aceito.
+
+Também a nota que chega SEM pedido (o almoxarife importa o XML e confere): cada linha vem com o material sugerido
+(sugerir_materiais); a nota fica marcada "sem pedido" e o aceito só fica disponível para as equipes depois da aprovação de
+Engenharia ou Administração, por outra pessoa (aprovar_nf_sem_pedido). Linha de tubo da Caesb (remessa) não é compra:
+vira romaneio Caesb na entrega, sem pedido nem quarentena, e entra na compatibilização dos tubos.
 
 Garantias:
 * pedido nunca vira estoque; NF importada ou digitada não gera movimento antes da conferência;
@@ -16,6 +21,7 @@ import base64
 import hashlib
 import os
 import re
+import unicodedata
 
 import imagens
 import nfe
@@ -265,8 +271,10 @@ def _fornecedor_cnpj(conn, cnpj):
     return f
 
 
-def importar_nfe_xml(conn, conteudo_b64, nome_arquivo, por):
-    """XML da NF-e → nota A CONFERIR com as linhas como vieram. Nenhum movimento é criado."""
+def importar_nfe_xml(conn, conteudo_b64, nome_arquivo, por, cadastrar=False):
+    """XML da NF-e → nota A CONFERIR com as linhas como vieram. Nenhum movimento é criado. Emitente sem cadastro: devolve
+    {"fornecedor_novo": {cnpj, nome}} e nada grava; com cadastrar=True, o fornecedor é cadastrado pelo CNPJ e pela razão
+    social do próprio XML (o almoxarife recebe nota de quem ainda não está em Compras)."""
     try:
         dados = base64.b64decode(conteudo_b64 or "", validate=True)
     except (ValueError, TypeError):
@@ -274,8 +282,12 @@ def importar_nfe_xml(conn, conteudo_b64, nome_arquivo, por):
     n = nfe.ler(dados)
     if _one(conn, "SELECT id FROM notas_fiscais WHERE chave_nfe=? AND status<>'CANCELADA'", n["chave"]):
         raise RegraViolada(f"NF-e {n['numero']} (chave {n['chave']}) já importada.")
-    f = _fornecedor_cnpj(conn, n["emitente_cnpj"])
+    f = _one(conn, "SELECT * FROM fornecedores WHERE cnpj=?", re.sub(r"\D", "", n["emitente_cnpj"] or ""))
+    if not f and not cadastrar:
+        return {"fornecedor_novo": {"cnpj": n["emitente_cnpj"], "nome": n["emitente_nome"]}, "numero": n["numero"]}
     with transacao(conn):
+        if not f:
+            f = _one(conn, "SELECT * FROM fornecedores WHERE id=?", cadastrar_fornecedor(conn, n["emitente_cnpj"], n["emitente_nome"], por))
         doc = guardar_documento(conn, "NFE_XML", conteudo_b64, nome_arquivo, por, documento_dir(conn))
         nf_id = conn.execute(
             """INSERT INTO notas_fiscais(numero,chave_nfe,serie,fornecedor,fornecedor_id,data_emissao,valor_total,origem,
@@ -287,7 +299,8 @@ def importar_nfe_xml(conn, conteudo_b64, nome_arquivo, por):
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (nf_id, it["n_item"], it["codigo"], it["descricao"], it["ncm"], it["cfop"], it["unidade"], it["quantidade"],
                  it["valor_unitario"], it["valor_total"]))
-    return {"nf_id": nf_id, "numero": n["numero"], "itens": len(n["itens"]), "autorizacao": n["autorizacao"]}
+    return {"nf_id": nf_id, "numero": n["numero"], "itens": len(n["itens"]), "autorizacao": n["autorizacao"],
+            "fornecedor": f["nome"]}
 
 
 def registrar_nf_digitada(conn, numero, fornecedor_id, data_emissao, linhas, por, documento_b64, documento_tipo,
@@ -327,6 +340,53 @@ def registrar_nf_digitada(conn, numero, fornecedor_id, data_emissao, linhas, por
     return nf_id
 
 
+def _palavras(texto):
+    t = unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode().lower()
+    return re.findall(r"[a-z]+|\d+", t)                  # "DE63" → de, 63
+
+
+def sugerir_materiais(conn, nf_id):
+    """O material provável de cada linha da nota, e o porquê. Nada é gravado: quem confere aceita ou troca.
+    1. o código do produto é o id de um material (ex.: 5.1_1.14.15);
+    2. a mesma linha (código ou descrição) já foi conferida numa nota anterior deste fornecedor;
+    3. a descrição bate com a de um material: as mesmas medidas (todos os números) e a maior parte das palavras; empate
+       entre dois materiais não sugere nada."""
+    nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
+    if not nf:
+        raise RegraViolada("Nota não encontrada.")
+    mats = {r["id"]: r for r in _rows(conn.execute("SELECT id, descricao, unidade, propriedade FROM materiais"))}
+    cand = []
+    for m in mats.values():
+        ps = _palavras(m["descricao"])
+        cand.append((m["id"], {p for p in ps if not p.isdigit()}, {p for p in ps if p.isdigit()}))
+    hist_cod, hist_desc = {}, {}
+    for cod, desc, mid in conn.execute(
+            """SELECT l.codigo, l.descricao, l.material_id FROM nf_linhas l JOIN notas_fiscais n ON n.id=l.nf_id
+               WHERE n.fornecedor_id=? AND n.id<>? AND n.status<>'CANCELADA' AND l.material_id IS NOT NULL ORDER BY l.id""",
+            (nf["fornecedor_id"], nf_id)):
+        if cod:
+            hist_cod[cod] = mid
+        hist_desc[" ".join(_palavras(desc))] = mid
+    out = []
+    for li in _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (nf_id,))):
+        mid, motivo, desc = None, None, " ".join(_palavras(li["descricao"]))
+        if li["codigo"] in mats:
+            mid, motivo = li["codigo"], "código do produto"
+        elif hist_cod.get(li["codigo"]) in mats or hist_desc.get(desc) in mats:
+            mid, motivo = hist_cod.get(li["codigo"]) or hist_desc[desc], "como na nota anterior deste fornecedor"
+        else:
+            ps = _palavras(li["descricao"])
+            pal, num = {p for p in ps if not p.isdigit()}, {p for p in ps if p.isdigit()}
+            notas = sorted(((len(pal & mp) / len(pal), i) for i, mp, mn in cand if pal and mn == num and len(pal & mp) / len(pal) >= 0.6),
+                           reverse=True)
+            if notas and (len(notas) == 1 or notas[0][0] > notas[1][0]):
+                mid, motivo = notas[0][1], "pela descrição"
+        m = mats.get(mid)
+        out.append({"linha_id": li["id"], "material_id": mid, "motivo": motivo, "caesb": bool(m and m["propriedade"] == "CAESB"),
+                    "fator": 1.0 if m and R.normalizar_unidade(li["unidade"]) == R.normalizar_unidade(m["unidade"]) else None})
+    return out
+
+
 def documento_dir(conn):
     """<pasta do banco>/documentos — a mesma que o backup copia e confere (ao lado de <pasta do banco>/fotos)."""
     caminho = conn.execute("PRAGMA database_list").fetchone()[2]
@@ -352,32 +412,44 @@ def _a_faturar(conn, pedido_item_id, ignorar_nf=None):
 def conferir_nf(conn, nf_id, pedido_id, linhas_conf, por):
     """De-para de cada linha da NF: material + fator de conversão (quantidade no material = quantidade da NF × fator)
     + item do pedido, ou 'fora do estoque' (frete, serviço). Unidade diferente exige fator declarado; mesma unidade,
-    fator 1. Não fatura além do pedido. Só depois da conferência a nota aceita entregas."""
+    fator 1. Com pedido: não fatura além do pedido (o item do pedido com o mesmo material é achado sozinho, se for um só).
+    Sem pedido: a nota fica marcada e o aceito só fica disponível depois da aprovação (aprovar_nf_sem_pedido). Linha de
+    tubo da Caesb (remessa) não é compra: vira romaneio Caesb na entrega. Só depois da conferência a nota aceita entregas."""
     nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
     if not nf or nf["status"] != "A_CONFERIR":
         raise RegraViolada("Só nota A CONFERIR pode ser conferida.")
     if nf["origem"] == "DIGITADA" and str(nf["registrada_por"]).lower() == str(por).lower():
         raise RegraViolada("Quem digitou os dados da nota não pode conferi-los.")
-    p = _one(conn, "SELECT * FROM pedidos_compra WHERE id=?", pedido_id)
-    if not p or p["status"] != "EMITIDO":
-        raise RegraViolada("Vincule a nota a um pedido emitido.")
-    if p["fornecedor_id"] != nf["fornecedor_id"]:
-        raise RegraViolada("O fornecedor do pedido é diferente do emitente da nota.")
+    p = None
+    if pedido_id:
+        p = _one(conn, "SELECT * FROM pedidos_compra WHERE id=?", pedido_id)
+        if not p or p["status"] != "EMITIDO":
+            raise RegraViolada("Vincule a nota a um pedido emitido (ou confira sem pedido).")
+        if p["fornecedor_id"] != nf["fornecedor_id"]:
+            raise RegraViolada("O fornecedor do pedido é diferente do emitente da nota.")
     linhas = {r["id"]: r for r in _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=?", (nf_id,)))}
     conf = {int(c["linha_id"]): c for c in linhas_conf or []}
     if set(conf) != set(linhas):
         raise RegraViolada(f"Confira todas as linhas da nota ({len(linhas)}): cada uma vai para um material ou fica fora do estoque.")
-    itens_pedido = {r["id"]: r for r in _rows(conn.execute("SELECT * FROM pedido_itens WHERE pedido_id=?", (pedido_id,)))}
+    itens_pedido = {r["id"]: r for r in _rows(conn.execute("SELECT * FROM pedido_itens WHERE pedido_id=?", (pedido_id,)))} if p else {}
     plano, por_item = [], {}
     for lid, li in sorted(linhas.items()):
         c = conf[lid]
         if c.get("fora_do_estoque"):
-            plano.append((lid, None, None, None, None, None))
+            plano.append((lid, None, None, None, None, None, False))
             continue
-        m = _material_compravel(conn, c.get("material_id"))
-        pi = itens_pedido.get(int(c.get("pedido_item_id") or 0))
-        if not pi or pi["material_id"] != m["id"]:
-            raise RegraViolada(f"Linha {li['n_item']}: escolha o item do pedido com o mesmo material ({m['id']}).")
+        m = _one(conn, "SELECT * FROM materiais WHERE id=?", c.get("material_id"))
+        if not m:
+            raise RegraViolada(f"Linha {li['n_item']}: material '{c.get('material_id')}' não cadastrado.")
+        caesb = m["propriedade"] == "CAESB"
+        pi = None
+        if p and not caesb:
+            pi = itens_pedido.get(int(c.get("pedido_item_id") or 0))
+            if not pi:                                # o item do pedido com o mesmo material, se for um só
+                mesmos = [x for x in itens_pedido.values() if x["material_id"] == m["id"]]
+                pi = mesmos[0] if len(mesmos) == 1 else None
+            if not pi or pi["material_id"] != m["id"]:
+                raise RegraViolada(f"Linha {li['n_item']}: escolha o item do pedido com o mesmo material ({m['id']}).")
         mesma = R.normalizar_unidade(li["unidade"]) == R.normalizar_unidade(m["unidade"])
         fator = c.get("fator")
         if mesma:
@@ -393,21 +465,39 @@ def conferir_nf(conn, nf_id, pedido_id, linhas_conf, por):
                 raise RegraViolada(f"Linha {li['n_item']}: a nota está em {li['unidade']} e o material em {m['unidade']}: "
                                    "declare o fator de conversão.")
         q = round(li["quantidade"] * fator, 6)
-        por_item[pi["id"]] = por_item.get(pi["id"], 0) + q
-        plano.append((lid, m["id"], fator, pi["id"], q, li["valor_unitario"] / fator))
+        if pi:
+            por_item[pi["id"]] = por_item.get(pi["id"], 0) + q
+        plano.append((lid, m["id"], fator, pi["id"] if pi else None, q, li["valor_unitario"] / fator, caesb))
     for piid, q in por_item.items():
         saldo = _a_faturar(conn, piid, nf_id)
         if q > saldo + TOL:
             raise RegraViolada(f"Item do pedido {itens_pedido[piid]['material_id']}: a nota ({q:g}) excede o saldo do pedido ({saldo:g}).")
+    sem_pedido = 1 if not p and any(mid and not caesb for _, mid, _, _, _, _, caesb in plano) else 0
     with transacao(conn):
-        for lid, mid, fator, piid, q, vu in plano:
-            conn.execute("UPDATE nf_linhas SET material_id=?, fator=?, pedido_item_id=?, fora_do_estoque=? WHERE id=?",
-                         (mid, fator, piid, 1 if mid is None else 0, lid))
+        for lid, mid, fator, piid, q, vu, caesb in plano:
+            conn.execute("UPDATE nf_linhas SET material_id=?, fator=?, pedido_item_id=?, fora_do_estoque=?, romaneio_caesb=? WHERE id=?",
+                         (mid, fator, piid, 1 if mid is None else 0, 1 if caesb else 0, lid))
             if mid:
                 conn.execute("INSERT INTO nf_itens(nf_id,material_id,quantidade,valor_unitario,pedido_item_id,linha_id) VALUES (?,?,?,?,?,?)",
                              (nf_id, mid, q, vu, piid, lid))
-        conn.execute("UPDATE notas_fiscais SET status='CONFERIDA', pedido_id=?, conferida_por=?, conferida_em=? WHERE id=?",
-                     (pedido_id, por, _agora(), nf_id))
+        conn.execute("UPDATE notas_fiscais SET status='CONFERIDA', pedido_id=?, sem_pedido=?, conferida_por=?, conferida_em=? WHERE id=?",
+                     (p["id"] if p else None, sem_pedido, por, _agora(), nf_id))
+    return {"sem_pedido": bool(sem_pedido)}
+
+
+def aprovar_nf_sem_pedido(conn, nf_id, por):
+    """Engenharia ou Administração aprova a nota que chegou sem pedido; só então o material aceito dela fica disponível
+    para as equipes. Quem importou ou digitou a nota não a aprova."""
+    nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
+    if not nf or nf["status"] == "CANCELADA":
+        raise RegraViolada("Nota não encontrada ou cancelada.")
+    if not nf["sem_pedido"]:
+        raise RegraViolada("Só a nota conferida sem pedido precisa de aprovação.")
+    if nf["aprovada_em"]:
+        raise RegraViolada(f"Nota já aprovada por {nf['aprovada_por']}.")
+    if str(nf["registrada_por"]).lower() == str(por).lower():
+        raise RegraViolada("Quem importou ou digitou a nota não a aprova: outra pessoa da Engenharia ou da Administração.")
+    conn.execute("UPDATE notas_fiscais SET aprovada_por=?, aprovada_em=? WHERE id=?", (por, _agora(), nf_id))
 
 
 def cancelar_nf(conn, nf_id, motivo, por):
@@ -427,7 +517,8 @@ def _recebido(conn, nf_item_id):
 
 
 def receber(conn, nf_id, data, itens, por, documento=None):
-    """Entrega (parcial ou total): cada item entra em QUARENTENA, nunca direto no estoque."""
+    """Entrega (parcial ou total): cada item entra em QUARENTENA, nunca direto no estoque. O tubo da Caesb (remessa) entra
+    como romaneio Caesb, com a quantidade que o almoxarife conferiu."""
     S.exigir_data_ocorrida(data, "Recebimento")
     nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
     if not nf or nf["status"] != "CONFERIDA":
@@ -452,13 +543,25 @@ def receber(conn, nf_id, data, itens, por, documento=None):
         rid = conn.execute("INSERT INTO recebimentos(nf_id,data,documento,recebido_por,registrado_em) VALUES (?,?,?,?,?)",
                            (nf_id, data, documento, por, _agora())).lastrowid
         for ni, q in plano:
-            mid = conn.execute(
-                """INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,status,nf_id,responsavel,ref_tipo,ref_id)
-                   VALUES (?,?,'ENTRADA_NF',?,?, 'QUARENTENA', ?, ?, 'RECEBIMENTO', ?)""",
-                (data, ni["material_id"], q, f"NF {nf['numero']}", nf_id, por, rid)).lastrowid
+            rom = ni["linha_id"] and _one(conn, "SELECT 1 FROM nf_linhas WHERE id=? AND romaneio_caesb=1", ni["linha_id"])
+            if rom:                                    # remessa da Caesb: romaneio, sem quarentena de compra
+                mid = conn.execute(
+                    """INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,status,nf_id,responsavel,ref_tipo,ref_id)
+                       VALUES (?,?,'ROMANEIO_CAESB',?,?, 'ACEITO', ?, ?, 'RECEBIMENTO', ?)""",
+                    (data, ni["material_id"], q, f"NF {nf['numero']} (remessa Caesb)", nf_id, por, rid)).lastrowid
+            else:
+                mid = conn.execute(
+                    """INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,status,nf_id,responsavel,ref_tipo,ref_id)
+                       VALUES (?,?,'ENTRADA_NF',?,?, 'QUARENTENA', ?, ?, 'RECEBIMENTO', ?)""",
+                    (data, ni["material_id"], q, f"NF {nf['numero']}", nf_id, por, rid)).lastrowid
             conn.execute("INSERT INTO recebimento_itens(recebimento_id,nf_item_id,quantidade,movimento_id) VALUES (?,?,?,?)",
                          (rid, ni["id"], q, mid))
+        _encerrar_se_completa(conn, nf_id)          # remessa da Caesb toda recebida: não há inspeção a esperar
     return rid
+
+
+# o tubo da Caesb (remessa) entra como romaneio: sem quarentena nem inspeção
+_SEM_ROMANEIO = "COALESCE(ni.linha_id, 0) NOT IN (SELECT id FROM nf_linhas WHERE romaneio_caesb=1)"
 
 
 def _encerrar_se_completa(conn, nf_id):
@@ -467,14 +570,15 @@ def _encerrar_se_completa(conn, nf_id):
              FROM recebimento_itens WHERE nf_item_id=ni.id),0)) > 1e-6""", (nf_id,)).fetchone()[0]
     sem_insp = conn.execute(
         """SELECT COUNT(*) FROM recebimento_itens ri JOIN nf_itens ni ON ni.id=ri.nf_item_id
-           WHERE ni.nf_id=? AND ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes)""", (nf_id,)).fetchone()[0]
+           WHERE ni.nf_id=? AND ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes) AND """ + _SEM_ROMANEIO, (nf_id,)).fetchone()[0]
     if not pend and not sem_insp:
         conn.execute("UPDATE notas_fiscais SET status='ENCERRADA' WHERE id=?", (nf_id,))
 
 
 def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, motivo_recusa=None, documento_b64=None,
                 documento_nome=None):
-    """Aceito + recusado = entregue. O aceito entra no estoque (novo ENTRADA_NF ACEITO); o recusado não entra."""
+    """Aceito + recusado = entregue. O aceito entra no estoque (novo ENTRADA_NF ACEITO); o recusado não entra. O laudo é
+    opcional; com recusa, obrigatório."""
     S.exigir_data_ocorrida(data, "Inspeção")
     ri = _one(conn, """SELECT ri.*, r.data data_entrega, r.nf_id, ni.material_id FROM recebimento_itens ri
                        JOIN recebimentos r ON r.id=ri.recebimento_id JOIN nf_itens ni ON ni.id=ri.nf_item_id WHERE ri.id=?""",
@@ -488,8 +592,9 @@ def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, m
         raise RegraViolada(f"Aceito + recusado deve ser igual ao entregue ({ri['quantidade']:g}).")
     if r > 0 and not str(motivo_recusa or "").strip():
         raise RegraViolada("Informe o motivo da recusa.")
-    if not str(laudo or "").strip():
-        raise RegraViolada("Informe a referência do laudo/inspeção.")
+    if r > 0 and not str(laudo or "").strip():
+        raise RegraViolada("Com recusa, informe a referência do laudo da inspeção.")
+    laudo = str(laudo or "").strip() or f"conferido por {por}"           # sem recusa, o laudo é opcional
     if not data or data < ri["data_entrega"]:
         raise RegraViolada("Data da inspeção ausente ou anterior à entrega.")
     with transacao(conn):
@@ -498,16 +603,35 @@ def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, m
         iid = conn.execute(
             """INSERT INTO inspecoes(recebimento_item_id,aceito,recusado,laudo,documento_id,motivo_recusa,inspecionado_por,inspecionado_em)
                VALUES (?,?,?,?,?,?,?,?)""",
-            (recebimento_item_id, a, r, laudo.strip(), doc, (motivo_recusa or "").strip() or None, por, _agora())).lastrowid
+            (recebimento_item_id, a, r, laudo, doc, (motivo_recusa or "").strip() or None, por, _agora())).lastrowid
         if a > 0:
             nf = _one(conn, "SELECT numero FROM notas_fiscais WHERE id=?", ri["nf_id"])
             mid = conn.execute(
                 """INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,status,nf_id,responsavel,ref_tipo,ref_id)
                    VALUES (?,?,'ENTRADA_NF',?,?, 'ACEITO', ?, ?, 'INSPECAO', ?)""",
-                (data, ri["material_id"], a, f"NF {nf['numero']} · laudo {laudo.strip()}", ri["nf_id"], por, iid)).lastrowid
+                (data, ri["material_id"], a, f"NF {nf['numero']} · laudo {laudo}", ri["nf_id"], por, iid)).lastrowid
             conn.execute("UPDATE inspecoes SET movimento_aceito_id=? WHERE id=?", (mid, iid))
         _encerrar_se_completa(conn, ri["nf_id"])
     return iid
+
+
+def inspecionar_entrega(conn, recebimento_id, itens, laudo, por, data, motivo_recusa=None, documento_b64=None, documento_nome=None):
+    """A inspeção da entrega inteira, com um laudo só (opcional; obrigatório quando há recusa). itens: [{recebimento_item_id,
+    aceito, recusado}]; vazio = "Aceitar tudo desta entrega" (o que ainda está em quarentena nela)."""
+    pend = {r["id"]: r for r in _rows(conn.execute(
+        """SELECT ri.id, ri.quantidade FROM recebimento_itens ri JOIN nf_itens ni ON ni.id=ri.nf_item_id
+           WHERE ri.recebimento_id=? AND ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes) AND """ + _SEM_ROMANEIO,
+        (recebimento_id,)))}
+    if not pend:
+        raise RegraViolada("Nada em quarentena nesta entrega.")
+    itens = itens or [{"recebimento_item_id": i, "aceito": r["quantidade"], "recusado": 0} for i, r in pend.items()]
+    if any(int(i["recebimento_item_id"]) not in pend for i in itens):
+        raise RegraViolada("Item fora desta entrega ou já inspecionado.")
+    if any(float(i.get("recusado") or 0) > 0 for i in itens) and not str(laudo or "").strip():
+        raise RegraViolada("Com recusa, informe a referência do laudo da inspeção.")
+    with transacao(conn):
+        return [inspecionar(conn, int(i["recebimento_item_id"]), i.get("aceito"), i.get("recusado"), laudo, por, data, motivo_recusa,
+                            documento_b64, documento_nome) for i in itens]
 
 
 def devolver_ao_fornecedor(conn, nf_item_id, data, quantidade, motivo, por, documento=None):
@@ -672,7 +796,7 @@ def painel(conn):
         n["a_inspecionar"] = _rows(conn.execute(
             """SELECT ri.id, ri.quantidade, ni.material_id, r.data FROM recebimento_itens ri JOIN recebimentos r ON r.id=ri.recebimento_id
                JOIN nf_itens ni ON ni.id=ri.nf_item_id WHERE r.nf_id=? AND ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes)
-               ORDER BY ri.id""", (n["id"],)))
+               AND """ + _SEM_ROMANEIO + " ORDER BY ri.id", (n["id"],)))
     return {
         "fornecedores": _rows(conn.execute("SELECT * FROM fornecedores ORDER BY nome")),
         "solicitacoes": [dict(s_, itens=_rows(conn.execute("SELECT * FROM solicitacao_itens WHERE solicitacao_id=?", (s_["id"],))))
@@ -690,4 +814,36 @@ def a_inspecionar(conn):
                   nf.serie, nf.fornecedor
            FROM recebimento_itens ri JOIN recebimentos r ON r.id=ri.recebimento_id JOIN nf_itens ni ON ni.id=ri.nf_item_id
            JOIN notas_fiscais nf ON nf.id=r.nf_id LEFT JOIN materiais m ON m.id=ni.material_id
-           WHERE ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes) ORDER BY r.data, ri.id"""))
+           WHERE ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes) AND """ + _SEM_ROMANEIO + " ORDER BY r.data, ri.id"))
+
+
+def notas_a_receber(conn):
+    """O que o almoxarife tem a fazer com as notas (tela Estoque e movimentos): a conferir (com o material sugerido em cada
+    linha e os pedidos emitidos do emitente), a receber (o que falta chegar), em quarentena (por entrega) e, da nota sem
+    pedido, a aprovação que falta."""
+    out = []
+    for n in _rows(conn.execute("""SELECT * FROM notas_fiscais WHERE origem<>'DIRETA' AND (status IN ('A_CONFERIR','CONFERIDA')
+                                     OR (sem_pedido=1 AND aprovada_em IS NULL AND status<>'CANCELADA')) ORDER BY id DESC LIMIT 100""")):
+        n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
+        if n["status"] == "A_CONFERIR":
+            n["sugestoes"] = sugerir_materiais(conn, n["id"])
+            n["pedidos"] = [{"id": p["id"], "numero": p["numero"]} for p in _rows(conn.execute(
+                "SELECT id, numero FROM pedidos_compra WHERE fornecedor_id=? AND status='EMITIDO' ORDER BY id", (n["fornecedor_id"],)))]
+        n["itens"] = _rows(conn.execute(
+            """SELECT ni.*, l.romaneio_caesb, l.descricao linha_descricao, m.descricao, m.unidade,
+                      (SELECT COALESCE(SUM(quantidade),0) FROM recebimento_itens WHERE nf_item_id=ni.id) recebido
+               FROM nf_itens ni LEFT JOIN nf_linhas l ON l.id=ni.linha_id LEFT JOIN materiais m ON m.id=ni.material_id
+               WHERE ni.nf_id=? ORDER BY ni.id""", (n["id"],)))
+        entregas = {}
+        for r in _rows(conn.execute(
+                """SELECT ri.id, ri.recebimento_id, ri.quantidade, ni.material_id, m.unidade, r.data, r.documento
+                   FROM recebimento_itens ri JOIN recebimentos r ON r.id=ri.recebimento_id JOIN nf_itens ni ON ni.id=ri.nf_item_id
+                   LEFT JOIN materiais m ON m.id=ni.material_id
+                   WHERE r.nf_id=? AND ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes) AND """ + _SEM_ROMANEIO
+                + " ORDER BY ri.id", (n["id"],))):
+            e = entregas.setdefault(r["recebimento_id"], {"id": r["recebimento_id"], "data": r["data"], "documento": r["documento"], "itens": []})
+            e["itens"].append(r)
+        n["entregas"] = list(entregas.values())
+        out.append(n)
+    return out
+

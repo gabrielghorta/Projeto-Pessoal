@@ -316,7 +316,9 @@ CREATE TABLE IF NOT EXISTS notas_fiscais (
   documento_id INTEGER REFERENCES documentos(id),
   registrada_por TEXT, registrada_em TEXT,
   conferida_por TEXT, conferida_em TEXT,
-  cancelada_motivo TEXT
+  cancelada_motivo TEXT,
+  sem_pedido INTEGER NOT NULL DEFAULT 0,   -- v20: conferida sem pedido; o aceito só fica disponível depois da aprovação
+  aprovada_por TEXT, aprovada_em TEXT      -- v20: aprovação da nota sem pedido (Engenharia ou Administração, outra pessoa)
 );
 
 CREATE TABLE IF NOT EXISTS nf_itens (
@@ -343,6 +345,7 @@ CREATE TABLE IF NOT EXISTS nf_linhas (
   fator REAL,                          -- quantidade no material = quantidade da NF × fator
   pedido_item_id INTEGER REFERENCES pedido_itens(id),
   fora_do_estoque INTEGER NOT NULL DEFAULT 0,   -- frete, serviço etc. (conferido)
+  romaneio_caesb INTEGER NOT NULL DEFAULT 0,    -- v20: tubo da Caesb (remessa): entra como romaneio, sem pedido nem quarentena
   UNIQUE (nf_id, n_item)
 );
 

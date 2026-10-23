@@ -1131,11 +1131,16 @@ def preparar_v19(conn):
 
 
 def preparar_v20(conn):
-    """Esquema v19 → v20: checkin_alvos, os trechos e nós de cada check-in (a liberação do Dados da obra cobre vários).
+    """Esquema v19 → v20: checkin_alvos, os trechos e nós de cada check-in (a liberação do Dados da obra cobre vários), e
+    as colunas da nota fiscal sem pedido (sem_pedido, aprovada_por, aprovada_em) e da remessa da Caesb (romaneio_caesb).
     Preenchida com o alvo de cada check-in e os alvos das programações que cada um realizou: origem PROGRAMACAO quando a
     equipe estava programada para o alvo (a programação foi realizada pelo check-in); senão CHECKIN. Confere a contagem:
     cada par (check-in, alvo) dos registros antigos vira exatamente uma linha."""
     S.aplicar_esquema(conn)
+    for tabela, coluna, tipo in (("notas_fiscais", "sem_pedido", "INTEGER NOT NULL DEFAULT 0"), ("notas_fiscais", "aprovada_por", "TEXT"),
+                                 ("notas_fiscais", "aprovada_em", "TEXT"), ("nf_linhas", "romaneio_caesb", "INTEGER NOT NULL DEFAULT 0")):
+        if coluna not in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:      # nota sem pedido e remessa da Caesb
+            conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
     pares = {}
     for cid, tipo, aid in conn.execute("SELECT id, alvo_tipo, alvo_id FROM checkins WHERE alvo_id IS NOT NULL"):
         pares[(cid, tipo, aid)] = "CHECKIN"

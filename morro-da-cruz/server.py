@@ -729,18 +729,23 @@ ROTAS_COMPRAS = {
         b.get("prazo"), bool(b.get("faturamento_etapas"))))),
     "/api/pedido/cancelar": ("compras_pedir", ("por",), lambda b, c: (C.cancelar_pedido(c, int(b["pedido_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
     "/api/pedido/encerrar": ("compras_pedir", ("por",), lambda b, c: (C.encerrar_pedido(c, int(b["pedido_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
-    "/api/nf/importar-xml": ("receber", ("por",), lambda b, c: C.importar_nfe_xml(c, b.get("conteudo_b64"), b.get("nome"), b["por"])),
+    "/api/nf/importar-xml": ("receber", ("por",), lambda b, c: C.importar_nfe_xml(c, b.get("conteudo_b64"), b.get("nome"), b["por"],
+                                                                                 bool(b.get("cadastrar_fornecedor")))),
+    "/api/nf/aprovar": ("compras_aprovar", ("por",), lambda b, c: (C.aprovar_nf_sem_pedido(c, int(b["nf_id"]), b["por"]), {"ok": True})[1]),
     "/api/nf/digitar": ("receber", ("por",), _c(lambda b, c: C.registrar_nf_digitada(
         c, b.get("numero"), int(b.get("fornecedor_id") or 0), b.get("data_emissao"), b.get("linhas") or [], b["por"],
         b.get("documento_b64"), b.get("documento_tipo"), b.get("documento_nome"), b.get("serie"), b.get("chave"), b.get("valor_total")))),
-    "/api/nf/conferir": ("receber", ("por",), lambda b, c: (C.conferir_nf(c, int(b["nf_id"]), int(b.get("pedido_id") or 0),
-                                                                           b.get("linhas") or [], b["por"]), {"ok": True})[1]),
+    "/api/nf/conferir": ("receber", ("por",), lambda b, c: dict(C.conferir_nf(c, int(b["nf_id"]), int(b.get("pedido_id") or 0),
+                                                                               b.get("linhas") or [], b["por"]), ok=True)),
     "/api/nf/cancelar": ("receber", ("por",), lambda b, c: (C.cancelar_nf(c, int(b["nf_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
     "/api/recebimento": ("receber", ("por",), _c(lambda b, c: C.receber(c, int(b["nf_id"]), b.get("data"), b.get("itens") or [], b["por"],
                                                                        b.get("documento")))),
     "/api/inspecao": ("receber", ("por",), _c(lambda b, c: C.inspecionar(
         c, int(b["recebimento_item_id"]), b.get("aceito"), b.get("recusado"), b.get("laudo"), b["por"], b.get("data"),
         b.get("motivo_recusa"), b.get("documento_b64"), b.get("documento_nome")))),
+    "/api/inspecao/entrega": ("receber", ("por",), lambda b, c: {"inspecoes": C.inspecionar_entrega(
+        c, int(b["recebimento_id"]), b.get("itens") or [], b.get("laudo"), b["por"], b.get("data"), b.get("motivo_recusa"),
+        b.get("documento_b64"), b.get("documento_nome"))}),
     "/api/devolucao-fornecedor": ("receber", ("por",), _c(lambda b, c: C.devolver_ao_fornecedor(
         c, int(b["nf_item_id"]), b.get("data"), b.get("quantidade"), b.get("motivo"), b["por"], b.get("documento")))),
     "/api/transferencia": ("almox", ("por",), _c(lambda b, c: C.transferir(
@@ -803,7 +808,7 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/lev/redes": r_lev_redes, "/api/lev/conexoes": r_lev_conexoes, "/api/topologia": r_topologia,
        "/api/topografia": r_topografia, "/api/cadastro-campo": r_cadastro_campo,
        "/api/dados-obra/selecao": r_dados_obra_selecao, "/api/dados-obra/estado": r_dados_obra_estado,
-       "/api/cronograma": r_cronograma, "/api/almox/quarentena": r_quarentena,
+       "/api/cronograma": r_cronograma, "/api/almox/quarentena": r_quarentena, "/api/almox/notas": lambda q, c: C.notas_a_receber(c),
        "/api/base-custo/busca": r_base_custo_busca, "/api/base-custo/itens": r_base_custo_itens,
        "/api/medicao/restricoes": r_medicao_restricoes}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios")}
@@ -882,7 +887,7 @@ TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX 
             "/api/diario": ("diario",), "/api/interferencias": ("interferencias",), "/api/topografia": ("topografia",),
             "/api/cadastro-campo": ("cadastro_campo",), "/api/topologia": ("mapa", "iluminado"),
             "/api/dados-obra/selecao": ("mapa",), "/api/dados-obra/estado": ("mapa",), "/api/cronograma": ("cronograma", "mapa"),
-            "/api/almox/quarentena": ("almox", "compras"),
+            "/api/almox/quarentena": ("almox", "compras"), "/api/almox/notas": ("almox", "compras"),
             "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS, "/api/ns/dia": ("campo", "diario", "notas"),
             "/api/base-custo/busca": TELAS_BASE_CUSTO, "/api/base-custo/itens": TELAS_BASE_CUSTO,
             "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",),
