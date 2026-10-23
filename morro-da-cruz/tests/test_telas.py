@@ -233,6 +233,54 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertIn(".rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }", css)
         self.assertIn("::-webkit-scrollbar { display: none; }", css)
 
+    def secao(self, tela):
+        return re.search(r'<section class="aba" id="aba-' + tela + r'">.*?\n  </section>', self.html, re.S).group(0)
+
+    def test_execucao_reorganizada(self):
+        """Execução reorganizada (23/10/2026): o menu na ordem combinada; Notas de serviço só com as NS do campo da obra;
+        Lançamento do dia sem NS; Topografia e Cadastro de campo com a página de envio e a do resumo; um componente
+        de páginas só (chips, endereço, lembrança na sessão)."""
+        app = ler("app.js")
+        corpo = re.search(r"const TELAS = \{.*?\n\};", app, re.S).group(0)
+        execucao = re.findall(r"^\s{2}(\w+): \{ titulo: '[^']+', grupo: 'grupo-campo'", corpo, re.M)
+        ordem = ["campo", "notas", "topografia", "cadastro_campo", "interferencias", "diario"]
+        self.assertEqual(execucao, ordem)
+        rail = re.search(r'data-grupo="grupo-campo".*?</div>', self.html, re.S).group(0)
+        self.assertEqual(re.findall(r'data-tela="(\w+)"', rail), ordem)
+        # as páginas de cada aba: as mesmas no código e no HTML
+        blocos = re.split(r"^\s{2}(\w+): \[", re.search(r"const PAGINAS = \{.*?\n\};", app, re.S).group(0), flags=re.M)[1:]
+        paginas = {t: re.findall(r"\['(\w+)', '[^']+', \(\) =>", b) for t, b in zip(blocos[::2], blocos[1::2])}
+        self.assertEqual(paginas, {"campo": ["apropriacao", "apontamento", "fotos", "clima"], "notas": ["dia", "servico"],
+                                   "topografia": ["enviar", "resumo"], "cadastro_campo": ["enviar", "feito"]})
+        for tela, ps in paginas.items():
+            sec = self.secao(tela)
+            self.assertEqual(sorted(re.findall(r'data-pagina="(\w+)"', sec)), sorted(ps), tela)
+            self.assertIn('class="abas-chip grandes paginas-aba"', sec)     # alvos de 44 px, quebrando a linha
+        self.assertEqual(app.count("function mostrarPagina("), 1)
+        self.assertIn("sessionStorage.setItem('mc-pagina-' + tela, pag)", app)
+        self.assertIn("'#' + id + (pag ? '/' + pag : '')", app)            # a página no endereço (voltar e avançar)
+        # Notas de serviço: só a NS do dia e a de serviço de obra
+        notas = self.secao("notas")
+        self.assertNotIn("TOPOGRAFIA", notas)
+        self.assertNotIn("CADASTRO", notas)
+        self.assertNotIn('id="nsTipo"', self.html)
+        self.assertIn('id="fNd"', notas)
+        self.assertIn("não acende o executado", notas)
+        # Lançamento do dia: nada de nota de serviço
+        campo = self.secao("campo")
+        for fora in ('id="fNd"', 'id="ndEnviadas"', 'id="ndServico"', 'id="campoAbas"', 'name="pdf"', 'name="croqui"'):
+            self.assertNotIn(fora, campo)
+        self.assertIn("A NS do dia é enviada em Execução › Notas de serviço.", campo)
+        # Topografia e Cadastro: o envio na própria aba (sai o botão que levava para Notas de serviço), exceção recolhida
+        self.assertNotIn("data-ns-enviar", self.html + self.js)
+        for tela, envio, excecao in (("topografia", "topEnvio", "fTop"), ("cadastro_campo", "cadEnvio", "fCad")):
+            sec = self.secao(tela)
+            self.assertIn(f'id="{envio}"', sec)
+            self.assertRegex(sec, r'<details class="painel" id="\w+Excecao"[^>]*>\s*<summary>Sem nota de serviço \(exceção\)</summary>\s*<form id="' + excecao)
+        notasjs = ler("notas.js")
+        for caixa, tipo in (("#nsEnvioServico", "SERVICO"), ("#topEnvio", "TOPOGRAFIA"), ("#cadEnvio", "CADASTRO")):
+            self.assertIn(f"montarEnvioNs($('{caixa}'), '{tipo}')", notasjs)
+
     def test_scripts_da_pagina_sem_erro_de_sintaxe(self):
         """Um erro de sintaxe derruba o script inteiro (a tela dele não abre): node --check em cada um, se houver Node."""
         import shutil
