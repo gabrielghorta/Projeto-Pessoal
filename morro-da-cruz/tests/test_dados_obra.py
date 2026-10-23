@@ -5,6 +5,7 @@ SINTÉTICAS: TR001 (NÓ1.8 → NÓ2.7) e TR002 (NÓ2.7 → DF-33); o teste acres
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -17,6 +18,7 @@ import dados_obra as DO  # noqa: E402
 import planejamento as P  # noqa: E402
 import relogio as RL  # noqa: E402
 import servicos as S  # noqa: E402
+import test_importacao as TI  # noqa: E402
 import topologia as TP  # noqa: E402
 from test_acesso import TR, BaseHTTP  # noqa: E402
 
@@ -232,3 +234,39 @@ class TestHTTPDadosObra(BaseDadosObra):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMigracaoV20(TI.Base):
+    """v19 → v20: checkin_alvos preenchida com o alvo de cada check-in e os alvos das programações que ele realizou."""
+    def test_v19_para_v20_checkins_e_programacoes_viram_checkin_alvos(self):
+        self.aplicar()
+        c = sqlite3.connect(self.db, isolation_level=None)
+        try:
+            tr = [r[0] for r in c.execute("SELECT id FROM trechos WHERE vigente=1 ORDER BY id LIMIT 3")]
+            c.execute("PRAGMA foreign_keys = OFF")
+            c.execute("BEGIN")
+            c.execute("DROP TABLE checkin_alvos")
+            eq = c.execute("SELECT id FROM equipes ORDER BY id LIMIT 1").fetchone()[0]
+            c.execute("INSERT INTO checkins(id,data,equipe_id,alvo_tipo,alvo_id,encerrado) VALUES (1,'2026-10-14',?, 'TRECHO', ?, 1)", (eq, tr[0]))
+            c.execute("INSERT INTO checkins(id,data,equipe_id,alvo_tipo,alvo_id,encerrado) VALUES (2,'2026-10-15',?, 'TRECHO', ?, 0)", (eq, tr[1]))
+            c.execute("INSERT INTO checkins(id,data,equipe_id,contingencia,encerrado) VALUES (3,'2026-10-16',?, 'FALTA_TUBO', 0)", (eq,))
+            for pid, (d, alvo, ck) in enumerate((("2026-10-14", tr[0], 1), ("2026-10-15", tr[1], 2), ("2026-10-15", tr[2], 2),
+                                                  ("2026-10-17", tr[2], None)), 1):
+                c.execute("INSERT INTO programacoes(id,data,equipe_id,alvo_tipo,alvo_id,servico,status,checkin_id,criada_por,criada_em) "
+                          "VALUES (?,?,?, 'TRECHO', ?, 'ASSENTAMENTO', ?, ?, 'eng1', '2026-10-13T08:00:00')",
+                          (pid, d, eq, alvo, "REALIZADA" if ck else "PLANEJADA", ck))
+            c.execute("DELETE FROM schema_versao WHERE versao > 19")
+            c.execute("INSERT OR IGNORE INTO schema_versao VALUES (19, '2026-10-22T00:00:00', 'rebaixado no teste')")
+            c.execute("COMMIT")
+        finally:
+            c.close()
+        rel = self.aplicar()
+        self.assertEqual((rel["esquema_antes"], rel["esquema_depois"]), (19, S.VERSAO_ESQUEMA))
+        conn = sqlite3.connect(self.db)
+        try:
+            self.assertEqual(conn.execute("SELECT checkin_id, alvo_id, origem FROM checkin_alvos ORDER BY checkin_id, rowid").fetchall(),
+                             [(1, tr[0], "PROGRAMACAO"), (2, tr[1], "PROGRAMACAO"), (2, tr[2], "PROGRAMACAO")])
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM checkins").fetchone()[0], 3)       # nada some
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+        finally:
+            conn.close()
