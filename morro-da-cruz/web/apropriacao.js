@@ -226,7 +226,11 @@ function aprRenderRestricoes() {
 $('#medRestFiltro').addEventListener('change', aprRenderRestricoes);
 $('#medRestGrupo').addEventListener('change', aprRenderRestricoes);
 $('#medRestCodigo').addEventListener('click', () => $('#itensAprovar').scrollIntoView({ behavior: 'smooth', block: 'start' }));
-$('#medRestEsteira').addEventListener('click', () => abrirAba('esteira'));
+// a esteira do cadastro fica na ficha do trecho (Mapa iluminado): a lista leva a cada trecho parado
+$('#medRestEsteira').addEventListener('click', async () => {
+  const lst = await api('/api/esteira').catch(() => []);
+  abrirListaIlu('Cadastro parado', lst.filter(c => ['3_RECEBIDO', '4_GDOC_ANALISE', '5A_NEGADO'].includes(c.etapa)).map(c => c.ponto));
+});
 
 function aprRenderItensAprovar(itens) {
   const el = $('#medItensAprovar');

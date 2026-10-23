@@ -31,7 +31,6 @@
       <button type="button" class="rail-item rail-grupo" data-grupo="administrativo" title="Administrativo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h16v11H4zM9 8V5h6v3M4 13h16"/></svg><span class="rail-rot">Administrativo</span></button>
       <div class="rail-sub" data-grupo="administrativo">
         <button type="button" class="rail-item sub" data-tela="equipes" title="Equipes"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 4.5"/></svg><span class="rail-rot">Equipes</span></button>
-        <button type="button" class="rail-item sub" data-tela="esteira" title="Cadastro"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5zM15 3v4h4M8 12h8M8 16h6"/></svg><span class="rail-rot">Cadastro</span></button>
         <button type="button" class="rail-item sub" data-tela="relatorios" title="Relatórios"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/></svg><span class="rail-rot">Relatórios</span></button>
         <button type="button" class="rail-item sub" data-tela="admin" title="Usuários e histórico"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span class="rail-rot">Usuários e histórico</span></button>
         <button type="button" class="rail-item sub" data-tela="lev" title="LEV"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 10h18M3 15h18M9 5v14"/></svg><span class="rail-rot">LEV</span></button>
@@ -109,6 +108,7 @@
         <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="zonas" aria-expanded="false">Zonas</button><div class="ilu-pop" id="popZonas" hidden></div></div>
         <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="equipes" aria-expanded="false">Equipes</button><div class="ilu-pop" id="popEquipes" hidden></div></div>
         <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="camadas" aria-expanded="false">Camadas</button><div class="ilu-pop" id="popCamadas" hidden></div></div>
+        <div class="ilu-bloco" id="iluBlocoLista" hidden><button type="button" class="ilu-bt" id="iluBtLista" data-pop="lista" aria-expanded="false">Aguardando verificação</button><div class="ilu-pop" id="popLista" hidden></div></div>
       </div>
       <div class="ilu-zoom">
         <button type="button" class="ilu-bt quadrado" id="iluMais" aria-label="Aproximar">+</button>
@@ -754,12 +754,6 @@
     </div>
   </section>
 
-  <!-- ======================================================= ADMINISTRATIVO: CADASTRO -->
-  <section class="aba" id="aba-esteira">
-    <header class="cab-tela"><h1>Cadastro</h1><p>A esteira do cadastro, do levantamento de campo até a entrega para a Caesb.</p></header>
-    <div class="kanban" id="kanban"></div>
-  </section>
-
   <!-- ======================================================= ADMINISTRATIVO: RELATÓRIOS -->
   <section class="aba" id="aba-relatorios">
     <header class="cab-tela"><h1>Relatórios</h1><p>Material, avanço e pendências, com exportação em planilha.</p></header>
@@ -854,6 +848,11 @@
   <!-- ======================================================= MEDIÇÃO -->
   <section class="aba" id="aba-medicao">
     <header class="cab-tela"><h1>Medição</h1><span class="selo-teste">teste</span><p>Boletim e memória de cálculo. Por enquanto, só de teste: a medição oficial continua bloqueada.</p></header>
+    <div class="painel largo" style="margin-bottom:16px">
+      <h3>Caminho até a medição</h3>
+      <p class="vazio" style="margin:0 0 8px">Um trecho entra na medição com a execução completa, verificada pelo supervisor, com as 3 fotos e o OK interno. Toque num número para ver os trechos no mapa.</p>
+      <div id="medCaminho" class="numeros-caminho vazio">—</div>
+    </div>
     <div class="grade-2">
       <div class="painel">
         <div class="acoes" style="justify-content:space-between;margin-bottom:12px">
@@ -902,7 +901,7 @@
         <label>Restrição<select id="medRestFiltro"><option value="">Todas</option></select></label>
         <label>Grupo<select id="medRestGrupo"><option value="">Todos</option></select></label>
         <button type="button" class="btn" id="medRestCodigo">Registrar código oficial</button>
-        <button type="button" class="btn" id="medRestEsteira">Abrir a esteira do cadastro</button>
+        <button type="button" class="btn" id="medRestEsteira">Ver o cadastro parado no mapa</button>
       </div>
       <div id="medRestricoes" class="vazio">—</div>
     </div>

@@ -656,11 +656,11 @@ def itens_a_aprovar(conn, linhas=None):
 
 # ------------------------------------------------------------------ liberação: o que cai vira proposta
 def sincronizar(conn, hoje=None):
-    """Propõe o que ficou livre, sem duplicar: as apropriações com quantidade ainda não proposta (item aprovado, de
-    serviço, dentro do BM, com medição de teste aberta) e os lançamentos das gavetas 1 a 4 retidos por item a aprovar
+    """Propõe o que ficou livre, sem duplicar: o OK interno que esperava a medição abrir, as apropriações com quantidade
+    ainda não proposta (item aprovado, de serviço, dentro do BM, com medição de teste aberta) e os lançamentos das gavetas 1 a 4 retidos por item a aprovar
     cujo código foi registrado (na própria medição, se aberta; senão na medição de teste aberta)."""
     hoje = hoje or RL.hoje().isoformat()
-    n = 0
+    n = S.lancar_oks_pendentes(conn)                   # OK interno registrado sem medição aberta
     for ap in _rows(conn.execute("SELECT * FROM apropriacoes WHERE estornado_em IS NULL ORDER BY data, id")):
         if _propor(conn, ap):
             n += 1
@@ -784,6 +784,18 @@ def restricoes(conn, medicao_id=None, hoje=None):
                                      preco=None, valor=round(t["excedente"], 2), estimado=False,
                                      origem=f"{med['numero']}ª medição", ref={"tipo": "MEDICAO", "id": med["id"]},
                                      teto=t["teto"]))
+
+    # OK interno sem medição aberta: os lançamentos só existem quando a medição abrir (valor ainda não calculado)
+    for e in S.oks_sem_medicao(conn):
+        try:
+            a = S.alvo(conn, e["alvo_tipo"], e["alvo_id"])
+        except RegraViolada:
+            continue
+        linhas.append(_linha("SEM_MEDICAO_ABERTA", hoje, e["ok_fiscal_em"], item=None, item_bm=None,
+                             descricao=f"OK interno de {a['nome']}: lançamentos entram quando a medição abrir",
+                             grupo="REDES" if e["alvo_tipo"] == "TRECHO" else "CAIXAS", unidade=None, quantidade=None,
+                             preco=None, estimado=False, origem=f"OK interno em {e['ok_fiscal_em']} por {e['ok_fiscal_por']}",
+                             ref={"tipo": e["alvo_tipo"], "id": e["alvo_id"]}))
 
     # cadastro esperando o GDOC (o valor é o do item de cadastro pela extensão do trecho, a regra D-58)
     cfg = S.mapa_servicos()["cadastro"]

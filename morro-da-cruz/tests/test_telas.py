@@ -214,6 +214,17 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertIn("function desenharNos(", pln)
         self.assertIn("zonaDoTrecho(t)", re.search(r"function linhasTracejadas\(.*?\n\}", ilu, re.S).group(0))
 
+    def test_scripts_da_pagina_sem_erro_de_sintaxe(self):
+        """Um erro de sintaxe derruba o script inteiro (a tela dele não abre): node --check em cada um, se houver Node."""
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("sem Node")
+        for arq in ("app.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
+            r = subprocess.run([node, "--check", os.path.join(WEB, arq)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, f"{arq}: {r.stderr[-400:]}")
+
     def test_trecho_mais_perto_do_toque(self):
         """O clique por cálculo acha o trecho da mesma forma que o antigo caminho de 14 px: até 7 px da tela; com duas
         linhas sobrepostas, a de cima no desenho (índice maior). Roda o código da tela no Node, se houver."""

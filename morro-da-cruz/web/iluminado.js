@@ -123,25 +123,28 @@ function realcarRede(acesa) {
 }
 
 /* ---------------------------------------------------------------- Mapa iluminado */
-// situação de cada trecho, da mais atrasada à mais adiantada; "OK interno" é conferência da Ankara, não aprovação da Caesb
+// etapa de cada trecho, da mais atrasada à mais adiantada (calculada no servidor, regras.etapa_trecho). "Verificado" e
+// "OK interno" são conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada
 const SITU = [
   { id: 'nao', nome: 'Não iniciado', cor: '#8C8C8C', tracejado: true },
   { id: 'liberado', nome: 'Liberado pela topografia', cor: '#6CB8F0' },
-  { id: 'execucao', nome: 'Em execução', cor: '#F15922' },
-  { id: 'aguarda', nome: 'Concluído, aguarda o OK interno', cor: '#F2F2F2' },
-  { id: 'cadastro', nome: 'OK interno, falta o cadastro', cor: '#A77BF3' },
+  { id: 'execucao', nome: 'Em execução hoje', cor: '#F15922' },
+  { id: 'executado', nome: 'Executado, aguardando verificação', cor: '#F2C94C' },
+  { id: 'verificado', nome: 'Verificado pelo supervisor', cor: '#F28AC0' },
+  { id: 'campo', nome: 'Cadastro de campo feito', cor: '#2EC5D9' },
+  { id: 'pronto', nome: 'Pronto para o OK interno', cor: '#F2F2F2' },
+  { id: 'ok', nome: 'OK interno, na medição', cor: '#A77BF3' },
+  { id: 'cad_andamento', nome: 'Cadastro em andamento', cor: '#D6C2FF' },
   { id: 'cadastrado', nome: 'Cadastro aprovado pela Caesb', cor: '#3FD68F' },
 ];
 const SITU_ID = Object.fromEntries(SITU.map(s => [s.id, s]));
+const etapaDe = (est, nome) => ((est.camadas || {}).etapas || {})[nome];
 function situacao(est, nome) {
-  const st = est.status[nome], cam = est.camadas || {};
-  if ((cam.cadastro || {})[nome] === '6_APROVADO') return 'cadastrado';
-  if (st === 'OK_FISCAL' || st === 'MEDIDO_ANTERIOR') return 'cadastro';
-  if (st === 'CONCLUIDO_MES') return 'aguarda';
-  if (st === 'EM_EXECUCAO' || (cam.em_campo || {})[nome]) return 'execucao';     // equipe com check-in hoje no trecho (Dados da obra)
-  if ((cam.liberado || {})[nome]) return 'liberado';
-  return 'nao';
+  const e = etapaDe(est, nome);
+  return e && SITU_ID[e.s] ? e.s : 'nao';
 }
+// "parcial" quando a execução ainda não cobre o trecho inteiro
+const nomeSituacao = (est, nome, s) => SITU_ID[s].nome + ((etapaDe(est, nome) || {}).parcial && ['executado', 'verificado', 'campo'].includes(s) ? ' (parcial)' : '');
 // o visor (arrastar, aproximar, clique) serve a este mapa e ao do Dados da obra (planejamento.js): cada um passa o seu
 // contexto com svg(), caixa(), desenhar(px, zoom) e clique(alvo, ev)
 const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
@@ -226,6 +229,9 @@ async function carregarIluminado() {
   else ajustarAspecto();
   ILU.est = await estadoMapa(true).catch(() => ILU.est);
   if (ILU.est) colorirIluminado();
+  if (!ILU.lista && pode('verificar')) $('#iluBlocoLista').hidden = false;          // supervisor: "Aguardando verificação"
+  else if (ILU.lista && ILU.lista.verificacao) { ILU.lista = null; if (ILU.pop === 'lista') abrirPop('lista', true); }   // relê depois de verificar
+  if (ILU.abrirLista && ILU.est) { ILU.abrirLista = false; abrirPop('lista', true); }
 }
 function avisoIlu(msg) { const a = $('#iluAviso'); a.textContent = msg; a.hidden = !msg; }
 
@@ -602,12 +608,40 @@ function abrirPop(nome, recarregar) {
         <span class="num${p ? '' : ' sem'}">${esc(rotuloEquipe(e.id))}</span><span>${esc(e.nome)}<small>${txt}</small></span></button>`;
     }).join('') + '<p>O pino aparece onde a equipe fez o check-in hoje. Equipe sem check-in não tem pino.</p>';
   }
+  if (nome === 'lista') listaIlu(pop);
   if (nome === 'camadas') {
     const ch = (k, rot) => `<button type="button" class="ilu-linha" data-camada="${k}" aria-pressed="${ILU.cam[k]}"><span>${ILU.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`;
     pop.innerHTML = '<h3>Fundo de satélite</h3><div class="ilu-fundos">' + Object.entries(FUNDOS).map(([k, [rot]]) =>
       `<button type="button" class="ilu-fundo" data-fundo="${k}" aria-pressed="${ILU.fundo === k}">${rot}</button>`).join('') + '</div>'
       + '<h3 style="margin-top:14px">Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes');
   }
+}
+// lista de trechos à parte: "Aguardando verificação" (supervisor, o mais perto primeiro quando o celular dá a posição) ou
+// a que a tela Medição abriu. Tocar leva ao trecho e abre a ficha, onde está a ação
+function abrirListaIlu(titulo, nomes) {
+  ILU.lista = { titulo, itens: nomes.map(n => ({ nome: n })) };
+  $('#iluBtLista').textContent = titulo; $('#iluBlocoLista').hidden = false;
+  if (TELA !== 'iluminado') { ILU.abrirLista = true; return abrirAba('iluminado'); }
+  if (GERAL && ILU.est) abrirPop('lista', true);
+}
+async function listaIlu(pop) {
+  if (!ILU.lista || ILU.lista.verificacao) {
+    const pedir = pos => api('/api/verificacao/pendentes' + (pos ? `?lat=${pos.lat}&lon=${pos.lon}` : ''));
+    if (!ILU.lista) {
+      pop.innerHTML = '<h3>Aguardando verificação</h3><p>Carregando…</p>';
+      ILU.lista = { titulo: 'Aguardando verificação', verificacao: true, itens: await pedir(null).catch(() => []) };
+      gps().then(pos => pos && pedir(pos)).then(r => { if (r && ILU.lista && ILU.lista.verificacao) { ILU.lista.itens = r; if (ILU.pop === 'lista') listaIlu($('#popLista')); } });
+    }
+  }
+  const zonas = {};
+  ILU.lista.itens.forEach(x => (zonas[x.zona || zonaDoTrecho(indexar(GERAL).trecho.get(x.nome) || {}) || '—'] ||= []).push(x));
+  const sub = x => [x.intervalos ? `${x.intervalos} intervalo${x.intervalos > 1 ? 's' : ''}` : '', x.desde ? 'desde ' + dataBR(x.desde) : '',
+    x.distancia_m != null ? (x.distancia_m < 1000 ? `${x.distancia_m} m daqui` : km(x.distancia_m) + ' daqui') : ''].filter(Boolean).join(' · ');
+  pop.innerHTML = `<h3>${esc(ILU.lista.titulo)} (${ILU.lista.itens.length})</h3>`
+    + (Object.entries(zonas).map(([z, xs]) => `<h4>${esc(nomeZona(z))}</h4>` + xs.map(x =>
+      `<button type="button" class="ilu-linha" data-ir-tipo="TRECHO" data-ir="${esc(x.nome)}"><span>${esc(nomeCompleto(x.nome))}<small>${esc(sub(x))}</small></span></button>`).join('')).join('')
+      || '<p>Nenhum trecho.</p>')
+    + (ILU.lista.verificacao ? '<p>Trechos com execução informada e ainda não verificada. Toque para abrir a ficha e verificar (com as fotos que faltam).</p>' : '');
 }
 function fecharPop() {
   ILU.pop = null;
@@ -672,13 +706,15 @@ async function abrirFicha(tipo, nome) {
   if (prox) linhas.push(['Programado', `${esc(prox.data.split('-').reverse().join('/'))} · ${esc(equipeNome(prox.equipe_id))}`]);
   f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button>
     <h2>${esc(nomeCurto(d.nome || nome))}</h2>
-    ${tipo === 'TRECHO' ? `<span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(s.nome)}</span>` : ''}
+    ${tipo === 'TRECHO' ? `<span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(ILU.est ? nomeSituacao(ILU.est, nome, s.id) : s.nome)}</span>` : ''}
     ${d.retirado ? '<div class="aviso problema">Retirado da revisão vigente do projeto: só consulta.</div>' : ''}
     <dl>${linhas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
     <div class="acoes">${pode('campo') && !d.retirado ? `<button type="button" class="btn prim" data-ficha-campo>Lançar avanço</button>` : ''}
       <button type="button" class="btn" data-ficha-completa>Ver a ficha completa</button></div>
+    ${tipo === 'TRECHO' && !d.retirado ? '<div class="caminho-box" id="iluCaminho"><p class="vazio">Carregando o caminho até a medição…</p></div>' : ''}
     <p class="vazio" style="font-size:13px">${esc(d.nome || nome)}</p>`;
   f.dataset.tipo = tipo; f.dataset.id = d.id;
+  if (tipo === 'TRECHO' && !d.retirado) montarCaminho($('#iluCaminho'), d.nome || nome, () => { recarregarCamadaMapa(); abrirFicha(tipo, nome); });
 }
 $('#iluFicha').addEventListener('click', async ev => {
   const f = $('#iluFicha');

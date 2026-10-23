@@ -1351,6 +1351,101 @@ def verificar_intervalo(conn, intervalo_id, verificado_por):
     conn.execute("UPDATE intervalos_execucao SET verificado_em=?, verificado_por=? WHERE id=?", (_agora(), verificado_por.strip(), intervalo_id))
 
 
+def sem_verificacao(conn, trecho_id):
+    """Intervalos efetivos do trecho ainda sem a verificação do supervisor."""
+    return _rows(conn.execute(f"SELECT * FROM intervalos_execucao WHERE trecho_id=? AND {EFETIVO} AND verificado_em IS NULL "
+                              "ORDER BY etapa, ini_m", (trecho_id,)))
+
+
+def verificar_trecho(conn, ref, verificado_por):
+    """O supervisor confere o trecho em campo e verifica, de uma vez, os intervalos que faltam. Os que ele mesmo
+    informou ficam para outra pessoa (quem informou não verifica)."""
+    t = alvo(conn, "TRECHO", ref, operacao=True)
+    por = (verificado_por or "").strip()
+    falta = sem_verificacao(conn, t["id"])
+    if not falta:
+        raise RegraViolada(f"{t['ponto']}: nada a verificar (sem intervalo informado ou tudo já verificado).")
+    meus = [i for i in falta if i["informado_por"] and i["informado_por"].strip().lower() == por.lower()]
+    if len(meus) == len(falta):
+        raise RegraViolada("Quem informou não verifica: todos os intervalos que faltam foram informados por você.")
+    with transacao(conn):
+        for i in falta:
+            if i not in meus:
+                verificar_intervalo(conn, i["id"], por)
+    return {"verificados": len(falta) - len(meus), "de_outra_pessoa": len(meus)}
+
+
+def aguardando_verificacao(conn, lat=None, lon=None):
+    """Trechos com execução informada e ainda não verificada, por zona; dentro da zona, o mais perto primeiro quando a
+    posição de quem pede é conhecida (senão pelo nome)."""
+    out = []
+    for r in conn.execute(
+            f"""SELECT t.id, t.ponto, t.frente_id, t.extensao_m, t.lat, t.lon, COUNT(*) n, MIN(i.data) desde,
+                       SUM(CASE WHEN i.etapa='ASSENTADO' THEN i.fim_m - i.ini_m ELSE 0 END) assentado_m
+                FROM intervalos_execucao i JOIN trechos t ON t.id=i.trecho_id AND t.vigente=1
+                WHERE i.{EFETIVO} AND i.verificado_em IS NULL GROUP BY t.id"""):
+        d = None
+        if lat is not None and lon is not None and r["lat"] is not None and r["lon"] is not None:
+            d = round(R.distancia_m(float(lat), float(lon), r["lat"], r["lon"]))
+        out.append({"trecho_id": r["id"], "nome": r["ponto"], "zona": r["frente_id"], "extensao_m": r["extensao_m"],
+                    "intervalos": r["n"], "desde": r["desde"], "assentado_m": round(r["assentado_m"], 2), "distancia_m": d})
+    out.sort(key=lambda x: (x["zona"] or "", x["distancia_m"] is None, x["distancia_m"] or 0, x["nome"]))
+    return out
+
+
+def caminho_medicao(conn, ref):
+    """Para entrar na medição: o que já foi feito e o que falta no trecho, cada item com quem faz e onde. A ordem é a
+    da obra; o OK interno exige execução completa, verificação e fotos (a liberação e o cadastro de campo aparecem
+    para a pessoa saber onde o trecho está)."""
+    t = alvo(conn, "TRECHO", ref)
+    tid, ext = t["id"], float(t["extensao_m"])
+    mnd = t.get("metodologia") == "MND"
+    ex = execucao(conn, "TRECHO", tid) or {}
+    lib = conn.execute("""SELECT COALESCE(SUM(fim_m - ini_m), 0) FROM etapas_complementares
+                          WHERE trecho_id=? AND etapa='LIBERACAO_TOPOGRAFICA' AND anulado_em IS NULL""", (tid,)).fetchone()[0]
+    ass = R.comprimento(_cobertura(conn, tid, "ASSENTADO"))
+    rea = R.comprimento(_cobertura(conn, tid, "REATERRADO"))
+    cad = R.comprimento(_cobertura(conn, tid, "CADASTRO_CAMPO"))
+    n = conn.execute(f"SELECT COUNT(*) FROM intervalos_execucao WHERE trecho_id=? AND {EFETIVO}", (tid,)).fetchone()[0]
+    falta_ver = sem_verificacao(conn, tid)
+    fotos = fotos_faltando(conn, "TRECHO", tid)
+    legado = legado_pendente(conn, t)
+    concluido, ok = bool(ex.get("concluido")), ex.get("ok_fiscal_em")
+    med = _one(conn, "SELECT numero, tipo FROM medicoes WHERE id=?", ex["medicao_id"]) if ex.get("medicao_id") else None
+    m = lambda v: f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    itens = [
+        {"id": "topografia", "nome": "Liberação topográfica", "feito": lib >= ext - R.TOL_M,
+         "detalhe": f"{m(lib)} m de {m(ext)} m" if lib else "sem NS de topografia",
+         "quem": "Topografia", "onde": "NS de topografia (tela Topografia)"},
+        {"id": "execucao", "nome": "Executado 100 % (assentado" + ("" if mnd else " e reaterrado") + ")", "feito": concluido,
+         "detalhe": f"assentado {m(ass)} m" + ("" if mnd else f" · reaterrado {m(rea)} m") + f" de {m(ext)} m"
+                    + (" · avanço anterior sem posição: concilie antes" if legado else ""),
+         "quem": "Equipe, pela NS do dia", "onde": "Lançamento do dia"},
+        {"id": "verificacao", "nome": "Verificado pelo supervisor", "feito": bool(n) and not falta_ver,
+         "detalhe": f"{n - len(falta_ver)} de {n} intervalo(s) verificado(s)" if n else "nada informado ainda",
+         "quem": "Supervisor (quem informou não verifica)", "onde": "aqui: Verificar", "pendentes": len(falta_ver)},
+        {"id": "fotos", "nome": "3 fotos (sinalização, execução, concluído)", "feito": not fotos, "faltam": fotos,
+         "detalhe": "completas" if not fotos else "faltam " + ", ".join(R.NOMES_FOTO.get(c, c) for c in fotos),
+         "quem": "Quem envia a NS do dia, ou o supervisor na verificação", "onde": "aqui, junto da verificação"},
+        {"id": "cadastro_campo", "nome": "Cadastro de campo", "feito": cad >= ext - R.TOL_M,
+         "detalhe": f"{m(cad)} m de {m(ext)} m" if cad else "sem NS de cadastro",
+         "quem": "Cadastro, pela NS de cadastro", "onde": "tela Cadastro de campo"},
+        {"id": "ok", "nome": "OK interno", "feito": bool(ok),
+         "detalhe": (f"em {ok} por {ex.get('ok_fiscal_por')} · " + (f"{med['numero']}ª medição ({med['tipo'].lower()})" if med
+                     else "espera a medição de teste abrir")) if ok else "conferência interna da Ankara (não é aprovação da Caesb)",
+         "quem": "Engenharia ou Administração", "onde": "aqui: OK interno"},
+    ]
+    pronto = concluido and not falta_ver and bool(n) and not fotos and not legado and not ok
+    falta_ok = [i["nome"] for i in itens[1:4] if not i["feito"]] + (["conciliar o avanço anterior"] if legado else [])
+    cadastro = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", tid)
+    if cadastro:
+        cadastro["rotulo"] = R.rotulo_etapa(cadastro["etapa"], cadastro["revisao"])
+        cadastro["proximas"] = list(R.TRANSICOES.get(cadastro["etapa"], {}).keys())
+        cadastro["conferencia"] = ultima_conferencia(conn, tid, cadastro["revisao"])
+    return {"trecho_id": tid, "nome": t["ponto"], "itens": itens, "pronto_para_ok": pronto, "falta_para_ok": falta_ok,
+            "cadastro": cadastro}
+
+
 def estado_verificacao(n_intervalos, n_verificados, legado):
     """Execução INFORMADA × VERIFICADA (conferência interna Ankara; não é aprovação da Caesb)."""
     if legado:
@@ -1799,7 +1894,10 @@ def _vertical_por_codigo(conn, codigo_bm):
 
 def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
     """[✓] OK Fiscalização (interno Ankara). Gera PROPOSTA de lançamentos na medição de teste e
-    envia o trecho à Esteira de Cadastro. Não aprova nada pela Caesb e não aplica regime de material."""
+    envia o trecho à Esteira de Cadastro. Não aprova nada pela Caesb e não aplica regime de material.
+    Trecho: exige todos os intervalos verificados pelo supervisor (quem informou não verifica). Sem medição aberta
+    para a data, o OK fica registrado e os lançamentos esperam (SEM_MEDICAO_ABERTA): entram sozinhos quando a medição
+    abrir (lancar_oks_pendentes, chamado por apropriacao.sincronizar, D-95). Devolve a medição, ou None."""
     data = data or RL.hoje().isoformat()
     exigir_data_ocorrida(data, "OK interno")
     a = alvo(conn, alvo_tipo, ref, operacao=True)
@@ -1808,54 +1906,103 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
         _exigir_sem_legado(conn, a, "o OK interno")
     ex = execucao(conn, tipo, aid)
     R.validar_ok_fiscal(ex, fotos_faltando(conn, tipo, aid))
-    servico_solda = mapa_servicos()["solda"]["servico"]
-    med = medicao_para(conn, data)
+    if tipo == "TRECHO":
+        falta = sem_verificacao(conn, aid)
+        if falta:
+            lista = ", ".join(f"{i['etapa'].lower()} {i['ini_m']:g}–{i['fim_m']:g} m" for i in falta[:4]) + ("…" if len(falta) > 4 else "")
+            raise RegraViolada(f"OK interno exige a verificação do supervisor: {len(falta)} intervalo(s) sem verificação "
+                               f"({lista}). Verifique na ficha do trecho.")
+    med = medicao_do_ok(conn, data)
     with transacao(conn):
         conn.execute("UPDATE execucao SET ok_fiscal_em=?, ok_fiscal_por=?, medicao_id=? WHERE alvo_tipo=? AND alvo_id=?",
-                     (data, usuario, med["id"], tipo, aid))
-        # SOLDA de apontamentos antigos (estimativa ⌈L/6⌉ gravada como confirmada) é ignorada: vale o controle de soldas.
-        # Apontamento retificado (anulado_por) fica fora: vale o substituto, sem dupla contagem.
-        servs = _rows(conn.execute(
-            """SELECT q.servico, q.unidade, SUM(q.confirmado) qtd FROM apontamento_quantidades q
-               JOIN apontamentos ap ON ap.id=q.apontamento_id
-               WHERE ap.alvo_tipo=? AND ap.alvo_id=? AND ap.anulado_por IS NULL AND q.servico<>?
-               GROUP BY q.servico, q.unidade""",
-            (tipo, aid, servico_solda)))
-        aprov = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM soldas WHERE alvo_tipo=? AND alvo_id=? "
-                             "AND resultado='APROVADA'", (tipo, aid)).fetchone()[0]
-        if aprov:
-            _lancar(conn, med["id"], 1, servico_solda, None, "UN", aprov, tipo, aid,
-                    motivo="SOLDA: item de BM e regra contratual a confirmar; quantidade = soldas verificadas e "
-                           "APROVADAS no controle de soldas (a estimativa ⌈L/6⌉ não é usada)")
+                     (data, usuario, med["id"] if med else None, tipo, aid))
+        if med:
+            _lancar_ok(conn, a, med["id"])
         if tipo == "TRECHO":
-            mnd = a.get("metodologia") == "MND"
-            for s in servs:
-                if mnd and s["servico"] == "ASSENTAMENTO":
-                    _lancar(conn, med["id"], 1, s["servico"], None, s["unidade"], s["qtd"], tipo, aid,
-                            motivo=f"MND: item a definir pela engenharia (a 06.1 traz {a.get('codigo_bm')}, "
-                                   "de assentamento em vala; não substituído automaticamente)")
-                    continue
-                itens = _itens_servico(conn, s["servico"], a)
-                if not itens:
-                    _lancar(conn, med["id"], 1, s["servico"], None, s["unidade"], s["qtd"], tipo, aid)
-                for bm, frac in itens:
-                    obs = "rateio pela proporção contratual (estimativa)" if len(itens) > 1 else None
-                    _lancar(conn, med["id"], 1, s["servico"], bm, s["unidade"], s["qtd"] * frac, tipo, aid, obs=obs)
             conn.execute("INSERT INTO cadastro(trecho_id,etapa,atualizado_em) VALUES (?, '1_PRONTO', ?)", (aid, _agora()))
             conn.execute("INSERT INTO cadastro_historico(trecho_id,de_etapa,para_etapa,em) VALUES (?,NULL,'1_PRONTO',?)",
                          (aid, _agora()))
-        else:
-            codigos = {}
-            for i in itens_atividade(conn, aid):
-                codigos.setdefault(R.quantidades_previstas_elemento([i])[0]["servico"], i["codigo_bm"])
-            for s in servs:
-                bm, motivo = _vertical_por_codigo(conn, codigos.get(s["servico"]))
-                restricao = None
-                if bm and str(bm["classificacao"]).upper().startswith("MATERIAL"):     # o item fica, para mostrar o valor parado
-                    motivo, restricao = "material: regime de faturamento pendente (matriz de regimes não aprovada)", "MATERIAL_SEM_REGIME"
-                _lancar(conn, med["id"], 1, s["servico"], bm, s["unidade"], s["qtd"], tipo, aid, motivo=motivo,
-                        restricao=restricao)
-    return med["id"]
+    return med["id"] if med else None
+
+
+def medicao_do_ok(conn, data):
+    """A medição que recebe o OK interno da data: a aberta do período (medicao_para) ou, se ela já fechou ou não existe,
+    a próxima de teste aberta. Nenhuma: o OK espera (SEM_MEDICAO_ABERTA)."""
+    try:
+        return medicao_para(conn, data)
+    except RegraViolada:
+        return _one(conn, "SELECT * FROM medicoes WHERE tipo='TESTE' AND status='ABERTA' AND periodo_fim>=? "
+                          "ORDER BY periodo_ini LIMIT 1", data)
+
+
+def _lancar_ok(conn, a, medicao_id):
+    """Os lançamentos do OK interno na medição: serviços dos apontamentos efetivos e soldas aprovadas."""
+    tipo, aid = a["alvo_tipo"], a["id"]
+    servico_solda = mapa_servicos()["solda"]["servico"]
+    # SOLDA de apontamentos antigos (estimativa ⌈L/6⌉ gravada como confirmada) é ignorada: vale o controle de soldas.
+    # Apontamento retificado (anulado_por) fica fora: vale o substituto, sem dupla contagem.
+    servs = _rows(conn.execute(
+        """SELECT q.servico, q.unidade, SUM(q.confirmado) qtd FROM apontamento_quantidades q
+           JOIN apontamentos ap ON ap.id=q.apontamento_id
+           WHERE ap.alvo_tipo=? AND ap.alvo_id=? AND ap.anulado_por IS NULL AND q.servico<>?
+           GROUP BY q.servico, q.unidade""",
+        (tipo, aid, servico_solda)))
+    aprov = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM soldas WHERE alvo_tipo=? AND alvo_id=? "
+                         "AND resultado='APROVADA'", (tipo, aid)).fetchone()[0]
+    if aprov:
+        _lancar(conn, medicao_id, 1, servico_solda, None, "UN", aprov, tipo, aid,
+                motivo="SOLDA: item de BM e regra contratual a confirmar; quantidade = soldas verificadas e "
+                       "APROVADAS no controle de soldas (a estimativa ⌈L/6⌉ não é usada)")
+    if tipo == "TRECHO":
+        mnd = a.get("metodologia") == "MND"
+        for s in servs:
+            if mnd and s["servico"] == "ASSENTAMENTO":
+                _lancar(conn, medicao_id, 1, s["servico"], None, s["unidade"], s["qtd"], tipo, aid,
+                        motivo=f"MND: item a definir pela engenharia (a 06.1 traz {a.get('codigo_bm')}, "
+                               "de assentamento em vala; não substituído automaticamente)")
+                continue
+            itens = _itens_servico(conn, s["servico"], a)
+            if not itens:
+                _lancar(conn, medicao_id, 1, s["servico"], None, s["unidade"], s["qtd"], tipo, aid)
+            for bm, frac in itens:
+                obs = "rateio pela proporção contratual (estimativa)" if len(itens) > 1 else None
+                _lancar(conn, medicao_id, 1, s["servico"], bm, s["unidade"], s["qtd"] * frac, tipo, aid, obs=obs)
+    else:
+        codigos = {}
+        for i in itens_atividade(conn, aid):
+            codigos.setdefault(R.quantidades_previstas_elemento([i])[0]["servico"], i["codigo_bm"])
+        for s in servs:
+            bm, motivo = _vertical_por_codigo(conn, codigos.get(s["servico"]))
+            restricao = None
+            if bm and str(bm["classificacao"]).upper().startswith("MATERIAL"):     # o item fica, para mostrar o valor parado
+                motivo, restricao = "material: regime de faturamento pendente (matriz de regimes não aprovada)", "MATERIAL_SEM_REGIME"
+            _lancar(conn, medicao_id, 1, s["servico"], bm, s["unidade"], s["qtd"], tipo, aid, motivo=motivo,
+                    restricao=restricao)
+
+
+def oks_sem_medicao(conn):
+    """OK interno registrado sem medição aberta: os lançamentos ainda não existem (restrição SEM_MEDICAO_ABERTA)."""
+    return _rows(conn.execute("SELECT * FROM execucao WHERE ok_fiscal_em IS NOT NULL AND medicao_id IS NULL "
+                              "ORDER BY ok_fiscal_em, alvo_tipo, alvo_id"))
+
+
+def lancar_oks_pendentes(conn):
+    """Põe na medição aberta os OK internos que esperavam por ela (D-95: sem relançar, nada se perde e nada duplica).
+    Devolve quantos entraram."""
+    n = 0
+    for e in oks_sem_medicao(conn):
+        med = medicao_do_ok(conn, e["ok_fiscal_em"])
+        if not med:
+            continue
+        try:
+            a = alvo(conn, e["alvo_tipo"], e["alvo_id"])
+        except RegraViolada:
+            continue
+        with transacao(conn):
+            conn.execute("UPDATE execucao SET medicao_id=? WHERE alvo_tipo=? AND alvo_id=?", (med["id"], e["alvo_tipo"], e["alvo_id"]))
+            _lancar_ok(conn, a, med["id"])
+        n += 1
+    return n
 
 
 def recomposicao_ok(conn, alvo_tipo, ref, tipo, quantidade, data=None):

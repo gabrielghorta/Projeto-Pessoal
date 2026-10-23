@@ -316,6 +316,15 @@ def p_foto(b, c):
                             b.get("data_hora"), b.get("lat"), b.get("lon"), dir_fotos=DIR_FOTOS)
 
 
+def p_trecho_verificar(b, c):
+    return S.verificar_trecho(c, b.get("trecho"), b.get("verificado_por"))
+
+
+def r_verificacao_pendentes(q, c):
+    lat, lon = q.get("lat"), q.get("lon")
+    return S.aguardando_verificacao(c, float(lat) if lat else None, float(lon) if lon else None)
+
+
 def p_ok_fiscal(b, c):
     return {"medicao_id": S.ok_fiscalizacao(c, b["alvo_tipo"], b["alvo_id"], b.get("usuario") or "Engenharia Ankara", b.get("data"))}
 
@@ -798,7 +807,9 @@ def r_auditoria(q, c, usuario):
 GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detalhe, "/api/previsto": r_previsto,
        "/api/mapa/estado": r_mapa_estado, "/api/equipe": r_equipe, "/api/estoque": r_estoque,
        "/api/compat-caesb": r_compat, "/api/nfs": r_nfs, "/api/histograma": r_histograma,
-       "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
+       "/api/esteira": r_esteira, "/api/caminho": lambda q, c: S.caminho_medicao(c, q.get("trecho")),
+       "/api/verificacao/pendentes": r_verificacao_pendentes,
+       "/api/medicao/caminho": lambda q, c: P.caminho_da_medicao(c, int(q["id"]) if q.get("id") else None), "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
        "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
        "/api/reservas-vencidas": r_reservas_vencidas,
@@ -820,7 +831,7 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
         "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar,
-        "/api/intervalo/verificar": p_intervalo_verificar, "/api/legado/conciliar": p_legado_conciliar,
+        "/api/intervalo/verificar": p_intervalo_verificar, "/api/trecho/verificar": p_trecho_verificar, "/api/legado/conciliar": p_legado_conciliar,
         "/api/intervalos/retificar": p_intervalos_retificar, "/api/cadastro/conferencia": p_cadastro_conferencia,
         "/api/solda": p_solda, "/api/solda/verificar": p_solda_verificar, "/api/reserva": p_reserva,
         "/api/reserva/cancelar": p_reserva_cancelar, "/api/liberacao": _etapa("LIBERACAO_TOPOGRAFICA"),
@@ -840,7 +851,7 @@ PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/mov
              "/api/nf/aceitar": "receber", "/api/checkout": "almox", "/api/clima": "campo",
              "/api/apontamento": "campo", "/api/foto": "campo", "/api/ok-fiscal": "ok_interno", "/api/recomposicao": "ok_interno",
              "/api/cadastro": "cadastro", "/api/medicao": "medicao", "/api/medicao/fechar": "medicao", "/api/estorno": "almox",
-             "/api/retificar": "almox", "/api/intervalo/verificar": "verificar", "/api/legado/conciliar": "retificar_campo",
+             "/api/retificar": "almox", "/api/intervalo/verificar": "verificar", "/api/trecho/verificar": "verificar", "/api/legado/conciliar": "retificar_campo",
              "/api/intervalos/retificar": "retificar_campo", "/api/cadastro/conferencia": "conferir_cadastro",
              "/api/solda": "campo", "/api/solda/verificar": "verificar", "/api/reserva": "almox",
              "/api/reserva/cancelar": "almox", "/api/usuarios": "usuarios", "/api/senha": None,
@@ -849,7 +860,7 @@ PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/mov
 # campos de autoria: o servidor grava o usuário da sessão, nunca o nome digitado no navegador
 AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "/api/retificar": ("responsavel",),
          "/api/reserva": ("responsavel",), "/api/apontamento": ("informado_por",), "/api/solda": ("informado_por",),
-         "/api/intervalo/verificar": ("verificado_por",), "/api/solda/verificar": ("verificado_por",),
+         "/api/intervalo/verificar": ("verificado_por",), "/api/trecho/verificar": ("verificado_por",), "/api/solda/verificar": ("verificado_por",),
          "/api/legado/conciliar": ("responsavel",), "/api/intervalos/retificar": ("responsavel",),
          "/api/cadastro/conferencia": ("revisor",), "/api/ok-fiscal": ("usuario",),
          "/api/liberacao": ("registrado_por",), "/api/escavacao": ("registrado_por",), "/api/etapa-complementar/anular": ("por",),
@@ -873,7 +884,7 @@ PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_APROPRIACAO.items()})
 AUTOR.update({rota: ("por",) for rota in ROTAS_APROPRIACAO})
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 # tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
-COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral"}
+COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral", "/api/caminho"}
 _CAMPO = ("campo", "diario", "interferencias")
 _ALMOX = ("almox", "equipes", "mapa")                   # Equipes e o Dados da obra (liberar e devolver) também montam o almoxarifado
 TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX + ("compras",),
@@ -881,7 +892,8 @@ TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX 
             "/api/consumo": _ALMOX, "/api/histograma": ("equipes",) + _CAMPO,
             "/api/compras": ("compras",), "/api/inventarios": ("compras",), "/api/reservas-vencidas": ("compras",),
             "/api/ocorrencias": _CAMPO + ("mapa", "topografia", "cadastro_campo"),
-            "/api/esteira": ("esteira",), "/api/relatorios": ("relatorios",), "/api/medicoes": ("medicao",),
+            "/api/esteira": ("iluminado", "mapa"), "/api/verificacao/pendentes": ("iluminado", "mapa", "medicao"),
+            "/api/medicao/caminho": ("medicao",), "/api/relatorios": ("relatorios",), "/api/medicoes": ("medicao",),
             "/api/medicao": ("medicao",), "/api/medicao/elegibilidade": ("medicao",), "/api/planilhas": ("lev",),
             "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa"),
             "/api/diario": ("diario",), "/api/interferencias": ("interferencias",), "/api/topografia": ("topografia",),

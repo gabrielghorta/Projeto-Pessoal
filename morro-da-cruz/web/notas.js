@@ -8,7 +8,7 @@ const NS_DESC = {
   TOPOGRAFIA: 'Gera a liberação topográfica dos trechos da nota, só no que ainda não está liberado.',
   CADASTRO: 'Gera o cadastro de campo sobre o que já foi assentado até a data da nota. O resto fica pendente e entra depois, '
     + 'quando o assentamento for lançado ("Aplicar o que falta").',
-  SERVICO: 'O plano do serviço da zona: a nota e o croqui ficam para a equipe abrir no Lançamento do dia. Não grava avanço.',
+  SERVICO: 'NS de serviço de obra é o plano: a nota e o croqui ficam para a equipe abrir no Lançamento do dia, e nada acende no mapa. O que acende o executado é a NS do dia, enviada em Lançamento do dia.',
 };
 const NS_ETAPA = { TOPOGRAFIA: 'liberação topográfica', CADASTRO: 'cadastro de campo' };
 const NS_SITU = { AUTOMATICO: ['automático', 'azul'], CONFIRMAR: ['confirmar', 'amarelo'], ERRO: ['erro', 'vermelho'],

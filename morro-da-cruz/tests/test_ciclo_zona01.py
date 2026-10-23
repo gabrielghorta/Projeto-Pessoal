@@ -338,6 +338,8 @@ class CicloZona01(unittest.TestCase):
         antes = (m["status"].get(nome), m["verificacao"].get(nome))
         ids = [r[0] for r in self.q("SELECT id FROM intervalos_execucao WHERE anulado_por IS NULL AND trecho_id=?", self.tid)]
         self.recusa("enc1", "/api/intervalo/verificar", {"intervalo_id": ids[0]}, 403)          # a equipe não verifica
+        self.assertIn("verificação do supervisor", self.recusa("eng1", "/api/ok-fiscal",          # o OK exige a verificação
+                                                                {"alvo_tipo": "TRECHO", "alvo_id": TR, "data": D3}))
         for iid in ids:
             self.ok("eng2", "/api/intervalo/verificar", {"intervalo_id": iid})
         m = self.get(f"/api/mapa/estado?data={D3}")
@@ -355,10 +357,15 @@ class CicloZona01(unittest.TestCase):
 
     # ---------------------------------------------------------------- 9. proposta de medição de TESTE com pendências
     def test_09_medicao_teste(self):
-        mid = self.ok("eng1", "/api/medicao", {"numero": 1, "periodo_ini": "2026-10-01", "periodo_fim": "2026-10-31"})["id"]
-        self.recusa("eng1", "/api/medicao", {"numero": 2, "periodo_ini": "2026-11-01", "periodo_fim": "2026-11-30", "tipo": "OFICIAL"})
-        self.ok("eng1", "/api/ok-fiscal", {"alvo_tipo": "TRECHO", "alvo_id": TR, "data": D3})
+        # OK interno antes de abrir a medição: aceito, e os lançamentos esperam (SEM_MEDICAO_ABERTA)
+        self.assertEqual(self.ok("eng1", "/api/ok-fiscal", {"alvo_tipo": "TRECHO", "alvo_id": TR, "data": D3}), {"medicao_id": None})
         self.recusa("eng1", "/api/ok-fiscal", {"alvo_tipo": "TRECHO", "alvo_id": TR, "data": D3})          # clique repetido
+        self.assertIn("espera a medição", self.get(f"/api/caminho?trecho={TR}")["itens"][-1]["detalhe"])
+        self.assertFalse(self.q("SELECT 1 FROM medicao_lancamentos"))
+        r = self.ok("eng1", "/api/medicao", {"numero": 1, "periodo_ini": "2026-10-01", "periodo_fim": "2026-10-31"})
+        mid = r["id"]
+        self.assertEqual(r["liberados"], 1)                                                      # entrou sozinho ao abrir
+        self.recusa("eng1", "/api/medicao", {"numero": 2, "periodo_ini": "2026-11-01", "periodo_fim": "2026-11-30", "tipo": "OFICIAL"})
         self.assertEqual(self.get(f"/api/mapa/estado?data={D3}&medicao={mid}")["status"][TR], "OK_FISCAL")
         r = self.get(f"/api/medicao?id={mid}")
         lanc = [l for g in r["gavetas"].values() for l in g["lancamentos"]]

@@ -39,7 +39,6 @@
     "almox": "Planejamento · Estoque e movimentos (aceite ou recusa do material)",
     "compras": "Planejamento · Compras e notas",
     "equipes": "Administrativo · Equipes",
-    "esteira": "Administrativo · Cadastro",
     "relatorios": "Administrativo · Relatórios",
     "admin": "Administrativo · Usuários e histórico",
     "lev": "Administrativo · LEV (cronograma, BM, BM Vertical, redes e conexões)",
@@ -63,6 +62,6 @@
     "EQUIPE": {"nome": "Equipe de campo (encarregado)", "telas": ["iluminado", "campo", "diario", "interferencias"],
                "permissoes": ["campo"], "restrito_a_equipe": true},
     "TOPOGRAFIA": {"nome": "Topografia (consulta)", "telas": ["iluminado", "topografia"], "permissoes": []},
-    "CADASTRO": {"nome": "Cadastro", "telas": ["iluminado", "cadastro_campo", "esteira"], "permissoes": ["cadastro"]}
+    "CADASTRO": {"nome": "Cadastro", "telas": ["iluminado", "cadastro_campo"], "permissoes": ["cadastro"]}
   }
 }

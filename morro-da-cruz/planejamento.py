@@ -206,8 +206,39 @@ def camadas_mapa(conn, hoje=None, dias=7):
         n = nomes.get(("TRECHO", r[0]))
         if n:
             liberado[n] = "TOTAL" if r[1] >= (ext.get(r[0]) or 0) - 0.01 else "PARCIAL"
+    campo = em_campo(conn, hoje, nomes)
     return {"planejado": planejado, "material": material, "cadastro": cadastro, "pendencias": pend, "liberado": liberado,
-            "em_campo": em_campo(conn, hoje, nomes), "hoje": hoje, "ate": ate}
+            "em_campo": campo, "etapas": etapas_mapa(conn, hoje, nomes, liberado, campo), "hoje": hoje, "ate": ate}
+
+
+def etapas_mapa(conn, hoje, nomes, liberado, campo_hoje):
+    """Etapa de cada trecho vigente (regras.etapa_trecho), por nome visível: {"s": etapa, "parcial": execução
+    incompleta}. Só os que saíram de "não iniciado"."""
+    ex = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT alvo_id, concluido, ok_fiscal_em FROM execucao WHERE alvo_tipo='TRECHO'")}
+    fotos = {}
+    for r in conn.execute(f"SELECT alvo_id, categoria FROM fotos WHERE alvo_tipo='TRECHO' AND {S.FOTO_VALIDA}"):
+        fotos.setdefault(r[0], []).append(r[1])
+    inter = {r[0]: r[1:] for r in conn.execute(
+        f"""SELECT trecho_id, SUM(etapa<>'CADASTRO_CAMPO'), COUNT(*), SUM(verificado_em IS NOT NULL),
+                   MAX(CASE WHEN etapa<>'CADASTRO_CAMPO' THEN data END)
+            FROM intervalos_execucao WHERE {S.EFETIVO} GROUP BY trecho_id""")}
+    legado = {r[0] for r in conn.execute(f"SELECT DISTINCT ap.alvo_id {S._SQL_LEGADO}")}
+    levant = _levantamentos(conn)
+    esteira = {r[0]: r[1] for r in conn.execute("SELECT trecho_id, etapa FROM cadastro")}
+    out = {}
+    for (tipo, tid), nome in nomes.items():
+        if tipo != "TRECHO":
+            continue
+        concl, ok = ex.get(tid, (0, None))
+        n_exec, n, n_ver, ult = inter.get(tid, (0, 0, 0, None))
+        executado = bool(n_exec) or tid in legado or tid in ex
+        s = R.etapa_trecho(liberado=nome in liberado, equipe_hoje=nome in campo_hoje, informado_hoje=ult == hoje,
+                           executado=executado, concluido=bool(concl), verificado=bool(n) and n_ver >= n and tid not in legado,
+                           fotos_ok=not R.fotos_pendentes("TRECHO", fotos.get(tid, []), False),
+                           campo=levant.get(tid) == "LEVANTAMENTO_COMPLETO", ok=bool(ok), esteira=esteira.get(tid))
+        if s != "nao":
+            out[nome] = {"s": s, "parcial": executado and not concl}
+    return out
 
 
 def _levantamentos(conn):
@@ -220,3 +251,24 @@ def _levantamentos(conn):
         if tid in ext:
             out[tid] = "LEVANTAMENTO_COMPLETO" if R.comprimento(lst) >= float(ext[tid]) - R.TOL_M else "LEVANTAMENTO_PARCIAL"
     return out
+
+
+def caminho_da_medicao(conn, medicao_id=None):
+    """Resumo do topo da tela Medição: trechos com OK interno nesta medição, prontos para o OK, aguardando verificação e
+    executados sem as fotos. Cada número vem com os nomes, para abrir a lista no mapa."""
+    nomes = nomes_vigentes(conn)
+    et = etapas_mapa(conn, RL.hoje().isoformat(), nomes, {}, {})
+    nesta = [nomes[("TRECHO", r[0])] for r in conn.execute(
+        "SELECT alvo_id FROM execucao WHERE alvo_tipo='TRECHO' AND medicao_id=?", (medicao_id,)) if ("TRECHO", r[0]) in nomes]
+    sem_med = [nomes[("TRECHO", r["alvo_id"])] for r in S.oks_sem_medicao(conn)
+               if r["alvo_tipo"] == "TRECHO" and ("TRECHO", r["alvo_id"]) in nomes]
+    fotos = {}
+    for r in conn.execute(f"SELECT alvo_id, categoria FROM fotos WHERE alvo_tipo='TRECHO' AND {S.FOTO_VALIDA}"):
+        fotos.setdefault(r[0], []).append(r[1])
+    sem_fotos = [nomes[("TRECHO", r[0])] for r in conn.execute(
+        "SELECT alvo_id FROM execucao WHERE alvo_tipo='TRECHO' AND concluido=1 AND ok_fiscal_em IS NULL")
+        if ("TRECHO", r[0]) in nomes and R.fotos_pendentes("TRECHO", fotos.get(r[0], []), False)]
+    lista = lambda xs: sorted(set(xs))
+    return {"ok_nesta": lista(nesta), "ok_sem_medicao": lista(sem_med),
+            "prontos": lista(n for n, e in et.items() if e["s"] == "pronto"),
+            "aguardando_verificacao": lista(x["nome"] for x in S.aguardando_verificacao(conn)), "sem_fotos": lista(sem_fotos)}

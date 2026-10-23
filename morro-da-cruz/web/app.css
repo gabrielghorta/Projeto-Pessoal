@@ -526,3 +526,25 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .nota-l { border-top: 1px solid var(--borda); padding: 8px 0; }
 .nota-l .linha { grid-template-columns: 1fr 96px; margin: 6px 0 2px; }
 .nota-chegou, .nota-insp { border-top: 1px solid var(--borda); padding-top: 8px; }
+
+/* Para entrar na medição (ficha do trecho) e o resumo do topo da Medição */
+.caminho-box { margin-top: 14px; border-top: 1px solid var(--borda); padding-top: 10px; }
+.caminho-box h3 { margin: 4px 0 8px; font-size: 16px; }
+.caminho { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.caminho li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; font-size: 14px; }
+.caminho .marca { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #8C8C8C; display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+.caminho li.feito .marca { border-color: #A77BF3; background: #A77BF3; color: #0B0B0B; }
+.caminho li.falta b { color: inherit; }
+.caminho .quem { opacity: .75; }
+.caminho .acoes { margin-top: 6px; }
+.caminho .btn { min-height: 44px; }
+.caminho .linha { margin-top: 6px; grid-template-columns: 1fr; }
+.esteira-ficha { margin-top: 12px; border-top: 1px solid var(--borda); padding-top: 10px; }
+.esteira-ficha .form { display: grid; gap: 6px; margin-top: 8px; }
+.esteira-ficha details { margin-top: 8px; }
+.numeros-caminho { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.numero-caminho { display: grid; gap: 4px; text-align: left; min-height: 44px; padding: 10px 12px; border-radius: var(--raio-p); border: 1px solid var(--borda); background: var(--painel2); color: inherit; font: inherit; cursor: pointer; }
+.numero-caminho b { font-size: 26px; line-height: 1; }
+.numero-caminho span { font-size: 13px; opacity: .85; }
+.numero-caminho:disabled { cursor: default; opacity: .55; }
+.ilu-pop h4 { margin: 10px 0 4px; font-size: 13px; opacity: .8; }

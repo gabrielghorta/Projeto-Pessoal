@@ -93,6 +93,7 @@ class PilotoZona01(unittest.TestCase):
         sid = S.registrar_soldas(c, D, "Zona01", "TRECHO", TR, "ELETROFUSAO", 11, "Soldador X", "Encarregado")
         S.registrar_soldas(c, D, "Zona01", "TRECHO", TR, "ELETROFUSAO", 2, "Soldador X", "Encarregado")   # sem verificação
         S.verificar_soldas(c, sid, "Fiscal", "APROVADA")
+        S.verificar_trecho(c, TR, "Fiscal")                              # o OK interno exige a verificação (v20)
         S.ok_fiscalizacao(c, "TRECHO", TR, "eng", D)
         r, ls = self.lanc(S.alvo(c, "TRECHO", TR)["id"])
         por = {l["servico"]: l for l in ls}
@@ -118,6 +119,7 @@ class PilotoZona01(unittest.TestCase):
         S.apontar(c, D, "Zona02", "TRECHO", MND, concluido_100=True)
         for cat in ("SINALIZACAO", "EXECUCAO", "CONCLUIDO"):
             self.foto("TRECHO", MND, cat)
+        S.verificar_trecho(c, MND, "Fiscal")
         S.ok_fiscalizacao(c, "TRECHO", MND, "eng", D)
         _, ls = self.lanc(S.alvo(c, "TRECHO", MND)["id"])
         ass = [l for l in ls if l["servico"] == "ASSENTAMENTO"][0]

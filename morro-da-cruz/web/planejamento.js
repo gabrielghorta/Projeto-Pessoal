@@ -35,9 +35,9 @@ function planSitu(nome, mapa) {
   if ((e.em_campo || {})[nome]) return 'campo';
   const prog = (e.programado || {})[nome];
   if (prog) return prog.some(p => p.hoje) ? 'hoje' : 'programado';
-  const s = mapa ? situacao(mapa, nome) : 'nao';
-  if (s === 'execucao') return 'execucao';
-  if (['aguarda', 'cadastro', 'cadastrado'].includes(s)) return 'feito';
+  const et = mapa ? etapaDe(mapa, nome) : null, s = et ? et.s : 'nao';
+  if (s === 'execucao' || (et && et.parcial)) return 'execucao';        // executado em parte: ainda tem o que fazer
+  if (s !== 'nao' && s !== 'liberado') return 'feito';
   return s === 'liberado' ? 'liberado' : 'livre';
 }
 // equipe da frente do trecho (Zona01 … Zona11, ADUTORA)

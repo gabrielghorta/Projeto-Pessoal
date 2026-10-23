@@ -329,6 +329,7 @@ class TestF02SoldasSoReferencia(BaseCampo):
         for cat in ("SINALIZACAO", "EXECUCAO", "CONCLUIDO"):
             S.registrar_foto(self.c, "TRECHO", TR, cat, jpeg(), dir_fotos=self.fotos)
         S.criar_medicao(self.c, 1, "2026-10-01", "2026-10-31")
+        S.verificar_trecho(self.c, TR, "Fiscal")                        # o OK interno exige a verificação (v20)
         S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng", D)
         sold = self.q("SELECT quantidade, status FROM medicao_lancamentos WHERE servico='SOLDA'")
         self.assertEqual(sold, [(3.0, "PENDENTE")])                                           # aprovadas; nem 2 nem 13
