@@ -20,6 +20,7 @@ from datetime import date
 import compras as C
 import ns_leitura as L
 import regras as R
+import relogio as RL
 import servicos as S
 import topologia as TP
 from servicos import RegraViolada, _agora, _one, _rows, transacao
@@ -426,7 +427,7 @@ def _ler_arquivos(conn, pdf_b64, planilha_b64=None, hoje=None):
     pdf = _bytes(pdf_b64, "o PDF da nota de serviço", L.LIMITE_PDF)
     planilha = _bytes(planilha_b64, "a planilha da nota de serviço", L.LIMITE_PLANILHA) if planilha_b64 else None
     try:
-        ns = L.ler(pdf, S.contrato(conn), hoje or date.today().isoformat(), planilha=planilha)
+        ns = L.ler(pdf, S.contrato(conn), hoje or RL.hoje().isoformat(), planilha=planilha)
     except L.LeituraRecusada as e:
         raise RegraViolada(str(e)) from None
     return pdf, planilha, ns

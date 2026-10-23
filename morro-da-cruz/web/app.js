@@ -371,8 +371,15 @@ async function mostrarFiscal(tipo, id) {
   });
   if (TELA === 'mapa') plnFocar(tipo, d.nome);                    // o mapa do Dados da obra vai até o trecho
 }
-// depois de um registro (OK interno, check-in…) o mapa do Dados da obra e o Mapa iluminado relêem a situação
-function recarregarCamadaMapa() { plnRecarregar(); }
+// depois de um registro (OK interno, liberação, devolução, NS…) o mapa do Dados da obra, o Mapa iluminado e o mapa da tela
+// Início relêem a situação na hora (sem esperar os 30 s da leitura guardada), e o mapa REV02 aberto noutra aba também
+let CANAL_MAPA = null;
+try { CANAL_MAPA = new BroadcastChannel('mc-mapa'); } catch (_) { /* navegador antigo: o REV02 relê a cada minuto */ }
+function recarregarCamadaMapa() {
+  plnRecarregar();
+  if (TELA === 'iluminado' && ILU.pronto) carregarIluminado();
+  if (CANAL_MAPA) CANAL_MAPA.postMessage('recarregar');
+}
 
 /* ---------------------------------------------------------------- 2. almoxarifado & equipes */
 async function carregarAlmox() {

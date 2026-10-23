@@ -11,6 +11,7 @@ from datetime import date, timedelta
 
 import compras as C
 import regras as R
+import relogio as RL
 import servicos as S
 from servicos import RegraViolada, _agora, _one, _rows, transacao
 
@@ -94,7 +95,7 @@ def programacoes(conn, ini, fim, frente=None, equipe=None):
 def resumo(conn, ini, fim, frente=None, equipe=None):
     ps = programacoes(conn, ini, fim, frente, equipe)
     cont = {s: sum(1 for p in ps if p["status"] == s) for s in ("PLANEJADA", "REALIZADA", "NAO_REALIZADA", "CANCELADA")}
-    passadas = [p for p in ps if p["data"] < date.today().isoformat() and p["status"] != "CANCELADA"]
+    passadas = [p for p in ps if p["data"] < RL.hoje().isoformat() and p["status"] != "CANCELADA"]
     return {"contagem": cont, "realizadas_no_passado": sum(1 for p in passadas if p["status"] == "REALIZADA"), "programadas_no_passado": len(passadas)}
 
 
@@ -141,7 +142,7 @@ def em_campo(conn, data=None, nomes=None):
     """Onde cada equipe está no dia: o alvo do check-in aberto e os alvos das programações que esse check-in realizou
     (a liberação de material pelo mapa do Dados da obra cobre vários trechos de uma vez).
     {nome visível: {"equipe": id, "checkin_id": id}}."""
-    data = data or date.today().isoformat()
+    data = data or RL.hoje().isoformat()
     nomes = nomes if nomes is not None else nomes_vigentes(conn)
     out = {}
     for cid, eq, tipo, aid in conn.execute("SELECT id, equipe_id, alvo_tipo, alvo_id FROM checkins WHERE encerrado=0 AND data=? "
@@ -157,7 +158,7 @@ def em_campo(conn, data=None, nomes=None):
 def camadas_mapa(conn, hoje=None, dias=7):
     """Por nome visível (objetos vigentes): planejado (próximos dias), material disponibilizado, cadastro, pendências,
     liberação topográfica e onde cada equipe está hoje (em_campo)."""
-    hoje = hoje or date.today().isoformat()
+    hoje = hoje or RL.hoje().isoformat()
     ate = (date.fromisoformat(hoje) + timedelta(days=dias)).isoformat()
     nomes = nomes_vigentes(conn)
     planejado = {}

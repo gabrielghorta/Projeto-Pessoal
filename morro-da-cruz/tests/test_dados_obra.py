@@ -8,13 +8,14 @@ import shutil
 import sys
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import timedelta
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
 sys.path.insert(0, AQUI)
 import dados_obra as DO  # noqa: E402
 import planejamento as P  # noqa: E402
+import relogio as RL  # noqa: E402
 import servicos as S  # noqa: E402
 import topologia as TP  # noqa: E402
 from test_acesso import TR, BaseHTTP  # noqa: E402
@@ -165,7 +166,7 @@ class TestLiberacaoEDevolucao(BaseDadosObra):
 
     def test_recusas_da_liberacao(self):
         with self.assertRaisesRegex(S.RegraViolada, "data futura"):
-            DO.liberar(self.c, (date.today() + timedelta(days=2)).isoformat(), "Zona01", [TR2], [], [], "almox1")
+            DO.liberar(self.c, (RL.hoje() + timedelta(days=2)).isoformat(), "Zona01", [TR2], [], [], "almox1")
         with self.assertRaisesRegex(S.RegraViolada, "trecho em que a equipe vai trabalhar"):
             DO.liberar(self.c, D, "Zona01", [], [], [], "almox1")
         with self.assertRaisesRegex(S.RegraViolada, "Disponível insuficiente"):
@@ -178,7 +179,7 @@ class TestLiberacaoEDevolucao(BaseDadosObra):
             DO.liberar(self.c, "2026-10-16", "Zona01", [TR2], [], [], "almox1")
 
     def test_reserva_para_dia_que_ainda_nao_chegou(self):
-        dia = (date.today() + timedelta(days=3)).isoformat()
+        dia = (RL.hoje() + timedelta(days=3)).isoformat()
         x = DO.reservar(self.c, dia, "Zona01", [TR2, TR3], [], [{"material_id": TUBO, "quantidade": 40}, {"material_id": TE, "quantidade": 0}], "almox1")
         self.assertEqual(len(x["reservas"]), 1)
         self.assertEqual(self.q("SELECT data, alvo_tipo, alvo_id, quantidade, responsavel FROM reservas"), [(dia, "TRECHO", "TR-00002", 40, "almox1")])

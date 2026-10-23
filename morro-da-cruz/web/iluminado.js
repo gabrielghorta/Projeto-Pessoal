@@ -9,10 +9,11 @@ function obterGeral() {
   if (!GERAL_P) GERAL_P = api('/api/mapa/geral').then(g => (GERAL = g)).catch(e => { GERAL_P = null; throw e; });
   return GERAL_P;
 }
-// a situação do mapa é lida uma vez por pedido: telas que pedem juntas (Dados da obra) dividem a mesma resposta
+// a situação do mapa é lida uma vez por pedido: telas que pedem juntas (Dados da obra) dividem a mesma resposta. O dia é
+// o da tela (Brasília, no navegador): o servidor no PythonAnywhere roda em UTC
 async function estadoMapa(novo) {
   if (novo || !ESTADO_MAPA || Date.now() - ESTADO_EM > 30000) {
-    if (!ESTADO_P) ESTADO_P = api('/api/mapa/estado' + (MEDICAO_ATUAL ? '?medicao=' + MEDICAO_ATUAL : ''))
+    if (!ESTADO_P) ESTADO_P = api('/api/mapa/estado?data=' + hoje() + (MEDICAO_ATUAL ? '&medicao=' + MEDICAO_ATUAL : ''))
       .then(e => { ESTADO_MAPA = e; ESTADO_EM = Date.now(); return e; }).finally(() => { ESTADO_P = null; });
     return ESTADO_P;
   }

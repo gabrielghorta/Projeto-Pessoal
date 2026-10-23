@@ -6,7 +6,7 @@ permissões, anulação e o Diário de obra."""
 import os
 import sys
 import unittest
-from datetime import date, timedelta
+from datetime import timedelta
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
@@ -14,10 +14,11 @@ sys.path.insert(0, AQUI)
 import dados_obra as DO  # noqa: E402
 import notas_servico as NS  # noqa: E402
 import ns_sintetica as NSS  # noqa: E402
+import relogio as RL  # noqa: E402
 import servicos as S  # noqa: E402
 from base_real import TR006, BaseReal, b64, data_ns  # noqa: E402
 
-HOJE = date.today()
+HOJE = RL.hoje()
 ONTEM, ANTEONTEM = HOJE - timedelta(days=1), HOJE - timedelta(days=2)
 CLIMA = {"MANHA": "SOL", "TARDE": "CHUVA_FRACA_TENDA"}
 CROQUI = b64(NSS.pdf_de_texto(["CROQUI DO DIA - TRECHOS EXECUTADOS"]))

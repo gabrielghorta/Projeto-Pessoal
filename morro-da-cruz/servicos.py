@@ -15,12 +15,13 @@ import struct
 import os
 import re
 import sqlite3
-from datetime import date, datetime
+
 
 import caminhos
 import imagens
 import regras as R
 from regras import RegraViolada
+import relogio as RL
 
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
@@ -37,7 +38,7 @@ class EsquemaAntigo(RuntimeError):
 def exigir_data_ocorrida(data, o_que):
     """Execução, clima, estoque e OK registram o que já aconteceu: data posterior a hoje é recusada (a programação,
     a reserva e o período da medição podem ser futuros)."""
-    if data and str(data)[:10] > date.today().isoformat():
+    if data and str(data)[:10] > RL.hoje().isoformat():
         raise RegraViolada(f"{o_que} com data futura ({data}): só se registra o que já aconteceu.")
 
 
@@ -134,7 +135,7 @@ def contrato(conn):
 
 
 def _agora():
-    return datetime.now().isoformat(timespec="seconds")
+    return RL.agora().isoformat(timespec="seconds")
 
 
 def mapa_servicos():
@@ -1778,7 +1779,7 @@ def _vertical_por_codigo(conn, codigo_bm):
 def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
     """[✓] OK Fiscalização (interno Ankara). Gera PROPOSTA de lançamentos na medição de teste e
     envia o trecho à Esteira de Cadastro. Não aprova nada pela Caesb e não aplica regime de material."""
-    data = data or date.today().isoformat()
+    data = data or RL.hoje().isoformat()
     exigir_data_ocorrida(data, "OK interno")
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     tipo, aid = a["alvo_tipo"], a["id"]
@@ -1838,7 +1839,7 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
 
 def recomposicao_ok(conn, alvo_tipo, ref, tipo, quantidade, data=None):
     """Checkbox separado: calçada/asfalto entra só quando a equipe de pavimento executar (gaveta 4)."""
-    data = data or date.today().isoformat()
+    data = data or RL.hoje().isoformat()
     exigir_data_ocorrida(data, "Recomposição")
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     ex = execucao(conn, a["alvo_tipo"], a["id"])
@@ -1917,7 +1918,7 @@ def avancar_cadastro(conn, trecho_ref, destino, dados=None, data=None):
         campos["memorando_eset"] = dados["memorando_eset"]
     with transacao(conn):
         if destino == "6_APROVADO":
-            med = medicao_para(conn, data or date.today().isoformat())
+            med = medicao_para(conn, data or RL.hoje().isoformat())
             _lancar(conn, med["id"], 3, "CADASTRO", _bm_item(conn, mapa_servicos()["cadastro"]["item"]), "M",
                     t["extensao_m"], "TRECHO", t["id"], obs=f"GDOC {c['protocolo_gdoc']} · ESET {dados['memorando_eset']}")
             campos["medicao_id"] = med["id"]
@@ -2435,7 +2436,7 @@ def estado_mapa(conn, medicao_atual_id=None, data=None):
             if n:
                 retirados[(tipo, aid)]["situacoes"].append(f"{n} solda(s) registrada(s)")
     pins = []
-    for c in checkins_abertos(conn, data or date.today().isoformat()):
+    for c in checkins_abertos(conn, data or RL.hoje().isoformat()):
         if not c["alvo_id"]:
             continue
         if c["alvo_retirado"]:

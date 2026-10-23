@@ -29,6 +29,7 @@ from itertools import combinations
 from statistics import median
 
 import planilha_xls
+import relogio as RL
 
 VERSAO = "ns_leitura 1"
 TOL = 0.011            # m: valores impressos com 2 casas
@@ -950,7 +951,7 @@ def verificar(ns, contrato_obra=None, hoje=None, inicio_contrato=None, contratad
         add('V01', 'ERRO', c_ns == c_obra, f'contrato da NS ({c_ns}) = contrato da obra ({c_obra})')
     else:
         add('V01', 'INFO', True, 'contrato da obra não informado: conferência não feita')
-    hoje = hoje or date.today().isoformat()
+    hoje = hoje or RL.hoje().isoformat()
     d = cab.get('data')
     add('V02', 'ERRO', d is not None and d <= hoje, f'data da NS ({d}) válida e não futura (hoje {hoje})')
     if inicio_contrato:

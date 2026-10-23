@@ -18,7 +18,7 @@ import signal
 import sys
 import threading
 from http.cookies import SimpleCookie
-from datetime import date
+
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -41,6 +41,7 @@ import lev as LV
 import link
 import mapa_geral as MG
 import regras as R
+import relogio
 import servicos as S
 import terceirizadas as TZ
 import topologia as TP
@@ -183,23 +184,6 @@ def r_mapa_estado(q, c):
 
 
 # ------------------------------------------------------------------ planejamento (módulo D)
-def r_programacoes(q, c):
-    ini, fim = q.get("ini") or date.today().isoformat(), q.get("fim") or date.today().isoformat()
-    return {"programacoes": P.programacoes(c, ini, fim, q.get("frente"), q.get("equipe")),
-            "resumo": P.resumo(c, ini, fim, q.get("frente"), q.get("equipe")),
-            "faltantes": P.faltantes(c, ini, fim, q.get("frente"))}
-
-
-def p_programacao(b, c):
-    return {"id": P.programar(c, b.get("data"), b.get("equipe_id"), b.get("alvo_tipo"), b.get("alvo_id"), b.get("servico"), b["por"],
-                              b.get("ini_m"), b.get("fim_m"), b.get("materiais") or [], b.get("obs"))}
-
-
-def p_programacao_encerrar(b, c):
-    P.encerrar(c, int(b["programacao_id"]), b.get("status"), b.get("motivo"), b["por"])
-    return {"ok": True}
-
-
 def r_equipe(q, c):
     eid = q["id"]
     return {"funcionarios": [dict(r) for r in c.execute("SELECT * FROM funcionarios WHERE equipe_id=? ORDER BY nome", (eid,))],
@@ -272,15 +256,6 @@ def r_nfs(q, c):
 def p_nf_aceitar(b, c):
     S.aceitar_nf(c, int(b["nf_id"]), b.get("laudo_arquivo"))
     return {"ok": True}
-
-
-def r_checkins(q, c):
-    return S.checkins_abertos(c, q.get("data"))
-
-
-def p_checkin(b, c):
-    return {"id": S.checkin(c, b["data"], b["equipe_id"], b.get("alvo_tipo"), b.get("alvo_id"), b.get("funcionarios", []),
-                            b.get("maquinas", []), b.get("materiais", []), b.get("contingencia"))}
 
 
 def p_checkout(b, c):
@@ -379,7 +354,7 @@ def r_medicao(q, c):
 
 
 def _periodo(q):
-    hoje = date.today()
+    hoje = relogio.hoje()
     return q.get("ini") or hoje.replace(day=1).isoformat(), q.get("fim") or hoje.isoformat()
 
 
@@ -433,7 +408,7 @@ def r_ocorrencias(q, c):
 def r_diario(q, c, usuario):
     """O encarregado (perfil restrito à equipe) vê só o diário da própria equipe."""
     equipe = usuario["equipe_id"] if usuario["restrito_a_equipe"] else q.get("equipe")
-    return DI.diario(c, q.get("data") or date.today().isoformat(), equipe)
+    return DI.diario(c, q.get("data") or relogio.hoje().isoformat(), equipe)
 
 
 def r_lev_cronograma(q, c):
@@ -482,8 +457,8 @@ def r_dados_obra_estado(q, c):
 
 
 def p_dados_obra_programar(b, c):
-    return DO.programar(c, b.get("linhas"), b.get("nos"), b.get("equipe_id"), b.get("servico"), b.get("data_ini"),
-                        b.get("data_fim"), b["por"], b.get("dias_semana"), b.get("obs"))
+    return DO.programar(c, b.get("linhas"), b.get("nos"), b.get("equipe_id"), b.get("servico"), b.get("data"), b["por"],
+                        b.get("obs"), bool(b.get("confirmar")))
 
 
 def p_dados_obra_cancelar(b, c):
@@ -738,7 +713,7 @@ def r_inventarios(q, c):
 
 
 def r_reservas_vencidas(q, c):
-    return C.reservas_vencidas(c, q.get("hoje") or date.today().isoformat())
+    return C.reservas_vencidas(c, q.get("hoje") or relogio.hoje().isoformat())
 
 
 ROTAS_COMPRAS = {
@@ -776,7 +751,7 @@ ROTAS_COMPRAS = {
     "/api/inventario/decidir": ("inventario_ajustar", ("por",), lambda b, c: (C.decidir_inventario(
         c, int(b["inventario_id"]), bool(b.get("aprovar")), b.get("motivo"), b["por"]), {"ok": True})[1]),
     "/api/reservas/liberar-vencidas": ("almox", ("por",), lambda b, c: {"liberadas": C.liberar_reservas_vencidas(
-        c, [int(x) for x in b.get("ids") or []], b.get("motivo"), b["por"], b.get("hoje") or date.today().isoformat())}),
+        c, [int(x) for x in b.get("ids") or []], b.get("motivo"), b["por"], b.get("hoje") or relogio.hoje().isoformat())}),
 }
 
 
@@ -817,11 +792,11 @@ def r_auditoria(q, c, usuario):
 
 GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detalhe, "/api/previsto": r_previsto,
        "/api/mapa/estado": r_mapa_estado, "/api/equipe": r_equipe, "/api/estoque": r_estoque,
-       "/api/compat-caesb": r_compat, "/api/nfs": r_nfs, "/api/checkins": r_checkins, "/api/histograma": r_histograma,
+       "/api/compat-caesb": r_compat, "/api/nfs": r_nfs, "/api/histograma": r_histograma,
        "/api/esteira": r_esteira, "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
        "/api/ocorrencias": r_ocorrencias, "/api/compras": r_compras, "/api/inventarios": r_inventarios,
-       "/api/reservas-vencidas": r_reservas_vencidas, "/api/programacoes": r_programacoes,
+       "/api/reservas-vencidas": r_reservas_vencidas,
        "/api/medicao/elegibilidade": r_medicao_elegibilidade, "/api/relatorios": r_relatorios,
        "/api/documentos": r_documentos, "/api/mapa/geral": r_mapa_geral, "/api/planilhas": r_planilhas,
        "/api/interferencias": r_interferencias, "/api/lev/cronograma": r_lev_cronograma, "/api/lev/bm": r_lev_bm,
@@ -836,7 +811,7 @@ GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
                "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
-        "/api/nf/aceitar": p_nf_aceitar, "/api/checkin": p_checkin, "/api/checkout": p_checkout, "/api/clima": p_clima,
+        "/api/nf/aceitar": p_nf_aceitar, "/api/checkout": p_checkout, "/api/clima": p_clima,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
         "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar,
@@ -850,15 +825,14 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
 POST.update({rota: fn for rota, (_, _, fn) in ROTAS_COMPRAS.items()})
 POST.update(ROTAS_DOCUMENTOS)
 POST.update(ROTAS_DRIVE)
-POST.update({"/api/programacao": p_programacao, "/api/programacao/encerrar": p_programacao_encerrar,
-             "/api/medicao/conferir": p_medicao_conferir})
+POST.update({"/api/medicao/conferir": p_medicao_conferir})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_PLANEJAMENTO.items()})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_APROPRIACAO.items()})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, **ROTAS_NS,
                 **{rota: fn for rota, (_, fn) in ROTAS_NS_DIA.items()}}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
 PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
-             "/api/nf/aceitar": "receber", "/api/checkin": "almox", "/api/checkout": "almox", "/api/clima": "campo",
+             "/api/nf/aceitar": "receber", "/api/checkout": "almox", "/api/clima": "campo",
              "/api/apontamento": "campo", "/api/foto": "campo", "/api/ok-fiscal": "ok_interno", "/api/recomposicao": "ok_interno",
              "/api/cadastro": "cadastro", "/api/medicao": "medicao", "/api/medicao/fechar": "medicao", "/api/estorno": "almox",
              "/api/retificar": "almox", "/api/intervalo/verificar": "verificar", "/api/legado/conciliar": "retificar_campo",
@@ -876,8 +850,8 @@ AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "
          "/api/liberacao": ("registrado_por",), "/api/escavacao": ("registrado_por",), "/api/etapa-complementar/anular": ("por",),
          "/api/ocorrencia": ("aberta_por",), "/api/ocorrencia/resolver": ("por",), "/api/cadastro-campo": ("por",)}
 PERMISSAO.update({rota: perm for rota, (perm, _, _) in ROTAS_COMPRAS.items()})
-PERMISSAO.update({"/api/programacao": "planejar", "/api/programacao/encerrar": "planejar", "/api/medicao/conferir": "medicao"})
-AUTOR.update({"/api/programacao": ("por",), "/api/programacao/encerrar": ("por",), "/api/medicao/conferir": ("por",),
+PERMISSAO.update({"/api/medicao/conferir": "medicao"})
+AUTOR.update({"/api/medicao/conferir": ("por",),
               "/api/medicao/fechar": ("por",)})
 AUTOR.update({rota: campos for rota, (_, campos, _) in ROTAS_COMPRAS.items()})
 PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_PLANEJAMENTO.items()})
@@ -896,12 +870,12 @@ assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação
 # tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral"}
 _CAMPO = ("campo", "diario", "interferencias")
-_ALMOX = ("almox", "ponto", "equipes")                  # a tela de Equipes e a de Check-in também montam o almoxarifado
-TELA_GET = {"/api/equipe": ("equipes", "ponto", "mapa") + _CAMPO, "/api/estoque": _ALMOX + ("compras", "prog", "mapa"),
+_ALMOX = ("almox", "equipes", "mapa")                   # Equipes e o Dados da obra (liberar e devolver) também montam o almoxarifado
+TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX + ("compras",),
             "/api/compat-caesb": _ALMOX, "/api/nfs": _ALMOX, "/api/movimentos": _ALMOX, "/api/reservas": _ALMOX,
-            "/api/consumo": _ALMOX, "/api/checkins": ("ponto",) + _CAMPO, "/api/histograma": ("equipes",) + _CAMPO,
+            "/api/consumo": _ALMOX, "/api/histograma": ("equipes",) + _CAMPO,
             "/api/compras": ("compras",), "/api/inventarios": ("compras",), "/api/reservas-vencidas": ("compras",),
-            "/api/programacoes": ("prog", "almox") + _CAMPO, "/api/ocorrencias": _CAMPO + ("mapa", "topografia", "cadastro_campo"),
+            "/api/ocorrencias": _CAMPO + ("mapa", "topografia", "cadastro_campo"),
             "/api/esteira": ("esteira",), "/api/relatorios": ("relatorios",), "/api/medicoes": ("medicao",),
             "/api/medicao": ("medicao",), "/api/medicao/elegibilidade": ("medicao",), "/api/planilhas": ("lev",),
             "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa"),

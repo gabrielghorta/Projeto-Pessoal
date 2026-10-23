@@ -203,7 +203,8 @@
 
   async function recarregar() {
     try {
-      const r = await fetch('/api/mapa/estado'); if (r.ok) estado = await r.json();
+      const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);   // o dia daqui
+      const r = await fetch('/api/mapa/estado?data=' + d); if (r.ok) estado = await r.json();
     } catch (_) { /* servidor fora do ar: mantém o modo projeto */ }
     aplicar();
   }
@@ -241,6 +242,9 @@
       setTimeout(() => { const b = document.querySelector('#res button[data-n]'); if (b) b.click(); }, 60);
     }
   });
+
+  // registro gravado em outra aba do sistema (liberação, devolução, NS): relê na hora
+  try { new BroadcastChannel('mc-mapa').onmessage = ev => { if (ev.data === 'recarregar') recarregar(); }; } catch (_) { /* navegador antigo */ }
 
   recarregar();
   topologia();

@@ -17,10 +17,11 @@ Com a seleção:
 O material sugerido vem do projeto: tubo da 06.1 pelo que falta assentar em cada linha e as peças da 06.2 dos nós, pelo
 item do BM Vertical. É sugestão: quem libera confere e muda a quantidade. Nada aqui muda o esquema do banco.
 """
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import planejamento as P
 import regras as R
+import relogio as RL
 import servicos as S
 import topologia as TP
 from servicos import RegraViolada, _agora, _one, _rows, transacao
@@ -187,7 +188,7 @@ def _sugestao(conn, sel, exe, equipe=None, data=None):
         res = round(S.reservado(conn, mid, equipe, data), 3) if equipe and data else 0.0
         sug = round(max(q - max(com, 0), 0), 3)
         # o que dá para entregar: no dia, o disponível mais a reserva da própria equipe; para um dia futuro, só o disponível
-        pode = max(disp, 0) + (res if data and data <= date.today().isoformat() else 0)
+        pode = max(disp, 0) + (res if data and data <= RL.hoje().isoformat() else 0)
         out.append({"material_id": mid, "descricao": m["descricao"], "unidade": m["unidade"], "propriedade": m["propriedade"],
                     "previsto": round(q, 3), "origem": ", ".join(origem[mid]), "disponivel": disp, "com_equipe": com,
                     "reservado_equipe": res, "sugerido": sug, "liberavel": round(min(sug, pode), 3),
@@ -237,7 +238,7 @@ def selecao(conn, linhas, nos=(), data=None, equipe=None):
     """Tudo o que o painel do mapa mostra para a seleção: trechos físicos, linhas (com o executado), nós, avisos, material
     sugerido para a equipe/dia, programações que já tocam a seleção e check-ins abertos ligados a ela."""
     sel = _selecao(conn, linhas, nos)
-    hoje = (data or date.today().isoformat())[:10]
+    hoje = (data or RL.hoje().isoformat())[:10]
     if equipe and not _one(conn, "SELECT 1 FROM equipes WHERE id=?", equipe):
         raise RegraViolada(f"Equipe '{equipe}' não cadastrada.")
     exe = _execucao(conn, [t["id"] for t in sel["linhas"]])
@@ -295,7 +296,7 @@ def programar(conn, linhas, nos, equipe_id, servico, data_ini, data_fim, por, di
         raise RegraViolada(f"São {len(alvos)} alvos × {len(dias)} dias = {len(alvos) * len(dias)} programações; o limite por vez "
                            f"é {LIMITE_PROGRAMACOES}. Divida o período ou a seleção.")
     # o carimbo de criação é a identidade do lote: com microssegundos, dois pedidos seguidos não viram um lote só
-    agora, criadas, existentes = datetime.now().isoformat(timespec="microseconds"), 0, 0
+    agora, criadas, existentes = RL.agora().isoformat(timespec="microseconds"), 0, 0
     obs = str(obs or "").strip() or None
     with transacao(conn):
         for d in dias:
@@ -397,7 +398,7 @@ def estado(conn, data=None, dias=21):
     """Para pintar o mapa do Dados da obra a partir de `data` (hoje): o programado por alvo (equipe, serviço e período),
     onde cada equipe está no dia (check-in aberto e o que ele cobre), os check-ins abertos com o material de cada equipe
     (para a devolução) e os lotes de programação do período."""
-    hoje = (data or date.today().isoformat())[:10]
+    hoje = (data or RL.hoje().isoformat())[:10]
     ate = (_data(hoje, "consulta") + timedelta(days=int(dias))).isoformat()
     nomes = P.nomes_vigentes(conn)
     rows = _rows(conn.execute("SELECT * FROM programacoes WHERE data BETWEEN ? AND ? AND status IN ('PLANEJADA','REALIZADA') "

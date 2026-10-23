@@ -23,11 +23,12 @@ import sqlite3
 import sys
 import tempfile
 import traceback
-from datetime import datetime
+
 
 import caminhos
 import backup
 import importacao as I
+import relogio as RL
 import servicos as S
 
 BASE = caminhos.PASTA
@@ -62,7 +63,7 @@ def contar_operacionais(conn):
 def _gravar_relatorio(rel, dir_relatorios):
     os.makedirs(dir_relatorios, exist_ok=True)
     destino = os.path.join(dir_relatorios, f"importacao_{rel['modo'].lower()}_{rel['status'].lower()}_"
-                                           f"{datetime.now():%Y%m%d-%H%M%S-%f}.json")
+                                           f"{RL.agora():%Y%m%d-%H%M%S-%f}.json")
     rel["arquivo_relatorio"] = destino
     with open(destino, "w", encoding="utf-8") as f:
         json.dump(rel, f, ensure_ascii=False, indent=2, default=str)

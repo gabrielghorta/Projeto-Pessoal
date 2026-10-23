@@ -22,6 +22,7 @@ from datetime import date
 
 import compras as C
 import regras as R
+import relogio as RL
 import servicos as S
 from servicos import RegraViolada, _agora, _one, _rows, transacao
 
@@ -624,7 +625,7 @@ def decidir_item(conn, d, por, dir_docs):
         motivo = _texto(d, "motivo", "o motivo da reprovação")
         with transacao(conn):
             conn.execute("""UPDATE itens_novos_base SET situacao='REPROVADO', motivo=?, decidido_por=?, decidido_em=?,
-                            data_decisao=? WHERE id=?""", (motivo, por, _agora(), date.today().isoformat(), it["id"]))
+                            data_decisao=? WHERE id=?""", (motivo, por, _agora(), RL.hoje().isoformat(), it["id"]))
         return {"item": publico(item(conn, it["ref"])), "liberados": 0}
     if acao != "APROVAR":
         raise RegraViolada("Ação inválida: aprovar ou reprovar.")
@@ -658,7 +659,7 @@ def sincronizar(conn, hoje=None):
     """Propõe o que ficou livre, sem duplicar: as apropriações com quantidade ainda não proposta (item aprovado, de
     serviço, dentro do BM, com medição de teste aberta) e os lançamentos das gavetas 1 a 4 retidos por item a aprovar
     cujo código foi registrado (na própria medição, se aberta; senão na medição de teste aberta)."""
-    hoje = hoje or date.today().isoformat()
+    hoje = hoje or RL.hoje().isoformat()
     n = 0
     for ap in _rows(conn.execute("SELECT * FROM apropriacoes WHERE estornado_em IS NULL ORDER BY data, id")):
         if _propor(conn, ap):
@@ -711,7 +712,7 @@ def _linha(codigo, hoje, desde, tags=None, **kw):
 def restricoes(conn, medicao_id=None, hoje=None):
     """Tudo o que foi executado ou registrado e está parado, com o valor (R$ sem BDI = quantidade × preço do BM; no item
     novo, o preço proposto, "estimado"), há quantos dias e a ação que libera. Não entra no valor da medição."""
-    hoje = hoje or date.today().isoformat()
+    hoje = hoje or RL.hoje().isoformat()
     cat = {it["item"]: it for it in catalogo(conn)}
     linhas = []
 
