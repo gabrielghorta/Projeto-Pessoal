@@ -213,3 +213,21 @@ engenharia, continuação e já lançado, reaterro e escavação, MND, conexão 
 permissões, anulação e Diário de obra), sobre a base real das planilhas (`tests/base_real.py`). Os PDFs reais de
 exemplo não ficam no repositório: `MC_NS_EXEMPLOS=<pasta>` roda o teste deles (`ns_assinada.pdf`,
 `ns_nao_assinada.pdf`, `ns_planilha.xls` e `croqui.pdf` da NS 006).
+
+## 5. Fluxo integrado (23/10/2026): o lote, a ordem e o que acende no mapa
+
+- **Envio em lote:**
+  - Notas de serviço e a NS do dia no Lançamento do dia aceitam vários PDFs de uma vez, com croquis e planilhas também em lote (até 20 arquivos);
+  - o croqui e a planilha casam com cada NS pelo número escrito neles (`/api/ns/numero`, `ns_leitura.numeros_documento`) e, na falta, pelo nome do arquivo; o que não casa fica na fila para ligar à mão;
+  - cada NS vira um cartão: lida, precisa conferir (abre a conferência de sempre), recusada (com o motivo), registrada ou repetida (mesmo arquivo);
+  - "Registrar todas as conferidas sem pendência" grava uma NS por pedido, em sequência, e a falha de uma não para as outras;
+  - o componente é um só (`criarFilaNs` em `web/notas.js`), com o tipo e o destino por parâmetro.
+- **A ordem (D-20, D-115):**
+  - a NS de serviço só é registrada sobre trecho liberado pela topografia até a data da nota;
+  - a NS do dia não grava execução sobre o que não está liberado;
+  - a NS de cadastro só grava sobre o executado até a data da nota. O resto é recusado, fica escrito na nota e só entra à mão ("Aplicar de novo"), se o assentamento até essa data for registrado depois. Não há aplicação sozinha.
+- **O que acende no mapa:**
+  - NS de topografia → liberado;
+  - NS do dia → executado, aguardando verificação;
+  - NS de cadastro → cadastro de campo feito;
+  - a NS de serviço de obra é o plano da zona e não acende nada.
