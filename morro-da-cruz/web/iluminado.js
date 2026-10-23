@@ -232,7 +232,7 @@ function encaixar([x0, y0, x1, y1], asp) {
 }
 function desenharVista(ctx = ILU) {
   const svg = ctx.svg(), [x, y, w, h] = ctx.vb, larg = ctx.caixa().getBoundingClientRect().width || 1;   // lido antes de escrever
-  if (svg.style.transform) svg.style.transform = '';
+  if (svg.style.transform || svg.style.willChange) { svg.style.transform = ''; svg.style.willChange = ''; }   // repinta na escala certa
   ctx.vbDes = ctx.vb.slice();
   svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
   ctx.desenhar(w / larg, (ctx.base[2] - ctx.base[0]) / w);   // unidades do mapa por pixel e zoom
