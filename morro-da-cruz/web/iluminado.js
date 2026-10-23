@@ -231,13 +231,25 @@ function encaixar([x0, y0, x1, y1], asp) {
   return [cx - w / 2, cy - h / 2, w, h];
 }
 function desenharVista(ctx = ILU) {
-  const svg = ctx.svg(), [x, y, w, h] = ctx.vb, larg = svg.getBoundingClientRect().width || 1;   // lido antes de escrever
+  const svg = ctx.svg(), [x, y, w, h] = ctx.vb, larg = ctx.caixa().getBoundingClientRect().width || 1;   // lido antes de escrever
+  if (svg.style.transform) svg.style.transform = '';
+  ctx.vbDes = ctx.vb.slice();
   svg.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
   ctx.desenhar(w / larg, (ctx.base[2] - ctx.base[0]) / w);   // unidades do mapa por pixel e zoom
 }
 // um desenho por quadro: o touchpad e a pinça mandam vários eventos por quadro, e cada desenho refaz estilo e layout
 function agendarVista(ctx = ILU) {
-  if (!ctx.quadro) ctx.quadro = requestAnimationFrame(() => { ctx.quadro = 0; desenharVista(ctx); });
+  if (!ctx.quadro) ctx.quadro = requestAnimationFrame(() => { ctx.quadro = 0; (window.__GPU && ctx.gesto ? moverVista : desenharVista)(ctx); });
+}
+// PROTÓTIPO: durante o gesto a placa de vídeo move e amplia a imagem já pronta (transform); o desenho de verdade só
+// quando o gesto para (150 ms sem evento)
+function moverVista(ctx) {
+  const svg = ctx.svg(), [x, y, w] = ctx.vb, [dx, dy, dw] = ctx.vbDes || ctx.vb, larg = ctx.caixa().getBoundingClientRect().width || 1;
+  if (!svg.style.willChange) { svg.style.willChange = 'transform'; svg.style.transformOrigin = '0 0'; }
+  const k = larg / w;
+  svg.style.transform = `translate(${(dx - x) * k}px, ${(dy - y) * k}px) scale(${dw / w})`;
+  clearTimeout(ctx.tGesto);
+  ctx.tGesto = setTimeout(() => { ctx.gesto = false; desenharVista(ctx); }, 150);
 }
 // espessura que acompanha o zoom em degraus de 0,25 px: mudar a espessura do grupo refaz o estilo de todos os trechos
 const degrau = v => Math.round(v * 4) / 4;
@@ -264,7 +276,7 @@ function escalaMudou(ctx, px) {
 }
 const trilha = (el, html) => { if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; } };
 function irPara(alvo, animar = true, ctx = ILU) {
-  const r = ctx.svg().getBoundingClientRect();
+  const r = ctx.caixa().getBoundingClientRect();
   const fim = encaixar(alvo, r.width / r.height), ini = ctx.vb.slice();
   const reduzir = matchMedia('(prefers-reduced-motion: reduce)').matches;
   cancelAnimationFrame(ctx.anim);
@@ -285,7 +297,7 @@ function zoomEm(fator, cx, cy, ctx = ILU) {
   agendarVista(ctx);
 }
 function pontoDoMapa(ev, ctx = ILU) {
-  const r = ctx.svg().getBoundingClientRect(), [x, y, w, h] = ctx.vb;
+  const r = ctx.caixa().getBoundingClientRect(), [x, y, w, h] = ctx.vb;
   return [x + (ev.clientX - r.left) / r.width * w, y + (ev.clientY - r.top) / r.height * h];
 }
 
@@ -300,7 +312,7 @@ function ligarGestos(svg, ctx = ILU) {
   svg.addEventListener('pointermove', ev => {
     if (!dedos.has(ev.pointerId)) return;
     dedos.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
-    const r = svg.getBoundingClientRect();
+    const r = ctx.caixa().getBoundingClientRect();
     if (dedos.size === 2 && pinca) {
       const [a, b] = [...dedos.values()], d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
       ctx.vb = pinca.vb.slice(); zoomEm(pinca.d / d, ...pontoDoMapa({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }, ctx), ctx);
@@ -312,7 +324,7 @@ function ligarGestos(svg, ctx = ILU) {
     if (!arrastou) { arrastou = true; svg.setPointerCapture(ev.pointerId); ctx.caixa().classList.add('arrastando'); }
     const k = inicio.vb[2] / r.width;
     ctx.vb = [inicio.vb[0] - dx * k, inicio.vb[1] - dy * k, inicio.vb[2], inicio.vb[3]];
-    agendarVista(ctx);
+    ctx.gesto = true; agendarVista(ctx);
   });
   const soltar = ev => {
     dedos.delete(ev.pointerId);
@@ -324,7 +336,7 @@ function ligarGestos(svg, ctx = ILU) {
   };
   svg.addEventListener('pointerup', soltar);
   svg.addEventListener('pointercancel', soltar);
-  svg.addEventListener('wheel', ev => { ev.preventDefault(); zoomEm(Math.pow(1.0018, ev.deltaY), ...pontoDoMapa(ev, ctx), ctx); }, { passive: false });
+  svg.addEventListener('wheel', ev => { ev.preventDefault(); ctx.gesto = true; zoomEm(Math.pow(1.0018, ev.deltaY), ...pontoDoMapa(ev, ctx), ctx); }, { passive: false });
 }
 function cliqueNoMapa(alvo) {
   fecharPop();
