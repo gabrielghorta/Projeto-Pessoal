@@ -26,6 +26,7 @@ from datetime import date, datetime, timedelta
 
 import compras as C
 import regras as R
+import relogio as RL
 import servicos as S
 from servicos import RegraViolada, _agora
 
@@ -432,11 +433,11 @@ def consultar(conn):
     if not atual:
         return {"vazio": True, "versoes": versoes, "como_exportar": COMO_EXPORTAR}
     _executado(conn, atual["tarefas"])
-    hoje = date.today().isoformat()
+    hoje = RL.hoje().isoformat()
     atual["hoje"] = hoje
     atual["em_andamento"] = sum(1 for x in atual["tarefas"] if not x["resumo"] and x["inicio"] and x["fim"]
                                 and x["inicio"] <= hoje <= x["fim"])
     atual["atrasadas"] = sum(1 for x in atual["tarefas"] if not x["resumo"] and x["fim"] and x["fim"] < hoje
                              and (x["concluido"] or 0) < 100)
     return {**atual, "versoes": versoes, "como_exportar": COMO_EXPORTAR,
-            "proximos_14_dias": (date.today() + timedelta(days=14)).isoformat()}
+            "proximos_14_dias": (RL.hoje() + timedelta(days=14)).isoformat()}

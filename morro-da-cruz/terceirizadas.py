@@ -7,6 +7,7 @@ As regras de cobertura são as mesmas da ficha do trecho (servicos.situacao_comp
 from datetime import date, timedelta
 
 import regras as R
+import relogio as RL
 import servicos as S
 from servicos import RegraViolada, _rows
 
@@ -44,7 +45,7 @@ def _m(lst):
 def topografia(conn, frente=None, hoje=None, dias=7, limite=60):
     """O que falta a topografia liberar (nota de serviço / locação): programado para os próximos `dias` sem liberação,
     executado (assentado ou escavado) sem liberação até a data, trechos liberados só em parte e as liberações recentes."""
-    hoje = hoje or date.today().isoformat()
+    hoje = hoje or RL.hoje().isoformat()
     ate = (date.fromisoformat(hoje) + timedelta(days=dias)).isoformat()
     tr = _trechos(conn, frente)
     lib = _por_trecho(conn.execute("""SELECT trecho_id, ini_m, fim_m, data FROM etapas_complementares

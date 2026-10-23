@@ -144,13 +144,10 @@ const TELAS = {
   topografia: { titulo: 'Topografia', grupo: 'grupo-campo', carregar: () => carregarTopografia() },
   cadastro_campo: { titulo: 'Cadastro de campo', grupo: 'grupo-campo', carregar: () => carregarCadCampo() },
   mapa: { titulo: 'Dados da obra', grupo: 'planejamento', carregar: () => carregarDadosObra() },
-  prog: { titulo: 'Programação das equipes', grupo: 'planejamento', carregar: () => carregarProg() },
   cronograma: { titulo: 'Cronograma da obra', grupo: 'planejamento', carregar: () => carregarCronograma() },
   almox: { titulo: 'Estoque e movimentos', grupo: 'planejamento', carregar: () => carregarAlmox() },
   compras: { titulo: 'Compras e notas', grupo: 'planejamento', carregar: () => carregarCompras() },
-  ponto: { titulo: 'Check-in e check-out', grupo: 'planejamento', carregar: () => carregarAlmox() },
   equipes: { titulo: 'Equipes', grupo: 'administrativo', carregar: () => carregarAlmox() },
-  esteira: { titulo: 'Cadastro', grupo: 'administrativo', carregar: () => carregarEsteira() },
   relatorios: { titulo: 'Relatórios', grupo: 'administrativo', carregar: () => carregarRelatorios() },
   admin: { titulo: 'Usuários e histórico', grupo: 'administrativo', carregar: () => carregarAdmin() },
   lev: { titulo: 'LEV', grupo: 'administrativo', carregar: () => carregarLev() },
@@ -161,7 +158,14 @@ const GRUPOS = { 'grupo-campo': 'Execução', planejamento: 'Planejamento', admi
 const podeTela = id => id === 'inicio' || !!(USUARIO && USUARIO.telas.includes(id));
 const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeTela(t));
 let TELA = null;
+// telas que saíram (link salvo): abrem a tela nova certa, com um aviso curto
+const TELAS_ANTIGAS = {
+  prog: ['mapa', 'A programação das equipes agora é feita no Dados da obra: o dia de cada equipe.'],
+  ponto: ['mapa', 'O check-in e o check-out agora são a liberação e a devolução, no Dados da obra.'],
+  esteira: ['iluminado', 'A esteira do cadastro agora fica na ficha do trecho, no Mapa iluminado.'],
+};
 function abrirAba(id, opcoes = {}) {
+  if (TELAS_ANTIGAS[id]) { toast(TELAS_ANTIGAS[id][1]); id = TELAS_ANTIGAS[id][0]; opcoes = { ...opcoes, substituir: true }; }
   if (GRUPOS[id]) id = telasDoGrupo(id)[0];          // o grupo abre a primeira tela dele que o perfil usa
   if (!TELAS[id] || !podeTela(id)) id = 'inicio';
   TELA = id;
@@ -211,7 +215,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
   'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: a nota do dia de cada equipe, o diário de obra, interferências, as notas de serviço e, das equipes terceirizadas, topografia e cadastro de campo.' },
-  planejamento: { nome: 'Planejamento', desc: 'O mapa do Dados da obra (programar as equipes, liberar o material do dia e receber a devolução), a programação, o cronograma do Project, o estoque com o aceite do material, compras e notas e o check-in.' },
+  planejamento: { nome: 'Planejamento', desc: 'O dia de cada equipe no mapa do Dados da obra (programar, liberar o material e receber a devolução), o cronograma do Project (os 18 meses), o estoque com as notas a receber e o aceite do material, e compras.' },
   administrativo: { nome: 'Administrativo', desc: 'Equipes, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
 };
 // a ordem do Menu segue o trabalho de cada perfil; o que o perfil não abre fica de fora
@@ -268,7 +272,9 @@ function ligarBusca(input, aoEscolher) {
     t = setTimeout(async () => {
       const q = input.value.trim(); if (q.length < 2) { ul.hidden = true; return; }
       const res = await api('/api/buscar?q=' + encodeURIComponent(q));
-      ul.innerHTML = res.map((r, i) => `<li data-i="${i}"><span>${esc(r.rotulo)}</span><small>${r.tipo === 'TRECHO' ? 'trecho' : 'nó/caixa'} · ${esc(r.extra || '')}</small></li>`).join('') || '<li><small>nada encontrado</small></li>';
+      // o nome completo (a numeração TR recomeça a cada PB), com a cor da zona quando o mapa já está carregado
+      const cor = r => ((typeof GERAL !== 'undefined' && GERAL && GERAL.zonas.find(z => r.rotulo.startsWith(z.id + '_'))) || {}).cor;
+      ul.innerHTML = res.map((r, i) => `<li data-i="${i}"><span>${cor(r) ? `<i class="zona-cor" style="background:${esc(cor(r))}"></i>` : ''}${esc(r.nome || r.rotulo)}</span><small>${r.tipo === 'TRECHO' ? 'trecho' : 'nó/caixa'} · ${esc(r.extra || '')}</small></li>`).join('') || '<li><small>nada encontrado</small></li>';
       ul.hidden = false;
       ul.onclick = ev => { const li = ev.target.closest('li[data-i]'); if (!li) return; const r = res[+li.dataset.i];
         input.value = r.rotulo; input.dataset.tipo = r.tipo; input.dataset.id = r.id; ul.hidden = true; aoEscolher && aoEscolher(r); };
@@ -289,7 +295,7 @@ async function carregarMapa() {
   ].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join('') +
     (r.itens_pendentes ? `<div class="kpi" style="border-top-color:var(--vermelho)"><span>Itens 06.2 sem quantidade/unidade com fonte</span><b>${nf(r.itens_pendentes)}</b></div>` : '');
   const est = await estadoMapa(true);
-  $('#pins').innerHTML = est.pins.length ? est.pins.map(p => `<div class="acoes" style="margin-bottom:6px">📍 <b>${esc(p.equipe)}</b> <button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(curto(p.alvo_id))}</button></div>`).join('')
+  $('#pins').innerHTML = est.pins.length ? est.pins.map(p => `<div class="acoes" style="margin-bottom:6px">📍 <b>${esc(p.equipe)}</b> <button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(nomeCompleto(p.alvo_id))}</button></div>`).join('')
     : '<span class="vazio">Nenhum check-in aberto hoje.</span>';
   $('#semPosicao').innerHTML = est.sem_posicao.map(e => `<div style="margin-bottom:6px"><b>${esc(e.numero)}</b> <span class="chip ${String(e.status_posicao || '').startsWith('PROV') ? 'amarelo' : 'vermelho'}">${esc(e.status_posicao || 'sem posição')}</span><br><small>${esc(e.nomenclaturas)}</small></div>`).join('');
   const leg = est.legado_sem_posicao || [];
@@ -329,7 +335,7 @@ async function mostrarFiscal(tipo, id) {
   const bloqueio = d.perfil_bloqueado ? `<div class="aviso problema"><b>E06:</b> ${esc(d.perfil_bloqueado)} — cálculo bloqueado.</div>` : '';
   const podeOk = ex && ex.concluido && !st.length && !ex.ok_fiscal_em;
   $('#fiscDetalhe').className = '';
-  $('#fiscDetalhe').innerHTML = `<h2 style="word-break:break-all">${esc(curto(d.nome))}</h2>
+  $('#fiscDetalhe').innerHTML = `<h2 style="word-break:break-word">${esc(nomeCompleto(d.nome))}</h2>
     ${d.retirado ? '<div class="aviso problema"><b>Retirado da revisão vigente do projeto.</b> Consulta do histórico; novos lançamentos bloqueados.</div>' : ''}
     <table>${linhas.map(([k, v]) => `<tr><th style="position:static;width:40%">${k}</th><td>${v}</td></tr>`).join('')}</table>
     ${bloqueio}${avisos}
@@ -345,9 +351,9 @@ async function mostrarFiscal(tipo, id) {
     ${tipo === 'TRECHO' ? `<h4 style="margin:12px 0 4px">Cadastro — do levantamento de campo à entrega</h4>${htmlFases(d.fases_cadastro)}` : ''}
     <h4 style="margin:12px 0 4px">Programação</h4>${(d.programacoes || []).map(p => `<div><small>${esc(p.data)} · ${esc(p.equipe_id)} · ${esc((RESUMO.servicos_programacao || {})[p.servico] || p.servico)}${p.ini_m != null ? ` ${nf(p.ini_m)}–${nf(p.fim_m)} m` : ''}</small> <span class="chip ${p.status === 'REALIZADA' ? 'azul' : p.status === 'PLANEJADA' ? 'amarelo' : ''}">${esc(p.status.toLowerCase())}</span>${p.motivo ? ` <small>${esc(p.motivo)}</small>` : ''}</div>`).join('') || '<div class="vazio">Sem programação.</div>'}
     <details id="histObj"><summary>Histórico de alterações (quem fez o quê)</summary><div class="vazio">carregando…</div></details>
-    <label class="check" style="margin:8px 0"><input type="checkbox" id="okFiscal" ${ex && ex.ok_fiscal_em ? 'checked disabled' : podeOk ? '' : 'disabled'}>
-      <b>[✓] OK Fiscalização — Pronto p/ Medir</b></label>
-    ${!podeOk && !(ex && ex.ok_fiscal_em) ? '<div class="vazio">Exige 100 % reaterrado e as fotos obrigatórias.</div>' : ''}
+    ${tipo === 'TRECHO' ? (d.retirado ? '' : '<div class="caminho-box" id="fiscCaminho"><p class="vazio">Carregando o caminho até a medição…</p></div>') : `<label class="check" style="margin:8px 0"><input type="checkbox" id="okFiscal" ${ex && ex.ok_fiscal_em ? 'checked disabled' : podeOk ? '' : 'disabled'}>
+      <b>[✓] OK interno — pronto para medir</b></label>
+    ${!podeOk && !(ex && ex.ok_fiscal_em) ? '<div class="vazio">Exige 100 % executado e as fotos obrigatórias.</div>' : ''}`}
     ${ex && ex.ok_fiscal_em && !ex.recomposicao_ok ? `<div class="form" style="margin-top:10px"><b>Recomposição (equipe de pavimento)</b>
       <div class="linha"><select id="recTipo"><option>CALÇADA</option><option>ASFALTO</option></select><input id="recQtd" type="number" step="any" placeholder="quantidade"></div>
       <button class="btn" id="recBtn">Lançar recomposição</button></div>` : ''}`;
@@ -357,6 +363,7 @@ async function mostrarFiscal(tipo, id) {
     ev.target.dataset.ok = '1';
     ev.target.innerHTML = '<summary>Histórico de alterações (quem fez o quê)</summary>' + (ls.map(a => `<div><small>${esc(a.em.replace('T', ' '))} · ${esc(a.login || '—')} · ${esc(a.rota.replace('/api/', ''))} · ${a.status === 200 ? 'aceito' : 'recusado ' + a.status}${a.status !== 200 && a.resultado ? ': ' + esc(a.resultado.slice(0, 120)) : ''}</small></div>`).join('') || '<div class="vazio">Nada registrado.</div>');
   });
+  if (tipo === 'TRECHO' && !d.retirado) montarCaminho($('#fiscCaminho'), d.nome, () => { mostrarFiscal(tipo, id); recarregarCamadaMapa(); carregarMapa(); });
   const ok = $('#okFiscal');
   if (ok && !ok.disabled) ok.addEventListener('change', async () => {
     if (!ok.checked) return;
@@ -371,8 +378,15 @@ async function mostrarFiscal(tipo, id) {
   });
   if (TELA === 'mapa') plnFocar(tipo, d.nome);                    // o mapa do Dados da obra vai até o trecho
 }
-// depois de um registro (OK interno, check-in…) o mapa do Dados da obra e o Mapa iluminado relêem a situação
-function recarregarCamadaMapa() { plnRecarregar(); }
+// depois de um registro (OK interno, liberação, devolução, NS…) o mapa do Dados da obra, o Mapa iluminado e o mapa da tela
+// Início relêem a situação na hora (sem esperar os 30 s da leitura guardada), e o mapa REV02 aberto noutra aba também
+let CANAL_MAPA = null;
+try { CANAL_MAPA = new BroadcastChannel('mc-mapa'); } catch (_) { /* navegador antigo: o REV02 relê a cada minuto */ }
+function recarregarCamadaMapa() {
+  plnRecarregar();
+  if (TELA === 'iluminado' && ILU.pronto) carregarIluminado();
+  if (CANAL_MAPA) CANAL_MAPA.postMessage('recarregar');
+}
 
 /* ---------------------------------------------------------------- 2. almoxarifado & equipes */
 async function carregarAlmox() {
@@ -382,7 +396,8 @@ async function carregarAlmox() {
   $$('.selMaterialAnkara').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade === 'ANKARA').map(opt).join(''));
   $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
-  if (podeTela('almox') || podeTela('compras')) renderAceite(await api('/api/almox/quarentena'));
+  if (TELA === 'almox' && pode('almox') && podeTela('mapa')) almoxEquipesDoDia();
+  if (podeTela('almox') || podeTela('compras')) renderNotasReceber(await api('/api/almox/notas'));
   const res = await api('/api/reservas');
   $('#reservasLista').innerHTML = res.length ? `<table><thead><tr><th>Dia</th><th>Equipe</th><th>Material</th><th class="n">Qtd.</th><th></th></tr></thead><tbody>${res.map(r => `<tr><td>${esc(r.data)}</td><td>${esc(r.equipe_id)}</td><td>${esc(r.material_id)}</td><td class="n">${nf(r.quantidade, 3)}</td><td><button class="btn" data-cancelar-reserva="${r.id}">Cancelar</button></td></tr>`).join('')}</tbody></table>` : '<span class="vazio">Nenhuma reserva ativa.</span>';
   const cons = await api('/api/consumo');
@@ -399,35 +414,98 @@ async function carregarAlmox() {
   $('#nfLista').innerHTML = nfs.length ? `<table><thead><tr><th>NF</th><th>Entrega</th><th>Status</th><th></th></tr></thead><tbody>${nfs.map(n => `<tr><td>${esc(n.numero)}${n.faturamento_etapas ? ' <span class="chip azul">etapas</span>' : ''}</td><td>${esc(n.data_entrega)}</td>
     <td><span class="chip ${n.status === 'ACEITO' ? 'verde' : 'amarelo'}">${n.status}</span></td>
     <td>${n.status === 'QUARENTENA' ? `<input placeholder="laudo (arquivo)" data-laudo="${n.id}" style="width:120px"> <button class="btn" data-aceitar="${n.id}">Aceitar</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '';
-  await carregarCheckouts();
   if (!$('#hIni').value) { $('#hIni').value = hoje().slice(0, 8) + '01'; $('#hFim').value = hoje(); }
   carregarHistograma();
 }
-// aceite ou recusa do material entregue (quarentena do fluxo de compras): o mesmo registro da tela Compras e notas
-function renderAceite(itens) {
-  $('#aceiteLista').className = itens.length ? '' : 'vazio';
-  $('#aceiteLista').innerHTML = itens.length ? itens.map(r => `<div class="linha lin-aceite" data-ri="${r.id}">
-      <span><b>${esc(r.material_id)}</b> · ${nf(r.quantidade, 3)} ${esc(r.unidade || '')}<br><small>${esc((r.descricao || '').slice(0, 80))} · NF ${esc(r.numero)}${r.fornecedor ? ' · ' + esc(r.fornecedor) : ''} · entregue em ${esc(r.data)}</small></span>
-      <label>Aceito<input data-k="aceito" type="number" step="any" min="0" value="${r.quantidade}"></label>
-      <label>Recusado<input data-k="recusado" type="number" step="any" min="0" value="0"></label>
-      <label>Laudo ou inspeção<input data-k="laudo" placeholder="nº do laudo ou quem conferiu"></label>
-      <label>Motivo da recusa<input data-k="motivo_recusa"></label>
-      ${pode('receber') ? `<div class="acoes"><button type="button" class="btn prim" data-aceite="${r.id}">Registrar</button></div>` : ''}</div>`).join('')
-    : 'Nada aguardando o aceite.';
+/* ---- Notas a receber (Estoque e movimentos): da importação do XML ao aceite, na tela do almoxarife */
+const ST_NOTA = { A_CONFERIR: ['a conferir', 'amarelo'], CONFERIDA: ['a receber', 'azul'], ENCERRADA: ['recebida', 'verde'] };
+function renderNotasReceber(notas) {
+  const box = $('#notasReceber'), rec = pode('receber');
+  $('#listaMateriais').innerHTML = MATERIAIS.map(m => `<option value="${esc(m.id)}">${esc(m.descricao.slice(0, 70))} (${esc(m.unidade)})</option>`).join('');
+  box.className = notas.length ? '' : 'vazio';
+  if (!notas.length) { box.textContent = 'Nenhuma nota a receber.'; return; }
+  box.innerHTML = notas.map(n => {
+    const st = ST_NOTA[n.status] || [n.status.toLowerCase(), ''], sug = Object.fromEntries((n.sugestoes || []).map(x => [x.linha_id, x]));
+    const aprovar = n.sem_pedido && !n.aprovada_em;
+    let corpo = '';
+    if (n.status === 'A_CONFERIR' && rec) {
+      corpo = `<div class="nota-conf"><label>Pedido<select data-c="pedido"><option value="">sem pedido (precisa de aprovação)</option>${n.pedidos.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('')}</select></label>
+        ${n.linhas.map(l => { const s = sug[l.id] || {};
+          return `<div class="nota-l" data-l="${l.id}"><div>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(l.quantidade, 4)} ${esc(l.unidade)}${l.codigo ? ' · código ' + esc(l.codigo) : ''}</small></div>
+            <div class="linha"><label>Material<input data-k="material_id" list="listaMateriais" value="${esc(s.material_id || '')}" placeholder="vazio = fora do estoque"></label>
+              <label>Fator<input data-k="fator" type="number" step="any" min="0" value="${s.fator || ''}" placeholder="1" title="quantidade no material = quantidade da nota × fator"></label></div>
+            <small>${s.material_id ? `sugerido (${esc(s.motivo)}): ${esc(((MATERIAIS.find(m => m.id === s.material_id) || {}).descricao || '').slice(0, 60))}${s.caesb ? ' · tubo da Caesb: entra como romaneio' : ''}` : 'sem sugestão: escolha o material ou deixe vazio (frete, serviço)'}</small></div>`; }).join('')}
+        <div class="acoes"><button type="button" class="btn prim" data-nota-conferir="${n.id}">Conferir as linhas</button></div></div>`;
+    } else if (n.status === 'CONFERIDA') {
+      const falta = n.itens.filter(i => i.quantidade - i.recebido > 1e-9);
+      corpo = (falta.length && rec ? `<div class="nota-chegou"><b>O que chegou</b>${falta.map(i => `<div class="linha" data-ni="${i.id}"><span>${esc(i.material_id)} <small>${esc((i.descricao || '').slice(0, 60))}${i.romaneio_caesb ? ' · romaneio Caesb' : ''}</small><br><small>na nota ${nf(i.quantidade, 3)} · já chegou ${nf(i.recebido, 3)} ${esc(i.unidade || '')}</small></span>
+          <label>Chegou<input data-chegou type="number" step="any" min="0" value="${+(i.quantidade - i.recebido).toFixed(6)}"></label></div>`).join('')}
+          <div class="linha"><input data-doc-entrega placeholder="canhoto / romaneio da entrega"><button type="button" class="btn prim" data-nota-receber="${n.id}">Registrar o que chegou</button></div></div>` : '')
+        + n.entregas.map(e => `<div class="nota-insp" data-rec="${e.id}"><b>Em quarentena · entrega de ${dataBR(e.data)}${e.documento ? ' · ' + esc(e.documento) : ''}</b>
+          ${e.itens.map(i => `<div class="linha" data-ri="${i.id}"><span>${esc(i.material_id)} · ${nf(i.quantidade, 3)} ${esc(i.unidade || '')}</span>
+            <label>Aceito<input data-k="aceito" type="number" step="any" min="0" value="${i.quantidade}"></label><label>Recusado<input data-k="recusado" type="number" step="any" min="0" value="0"></label></div>`).join('')}
+          ${rec ? `<div class="linha"><input data-laudo placeholder="laudo da entrega (obrigatório só com recusa)"><input data-motivo placeholder="motivo da recusa"></div>
+          <div class="acoes"><button type="button" class="btn prim" data-nota-aceitar="${e.id}">Aceitar tudo desta entrega</button><button type="button" class="btn" data-nota-inspecionar="${e.id}">Registrar a inspeção</button></div>` : ''}</div>`).join('');
+    }
+    const aprovacao = !aprovar ? '' : pode('compras_aprovar') && USUARIO.login !== n.registrada_por
+      ? `<div class="acoes"><button type="button" class="btn ok" data-nota-aprovar="${n.id}">Aprovar a nota sem pedido</button></div>`
+      : '<div class="aviso info">Nota sem pedido: o material aceito fica no almoxarifado, mas só vai para as equipes depois da aprovação de Engenharia ou Administração (outra pessoa, não quem importou).</div>';
+    return `<div class="registro nota-card"><div><b>NF ${esc(n.numero)}${n.serie ? '/' + esc(n.serie) : ''} · ${esc(n.fornecedor || '')}</b>
+        <span class="chip ${st[1]}">${esc(st[0])}</span>${n.sem_pedido ? ` <span class="chip ${n.aprovada_em ? 'verde' : 'amarelo'}">sem pedido · ${n.aprovada_em ? 'aprovada por ' + esc(n.aprovada_por) : 'aguardando aprovação'}</span>` : ''}</div>
+      <small>emissão ${esc(dataBR(n.data_emissao || ''))} · ${n.linhas.length} linha${n.linhas.length > 1 ? 's' : ''} · ${brl(n.valor_total)} · importada por ${esc(n.registrada_por || '')}</small>
+      ${corpo}${aprovacao}</div>`;
+  }).join('');
 }
-$('#aceiteLista').addEventListener('click', async ev => {
-  const b = ev.target.closest('[data-aceite]'); if (!b) return;
-  const l = b.closest('.lin-aceite'), o = Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value]));
-  const r = await acao(() => api('/api/inspecao', { recebimento_item_id: l.dataset.ri, ...o, data: hoje() }),
-    +o.recusado > 0 ? 'Inspeção registrada: o aceito entrou no estoque e o recusado ficou de fora.' : 'Material aceito: entrou no estoque.').catch(() => null);
+// vários XML de uma vez, um pedido por nota; o fornecedor que falta é cadastrado pelo próprio XML, com confirmação.
+// O mesmo nas telas Estoque e movimentos e Compras e notas.
+async function importarNotasXml(form, depois) {
+  const arqs = [...form.arquivos.files], feitas = [], erros = [];
+  for (const arq of arqs) {
+    try {
+      const corpo = { conteudo_b64: await lerOriginal(arq), nome: arq.name };
+      let r = await api('/api/nf/importar-xml', corpo);
+      if (r.fornecedor_novo) {
+        const f = r.fornecedor_novo;
+        if (!confirm(`NF ${r.numero}: o emitente ${f.nome} (CNPJ ${f.cnpj}) não está cadastrado. Cadastrar pelo XML e importar a nota?`)) continue;
+        r = await api('/api/nf/importar-xml', { ...corpo, cadastrar_fornecedor: true });
+      }
+      feitas.push(`NF ${r.numero}`);
+    } catch (e) { erros.push(`${arq.name}: ${e.message}`); }
+  }
+  if (feitas.length) toast(`Importada${feitas.length > 1 ? 's' : ''}: ${feitas.join(', ')}. Confira as linhas antes de receber.`, 'ok');
+  if (erros.length) toast(erros.join(' · '), 'erro');
+  form.reset(); depois(); driveEmSegundoPlano(depois);
+}
+$('#fXmlAlmox').addEventListener('submit', ev => { ev.preventDefault(); importarNotasXml(ev.target, carregarAlmox); });
+$('#notasReceber').addEventListener('click', async ev => {
+  const q = s => ev.target.closest(s);
+  let r = null;
+  if (q('[data-nota-conferir]')) {
+    const box = q('.nota-conf');
+    const linhas = $$('[data-l]', box).map(l => { const m = $('[data-k=material_id]', l).value.trim();
+      return m ? { linha_id: l.dataset.l, material_id: m, fator: $('[data-k=fator]', l).value || null } : { linha_id: l.dataset.l, fora_do_estoque: true }; });
+    r = await acao(() => api('/api/nf/conferir', { nf_id: q('[data-nota-conferir]').dataset.notaConferir, pedido_id: $('[data-c=pedido]', box).value || 0, linhas }),
+      'Nota conferida: registre o que chegou.').catch(() => null);
+  } else if (q('[data-nota-receber]')) {
+    const box = q('.nota-chegou'), itens = $$('[data-ni]', box).map(l => ({ nf_item_id: l.dataset.ni, quantidade: +$('[data-chegou]', l).value || 0 })).filter(i => i.quantidade > 0);
+    r = await acao(() => api('/api/recebimento', { nf_id: q('[data-nota-receber]').dataset.notaReceber, data: hoje(), itens, documento: $('[data-doc-entrega]', box).value }),
+      'Entrega registrada: o material está em quarentena (o tubo da Caesb entrou como romaneio).').catch(() => null);
+  } else if (q('[data-nota-aceitar]') || q('[data-nota-inspecionar]')) {
+    const box = q('.nota-insp'), tudo = !!q('[data-nota-aceitar]');
+    const itens = tudo ? [] : $$('[data-ri]', box).map(l => ({ recebimento_item_id: l.dataset.ri, aceito: $('[data-k=aceito]', l).value, recusado: $('[data-k=recusado]', l).value }));
+    r = await acao(() => api('/api/inspecao/entrega', { recebimento_id: box.dataset.rec, itens, laudo: $('[data-laudo]', box).value, motivo_recusa: $('[data-motivo]', box).value, data: hoje() }),
+      tudo ? 'Entrega aceita: o material entrou no estoque.' : 'Inspeção registrada: o aceito entrou no estoque e o recusado ficou de fora.').catch(() => null);
+  } else if (q('[data-nota-aprovar]')) {
+    r = await acao(() => api('/api/nf/aprovar', { nf_id: q('[data-nota-aprovar]').dataset.notaAprovar }), 'Nota aprovada: o material aceito já pode ser liberado às equipes.').catch(() => null);
+  } else return;
   if (r) { carregarAlmox(); driveEmSegundoPlano(); }
 });
 function renderEstoque() {
   const f = $('#estFiltro').value, so = $('#estSaldo').checked;
-  const lst = MATERIAIS.filter(m => (!f || m.propriedade === f) && (!so || m.saldo_almox || m.custodia || m.quarentena || m.reservado));
-  $('#estoque').innerHTML = lst.length ? `<table><thead><tr><th>Material</th><th>Propriedade</th><th>Unid.</th><th class="n">Saldo físico</th><th class="n">Reservado</th><th class="n">Disponível</th><th class="n">Quarentena</th><th class="n">Com as equipes</th><th class="n">Preço BM</th></tr></thead><tbody>
+  const lst = MATERIAIS.filter(m => (!f || m.propriedade === f) && (!so || m.saldo_almox || m.custodia || m.quarentena || m.reservado || m.aguardando_aprovacao));
+  $('#estoque').innerHTML = lst.length ? `<table><thead><tr><th>Material</th><th>Propriedade</th><th>Unid.</th><th class="n">Saldo físico</th><th class="n">Reservado</th><th class="n">Disponível</th><th class="n">Quarentena</th><th class="n">Aguardando aprovação da nota</th><th class="n">Com as equipes</th><th class="n">Preço BM</th></tr></thead><tbody>
     ${lst.map(m => `<tr><td>${esc(m.id)} — ${esc(m.descricao.slice(0, 80))}</td><td><span class="chip ${m.propriedade === 'CAESB' ? 'azul' : m.propriedade === 'ANKARA' ? 'laranja' : ''}">${m.propriedade}</span></td><td>${esc(m.unidade)}</td>
-      <td class="n">${nf(m.saldo_almox, 3)}</td><td class="n">${nf(m.reservado, 3)}</td><td class="n"><b>${nf(m.disponivel, 3)}</b></td><td class="n">${nf(m.quarentena, 3)}</td><td class="n">${nf(m.custodia, 3)}</td><td class="n">${m.propriedade === 'CAESB' ? 'R$ 0,00' : brl(m.preco_unitario)}</td></tr>`).join('')}</tbody></table>`
+      <td class="n">${nf(m.saldo_almox, 3)}</td><td class="n">${nf(m.reservado, 3)}</td><td class="n"><b>${nf(m.disponivel, 3)}</b></td><td class="n">${nf(m.quarentena, 3)}</td><td class="n">${m.aguardando_aprovacao ? `<span class="chip amarelo">${nf(m.aguardando_aprovacao, 3)}</span>` : '—'}</td><td class="n">${nf(m.custodia, 3)}</td><td class="n">${m.propriedade === 'CAESB' ? 'R$ 0,00' : brl(m.preco_unitario)}</td></tr>`).join('')}</tbody></table>`
     : '<div class="vazio" style="padding:10px">Nenhum material com movimento.</div>';
 }
 $('#estFiltro').addEventListener('change', renderEstoque);
@@ -480,46 +558,6 @@ $('#fRecurso').addEventListener('submit', async ev => {
   toast('Equipe atualizada.', 'ok'); ev.target.reset();
 });
 
-// check-in
-const fCk = $('#fCheckin');
-ligarBusca($('input[name=alvo_txt]', fCk));
-$('select[name=equipe_id]', fCk).addEventListener('change', async ev => {
-  const eq = await api('/api/equipe?id=' + ev.target.value);
-  const it = [...eq.funcionarios.map(f => ['f', f.id, `${f.nome}${f.funcao ? ' · ' + f.funcao : ''}`]), ...eq.maquinas.map(m => ['m', m.id, '🚜 ' + m.descricao])];
-  $('#ckPresentes').innerHTML = it.length ? it.map(([t, id, n]) => `<label class="check"><input type="checkbox" data-t="${t}" value="${id}" checked> ${esc(n)}</label>`).join('')
-    : '<span class="vazio">Cadastre funcionários e máquinas da equipe abaixo.</span>';
-});
-$('#ckAddMat').addEventListener('click', () => {
-  const div = document.createElement('div'); div.className = 'linha';
-  div.innerHTML = `<select data-mat>${MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.saldo_almox > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} + reserva da equipe · ${esc(m.unidade)})</option>`).join('') || '<option value="">sem saldo no almoxarifado</option>'}</select><input type="number" step="any" min="0" data-qtd placeholder="quantidade">`;
-  $('#ckMateriais').append(div);
-});
-fCk.addEventListener('submit', async ev => {
-  ev.preventDefault(); const o = formObj(fCk), alvo = $('input[name=alvo_txt]', fCk);
-  const corpo = { data: o.data, equipe_id: o.equipe_id, contingencia: o.contingencia || null,
-    alvo_tipo: alvo.dataset.tipo || null, alvo_id: alvo.dataset.id || null,
-    funcionarios: $$('#ckPresentes input[data-t=f]:checked').map(i => +i.value), maquinas: $$('#ckPresentes input[data-t=m]:checked').map(i => +i.value),
-    materiais: $$('#ckMateriais .linha').map(l => ({ material_id: $('[data-mat]', l).value, quantidade: +$('[data-qtd]', l).value || 0 })).filter(m => m.material_id && m.quantidade > 0) };
-  await acao(() => api('/api/checkin', corpo), `Check-in registrado — pin de programação da ${o.equipe_id} no mapa.`);
-  $('#ckMateriais').innerHTML = ''; alvo.value = ''; carregarAlmox();
-});
-async function carregarCheckouts() {
-  const cks = await api('/api/checkins');
-  $('#checkoutLista').className = cks.length ? '' : 'vazio';
-  $('#checkoutLista').innerHTML = cks.length ? cks.map(c => `<form class="form" data-co="${c.id}" style="border-bottom:1px solid var(--borda);padding-bottom:10px;margin-bottom:10px">
-    <div><b>${esc(c.equipe_id)}</b> · ${esc(c.data)} · ${c.alvo_id ? '📍 ' + esc(curto(c.alvo_nome)) : esc(c.contingencia || '')}</div>
-    ${c.materiais.length ? `<table><thead><tr><th>Material</th><th class="n">Com a equipe</th><th>Aplicado</th><th>Sobra (devolve)</th><th>Perda</th><th>Fica com a equipe</th><th>Motivo da perda</th></tr></thead><tbody>
-      ${c.materiais.map(m => `<tr data-m="${esc(m.material_id)}"><td>${esc(m.material_id)}</td><td class="n">${nf(m.quantidade, 3)}${m.trazido ? `<br><small>trazido ${nf(m.trazido, 3)}</small>` : ''}</td>
-      <td><input type="number" step="any" min="0" name="aplicado" value="${m.quantidade}"></td><td><input type="number" step="any" min="0" name="sobra" value="0"></td>
-      <td><input type="number" step="any" min="0" name="perda" value="0"></td><td><input type="number" step="any" min="0" name="fica_com_equipe" value="0"></td><td><input name="motivo"></td></tr>`).join('')}</tbody></table>
-      <p class="vazio" style="margin:4px 0">Aplicado + sobra + perda + fica com a equipe = material com a equipe. O que fica volta no próximo check-in.</p>` : '<span class="vazio">Sem materiais em custódia.</span>'}
-    <div class="acoes"><button class="btn ok">Confirmar check-out com o encarregado</button></div></form>`).join('') : 'Nenhum check-in aberto.';
-}
-$('#checkoutLista').addEventListener('submit', async ev => {
-  ev.preventDefault(); const f = ev.target;
-  const itens = $$('tr[data-m]', f).map(tr => ({ material_id: tr.dataset.m, aplicado: +$('[name=aplicado]', tr).value || 0, sobra: +$('[name=sobra]', tr).value || 0, perda: +$('[name=perda]', tr).value || 0, fica_com_equipe: +$('[name=fica_com_equipe]', tr).value || 0, motivo: $('[name=motivo]', tr).value }));
-  await acao(() => api('/api/checkout', { checkin_id: f.dataset.co, itens }), 'Check-out confirmado.'); carregarAlmox();
-});
 async function carregarHistograma() {
   const h = await api(`/api/histograma?ini=${$('#hIni').value}&fim=${$('#hFim').value}`);
   const mx = Math.max(1, ...h.map(x => x.funcionarios + x.maquinas));
@@ -529,49 +567,7 @@ async function carregarHistograma() {
 $('#hIni').addEventListener('change', carregarHistograma);
 $('#hFim').addEventListener('change', carregarHistograma);
 
-/* ---------------------------------------------------------------- 1.1 programação */
-const fProg = $('#fProg');
-ligarBusca($('input[name=alvo_txt]', fProg));
 const maisDias = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
-async function carregarProg() {
-  if (!MATERIAIS.length) MATERIAIS = await api('/api/estoque');
-  if (!carregarProg.feito) { carregarProg.feito = true; $('#pgIni').value = hoje(); $('#pgFim').value = maisDias(hoje(), 7); fProg.data.value = maisDias(hoje(), 1); }
-  if ($('#pgFrente').options.length < 2) $('#pgFrente').innerHTML += (RESUMO.frentes || []).map(f => `<option>${esc(f)}</option>`).join('');
-  if (!$('#selServProg').options.length) $('#selServProg').innerHTML = Object.entries(RESUMO.servicos_programacao || {}).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
-  const e = $('.editor-itens[data-itens=prog]'); if (!e.children.length) e.innerHTML = LINHA_ITEM.prog();
-  const q = new URLSearchParams({ ini: $('#pgIni').value, fim: $('#pgFim').value });
-  if ($('#pgFrente').value) q.set('frente', $('#pgFrente').value);
-  if ($('#pgEquipe').value) q.set('equipe', $('#pgEquipe').value);
-  const r = await api('/api/programacoes?' + q);
-  const c = r.resumo.contagem;
-  $('#pgResumo').innerHTML = `<span class="chip amarelo">planejadas ${c.PLANEJADA}</span> <span class="chip azul">realizadas ${c.REALIZADA}</span> <span class="chip vermelho">não realizadas ${c.NAO_REALIZADA}</span> <span class="chip">canceladas ${c.CANCELADA}</span>
-    ${r.resumo.programadas_no_passado ? ` · programado × realizado (dias passados): <b>${r.resumo.realizadas_no_passado}/${r.resumo.programadas_no_passado}</b>` : ''}`;
-  $('#pgLista').innerHTML = r.programacoes.length ? `<table><thead><tr><th>Data</th><th>Equipe</th><th>Alvo</th><th>Serviço</th><th>Materiais previstos</th><th>Situação</th></tr></thead><tbody>${r.programacoes.map(p => `<tr>
-    <td>${esc(p.data)}</td><td>${esc(p.equipe_id)}</td><td><button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(curto(p.alvo_nome))}</button></td>
-    <td>${esc(p.servico_nome)}${p.ini_m != null ? `<br><small>${nf(p.ini_m)}–${nf(p.fim_m)} m</small>` : ''}</td>
-    <td>${p.materiais.map(m => `${esc(m.material_id)}: ${nf(m.quantidade, 3)}`).join('<br>') || '—'}</td>
-    <td><span class="chip ${p.status === 'REALIZADA' ? 'azul' : p.status === 'PLANEJADA' ? 'amarelo' : p.status === 'NAO_REALIZADA' ? 'vermelho' : ''}">${esc(p.status.toLowerCase().replace('_', ' '))}</span>
-      ${p.motivo ? `<br><small>${esc(p.motivo)}</small>` : ''}${p.status === 'PLANEJADA' && pode('planejar') ? `<br><button type="button" class="btn" data-prog-enc="${p.id}" data-st="NAO_REALIZADA">Não realizada</button> <button type="button" class="btn" data-prog-enc="${p.id}" data-st="CANCELADA">Cancelar</button>` : ''}</td></tr>`).join('')}</tbody></table>`
-    : '<div class="vazio" style="padding:8px">Nada programado no período.</div>';
-  $('#pgFaltantes').innerHTML = r.faltantes.length ? `<table><thead><tr><th>Material</th><th class="n">Previsto</th><th class="n">Reservado p/ a programação</th><th class="n">Disponível</th><th class="n">A receber (pedidos)</th><th class="n">Faltante</th></tr></thead><tbody>${r.faltantes.map(f => `<tr>
-    <td>${esc(f.material_id)}<br><small>${esc(f.descricao.slice(0, 60))} (${esc(f.unidade)})</small></td><td class="n">${nf(f.previsto, 3)}</td><td class="n">${nf(f.reservado, 3)}</td><td class="n">${nf(f.disponivel, 3)}</td><td class="n">${nf(f.a_receber, 3)}</td>
-    <td class="n">${f.faltante > 0 ? `<span class="chip vermelho">${nf(f.faltante, 3)}</span>` : '<span class="chip azul">0</span>'}</td></tr>`).join('')}</tbody></table>`
-    : '<div class="vazio" style="padding:8px">Nenhum material previsto nas programações do período.</div>';
-}
-['#pgIni', '#pgFim', '#pgFrente', '#pgEquipe'].forEach(x => $(x).addEventListener('change', carregarProg));
-fProg.addEventListener('submit', async ev => {
-  ev.preventDefault(); const o = formObj(fProg), alvo = $('input[name=alvo_txt]', fProg);
-  if (!alvo.dataset.id) return toast('Escolha o trecho/nó na lista da busca.', 'erro');
-  const r = await acao(() => api('/api/programacao', { data: o.data, equipe_id: o.equipe_id, alvo_tipo: alvo.dataset.tipo, alvo_id: alvo.dataset.id, servico: o.servico,
-    ini_m: o.ini_m, fim_m: o.fim_m, obs: o.obs, materiais: lerItens(fProg, 'prog') }), 'Programação registrada.').catch(() => null);
-  if (r) { alvo.value = ''; alvo.dataset.id = ''; $('.editor-itens[data-itens=prog]').innerHTML = ''; carregarProg(); recarregarCamadaMapa(); }
-});
-document.addEventListener('click', async ev => {
-  const b = ev.target.closest('[data-prog-enc]'); if (!b) return;
-  const motivo = prompt(b.dataset.st === 'CANCELADA' ? 'Motivo do cancelamento:' : 'Por que não foi realizada?'); if (!motivo) return;
-  const r = await acao(() => api('/api/programacao/encerrar', { programacao_id: b.dataset.progEnc, status: b.dataset.st, motivo }), 'Programação encerrada.').catch(() => null);
-  if (r) carregarProg();
-});
 
 /* ---------------------------------------------------------------- 2.1 compras & recebimento */
 let COMPRAS = null;
@@ -580,7 +576,6 @@ const LINHA_ITEM = {
   solic: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(m => m.propriedade !== 'CAESB')}</select><input data-k="quantidade" type="number" step="any" min="0" placeholder="quantidade"><button type="button" class="btn" data-remover-linha>×</button></div>`,
   nfdig: () => `<div class="linha lin-iv lin-item"><input data-k="descricao" placeholder="descrição na nota"><input data-k="unidade" placeholder="unid." style="max-width:80px"><input data-k="quantidade" type="number" step="any" min="0" placeholder="qtd."><input data-k="valor_unitario" type="number" step="any" min="0" placeholder="valor unit."><button type="button" class="btn" data-remover-linha>×</button></div>`,
   inv: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(() => true)}</select><input data-k="contado" type="number" step="any" min="0" placeholder="contado"><button type="button" class="btn" data-remover-linha>×</button></div>`,
-  prog: () => `<div class="linha lin-iv lin-item"><select data-k="material_id">${opMat(m => m.propriedade !== 'CONSUMO')}</select><input data-k="quantidade" type="number" step="any" min="0" placeholder="quantidade prevista"><button type="button" class="btn" data-remover-linha>×</button></div>`,
 };
 const lerItens = (raiz, tipo) => $$(`.editor-itens[data-itens=${tipo}] .lin-item`, raiz).map(l => Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value])))
   .filter(o => Object.values(o).some(v => v !== '') && (o.quantidade !== '' || o.contado !== ''));
@@ -676,11 +671,7 @@ $('#fPedido').addEventListener('submit', async ev => {
   const r = await acao(() => api('/api/pedido', { ...o, faturamento_etapas: !!o.faturamento_etapas, itens }), 'Pedido emitido (não altera o estoque).').catch(() => null);
   if (r) { ev.target.reset(); carregarCompras(); }
 });
-$('#fXml').addEventListener('submit', async ev => {
-  ev.preventDefault(); const arq = ev.target.arquivo.files[0];
-  const r = await acao(async () => api('/api/nf/importar-xml', { conteudo_b64: await lerOriginal(arq), nome: arq.name }), 'NF-e importada: confira as linhas antes de receber.').catch(() => null);
-  if (r) { ev.target.reset(); carregarCompras(); driveEmSegundoPlano(carregarCompras); }
-});
+$('#fXml').addEventListener('submit', ev => { ev.preventDefault(); importarNotasXml(ev.target, carregarCompras); });
 $('#fNfDig').addEventListener('submit', async ev => {
   ev.preventDefault(); const o = formObj(ev.target), arq = ev.target.arquivo.files[0];
   const r = await acao(async () => api('/api/nf/digitar', { numero: o.numero, data_emissao: o.data_emissao, fornecedor_id: o.fornecedor_id, chave: o.chave,
@@ -944,7 +935,10 @@ $('#fFoto').addEventListener('submit', async ev => {
   driveEmSegundoPlano(() => CAMPO && selecionarCampo(CAMPO.tipo, CAMPO.id));
 });
 
-/* ---------------------------------------------------------------- 4. esteira de cadastro */
+/* ---------------------------------------------------------------- 4. caminho até a medição (ficha do trecho) */
+// O que já foi feito e o que falta para o trecho entrar na medição, cada item com quem faz e onde, e a ação ali mesmo
+// para quem pode: Verificar (com as fotos que faltam), OK interno e a esteira do cadastro. Serve à ficha do Mapa
+// iluminado e à do Dados da obra.
 const CAMPOS_ETAPA = {
   '1_PRONTO': [['2_ENVIADO', 'Enviar dados p/ empresa', [['empresa', 'Empresa'], ['data_envio', 'Data', 'date']]]],
   '2_ENVIADO': [['3_RECEBIDO', 'Cadastro recebido', [['arquivos', 'Arquivos DWG/PDF/BIM']]]],
@@ -953,45 +947,100 @@ const CAMPOS_ETAPA = {
   '4_GDOC_ANALISE': [['6_APROVADO', 'Aprovado', [['memorando_eset', 'Memorando ESET']]], ['5A_NEGADO', 'Negado', [['motivo_negativa', 'Motivo da negativa']]]],
   '5A_NEGADO': [['2_ENVIADO', 'Reenviar p/ empresa ajustar', []]],
 };
-async function carregarEsteira() {
-  if (!RESUMO) RESUMO = await api('/api/resumo');
-  const lst = await api('/api/esteira');
-  $('#kanban').innerHTML = Object.entries(RESUMO.etapas).map(([k, nome]) => {
-    const cs = lst.filter(c => c.etapa === k);
-    return `<div class="coluna"><h4><span>${esc(nome)}</span><span class="chip">${cs.length}</span></h4>${cs.map(c => `<div class="cartao"><b>${esc(curto(c.ponto))}</b>
-      ${esc(c.frente_id)} · ${nf(c.extensao_m)} m ${c.revisao ? `<span class="chip laranja">Rev. ${c.revisao}</span>` : ''}
-      ${c.empresa ? `<div>Empresa: ${esc(c.empresa)}</div>` : ''}${c.protocolo_gdoc ? `<div>GDOC: ${esc(c.protocolo_gdoc)}</div>` : ''}
-      ${c.motivo_negativa ? `<div class="aviso problema">${esc(c.motivo_negativa)}</div>` : ''}${c.memorando_eset ? `<div>ESET: ${esc(c.memorando_eset)}</div>` : ''}
-      <div><span class="chip ${c.levantamento_completo ? 'azul' : 'amarelo'}" title="intervalos CADASTRO_CAMPO registrados antes do reaterro">levantamento de campo ${c.levantamento_completo ? 'completo' : nf(c.levantamento_m) + ' m de ' + nf(c.extensao_m)}</span></div>
-      ${c.conferencia ? `<div><span class="chip ${c.conferencia.resultado === 'CONFORME' ? 'azul' : 'vermelho'}" title="conferência interna Ankara — não é aprovação da Caesb">Rev. ${c.conferencia.revisao}: ${c.conferencia.resultado === 'CONFORME' ? 'conforme' : 'não conforme'} (interno) · ${esc(c.conferencia.revisor)}</span>${c.conferencia.obs ? `<div class="aviso problema">${esc(c.conferencia.obs)}</div>` : ''}</div>` : ''}
-      ${k === '3_RECEBIDO' ? `<details class="conf" data-tr="${esc(c.trecho_id)}"><summary>Conferência interna Ankara (não é aprovação da Caesb)</summary>
-        ${Object.entries(RESUMO.checklist_conferencia || {}).map(([ck, txt]) => `<label class="check"><input type="checkbox" data-ck="${ck}"> ${esc(txt)}</label>`).join('')}
-        <input data-c="obs" placeholder="Divergência (obrigatória se não conforme)">
-        <div class="acoes"><button type="button" class="btn" data-conf="CONFORME">Conforme</button><button type="button" class="btn" data-conf="NAO_CONFORME">Não conforme</button></div></details>` : ''}
-      ${(CAMPOS_ETAPA[k] || []).filter(([dest]) => k !== '3_RECEBIDO' || (dest === '2_ENVIADO') === !!(c.conferencia && c.conferencia.resultado === 'NAO_CONFORME'))
-        .map(([dest, rot, campos]) => `<form class="form" data-tr="${esc(c.trecho_id)}" data-dest="${dest}">
-        ${campos.map(([n, l, t]) => `<input name="${n}" placeholder="${l}" ${t ? `type="${t}"` : ''} required>`).join('')}
-        <button class="btn ${dest === '5A_NEGADO' || (k === '3_RECEBIDO' && dest === '2_ENVIADO') ? '' : 'prim'}">${rot}</button></form>`).join('')}</div>`).join('') || '<div class="vazio">—</div>'}</div>`;
-  }).join('');
+const camposFoto = faltam => `<div class="linha">${faltam.map(c => `<label>Foto: ${FOTO_NOME[c] || esc(c)}<input type="file" accept="image/*" data-foto="${c}"></label>`).join('')}</div>`;
+async function montarCaminho(box, nome, depois) {
+  if (!box) return;
+  const cam = await api('/api/caminho?trecho=' + encodeURIComponent(nome)).catch(e => ({ erro: e.message }));
+  if (cam.erro) { box.innerHTML = `<p class="vazio">${esc(cam.erro)}</p>`; return; }
+  const it = Object.fromEntries(cam.itens.map(i => [i.id, i])), faltam = it.fotos.faltam || [];
+  const verificar = !it.verificacao.feito && it.verificacao.pendentes > 0 && pode('verificar');
+  const acao = {
+    verificacao: verificar ? (faltam.length && pode('campo') ? camposFoto(faltam) : '')
+      + `<div class="acoes"><button type="button" class="btn prim" data-cam="verificar">Verificar${faltam.length && pode('campo') ? ' e enviar as fotos escolhidas' : ''}</button></div>` : '',
+    fotos: !it.fotos.feito && !verificar && pode('campo') ? camposFoto(faltam) + '<div class="acoes"><button type="button" class="btn" data-cam="fotos">Enviar as fotos</button></div>' : '',
+    ok: it.ok.feito || !pode('ok_interno') ? '' : cam.pronto_para_ok
+      ? '<div class="acoes"><button type="button" class="btn ok" data-cam="ok">OK interno</button></div>'
+      : `<small>Falta para o OK: ${esc(cam.falta_para_ok.join(', ').toLowerCase())}.</small>`,
+  };
+  box.innerHTML = `<h3>Para entrar na medição</h3><ol class="caminho">${cam.itens.map(i => `<li class="${i.feito ? 'feito' : 'falta'}">
+      <span class="marca" aria-hidden="true">${i.feito ? '✓' : ''}</span><div><b>${esc(i.nome)}</b><br><small>${esc(i.detalhe)}</small>
+      ${i.feito ? '' : `<br><small class="quem">${esc(i.quem)} · ${esc(i.onde)}</small>`}${acao[i.id] || ''}</div></li>`).join('')}</ol>
+    ${await htmlEsteira(cam)}`;
+  box.dataset.trecho = nome; box.dataset.tid = cam.trecho_id; box.depois = depois;
+  if (!box.dataset.ligado) { box.dataset.ligado = '1'; box.addEventListener('click', cliqueCaminho); box.addEventListener('submit', enviarEsteira); }
 }
-$('#kanban').addEventListener('click', async ev => {
-  const b = ev.target.closest('[data-conf]'); if (!b) return;
-  const box = b.closest('details.conf');
-  const checklist = Object.fromEntries($$('[data-ck]', box).map(i => [i.dataset.ck, i.checked]));
-  const ok = await acao(() => api('/api/cadastro/conferencia', { trecho_id: box.dataset.tr, resultado: b.dataset.conf, checklist,
-    obs: $('[data-c=obs]', box).value }), 'Conferência interna registrada (não é aprovação da Caesb).').catch(() => null);
-  if (ok) carregarEsteira();
-});
-$('#kanban').addEventListener('submit', async ev => {
-  ev.preventDefault(); const f = ev.target, dados = formObj(f);
+// a esteira do cadastro, para quem tem a permissão cadastro; a mesma ação vale para os outros trechos marcados na mesma etapa
+async function htmlEsteira(cam) {
+  const c = cam.cadastro; if (!c) return '';
+  const cab = `<h3>Cadastro: ${esc(c.rotulo)}</h3>${c.empresa ? `<small>Empresa: ${esc(c.empresa)}</small> ` : ''}${c.protocolo_gdoc ? `<small>GDOC: ${esc(c.protocolo_gdoc)}</small> ` : ''}${c.memorando_eset ? `<small>ESET: ${esc(c.memorando_eset)}</small>` : ''}
+    ${c.motivo_negativa ? `<div class="aviso problema">${esc(c.motivo_negativa)}</div>` : ''}
+    ${c.conferencia ? `<div><span class="chip ${c.conferencia.resultado === 'CONFORME' ? 'azul' : 'vermelho'}" title="conferência interna Ankara: não é aprovação da Caesb">Rev. ${c.conferencia.revisao}: ${c.conferencia.resultado === 'CONFORME' ? 'conforme' : 'não conforme'} (interno) · ${esc(c.conferencia.revisor)}</span></div>` : ''}`;
+  if (!pode('cadastro') && !pode('conferir_cadastro')) return `<div class="esteira-ficha">${cab}</div>`;
+  const k = c.etapa;
+  const outros = pode('cadastro') && CAMPOS_ETAPA[k] ? (await api('/api/esteira').catch(() => [])).filter(x => x.etapa === k && x.trecho_id !== c.trecho_id) : [];
+  const conf = k === '3_RECEBIDO' && pode('conferir_cadastro') ? `<details class="conf"><summary>Conferência interna Ankara (não é aprovação da Caesb)</summary>
+      ${Object.entries(RESUMO.checklist_conferencia || {}).map(([ck, txt]) => `<label class="check"><input type="checkbox" data-ck="${ck}"> ${esc(txt)}</label>`).join('')}
+      <input data-c="obs" placeholder="Divergência (obrigatória se não conforme)">
+      <div class="acoes"><button type="button" class="btn" data-conf="CONFORME">Conforme</button><button type="button" class="btn" data-conf="NAO_CONFORME">Não conforme</button></div></details>` : '';
+  const forms = pode('cadastro') ? (CAMPOS_ETAPA[k] || []).filter(([dest]) => k !== '3_RECEBIDO' || (dest === '2_ENVIADO') === !!(c.conferencia && c.conferencia.resultado === 'NAO_CONFORME'))
+    .map(([dest, rot, campos]) => `<form class="form" data-dest="${dest}">${campos.map(([n, l, t]) => `<input name="${n}" placeholder="${l}" ${t ? `type="${t}"` : ''} required>`).join('')}
+      <button class="btn ${dest === '5A_NEGADO' || (k === '3_RECEBIDO' && dest === '2_ENVIADO') ? '' : 'prim'}">${rot}</button></form>`).join('') : '';
+  const junto = outros.length ? `<details class="junto"><summary>Aplicar também a outros trechos nesta etapa (${outros.length})</summary>
+      ${outros.map(x => `<label class="check"><input type="checkbox" data-junto="${esc(x.trecho_id)}"> ${esc(nomeCompleto(x.ponto))}</label>`).join('')}</details>` : '';
+  return `<div class="esteira-ficha">${cab}${conf}${forms}${forms ? junto : ''}</div>`;
+}
+async function enviarFotosCaminho(box) {
+  let n = 0;
+  for (const inp of $$('input[data-foto]', box)) {
+    const arq = inp.files[0]; if (!arq) continue;
+    const pos = await gps(), quando = new Date(arq.lastModified || Date.now()), dh = new Date(quando - quando.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
+    await api('/api/foto', { alvo_tipo: 'TRECHO', alvo_id: box.dataset.trecho, categoria: inp.dataset.foto, conteudo_b64: await lerOriginal(arq),
+      data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon });
+    n++;
+  }
+  return n;
+}
+async function cliqueCaminho(ev) {
+  const box = ev.currentTarget, bt = ev.target.closest('[data-cam], [data-conf]'); if (!bt) return;
+  const trecho = box.dataset.trecho;
+  let feito = null;
+  if (bt.dataset.cam === 'verificar') {
+    feito = await acao(async () => {
+      const f = await enviarFotosCaminho(box), r = await api('/api/trecho/verificar', { trecho });
+      return `Verificado: ${r.verificados} intervalo(s)${r.de_outra_pessoa ? `; ${r.de_outra_pessoa} informado(s) por você ficam para outra pessoa` : ''}${f ? ` · ${f} foto(s) enviada(s)` : ''}.`;
+    }).catch(() => null);
+  } else if (bt.dataset.cam === 'fotos') {
+    feito = await acao(async () => { const f = await enviarFotosCaminho(box); if (!f) throw new Error('Escolha a foto que falta.'); return `${f} foto(s) enviada(s) (hash registrado).`; }).catch(() => null);
+  } else if (bt.dataset.cam === 'ok') {
+    if (!confirm('Confirmar o OK interno? Gera PROPOSTA de lançamentos na medição de TESTE e envia o trecho para a esteira do cadastro. Não é aprovação da Caesb.')) return;
+    feito = await acao(async () => {
+      const r = await api('/api/ok-fiscal', { alvo_tipo: 'TRECHO', alvo_id: trecho, data: hoje() });
+      return r.medicao_id ? 'OK interno registrado: proposta lançada na medição de TESTE.' : 'OK interno registrado. Sem medição de teste aberta: os lançamentos entram sozinhos quando ela abrir.';
+    }).catch(() => null);
+  } else if (bt.dataset.conf) {
+    const det = bt.closest('details.conf'), checklist = Object.fromEntries($$('[data-ck]', det).map(i => [i.dataset.ck, i.checked]));
+    feito = await acao(() => api('/api/cadastro/conferencia', { trecho_id: box.dataset.tid, resultado: bt.dataset.conf, checklist, obs: $('[data-c=obs]', det).value }),
+      'Conferência interna registrada (não é aprovação da Caesb).').catch(() => null);
+  }
+  if (feito) { if (typeof feito === 'string') toast(feito, 'ok'); if (box.depois) box.depois(); }
+}
+async function enviarEsteira(ev) {
+  ev.preventDefault();
+  const box = ev.currentTarget, f = ev.target, dados = formObj(f);
   if (dados.arquivos) dados.arquivos = dados.arquivos.split(/[;,]/).map(s => s.trim()).filter(Boolean);
-  const ok = await acao(() => api('/api/cadastro', { trecho_id: f.dataset.tr, destino: f.dataset.dest, dados, data: hoje() }), 'Esteira atualizada.').catch(() => null);
-  if (ok) carregarEsteira();
-});
+  const ids = [box.dataset.tid, ...$$('input[data-junto]:checked', box).map(i => i.dataset.junto)], erros = [];
+  for (const id of ids) {
+    try { await api('/api/cadastro', { trecho_id: id, destino: f.dataset.dest, dados, data: hoje() }); } catch (e) { erros.push(e.message); }
+  }
+  if (erros.length < ids.length) toast(`Esteira atualizada: ${ids.length - erros.length} trecho(s).`, 'ok');
+  if (erros.length) toast(erros.join(' · '), 'erro');
+  if (box.depois) box.depois();
+}
 
 /* ---------------------------------------------------------------- 5. medição */
 async function carregarMedicoes() {
   const ms = await api('/api/medicoes');
+  if (!ms.length) carregarCaminhoMedicao(null);
   const sel = $('#medSel'), atual = sel.value;
   sel.innerHTML = ms.map(m => `<option value="${m.id}">${m.numero}ª — ${m.periodo_ini} a ${m.periodo_fim} (${m.status})</option>`).join('');
   if (ms.length) {
@@ -1004,9 +1053,25 @@ async function carregarMedicoes() {
   }
 }
 $('#medSel').addEventListener('change', carregarMedicao);
+// o resumo do topo: cada número abre a lista dos trechos no Mapa iluminado
+const CAMINHO_NUM = [['ok_nesta', 'Com OK interno nesta medição'], ['ok_sem_medicao', 'Com OK interno, esperando a medição abrir'],
+  ['prontos', 'Prontos para o OK interno'], ['aguardando_verificacao', 'Aguardando verificação'], ['sem_fotos', 'Executados sem as 3 fotos']];
+let MED_CAMINHO = null;
+async function carregarCaminhoMedicao(id) {
+  const r = await api('/api/medicao/caminho' + (id ? '?id=' + id : '')).catch(() => null), box = $('#medCaminho');
+  if (!r) return;
+  MED_CAMINHO = r; box.className = 'numeros-caminho';
+  box.innerHTML = CAMINHO_NUM.filter(([k]) => k !== 'ok_sem_medicao' || r[k].length).map(([k, rot]) =>
+    `<button type="button" class="numero-caminho" data-med-lista="${k}" ${r[k].length ? '' : 'disabled'}><b>${nf(r[k].length, 0)}</b><span>${esc(rot)}</span></button>`).join('');
+}
+$('#medCaminho').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-med-lista]'); if (!b || !MED_CAMINHO) return;
+  abrirListaIlu(CAMINHO_NUM.find(([k]) => k === b.dataset.medLista)[1], MED_CAMINHO[b.dataset.medLista]);
+});
 async function carregarMedicao() {
   const id = $('#medSel').value; if (!id) return;
   MEDICAO_ATUAL = +id;
+  carregarCaminhoMedicao(id);
   const r = await api('/api/medicao?id=' + id);
   $('#medExport').href = '/api/medicao/exportar?id=' + id;
   $('#medResumo').className = '';
@@ -1033,7 +1098,7 @@ async function carregarMedicao() {
   aprCarregarRestricoes(id);
 }
 const SIT_REGRA = { 'CONFIRMADA': 'verde', 'PROVISÓRIA': 'amarelo', 'HIPÓTESE': 'amarelo', 'BLOQUEADA': 'vermelho', 'VÍNCULO INCOMPLETO': 'vermelho' };
-const SIT_ELEG = { PROPOSTO_NESTA: ['verde', 'proposto nesta'], APTO_SEM_OK: ['amarelo', 'completo, sem OK interno'],
+const SIT_ELEG = { PROPOSTO_NESTA: ['verde', 'proposto nesta'], OK_SEM_MEDICAO: ['amarelo', 'OK interno, espera a medição abrir'], APTO_SEM_OK: ['amarelo', 'completo, sem OK interno'],
   PARCIAL_NAO_ELEGIVEL: ['cinza', 'parcial — não elegível (D-30)'], MEDIDO_ANTES: ['azul', 'medido antes'] };
 function renderMedComplementos(r) {
   const aberta = r.medicao.status === 'ABERTA', c = r.conferencia;
@@ -1716,7 +1781,6 @@ async function iniciar() {
   RESUMO = await api('/api/resumo');
   $$('.selEquipe').forEach(s => s.innerHTML = '<option value="">—</option>' + RESUMO.equipes.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join(''));
   $$('.selClima').forEach(s => s.innerHTML = '<option value="">—</option>' + Object.entries(RESUMO.clima).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''));
-  $('select[name=contingencia]').innerHTML += RESUMO.contingencias.map(c => `<option>${esc(c)}</option>`).join('');
   $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   if (podeTela('medicao')) { const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }
   abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });

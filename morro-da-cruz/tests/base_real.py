@@ -25,6 +25,7 @@ import server  # noqa: E402
 import servicos as S  # noqa: E402
 from perfil_teste import cfg_teste_real  # noqa: E402
 from test_acesso import SENHA, Cliente  # noqa: E402
+from test_importacao import liberar_tudo  # noqa: E402
 
 CFG = I.carregar_config()
 TEM_DADOS = all(I.caminho(CFG, k) for k in ("redes", "conexoes", "evidencias", "bm", "reajuste"))
@@ -74,6 +75,8 @@ def pdf_grupo(elementos, distancias, grupo="REDE ZONA 03 - PB08 - PEAD DE 160", 
 
 @unittest.skipUnless(TEM_DADOS, "planilhas oficiais ausentes em planilhas/")
 class BaseReal(unittest.TestCase):
+    LIBERAR_TUDO = False          # True: todos os trechos liberados pela topografia (a execução exige, D-20)
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="ns_")
         self.dados = os.path.join(self.tmp, "dados")
@@ -81,6 +84,8 @@ class BaseReal(unittest.TestCase):
         os.makedirs(self.fotos)
         self.db = os.path.join(self.dados, "obra.db")
         shutil.copy(modelo(), self.db)
+        if self.LIBERAR_TUDO:
+            liberar_tudo(self.db)
         self.c = S.conectar(self.db)
         self.srv_conn = S.conectar(self.db)
         self._antigos = (server.CONN, server.DB_PATH, server.DIR_FOTOS)

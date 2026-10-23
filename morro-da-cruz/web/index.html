@@ -31,7 +31,6 @@
       <button type="button" class="rail-item rail-grupo" data-grupo="administrativo" title="Administrativo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h16v11H4zM9 8V5h6v3M4 13h16"/></svg><span class="rail-rot">Administrativo</span></button>
       <div class="rail-sub" data-grupo="administrativo">
         <button type="button" class="rail-item sub" data-tela="equipes" title="Equipes"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 4.5"/></svg><span class="rail-rot">Equipes</span></button>
-        <button type="button" class="rail-item sub" data-tela="esteira" title="Cadastro"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5zM15 3v4h4M8 12h8M8 16h6"/></svg><span class="rail-rot">Cadastro</span></button>
         <button type="button" class="rail-item sub" data-tela="relatorios" title="Relatórios"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/></svg><span class="rail-rot">Relatórios</span></button>
         <button type="button" class="rail-item sub" data-tela="admin" title="Usuários e histórico"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span class="rail-rot">Usuários e histórico</span></button>
         <button type="button" class="rail-item sub" data-tela="lev" title="LEV"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 10h18M3 15h18M9 5v14"/></svg><span class="rail-rot">LEV</span></button>
@@ -40,11 +39,9 @@
       <button type="button" class="rail-item rail-grupo" data-grupo="planejamento" title="Planejamento"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8.5 15l2.5 2.5 4.5-4.5"/></svg><span class="rail-rot">Planejamento</span></button>
       <div class="rail-sub" data-grupo="planejamento">
         <button type="button" class="rail-item sub" data-tela="mapa" title="Dados da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg><span class="rail-rot">Dados da obra</span></button>
-        <button type="button" class="rail-item sub" data-tela="prog" title="Programação das equipes"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg><span class="rail-rot">Programação das equipes</span></button>
         <button type="button" class="rail-item sub" data-tela="cronograma" title="Cronograma da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4v16h18M7 7h6M9 11h8M12 15h7"/></svg><span class="rail-rot">Cronograma da obra</span></button>
         <button type="button" class="rail-item sub" data-tela="almox" title="Estoque e movimentos"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h2M8 16.5h2"/></svg><span class="rail-rot">Estoque e movimentos</span></button>
         <button type="button" class="rail-item sub" data-tela="compras" title="Compras e notas"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4"/></svg><span class="rail-rot">Compras e notas</span></button>
-        <button type="button" class="rail-item sub" data-tela="ponto" title="Check-in e check-out"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2"/></svg><span class="rail-rot">Check-in e check-out</span></button>
       </div>
       <button type="button" class="rail-item rail-grupo" data-grupo="grupo-campo" title="Execução"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Execução</span></button>
       <div class="rail-sub" data-grupo="grupo-campo">
@@ -111,11 +108,12 @@
         <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="zonas" aria-expanded="false">Zonas</button><div class="ilu-pop" id="popZonas" hidden></div></div>
         <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="equipes" aria-expanded="false">Equipes</button><div class="ilu-pop" id="popEquipes" hidden></div></div>
         <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="camadas" aria-expanded="false">Camadas</button><div class="ilu-pop" id="popCamadas" hidden></div></div>
+        <div class="ilu-bloco" id="iluBlocoLista" hidden><button type="button" class="ilu-bt" id="iluBtLista" data-pop="lista" aria-expanded="false">Aguardando verificação</button><div class="ilu-pop" id="popLista" hidden></div></div>
       </div>
       <div class="ilu-zoom">
         <button type="button" class="ilu-bt quadrado" id="iluMais" aria-label="Aproximar">+</button>
         <button type="button" class="ilu-bt quadrado" id="iluMenos" aria-label="Afastar">−</button>
-        <button type="button" class="ilu-bt quadrado" id="iluTudo" aria-label="Ver a obra inteira" title="Ver a obra inteira"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <button type="button" class="ilu-bt quadrado" id="iluTudo" aria-label="Ver a obra inteira" title="Ver a obra inteira"><span aria-hidden="true" class="icone-glifo">⌖</span></button>
       </div>
       <div class="ilu-trilha" id="iluTrilha">Obra inteira</div>
       <aside class="ilu-ficha" id="iluFicha" hidden aria-live="polite"></aside>
@@ -136,15 +134,15 @@
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
         <form class="painel nota-dia" id="fNd" data-perm="campo">
           <label>Equipe<select id="ndEquipe" required></select></label>
-          <label>Nota de serviço do dia (PDF)<input type="file" name="pdf" accept="application/pdf,.pdf" required></label>
-          <label>Croqui (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
+          <label>Nota de serviço do dia (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
+          <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
           <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
           <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
-          <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label></details>
+          <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
           <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
           <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
         </form>
-        <div class="painel" id="ndResultado" hidden aria-live="polite"></div>
+        <div class="painel" id="ndLote" hidden aria-live="polite"></div>
       </div>
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
         <div class="painel"><h3>Notas enviadas</h3><div id="ndEnviadas"></div></div>
@@ -367,7 +365,8 @@
     <header class="cab-tela"><h1>Notas de serviço</h1><p>Envie a nota de serviço em PDF: topografia, cadastro de campo ou serviço de obra. O sistema lê, confere as contas e casa cada trecho da nota com os trechos da obra. Nada é gravado antes de você conferir e tocar em "Registrar".</p></header>
     <div class="grade-2">
       <div style="display:grid;gap:16px;min-width:0">
-        <div class="painel" id="nsResultado"><p class="vazio">Escolha o tipo e o PDF da nota e toque em "Ler a nota".</p></div>
+        <div class="painel" id="nsLote" hidden></div>
+        <div class="painel" id="nsResultado"><p class="vazio">Escolha o tipo e os PDFs das notas e toque em "Ler as notas". As que precisarem de conferência abrem aqui.</p></div>
         <div class="painel" id="nsSegPainel" hidden>
           <h3>Segmentos da nota × trechos da obra</h3>
           <div id="nsSegmentos"></div>
@@ -377,21 +376,22 @@
         </div>
       </div>
       <form class="painel" id="fNs" data-perm="notas_servico">
-        <h3 style="margin:0">Enviar nota de serviço</h3>
+        <h3 style="margin:0">Enviar notas de serviço</h3>
         <div class="abas-chip" id="nsTipo" role="group" aria-label="Tipo da nota">
           <button type="button" data-ns-tipo="TOPOGRAFIA" aria-pressed="true">Topografia</button>
           <button type="button" data-ns-tipo="CADASTRO" aria-pressed="false">Cadastro de campo</button>
           <button type="button" data-ns-tipo="SERVICO" aria-pressed="false">Serviço de obra</button>
         </div>
         <p class="vazio" id="nsTipoDesc" style="margin:0"></p>
-        <label>Nota de serviço (PDF)<input type="file" name="pdf" accept="application/pdf,.pdf" required></label>
-        <label><span id="nsCroquiRot">Croqui (PDF, JPG ou PNG; opcional)</span><input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"></label>
-        <label>Planilha da nota (.xlsx ou .xls, opcional: leitura exata)<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"></label>
+        <label>Notas de serviço (PDF; várias de uma vez, até 20 arquivos por lote)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
+        <label><span id="nsCroquiRot">Croquis (PDF, JPG ou PNG; opcional)</span><input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple></label>
+        <label>Planilhas das notas (.xlsx ou .xls, opcional: leitura exata)<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label>
+        <p class="vazio" style="margin:0">O croqui e a planilha casam com cada nota pelo número escrito neles e, na falta dele, pelo nome do arquivo. O que não casar aparece na fila para você ligar à nota certa.</p>
         <details><summary>A nota não diz a zona ou a PB</summary>
           <div class="linha"><label>Zona<select name="zona" id="nsZona"><option value="">a da nota</option></select></label><label>PB<input name="pb" placeholder="ex.: PB08" autocomplete="off"></label></div>
         </details>
-        <div class="acoes"><button class="btn prim">Ler a nota</button></div>
-        <p class="vazio" style="margin:0">Ler não grava nada. O PDF e o croqui abrem aqui mesmo, no navegador, antes de registrar.</p>
+        <div class="acoes"><button class="btn prim">Ler as notas</button></div>
+        <p class="vazio" style="margin:0">Ler não grava nada: cada nota entra na fila ao lado. As lidas sem pendência são registradas juntas, uma por vez; as outras você confere uma a uma.</p>
       </form>
     </div>
     <div class="painel" id="nsFilaPainel" style="margin-top:16px" hidden>
@@ -410,6 +410,9 @@
         <button type="button" data-ns-filtro="EXECUCAO" aria-pressed="false">Do dia (execução)</button>
       </div>
       <div id="nsLista" style="margin-top:10px"></div>
+      <details id="nsForaPainel" hidden style="margin-top:14px"><summary>Fora de ordem (legado): <span id="nsForaN">0</span> registro(s)</summary>
+        <p class="vazio" style="margin:6px 0">Registros de antes do bloqueio da ordem topografia → serviço → cadastro. Nada é apagado: registre a etapa que falta (a NS de topografia, por exemplo) ou retifique o registro na ficha do trecho.</p>
+        <div id="nsFora"></div></details>
     </div>
   </section>
 
@@ -514,35 +517,6 @@
     </div>
   </section>
 
-  <!-- ======================================================= PLANEJAMENTO: PROGRAMAÇÃO DAS EQUIPES -->
-  <section class="aba" id="aba-prog">
-    <header class="cab-tela"><h1>Programação das equipes</h1><p>O que cada equipe vai atacar nos próximos dias e o material que falta. Para programar vários trechos e dias de uma vez, use o mapa do Dados da obra.</p></header>
-    <div class="grade-2">
-      <div class="painel">
-        <h3>Programação das equipes (planejado)</h3>
-        <div class="linha"><label>De<input type="date" id="pgIni"></label><label>Até<input type="date" id="pgFim"></label>
-          <label>Frente<select id="pgFrente"><option value="">todas</option></select></label><label>Equipe<select id="pgEquipe" class="selEquipe"></select></label></div>
-        <div id="pgResumo" style="margin:8px 0"></div>
-        <div class="tabela" id="pgLista"></div>
-        <h3 style="margin-top:14px">Materiais previstos × disponíveis (faltantes)</h3>
-        <div class="tabela" id="pgFaltantes"></div>
-      </div>
-      <div class="painel">
-        <h3>Programar</h3>
-        <form id="fProg" data-perm="planejar">
-          <div class="linha"><label>Data<input type="date" name="data" required></label><label>Equipe<select name="equipe_id" class="selEquipe" required></select></label></div>
-          <label>Trecho / nó / caixa<div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8…" autocomplete="off" required><ul hidden></ul></div></label>
-          <div class="linha"><label>Serviço<select name="servico" id="selServProg" required></select></label><label>De (m)<input name="ini_m" type="number" step="any" min="0"></label><label>Até (m)<input name="fim_m" type="number" step="any" min="0"></label></div>
-          <div class="editor-itens" data-itens="prog"></div>
-          <button type="button" class="btn" data-mais-item="prog">+ material previsto</button>
-          <label>Observação<input name="obs"></label>
-          <p class="vazio" style="margin:0">Programação não é presença nem execução: o check-in da equipe naquele dia e alvo a marca como realizada.</p>
-          <div class="acoes"><button class="btn prim">Programar</button></div>
-        </form>
-      </div>
-    </div>
-  </section>
-
   <!-- ======================================================= PLANEJAMENTO: COMPRAS -->
   <section class="aba" id="aba-compras">
     <header class="cab-tela"><h1>Compras e notas</h1><p>Da solicitação ao pedido, à nota fiscal e ao recebimento conferido.</p></header>
@@ -582,7 +556,7 @@
       <div class="painel">
         <h3>3. Nota fiscal</h3>
         <form id="fXml" data-perm="receber">
-          <label>XML da NF-e<input type="file" name="arquivo" accept=".xml,text/xml,application/xml" required></label>
+          <label>XML da NF-e (um ou vários)<input type="file" name="arquivos" accept=".xml,text/xml,application/xml" multiple required></label>
           <div class="acoes"><button class="btn prim">Importar XML (fica a conferir)</button></div>
         </form>
         <details style="margin-top:8px"><summary>Sem XML: digitar a partir do PDF/imagem da nota</summary>
@@ -626,12 +600,20 @@
 
   <!-- ======================================================= PLANEJAMENTO: ESTOQUE E MOVIMENTOS -->
   <section class="aba" id="aba-almox">
-    <header class="cab-tela"><h1>Estoque e movimentos</h1><p>O aceite ou a recusa do material que chegou, entradas, reservas, estoque e movimentos.</p></header>
+    <header class="cab-tela"><h1>Estoque e movimentos</h1><p>As equipes do dia, o aceite ou a recusa do material que chegou, entradas, reservas, estoque e movimentos.</p></header>
     <div class="grade">
+      <div class="painel largo" id="almoxDiaPainel" hidden>
+        <h3>Equipes programadas hoje</h3>
+        <p class="vazio" style="margin:0 0 8px">O que cada equipe vai executar hoje, programado no Dados da obra, e as peças que o projeto sugere. "Liberar" abre o Dados da obra com o dia da equipe escolhido: confira as quantidades e libere. Na hora, os trechos ficam em execução no Mapa iluminado, com o pino da equipe.</p>
+        <div id="almoxDia" class="vazio">Carregando…</div>
+      </div>
       <div class="painel largo">
-        <h3>Aceite ou recusa do material entregue</h3>
-        <p class="vazio" style="margin:0 0 8px">Material que chegou e está em quarentena. O aceito entra no estoque; o recusado não entra. É o mesmo aceite da tela Compras e notas.</p>
-        <div id="aceiteLista" class="vazio">Nada aguardando o aceite.</div>
+        <h3>Notas a receber</h3>
+        <p class="vazio" style="margin:0 0 8px">Importe o XML da nota fiscal (pode escolher vários de uma vez). Em cada nota: confira o material de cada linha (vem sugerido), registre o que chegou (entra em quarentena) e aceite ou recuse. Nota sem pedido: o aceito só vai para as equipes depois da aprovação de Engenharia ou Administração. Tubo da Caesb (remessa) entra como romaneio, sem quarentena.</p>
+        <form id="fXmlAlmox" class="linha" data-perm="receber"><label>XML da NF-e<input type="file" name="arquivos" accept=".xml,text/xml,application/xml" multiple required></label>
+          <div class="acoes"><button class="btn prim">Importar</button></div></form>
+        <datalist id="listaMateriais"></datalist>
+        <div id="notasReceber" class="vazio">Nenhuma nota a receber.</div>
       </div>
       <div class="painel">
         <h3>Entradas no almoxarifado</h3>
@@ -694,34 +676,6 @@
     </div>
   </section>
 
-  <!-- ======================================================= PLANEJAMENTO: CHECK-IN E CHECK-OUT -->
-  <section class="aba" id="aba-ponto">
-    <header class="cab-tela"><h1>Check-in e check-out</h1><p>A saída de cada equipe pela manhã, com o material retirado, e o fechamento no fim do dia.</p></header>
-    <div class="grade">
-      <div class="painel">
-        <h3>Check-in da manhã</h3>
-        <form id="fCheckin" data-perm="almox">
-          <div class="linha">
-            <label>Data<input type="date" name="data" required></label>
-            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
-          </div>
-          <label>Presentes (gera o histograma)<div class="checks" id="ckPresentes"><span class="vazio">Escolha a equipe.</span></div></label>
-          <label>Trecho / nó que vai atacar hoje
-            <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div>
-          </label>
-          <label>…ou contingência (falta de tubo/conexão)<select name="contingencia"><option value="">—</option></select></label>
-          <label>Materiais retirados do almoxarifado</label>
-          <div id="ckMateriais" class="form"></div>
-          <div class="acoes"><button type="button" class="btn" id="ckAddMat">+ material</button><button class="btn prim">Registrar check-in e acender pin</button></div>
-        </form>
-      </div>
-      <div class="painel">
-        <h3>Check-out do fim do dia</h3>
-        <div id="checkoutLista" class="vazio">Nenhum check-in aberto.</div>
-      </div>
-    </div>
-  </section>
-
   <!-- ======================================================= PLANEJAMENTO: DADOS DA OBRA (mapa de planejamento) -->
   <section class="aba" id="aba-mapa">
     <header class="cab-tela"><h1>Dados da obra</h1><p>O mapa em que se planeja a obra: escolha os trechos, programe a equipe, libere o material do dia e receba a devolução. O que se faz aqui aparece no Mapa iluminado.</p></header>
@@ -739,7 +693,8 @@
         <div class="ilu-zoom">
           <button type="button" class="ilu-bt quadrado" id="plnMais" aria-label="Aproximar">+</button>
           <button type="button" class="ilu-bt quadrado" id="plnMenos" aria-label="Afastar">−</button>
-          <button type="button" class="ilu-bt quadrado" id="plnTudo" aria-label="Ver a obra inteira" title="Ver a obra inteira"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+          <button type="button" class="ilu-bt quadrado" id="plnTudo" aria-label="Ver a obra inteira" title="Ver a obra inteira"><span aria-hidden="true" class="icone-glifo">⌖</span></button>
+          <button type="button" class="ilu-bt quadrado" id="plnTela" aria-pressed="false" aria-label="Entrar na tela cheia" title="Entrar na tela cheia"><span aria-hidden="true" class="icone-glifo">⛶</span></button>
         </div>
         <div class="ilu-trilha" id="plnTrilha">Obra inteira</div>
         <div class="ilu-aviso" id="plnAviso" hidden></div>
@@ -803,12 +758,6 @@
         <div class="crono" id="cronoGantt"></div>
       </div>
     </div>
-  </section>
-
-  <!-- ======================================================= ADMINISTRATIVO: CADASTRO -->
-  <section class="aba" id="aba-esteira">
-    <header class="cab-tela"><h1>Cadastro</h1><p>A esteira do cadastro, do levantamento de campo até a entrega para a Caesb.</p></header>
-    <div class="kanban" id="kanban"></div>
   </section>
 
   <!-- ======================================================= ADMINISTRATIVO: RELATÓRIOS -->
@@ -905,6 +854,11 @@
   <!-- ======================================================= MEDIÇÃO -->
   <section class="aba" id="aba-medicao">
     <header class="cab-tela"><h1>Medição</h1><span class="selo-teste">teste</span><p>Boletim e memória de cálculo. Por enquanto, só de teste: a medição oficial continua bloqueada.</p></header>
+    <div class="painel largo" style="margin-bottom:16px">
+      <h3>Caminho até a medição</h3>
+      <p class="vazio" style="margin:0 0 8px">Um trecho entra na medição com a execução completa, verificada pelo supervisor, com as 3 fotos e o OK interno. Toque num número para ver os trechos no mapa.</p>
+      <div id="medCaminho" class="numeros-caminho vazio">—</div>
+    </div>
     <div class="grade-2">
       <div class="painel">
         <div class="acoes" style="justify-content:space-between;margin-bottom:12px">
@@ -953,7 +907,7 @@
         <label>Restrição<select id="medRestFiltro"><option value="">Todas</option></select></label>
         <label>Grupo<select id="medRestGrupo"><option value="">Todos</option></select></label>
         <button type="button" class="btn" id="medRestCodigo">Registrar código oficial</button>
-        <button type="button" class="btn" id="medRestEsteira">Abrir a esteira do cadastro</button>
+        <button type="button" class="btn" id="medRestEsteira">Ver o cadastro parado no mapa</button>
       </div>
       <div id="medRestricoes" class="vazio">—</div>
     </div>

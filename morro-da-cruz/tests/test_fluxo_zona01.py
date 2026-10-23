@@ -21,6 +21,7 @@ import regras as R  # noqa: E402
 import servicos as S  # noqa: E402
 from fotos_teste import jpeg  # noqa: E402
 from perfil_teste import cfg_teste_real  # noqa: E402
+from test_importacao import liberar_tudo  # noqa: E402
 
 CFG = I.carregar_config()
 TEM_DADOS = all(I.caminho(CFG, k) for k in ("redes", "conexoes", "bm", "reajuste"))
@@ -37,6 +38,7 @@ class PilotoZona01(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp()
         cls.db = os.path.join(cls.tmp, "piloto.db")
         cls.rel = importar.executar(cls.db, "APLICACAO", cfg=cfg_teste_real(), dir_relatorios=os.path.join(cls.tmp, "relatorios"))
+        liberar_tudo(cls.db)                       # a execução exige a liberação topográfica (D-20)
         cls.c = S.conectar(cls.db)
         cls.fotos = os.path.join(cls.tmp, "fotos")
         cls.med = S.criar_medicao(cls.c, 1, "2026-10-01", "2026-10-31")
@@ -93,6 +95,7 @@ class PilotoZona01(unittest.TestCase):
         sid = S.registrar_soldas(c, D, "Zona01", "TRECHO", TR, "ELETROFUSAO", 11, "Soldador X", "Encarregado")
         S.registrar_soldas(c, D, "Zona01", "TRECHO", TR, "ELETROFUSAO", 2, "Soldador X", "Encarregado")   # sem verificação
         S.verificar_soldas(c, sid, "Fiscal", "APROVADA")
+        S.verificar_trecho(c, TR, "Fiscal")                              # o OK interno exige a verificação (v20)
         S.ok_fiscalizacao(c, "TRECHO", TR, "eng", D)
         r, ls = self.lanc(S.alvo(c, "TRECHO", TR)["id"])
         por = {l["servico"]: l for l in ls}
@@ -118,6 +121,7 @@ class PilotoZona01(unittest.TestCase):
         S.apontar(c, D, "Zona02", "TRECHO", MND, concluido_100=True)
         for cat in ("SINALIZACAO", "EXECUCAO", "CONCLUIDO"):
             self.foto("TRECHO", MND, cat)
+        S.verificar_trecho(c, MND, "Fiscal")
         S.ok_fiscalizacao(c, "TRECHO", MND, "eng", D)
         _, ls = self.lanc(S.alvo(c, "TRECHO", MND)["id"])
         ass = [l for l in ls if l["servico"] == "ASSENTAMENTO"][0]

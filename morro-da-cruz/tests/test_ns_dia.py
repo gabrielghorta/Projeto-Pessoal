@@ -6,7 +6,7 @@ permissões, anulação e o Diário de obra."""
 import os
 import sys
 import unittest
-from datetime import date, timedelta
+from datetime import timedelta
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
@@ -14,10 +14,11 @@ sys.path.insert(0, AQUI)
 import dados_obra as DO  # noqa: E402
 import notas_servico as NS  # noqa: E402
 import ns_sintetica as NSS  # noqa: E402
+import relogio as RL  # noqa: E402
 import servicos as S  # noqa: E402
 from base_real import TR006, BaseReal, b64, data_ns  # noqa: E402
 
-HOJE = date.today()
+HOJE = RL.hoje()
 ONTEM, ANTEONTEM = HOJE - timedelta(days=1), HOJE - timedelta(days=2)
 CLIMA = {"MANHA": "SOL", "TARDE": "CHUVA_FRACA_TENDA"}
 CROQUI = b64(NSS.pdf_de_texto(["CROQUI DO DIA - TRECHOS EXECUTADOS"]))
@@ -34,6 +35,8 @@ def pdf_dia(grupos, numero="015", data=ONTEM, titulo=TITULO, contrato="10239/202
 
 
 class BaseDia(BaseReal):
+    LIBERAR_TUDO = True
+
     def enviar(self, login, pdf, equipe="Zona03", croqui=CROQUI, clima=CLIMA, **kw):
         corpo = dict(pdf_b64=b64(pdf), pdf_nome="ns_do_dia.pdf", croqui_b64=croqui, croqui_nome="croqui.jpg", clima=clima, **kw)
         if equipe:
@@ -51,7 +54,7 @@ class BaseDia(BaseReal):
         return [(NS._curto(p), a, b) for p, a, b in self.c.execute(sql, (etapa,))]
 
     def programar(self, linhas, data, equipe="Zona03"):
-        DO.programar(self.c, linhas, [], equipe, "ASSENTAMENTO", data.isoformat(), data.isoformat(), "eng1", list(range(7)))
+        DO.programar(self.c, linhas, [], equipe, "ASSENTAMENTO", data.isoformat(), "eng1")
 
 
 class TestLancamento(BaseDia):

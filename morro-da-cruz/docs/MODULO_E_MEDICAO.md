@@ -192,3 +192,20 @@ Testes: `tests/test_apropriacao.py` (`TestMedicao`, `TestSituacao`, `TestMigraca
 - A elegibilidade lista trechos e nós com atividade no período, mais os completos sem OK de qualquer data. Ela não substitui a apuração mensal da fiscalização.
 - O estorno de proposta e a reabertura de medição não existem (D-16).
 - O regime de material, o reajuste com frações elegíveis e o modelo oficial `01ª MC` continuam bloqueados.
+
+## OK interno sem medição aberta e o resumo da tela (esquema v20, 23/10/2026)
+
+- **SEM_MEDICAO_ABERTA** (D-113):
+  - o OK interno não é mais recusado por falta de medição de teste aberta;
+  - o OK fica registrado (a esteira já anda) e os lançamentos ainda não existem: aparecem em "medível com restrição" com a restrição `SEM_MEDICAO_ABERTA`;
+  - quando a medição de teste do período abre (ou a próxima aberta, se a do período já fechou), `apropriacao.sincronizar` chama `servicos.lancar_oks_pendentes`, e os lançamentos entram uma vez só;
+  - na Elegibilidade, o trecho aparece como "OK interno, espera a medição abrir" (`OK_SEM_MEDICAO`).
+- **O OK interno exige a verificação** do supervisor em todos os intervalos do trecho (D-112).
+- **Resumo no topo da tela** (`planejamento.caminho_da_medicao`):
+  - trechos com OK interno nesta medição;
+  - com OK, esperando a medição abrir;
+  - prontos para o OK;
+  - aguardando verificação;
+  - executados sem as 3 fotos.
+  Cada número abre a lista dos trechos no Mapa iluminado.
+- O botão "Ver o cadastro parado no mapa" substitui o atalho da esteira.

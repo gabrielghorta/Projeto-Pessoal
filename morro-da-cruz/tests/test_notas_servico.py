@@ -217,6 +217,8 @@ class TestRevisao(BaseReal):
 
 
 class TestCadastro(BaseReal):
+    LIBERAR_TUDO = True
+
     def test_grava_sobre_o_assentado_deixa_pendente_e_aplica_depois(self):
         self.assentar(TR006, 0, 100, "2026-10-14")
         pdf = pdf_ns(numero="013", bloco="CADASTRO")
@@ -229,7 +231,7 @@ class TestCadastro(BaseReal):
         self.assertEqual(self.cadastros(TR006), [(0.0, 100.0)])
         seg = self.c.execute("SELECT * FROM ns_segmentos WHERE ordem=2").fetchone()
         self.assertEqual((seg["aplicado_m"], seg["pendente_m"]), (100.0, 195.98))
-        self.assertIn("ainda não assentado", seg["pendente"])
+        self.assertIn("recusado: Zona 03 · PB08 · TR006, de 100,0 m a 293,5 m: falta a execução até", seg["pendente"])
         self.assentar(TR006, 100, 150, "2026-10-15")                         # lançado depois, com a data da vala aberta
         self.assentar(TR006, 150, 160, "2026-10-17")                         # depois da data da NS: não conta
         r = self.ok(self.cli("eng1").post("/api/ns/aplicar", {"ns_id": r["id"]}))
@@ -247,12 +249,15 @@ class TestCadastro(BaseReal):
 
 
 class TestServico(BaseReal):
+    LIBERAR_TUDO = True
+
     def test_exige_croqui_e_nao_grava_registro(self):
         pdf = pdf_ns(numero="020", bloco="TOPOGRAFIA")
+        libs = self.n("etapas_complementares")                                # as liberações de antes (D-20)
         self.recusa(self.registrar("eng1", "SERVICO", pdf), 422, "croqui")
         croqui = NSS.pdf_de_texto(["CROQUI NS 020"])
         r = self.ok(self.registrar("eng1", "SERVICO", pdf, croqui_b64=b64(croqui), croqui_nome="croqui.pdf"))
-        self.assertEqual((r["gravado_m"], self.n("etapas_complementares"), self.n("intervalos_execucao")), (0.0, 0, 0))
+        self.assertEqual((r["gravado_m"], self.n("etapas_complementares"), self.n("intervalos_execucao")), (0.0, libs, 0))
         self.assertEqual([s["situacao"] for s in r["segmentos"]], ["AUTOMATICO", "AUTOMATICO"])
         self.recusa(self.cli("eng1").post("/api/ns/anexo", {"ns_id": r["id"], "croqui_b64": b64(croqui)}), 422, "já está")
         novo = NSS.pdf_de_texto(["CROQUI NS 020 REV 1"])

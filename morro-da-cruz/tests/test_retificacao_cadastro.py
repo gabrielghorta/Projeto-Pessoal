@@ -63,6 +63,7 @@ class TestRetificacao(BaseRetif):
         # continuidade: o trecho segue até o OK, e a proposta usa só os registros efetivos
         S.apontar(self.c, D, "Zona01", "TRECHO", TR, concluido_100=True)
         self.fotos_e_medicao()
+        S.verificar_trecho(self.c, TR, "sup")                            # o OK interno exige a verificação (v20)
         S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng", D)
         ass = self.q("SELECT SUM(quantidade) FROM medicao_lancamentos WHERE servico='ASSENTAMENTO'")[0][0]
         self.assertAlmostEqual(ass, 76.55)                                            # sem os 2 m do erro
@@ -167,6 +168,8 @@ class TestRetificacao(BaseRetif):
 
 
 class TestRetificacaoDoLegado(Base):
+    LIBERAR_TUDO = True
+
     def setUp(self):
         super().setUp()
         banco_legado(self).close()
@@ -236,6 +239,7 @@ class TestFasesDoCadastro(BaseRetif):
             {"etapa": "CADASTRO_CAMPO", "ini_m": 0, "fim_m": 76.55, "referencia": "Arquivo pontos TR001.csv"}])
         S.apontar(self.c, D, "Zona01", "TRECHO", TR, concluido_100=True)
         self.fotos_e_medicao()
+        S.verificar_trecho(self.c, TR, "sup")                            # o OK interno exige a verificação (v20)
         S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng", D)
         n_lanc = self.q("SELECT COUNT(*) FROM medicao_lancamentos")[0][0]
         self.assertEqual(self.fase("LEVANTAMENTO_CAMPO")["status"], "COMPLETO")
@@ -314,6 +318,8 @@ class TestVisaoIntegrada(BaseRetif):
 
 
 class TestMigracaoV7ParaV8(Base):
+    LIBERAR_TUDO = True
+
     def test_v7_com_legado_conciliado_e_intervalos_continua_e_retifica(self):
         c = banco_legado(self, versao=7)
         c.execute("INSERT INTO conciliacoes_legado(trecho_id,metros_assentado,metros_reaterrado,motivo,responsavel,em) "

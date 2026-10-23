@@ -173,6 +173,88 @@ class TestFluxoDeCompra(BaseCompras):
         self.assertEqual(backup.sha256(caminho), self.q("SELECT sha256 FROM documentos")[0][0])
 
 
+
+def cnpj_de(base12):
+    """CNPJ fictício com os dígitos verificadores certos."""
+    d = [int(x) for x in base12]
+    for n in (12, 13):
+        pesos = list(range(n - 7, 1, -1)) + list(range(9, 1, -1))
+        dv = 11 - sum(a * b for a, b in zip(d, pesos)) % 11
+        d.append(0 if dv >= 10 else dv)
+    return "".join(map(str, d))
+
+
+class TestNotaNoAlmoxarifado(BaseCompras):
+    """A nota que chega sem pedido: o almoxarife importa o XML (o fornecedor vem do próprio XML), confere com o material
+    sugerido, recebe (quarentena) e aceita; o aceito só fica disponível depois da aprovação de outra pessoa. A remessa de
+    tubo da Caesb vira romaneio."""
+    def test_fornecedor_novo_vem_do_xml(self):
+        outro = cnpj_de("998877660001")
+        x = NT.b64(NT.xml(77, [("A1", "Luva", "UN", 1, 5.0)], cnpj=outro))
+        r = C.importar_nfe_xml(self.c, x, "nfe77.xml", "almox1")
+        self.assertEqual(r["fornecedor_novo"], {"cnpj": outro, "nome": "Fornecedor de Teste Ltda"})
+        self.assertEqual(self.q("SELECT COUNT(*) FROM notas_fiscais")[0][0], 0)              # nada gravado sem a confirmação
+        r = C.importar_nfe_xml(self.c, x, "nfe77.xml", "almox1", cadastrar=True)
+        self.assertEqual(self.q("SELECT f.cnpj, f.criado_por FROM fornecedores f JOIN notas_fiscais n ON n.fornecedor_id=f.id WHERE n.id=?",
+                                r["nf_id"]), [(outro, "almox1")])
+
+    def test_sem_pedido_sugestao_quarentena_e_aprovacao_de_outra_pessoa(self):
+        nf = self.importar(18734, [(MAT, "peça do nó (código = id do material)", "UN", 4, 12.0),
+                                   ("X9", "Peça que ninguém conhece", "UN", 1, 3.0)])
+        sug = {s["linha_id"]: s for s in C.sugerir_materiais(self.c, nf)}
+        (l1, _), (l2, _) = self.linhas(nf)
+        self.assertEqual((sug[l1]["material_id"], sug[l1]["motivo"], sug[l1]["fator"]), (MAT, "código do produto", 1.0))
+        self.assertIsNone(sug[l2]["material_id"])
+        r = C.conferir_nf(self.c, nf, 0, [{"linha_id": l1, "material_id": MAT}, {"linha_id": l2, "fora_do_estoque": True}], "almox1")
+        self.assertEqual(r, {"sem_pedido": True})
+        ni = self.q("SELECT id FROM nf_itens WHERE nf_id=?", nf)[0][0]
+        rid = C.receber(self.c, nf, D2, [{"nf_item_id": ni, "quantidade": 4}], "almox1")
+        self.assertEqual(self.saldo(), (0, 4))                                                # quarentena
+        C.inspecionar_entrega(self.c, rid, [], None, "almox1", D2)                           # "Aceitar tudo", sem laudo
+        self.assertEqual(self.saldo(), (0, 0))                                                # aceito, mas sem aprovação
+        self.assertEqual(S.aguardando_aprovacao(self.c, MAT), 4)
+        with self.assertRaisesRegex(S.RegraViolada, "Disponível insuficiente"):
+            S.checkin(self.c, D2, "Zona01", "TRECHO", "Zona01_PB01_Rede_TR001", materiais=[{"material_id": MAT, "quantidade": 1}])
+        with self.assertRaisesRegex(S.RegraViolada, "Quem importou"):
+            C.aprovar_nf_sem_pedido(self.c, nf, "almox1")
+        C.aprovar_nf_sem_pedido(self.c, nf, "eng1")
+        self.assertEqual((self.saldo(), S.aguardando_aprovacao(self.c, MAT)), ((4, 0), 0))
+        with self.assertRaisesRegex(S.RegraViolada, "já aprovada"):
+            C.aprovar_nf_sem_pedido(self.c, nf, "eng2")
+        self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("ENCERRADA",)])
+        self.assertEqual(self.q("SELECT COUNT(*) FROM medicao_lancamentos")[0][0], 0)        # estoque ≠ faturável
+
+    def test_recusa_na_entrega_exige_laudo(self):
+        nf = self.importar(91, [(MAT, "peça", "UN", 5, 1.0)])
+        (l1, _), = self.linhas(nf)
+        C.conferir_nf(self.c, nf, 0, [{"linha_id": l1, "material_id": MAT}], "almox1")
+        ni = self.q("SELECT id FROM nf_itens WHERE nf_id=?", nf)[0][0]
+        rid = C.receber(self.c, nf, D2, [{"nf_item_id": ni, "quantidade": 5}], "almox1")
+        ri = self.q("SELECT id FROM recebimento_itens WHERE recebimento_id=?", rid)[0][0]
+        item = [{"recebimento_item_id": ri, "aceito": 3, "recusado": 2}]
+        with self.assertRaisesRegex(S.RegraViolada, "Com recusa, informe"):
+            C.inspecionar_entrega(self.c, rid, item, "", "almox1", D2, "2 trincadas")
+        C.inspecionar_entrega(self.c, rid, item, "LAUDO-7", "almox1", D2, "2 trincadas")
+        self.assertEqual(self.q("SELECT aceito, recusado, laudo FROM inspecoes"), [(3, 2, "LAUDO-7")])
+
+    def test_remessa_da_caesb_vira_romaneio(self):
+        tubo = self.q("SELECT id FROM materiais WHERE propriedade='CAESB' ORDER BY id LIMIT 1")[0][0]
+        de = tubo.rsplit("DE", 1)[1]
+        nf = self.importar(4521, [("T1", f"TUBO PEAD DE {de} PN 10", "M", 120, 0.01)])
+        (l1, _), = self.linhas(nf)
+        sug = C.sugerir_materiais(self.c, nf)[0]
+        self.assertEqual((sug["material_id"], sug["motivo"], sug["caesb"]), (tubo, "pela descrição", True))
+        self.assertEqual(C.conferir_nf(self.c, nf, 0, [{"linha_id": l1, "material_id": tubo}], "almox1"), {"sem_pedido": False})
+        antes = {c["material_id"]: c["retirado"] for c in S.compatibilizacao_caesb(self.c)}[tubo]
+        ni = self.q("SELECT id FROM nf_itens WHERE nf_id=?", nf)[0][0]
+        C.receber(self.c, nf, D2, [{"nf_item_id": ni, "quantidade": 120}], "almox1")
+        self.assertEqual(self.q("SELECT tipo, status, documento FROM movimentos WHERE nf_id=?", nf),
+                         [("ROMANEIO_CAESB", "ACEITO", "NF 4521 (remessa Caesb)")])
+        self.assertEqual({c["material_id"]: c["retirado"] for c in S.compatibilizacao_caesb(self.c)}[tubo], antes + 120)
+        self.assertEqual(C.a_inspecionar(self.c), [])                                       # sem quarentena de compra
+        self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("ENCERRADA",)])
+        self.assertEqual([n["id"] for n in C.notas_a_receber(self.c)], [])
+
 class TestTransferenciaInventarioReservas(BaseCompras):
     def entrada(self, q=50, mat="CAESB-PEAD-DE63"):
         S.entrada_material(self.c, D, mat, q, "ROMANEIO_CAESB", "ROM-1", "almox1")

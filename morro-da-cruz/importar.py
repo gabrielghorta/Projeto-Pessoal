@@ -23,11 +23,12 @@ import sqlite3
 import sys
 import tempfile
 import traceback
-from datetime import datetime
+
 
 import caminhos
 import backup
 import importacao as I
+import relogio as RL
 import servicos as S
 
 BASE = caminhos.PASTA
@@ -42,7 +43,7 @@ OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontam
                 "nf_linhas", "recebimentos", "recebimento_itens", "inspecoes", "devolucoes_fornecedor", "transferencias",
                 "inventarios", "inventario_itens", "programacoes", "programacao_materiais", "conferencias_medicao",
                 "notas_servico", "ns_segmentos", "apropriacoes", "apropriacao_documentos", "itens_novos_base",
-                "codigos_oficiais"]
+                "codigos_oficiais", "checkin_alvos"]
 
 
 class ImportacaoReprovada(RuntimeError):
@@ -62,7 +63,7 @@ def contar_operacionais(conn):
 def _gravar_relatorio(rel, dir_relatorios):
     os.makedirs(dir_relatorios, exist_ok=True)
     destino = os.path.join(dir_relatorios, f"importacao_{rel['modo'].lower()}_{rel['status'].lower()}_"
-                                           f"{datetime.now():%Y%m%d-%H%M%S-%f}.json")
+                                           f"{RL.agora():%Y%m%d-%H%M%S-%f}.json")
     rel["arquivo_relatorio"] = destino
     with open(destino, "w", encoding="utf-8") as f:
         json.dump(rel, f, ensure_ascii=False, indent=2, default=str)
@@ -131,6 +132,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v18(conn)
         if 0 < versao < 19:
             I.preparar_v19(conn)
+        if 0 < versao < 20:
+            I.preparar_v20(conn)
         S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar
