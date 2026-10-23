@@ -761,7 +761,7 @@ async function selecionarCampo(tipo, id) {
   const iv = d.intervalos;
   const editavel = tipo === 'TRECHO' && !(d.execucao && d.execucao.ok_fiscal_em);
   $('#apAlvo').innerHTML = tipo === 'TRECHO'
-    ? `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · ${esc(d.metodologia)}${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''} ${chipVerif(iv.verificacao)}
+    ? `<div class="aviso info">${esc(nomeCompleto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · ${esc(d.metodologia)}${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''} ${chipVerif(iv.verificacao)}
         <div style="margin-top:6px">${htmlEtapas(iv)}</div></div>
       ${iv.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}
       ${iv.legado ? `<div class="caixa-retif" id="fLegado">
@@ -782,7 +782,7 @@ async function selecionarCampo(tipo, id) {
       ${editavel && !d.mnd ? `<div class="linha lin-compl" id="fCompl" style="margin-top:6px">
         <input data-c="ini_m" type="number" step="any" min="0" placeholder="escavado de (m)"><input data-c="fim_m" type="number" step="any" min="0" placeholder="até (m)">
         <input data-c="referencia" placeholder="observação (opcional)"><button type="button" class="btn" id="complBtn">Registrar escavação</button></div>` : ''}`
-    : `<div class="aviso info">${esc(curto(d.nome))}: ${esc(d.texto)}</div>`;
+    : `<div class="aviso info">${esc(nomeCompleto(d.nome))}: ${esc(d.texto)}</div>`;
   $('#apAlvo').insertAdjacentHTML('beforeend', `<h4 style="margin:10px 0 4px">Ocorrências</h4>${htmlOcorrencias(d.ocorrencias, pode('verificar'))}
     <div class="linha" id="fOcor" style="margin-top:6px"><select data-o="tipo"><option value="IMPEDIMENTO">Impedimento</option><option value="NAO_CONFORMIDADE">Não conformidade</option></select>
       <select data-o="categoria"></select><input data-o="descricao" placeholder="o que aconteceu"><button type="button" class="btn" id="ocorBtn">Abrir ocorrência</button></div>`);
@@ -1515,7 +1515,7 @@ async function abrirTrechoDaLista(b, tela, perm, selecionar, form) {
 // "Ver no Mapa iluminado": a zona filtrada (ou a obra inteira)
 function zonaNoMapa(frente) { verNoMapa('ZONA', /^(Zona\d\d|ADUTORA)$/.test(frente || '') ? frente : null); }
 function preencherTrecho(form, d, id) {
-  const inp = $('input[name=alvo_txt]', form); inp.value = curto(d.nome); inp.dataset.tipo = 'TRECHO'; inp.dataset.id = id;
+  const inp = $('input[name=alvo_txt]', form); inp.value = nomeCompleto(d.nome); inp.dataset.tipo = 'TRECHO'; inp.dataset.id = id;
 }
 
 let TOP_LISTA = 'programados', TOP = null, TOP_DADOS = null;
@@ -1562,7 +1562,7 @@ async function selecionarTop(id) {
   const d = await acao(() => api(`/api/detalhe?tipo=TRECHO&id=${encodeURIComponent(id)}`)).catch(() => null); if (!d) return;
   TOP = { id, d }; preencherTrecho(fTop, d, id);
   $('#topExcecao').open = true;                       // o detalhe do trecho (e anular) fica no painel da exceção
-  $('#topAlvo').innerHTML = `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')}</div>
+  $('#topAlvo').innerHTML = `<div class="aviso info">${esc(nomeCompleto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')}</div>
     ${htmlComplementar(d.complementar, pode('retificar_campo'), ['LIBERACAO_TOPOGRAFICA'])}
     ${(d.complementar.alertas || []).map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}`;
 }
@@ -1640,7 +1640,7 @@ async function selecionarCad(id) {
   const iv = d.intervalos, ass = iv.etapas.ASSENTADO, cad = iv.etapas.CADASTRO_CAMPO;
   const falta = ass.cobertura.flatMap(x => foraDe(x, cad.cobertura));
   $('#cadRetif').innerHTML = '';
-  $('#cadAlvo').innerHTML = `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')} · assentado ${faixa(ass.cobertura)}</div>
+  $('#cadAlvo').innerHTML = `<div class="aviso info">${esc(nomeCompleto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')} · assentado ${faixa(ass.cobertura)}</div>
     <div class="registro"><div><b>Levantado</b> <span class="chip ${falta.length ? 'amarelo' : cad.metros ? 'azul' : 'cinza'}">${nf(cad.metros)} m</span></div>
       <small>Levantado: ${faixa(cad.cobertura)}${falta.length ? ` · <b>assentado sem levantamento: ${faixa(falta)}</b>` : ''}</small></div>
     ${htmlFases((d.fases_cadastro || []).slice(0, 1))}

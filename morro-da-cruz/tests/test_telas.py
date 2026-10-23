@@ -273,6 +273,7 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertIn("A NS do dia é enviada em Execução › Notas de serviço.", campo)
         # Topografia e Cadastro: o envio na própria aba (sai o botão que levava para Notas de serviço), exceção recolhida
         self.assertNotIn("data-ns-enviar", self.html + self.js)
+        self.assertIn("inp.value = nomeCompleto(d.nome)", app)              # o trecho escolhido com o nome completo
         for tela, envio, excecao in (("topografia", "topEnvio", "fTop"), ("cadastro_campo", "cadEnvio", "fCad")):
             sec = self.secao(tela)
             self.assertIn(f'id="{envio}"', sec)
