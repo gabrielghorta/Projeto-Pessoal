@@ -272,7 +272,9 @@ function ligarBusca(input, aoEscolher) {
     t = setTimeout(async () => {
       const q = input.value.trim(); if (q.length < 2) { ul.hidden = true; return; }
       const res = await api('/api/buscar?q=' + encodeURIComponent(q));
-      ul.innerHTML = res.map((r, i) => `<li data-i="${i}"><span>${esc(r.rotulo)}</span><small>${r.tipo === 'TRECHO' ? 'trecho' : 'nó/caixa'} · ${esc(r.extra || '')}</small></li>`).join('') || '<li><small>nada encontrado</small></li>';
+      // o nome completo (a numeração TR recomeça a cada PB), com a cor da zona quando o mapa já está carregado
+      const cor = r => ((typeof GERAL !== 'undefined' && GERAL && GERAL.zonas.find(z => r.rotulo.startsWith(z.id + '_'))) || {}).cor;
+      ul.innerHTML = res.map((r, i) => `<li data-i="${i}"><span>${cor(r) ? `<i class="zona-cor" style="background:${esc(cor(r))}"></i>` : ''}${esc(r.nome || r.rotulo)}</span><small>${r.tipo === 'TRECHO' ? 'trecho' : 'nó/caixa'} · ${esc(r.extra || '')}</small></li>`).join('') || '<li><small>nada encontrado</small></li>';
       ul.hidden = false;
       ul.onclick = ev => { const li = ev.target.closest('li[data-i]'); if (!li) return; const r = res[+li.dataset.i];
         input.value = r.rotulo; input.dataset.tipo = r.tipo; input.dataset.id = r.id; ul.hidden = true; aoEscolher && aoEscolher(r); };
@@ -293,7 +295,7 @@ async function carregarMapa() {
   ].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join('') +
     (r.itens_pendentes ? `<div class="kpi" style="border-top-color:var(--vermelho)"><span>Itens 06.2 sem quantidade/unidade com fonte</span><b>${nf(r.itens_pendentes)}</b></div>` : '');
   const est = await estadoMapa(true);
-  $('#pins').innerHTML = est.pins.length ? est.pins.map(p => `<div class="acoes" style="margin-bottom:6px">📍 <b>${esc(p.equipe)}</b> <button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(curto(p.alvo_id))}</button></div>`).join('')
+  $('#pins').innerHTML = est.pins.length ? est.pins.map(p => `<div class="acoes" style="margin-bottom:6px">📍 <b>${esc(p.equipe)}</b> <button class="btn" data-fisc="${esc(p.alvo_tipo)}|${esc(p.alvo_id)}">${esc(nomeCompleto(p.alvo_id))}</button></div>`).join('')
     : '<span class="vazio">Nenhum check-in aberto hoje.</span>';
   $('#semPosicao').innerHTML = est.sem_posicao.map(e => `<div style="margin-bottom:6px"><b>${esc(e.numero)}</b> <span class="chip ${String(e.status_posicao || '').startsWith('PROV') ? 'amarelo' : 'vermelho'}">${esc(e.status_posicao || 'sem posição')}</span><br><small>${esc(e.nomenclaturas)}</small></div>`).join('');
   const leg = est.legado_sem_posicao || [];
@@ -333,7 +335,7 @@ async function mostrarFiscal(tipo, id) {
   const bloqueio = d.perfil_bloqueado ? `<div class="aviso problema"><b>E06:</b> ${esc(d.perfil_bloqueado)} — cálculo bloqueado.</div>` : '';
   const podeOk = ex && ex.concluido && !st.length && !ex.ok_fiscal_em;
   $('#fiscDetalhe').className = '';
-  $('#fiscDetalhe').innerHTML = `<h2 style="word-break:break-all">${esc(curto(d.nome))}</h2>
+  $('#fiscDetalhe').innerHTML = `<h2 style="word-break:break-word">${esc(nomeCompleto(d.nome))}</h2>
     ${d.retirado ? '<div class="aviso problema"><b>Retirado da revisão vigente do projeto.</b> Consulta do histórico; novos lançamentos bloqueados.</div>' : ''}
     <table>${linhas.map(([k, v]) => `<tr><th style="position:static;width:40%">${k}</th><td>${v}</td></tr>`).join('')}</table>
     ${bloqueio}${avisos}

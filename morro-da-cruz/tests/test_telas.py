@@ -216,6 +216,23 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertIn("function desenharNos(", pln)
         self.assertIn("zonaDoTrecho(t)", re.search(r"function linhasTracejadas\(.*?\n\}", ilu, re.S).group(0))
 
+    def test_mapa_do_dados_da_obra_tela_cheia_vista_e_zonas(self):
+        """Fluxo integrado (23/10/2026): tela cheia de verdade (API e a classe para o Safari do iPhone), a vista guardada na
+        sessão (o mapa não volta sozinho para a obra inteira), zonas nunca cinzas e o primeiro toque em outra zona
+        troca o foco; a caixa das ferramentas não engole o toque; o menu fechado sem barra de rolagem."""
+        pln, ilu, css, html = ler("planejamento.js"), ler("iluminado.js"), ler("app.css"), self.html
+        for trecho in ("requestFullscreen", "classList.add('tela-cheia')", "fullscreenchange", "aria-pressed"):
+            self.assertIn(trecho, pln)
+        self.assertIn('id="plnTela"', html)
+        self.assertIn("⌖", html)
+        self.assertIn("sessionStorage.setItem(VISTA_PLN", pln)
+        self.assertNotIn("0.08", re.search(r"function aplicarCamadas\(\).*?\n\}", ilu, re.S).group(0))
+        for js, ctx in ((ilu, "ILU"), (pln, "PLN")):
+            self.assertIn(f"if (outra && outra !== {ctx}.zona)", js)
+        self.assertRegex(css, r"\.ilu-ferr \{ pointer-events: none; \}")
+        self.assertIn(".rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }", css)
+        self.assertIn("::-webkit-scrollbar { display: none; }", css)
+
     def test_scripts_da_pagina_sem_erro_de_sintaxe(self):
         """Um erro de sintaxe derruba o script inteiro (a tela dele não abre): node --check em cada um, se houver Node."""
         import shutil

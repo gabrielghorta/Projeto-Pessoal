@@ -198,19 +198,59 @@ def nome_alvo(conn, alvo_tipo, alvo_id):
         return alvo_id
 
 
+# "Zona 03 PB06 TR14", "pb6 tr014", "TR1", "NÓ1.8", "DF-33": os pedaços de um nome de trecho ou nó
+_RX_BUSCA = re.compile(r"(?:ZONA\s*0*(?P<zona>\d{1,2})|(?P<adutora>ADUTORA)|PB\s*0*(?P<pb>\d{1,2})|TR\s*0*(?P<tr>\d{1,4})"
+                       r"|N[OÓ]\s*(?P<no>\d+(?:\.\d+)?)|(?P<caixa>[A-Z]{1,4}-\d+[A-Z]?))(?![\w.])")
+
+
+def _sufixo_like(v):
+    return "%" + v.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def buscar(conn, q, limite=30):
-    """Busca por trecho (TR001 / nome), nó/caixa (NÓ1.8, NO1.8, DF-33) ou nomenclatura."""
+    """Busca por trecho, nó ou caixa. Com código (TR, NÓ, caixa), o código casa inteiro: "TR1" é o TR001 de cada PB,
+    nunca o TR011 nem o TR100; zona e PB, se escritas, filtram. A numeração TR recomeça a cada PB: o resultado traz
+    sempre o nome completo ("Zona 03 · PB06 · TR014"), com DE, extensão e os nós das pontas. Sem código, procura o
+    texto no nome."""
     q = (q or "").strip()
     if not q:
         return []
-    up = q.upper()
-    termo = "%" + (up.replace("NO", "NÓ", 1) if up.startswith("NO") else up) + "%"
-    out = [{"tipo": "TRECHO", "id": r["id"], "rotulo": r["ponto"], "extra": f"DE{int(r['de_mm'])} · {r['extensao_m']:.2f} m"}
-           for r in conn.execute("SELECT id, ponto, de_mm, extensao_m FROM trechos WHERE vigente=1 AND UPPER(ponto) LIKE ? "
-                                 "ORDER BY ponto LIMIT ?", (termo, limite))]
-    out += [{"tipo": "ATIVIDADE", "id": r["id"], "rotulo": r["nomenclatura"], "extra": r["frente_id"]}
-            for r in conn.execute("SELECT id, nomenclatura, frente_id FROM atividades WHERE vigente=1 AND "
-                                  "UPPER(nomenclatura) LIKE ? ORDER BY nomenclatura LIMIT ?", (termo, limite))]
+    up = q.upper().replace("_", " ")
+    pecas = [m.groupdict() for m in _RX_BUSCA.finditer(up)]
+    v = {k: next((p[k] for p in pecas if p[k]), None) for k in ("zona", "adutora", "pb", "tr", "no", "caixa")}
+    filtros, args = [], []
+    if v["zona"]:
+        filtros.append("{c} LIKE ?"); args.append(f"Zona{int(v['zona']):02d}\\_%")
+    if v["adutora"]:
+        filtros.append("{c} LIKE ?"); args.append("ADUTORA\\_%")
+    if v["pb"]:
+        filtros.append("{c} LIKE ?"); args.append(f"%\\_PB{int(v['pb']):02d}\\_%")
+    codigo = v["tr"] or v["no"] or v["caixa"]
+    if codigo or filtros:
+        trechos = not (v["no"] or v["caixa"])
+        nos = not v["tr"]
+        if v["tr"]:
+            filtros.append("{c} LIKE ?"); args.append(_sufixo_like(f"_TR{int(v['tr']):03d}"))
+        elif v["no"]:
+            filtros.append("{c} LIKE ?"); args.append(_sufixo_like(f"_NÓ{v['no']}"))
+        elif v["caixa"]:
+            filtros.append("{c} LIKE ?"); args.append(_sufixo_like(f"_{v['caixa']}"))
+        onde = " AND ".join(f + " ESCAPE '\\'" for f in filtros)
+    else:
+        trechos = nos = True
+        onde, args = "UPPER({c}) LIKE ?", ["%" + (up.replace("NO", "NÓ", 1) if up.startswith("NO") else up) + "%"]
+    out = []
+    if trechos:
+        for r in conn.execute(f"SELECT id, ponto, de_mm, extensao_m, no_ini, no_fim FROM trechos WHERE vigente=1 AND "
+                              f"{onde.format(c='ponto')} ORDER BY ponto LIMIT ?", (*args, limite)):
+            pontas = " ao ".join(str(x).split("_")[-1] for x in (r["no_ini"], r["no_fim"]) if x)
+            out.append({"tipo": "TRECHO", "id": r["id"], "rotulo": r["ponto"], "nome": R.nome_completo(r["ponto"]),
+                        "extra": f"DE {int(r['de_mm'] or 0)} · {r['extensao_m']:.2f} m".replace(".", ",") + (f" · do {pontas}" if pontas else "")})
+    if nos:
+        for r in conn.execute(f"SELECT id, nomenclatura, frente_id FROM atividades WHERE vigente=1 AND "
+                              f"{onde.format(c='nomenclatura')} ORDER BY nomenclatura LIMIT ?", (*args, limite)):
+            out.append({"tipo": "ATIVIDADE", "id": r["id"], "rotulo": r["nomenclatura"], "nome": R.nome_completo(r["nomenclatura"]),
+                        "extra": r["frente_id"]})
     return out[:limite]
 
 

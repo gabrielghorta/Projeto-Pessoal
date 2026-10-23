@@ -193,6 +193,19 @@ class TestVerificacao(BaseEtapas):
         self.assertEqual(P.caminho_da_medicao(self.c)["aguardando_verificacao"], [TR, TR2])
 
 
+class TestBuscaPeloNomeCompleto(BaseCampo):
+    """A numeração TR recomeça a cada PB: "TR1" é o TR001 de cada PB (nunca o TR011 ou o TR100), sempre com zona e PB."""
+
+    def test_codigo_casa_inteiro_e_vem_com_zona_e_pb(self):
+        r = S.buscar(self.c, "TR1")
+        self.assertTrue(r)
+        self.assertTrue(all(x["rotulo"].endswith("_TR001") for x in r), [x["rotulo"] for x in r])
+        self.assertTrue(all(x["nome"].startswith("Zona ") and " · PB" in x["nome"] for x in r))
+        self.assertIn("DE ", r[0]["extra"])
+        self.assertEqual([x["rotulo"] for x in S.buscar(self.c, "zona 01 pb01 tr2")], ["Zona01_PB01_Rede_TR002"])
+        self.assertFalse([x for x in S.buscar(self.c, "TR11") if not x["rotulo"].endswith("_TR011")])
+
+
 class TestRotas(BaseHTTP):
     usuarios = BaseHTTP.usuarios + (("sup1", "SUPERVISOR", None),)
 

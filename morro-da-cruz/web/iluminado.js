@@ -111,7 +111,7 @@ async function desenharRede() {
   $('#redePins').innerHTML = est.pins.map(p => {
     const pos = posicaoAlvo(g, p.alvo_tipo, p.alvo_id); if (!pos) return '';
     const [x, y] = pos.xy;
-    return `<g><title>${esc(p.equipe)} em ${esc(curto(p.alvo_id))} (check-in de hoje)</title><circle cx="${x}" cy="${y}" r="${r}" fill="#F15922" stroke="#101010" stroke-width="${r / 5}"/>
+    return `<g><title>${esc(p.equipe)} em ${esc(nomeCompleto(p.alvo_id))} (check-in de hoje)</title><circle cx="${x}" cy="${y}" r="${r}" fill="#F15922" stroke="#101010" stroke-width="${r / 5}"/>
       <text x="${x}" y="${y}" fill="#fff" font-size="${r * 0.9}" font-weight="700" text-anchor="middle" dominant-baseline="central">${esc(rotuloEquipe(p.equipe))}</text></g>`;
   }).join('');
 }
@@ -524,6 +524,9 @@ function cliqueNoMapa(alvo, ev, i) {
   fecharPop();
   const pin = alvo.closest && alvo.closest('.ilu-pin'), zona = alvo.closest && alvo.closest('.ilu-zf');
   if (pin) return focarAlvo(pin.dataset.tipo, pin.dataset.alvo);
+  // com uma zona em foco, o primeiro toque em outra zona (no polígono ou num trecho dela) troca o foco
+  const outra = ILU.zona && (i >= 0 ? zonaDoTrecho(GERAL.trechos[i]) : zona && zona.dataset.zona);
+  if (outra && outra !== ILU.zona) return focarZona(outra);
   if (i >= 0) return abrirFicha('TRECHO', GERAL.trechos[i].n);
   if (zona) return focarZona(zona.dataset.zona);
 }
@@ -556,7 +559,7 @@ function desenharPins() {
   $('#iluPins').innerHTML = (ILU.est.pins || []).map(p => {
     const pos = posicaoAlvo(GERAL, p.alvo_tipo, p.alvo_id); if (!pos) return '';
     const [x, y] = pos.xy;
-    return `<g class="ilu-pin" data-tipo="${esc(p.alvo_tipo)}" data-alvo="${esc(p.alvo_id)}"><title>${esc(equipeNome(p.equipe))} em ${esc(curto(p.alvo_id))} (check-in de hoje)</title>
+    return `<g class="ilu-pin" data-tipo="${esc(p.alvo_tipo)}" data-alvo="${esc(p.alvo_id)}"><title>${esc(equipeNome(p.equipe))} em ${esc(nomeCompleto(p.alvo_id))} (check-in de hoje)</title>
       <circle cx="${x}" cy="${y}"/><text x="${x}" y="${y}">${esc(rotuloEquipe(p.equipe))}</text></g>`;
   }).join('');
 }
@@ -565,7 +568,8 @@ function aplicarCamadas() {
   satDe(ILU).style.display = ILU.fundo === 'sem' ? 'none' : '';
   $('.sat-veu', satDe(ILU)).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]);
   $('#iluZonas').style.display = ILU.cam.zonas ? '' : 'none';
-  $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.38 : 0.08) : 0.26));
+  // a zona em foco um pouco mais forte; as outras com a cor delas (nunca cinza) e clicáveis
+  $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.36 : 0.22) : 0.26));
   $('#iluNomes').style.display = ILU.cam.nomes ? '' : 'none';
   $('#iluPins').style.display = ILU.cam.equipes ? '' : 'none';
   $$('#iluLinhas .ilu-tr').forEach(p => p.style.display = ILU.vis[p.dataset.situ] ? '' : 'none');
@@ -603,7 +607,7 @@ function abrirPop(nome, recarregar) {
     Object.entries((ILU.est.camadas || {}).planejado || {}).forEach(([n, p]) => p.hoje && p.equipes.forEach(e => (plan[e] = plan[e] || []).push(n)));
     pop.innerHTML = '<h3>Equipes hoje</h3>' + ((RESUMO && RESUMO.equipes) || []).map(e => {
       const p = pins[e.id], pl = plan[e.id] || [];
-      const txt = p ? `em ${esc(curto(p.alvo_id))}, check-in de hoje` : pl.length ? `programada para ${esc(pl.slice(0, 3).map(curto).join(', '))}${pl.length > 3 ? '…' : ''}; sem check-in` : 'sem check-in hoje';
+      const txt = p ? `em ${esc(nomeCompleto(p.alvo_id))}, check-in de hoje` : pl.length ? `programada para ${esc(pl.slice(0, 3).map(nomeCompleto).join(', '))}${pl.length > 3 ? '…' : ''}; sem check-in` : 'sem check-in hoje';
       return `<button type="button" class="ilu-linha" ${p ? `data-ir-tipo="${esc(p.alvo_tipo)}" data-ir="${esc(p.alvo_id)}"` : pl.length ? `data-ir-tipo="TRECHO" data-ir="${esc(pl[0])}"` : 'disabled'}>
         <span class="num${p ? '' : ' sem'}">${esc(rotuloEquipe(e.id))}</span><span>${esc(e.nome)}<small>${txt}</small></span></button>`;
     }).join('') + '<p>O pino aparece onde a equipe fez o check-in hoje. Equipe sem check-in não tem pino.</p>';
@@ -683,7 +687,7 @@ function fecharFicha() { ILU.sel = null; $('#iluFicha').hidden = true; marcarSel
 async function abrirFicha(tipo, nome) {
   ILU.sel = { tipo, nome }; marcarSelecao();
   const f = $('#iluFicha'); f.hidden = false;
-  f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button><h2>${esc(nomeCurto(nome))}</h2><p class="vazio">Carregando…</p>`;
+  f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button><h2>${esc(nomeCompleto(nome))}</h2><p class="vazio">Carregando…</p>`;
   const [d, topo] = await Promise.all([api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(nome)}`).catch(e => ({ erro: e.message })),
     tipo === 'TRECHO' ? api(`/api/topologia?trecho=${encodeURIComponent(nome)}`).catch(() => null) : null]);
   if (!ILU.sel || ILU.sel.nome !== nome) return;
@@ -705,7 +709,7 @@ async function abrirFicha(tipo, nome) {
   const prox = (d.programacoes || []).find(p => p.status === 'PLANEJADA');
   if (prox) linhas.push(['Programado', `${esc(prox.data.split('-').reverse().join('/'))} · ${esc(equipeNome(prox.equipe_id))}`]);
   f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button>
-    <h2>${esc(nomeCurto(d.nome || nome))}</h2>
+    <h2>${esc(nomeCompleto(d.nome || nome))}</h2>
     ${tipo === 'TRECHO' ? `<span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(ILU.est ? nomeSituacao(ILU.est, nome, s.id) : s.nome)}</span>` : ''}
     ${d.retirado ? '<div class="aviso problema">Retirado da revisão vigente do projeto: só consulta.</div>' : ''}
     <dl>${linhas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>

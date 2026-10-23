@@ -548,3 +548,27 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .numero-caminho span { font-size: 13px; opacity: .85; }
 .numero-caminho:disabled { cursor: default; opacity: .55; }
 .ilu-pop h4 { margin: 10px 0 4px; font-size: 13px; opacity: .8; }
+/* Dados da obra em tela cheia: o mapa e o painel, sem sair da tela; o painel vira gaveta ao lado (computador) ou
+   folha de baixo (celular). A classe tela-cheia é a alternativa sem a API (Safari do iPhone) */
+.icone-glifo { font-size: 20px; line-height: 1; }
+#pln:fullscreen, #pln.tela-cheia { position: fixed; inset: 0; z-index: 900; margin: 0; padding: 10px; gap: 10px; background: #0B0B0B;
+  grid-template-columns: minmax(0, 1fr) min(400px, 36vw); align-items: stretch; }
+#pln:fullscreen .ilu, #pln.tela-cheia .ilu { height: 100%; min-height: 0; }
+#pln:fullscreen .pln-painel, #pln.tela-cheia .pln-painel { position: static; max-height: none; height: 100%; overflow: auto; }
+@media (max-width: 1100px) {
+  #pln:fullscreen, #pln.tela-cheia { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; padding: 0; gap: 0; }
+  #pln:fullscreen .ilu, #pln.tela-cheia .ilu { border: 0; border-radius: 0; }
+  #pln:fullscreen .pln-painel, #pln.tela-cheia .pln-painel { height: auto; max-height: 42vh; border-radius: 16px 16px 0 0; }
+}
+/* o trecho achado na busca pisca antes de ficar escolhido */
+.pln-pisca { fill: none; stroke: #FFFFFF; stroke-width: 10px; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none;
+  animation: pisca-trecho .43s ease-in-out 3; }
+@keyframes pisca-trecho { 50% { stroke-opacity: .1; } }
+.zona-cor { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+/* menu lateral fechado (só ícones): sem barra de rolagem visível; a roda do mouse continua rolando */
+.rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }
+.rail:not(.aberto):not(.fixo) .rail-itens::-webkit-scrollbar { display: none; }
+@media (max-width: 760px) { body.menu-aberto .rail .rail-itens { scrollbar-width: thin; } }
+/* a caixa das ferramentas do mapa não engole o toque no mapa (no celular ela quebra em várias linhas): só os botões */
+.ilu-ferr { pointer-events: none; }
+.ilu-ferr > * { pointer-events: auto; }
