@@ -138,11 +138,11 @@ const TELAS = {
   inicio: { titulo: 'Início', carregar: () => renderInicio() },
   iluminado: { titulo: 'Mapa iluminado', carregar: () => carregarIluminado() },
   campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', carregar: () => carregarLancamentoDia() },
-  diario: { titulo: 'Diário de obra', grupo: 'grupo-campo', carregar: () => carregarDiario() },
-  interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
   notas: { titulo: 'Notas de serviço', grupo: 'grupo-campo', carregar: () => carregarNotas() },
   topografia: { titulo: 'Topografia', grupo: 'grupo-campo', carregar: () => carregarTopografia() },
   cadastro_campo: { titulo: 'Cadastro de campo', grupo: 'grupo-campo', carregar: () => carregarCadCampo() },
+  interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
+  diario: { titulo: 'Diário de obra', grupo: 'grupo-campo', carregar: () => carregarDiario() },
   mapa: { titulo: 'Dados da obra', grupo: 'planejamento', carregar: () => carregarDadosObra() },
   cronograma: { titulo: 'Cronograma da obra', grupo: 'planejamento', carregar: () => carregarCronograma() },
   almox: { titulo: 'Estoque e movimentos', grupo: 'planejamento', carregar: () => carregarAlmox() },
@@ -164,7 +164,37 @@ const TELAS_ANTIGAS = {
   ponto: ['mapa', 'O check-in e o check-out agora são a liberação e a devolução, no Dados da obra.'],
   esteira: ['iluminado', 'A esteira do cadastro agora fica na ficha do trecho, no Mapa iluminado.'],
 };
+// páginas dentro de uma aba (Execução): chips no topo, a página no endereço (#topografia/resumo), com voltar e avançar,
+// e lembrada por aba na sessão. Cada página diz quem a usa; a aba abre na pedida, na lembrada ou na primeira que o perfil usa
+const PAGINAS = {
+  campo: [['apropriacao', 'Apropriação direta', () => pode('apropriacao')], ['apontamento', 'Apontamento sem NS', () => pode('lancar_sem_ns')],
+    ['fotos', 'Fotos e soldas', () => pode('campo')], ['clima', 'Clima do dia', () => pode('campo')]],
+  notas: [['dia', 'NS do dia', () => true], ['servico', 'Serviço de obra', () => pode('notas_servico')]],      // a NS do dia: quem não envia, consulta
+  topografia: [['enviar', 'Enviar NS de topografia', () => podeNs('TOPOGRAFIA')], ['resumo', 'Resumo', () => true]],
+  cadastro_campo: [['enviar', 'Enviar NS de cadastro', () => podeNs('CADASTRO')], ['feito', 'O que foi feito', () => true]],
+};
+const PAGINA = {};                                     // a página aberta em cada aba
+const paginasDe = tela => (PAGINAS[tela] || []).filter(([, , usa]) => usa());
+function paginaDe(tela, pedida) {
+  const ps = paginasDe(tela).map(p => p[0]); if (!ps.length) return null;
+  let lembrada = null; try { lembrada = sessionStorage.getItem('mc-pagina-' + tela); } catch (_) { /* sem storage */ }
+  return [pedida, lembrada].find(p => p && ps.includes(p)) || ps[0];
+}
+function mostrarPagina(tela, pag) {
+  PAGINA[tela] = pag;
+  try { sessionStorage.setItem('mc-pagina-' + tela, pag); } catch (_) { /* sem storage */ }
+  const sec = $('#aba-' + tela), ps = paginasDe(tela), chips = $('.paginas-aba', sec);
+  chips.innerHTML = ps.map(([id, rot]) => `<button type="button" data-pagina-ir="${id}" aria-pressed="${id === pag}">${esc(rot)}</button>`).join('');
+  chips.hidden = ps.length < 2;
+  $$('[data-pagina]', sec).forEach(el => { el.hidden = el.dataset.pagina !== pag; });
+}
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-pagina-ir]'); if (!b || !PAGINAS[TELA]) return;
+  abrirAba(`${TELA}/${b.dataset.paginaIr}`, { manterRolagem: true });
+});
 function abrirAba(id, opcoes = {}) {
+  let [base, pedida] = String(id).split('/');
+  id = base;
   if (TELAS_ANTIGAS[id]) { toast(TELAS_ANTIGAS[id][1]); id = TELAS_ANTIGAS[id][0]; opcoes = { ...opcoes, substituir: true }; }
   if (GRUPOS[id]) id = telasDoGrupo(id)[0];          // o grupo abre a primeira tela dele que o perfil usa
   if (!TELAS[id] || !podeTela(id)) id = 'inicio';
@@ -176,7 +206,10 @@ function abrirAba(id, opcoes = {}) {
   $$('.rail-sub').forEach(s => s.classList.toggle('aberta', s.dataset.grupo === TELAS[id].grupo));
   $('#topoTitulo').textContent = id === 'inicio' ? 'Morro da Cruz' : TELAS[id].titulo;
   document.title = id === 'inicio' ? 'Morro da Cruz' : `${TELAS[id].titulo} · Morro da Cruz`;
-  if (location.hash !== '#' + id) history[opcoes.substituir ? 'replaceState' : 'pushState'](null, '', '#' + id);
+  const pag = PAGINAS[id] ? paginaDe(id, pedida) : null;
+  if (pag) mostrarPagina(id, pag);
+  const endereco = '#' + id + (pag ? '/' + pag : '');
+  if (location.hash !== endereco) history[opcoes.substituir || (pag && location.hash === '#' + id) ? 'replaceState' : 'pushState'](null, '', endereco);
   fecharMenuMovel();
   if (!opcoes.manterRolagem) window.scrollTo(0, 0);
   return TELAS[id].carregar();
@@ -214,7 +247,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
-  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: a nota do dia de cada equipe, o diário de obra, interferências, as notas de serviço e, das equipes terceirizadas, topografia e cadastro de campo.' },
+  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: o lançamento do dia sem nota, as notas de serviço da obra (a NS do dia e a de serviço), a topografia e o cadastro de campo (cada um com o envio das NS e o resumo), as interferências e o diário de obra.' },
   planejamento: { nome: 'Planejamento', desc: 'O dia de cada equipe no mapa do Dados da obra (programar, liberar o material e receber a devolução), o cronograma do Project (os 18 meses), o estoque com as notas a receber e o aceite do material, e compras.' },
   administrativo: { nome: 'Administrativo', desc: 'Equipes, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
 };
@@ -728,7 +761,7 @@ async function selecionarCampo(tipo, id) {
   const iv = d.intervalos;
   const editavel = tipo === 'TRECHO' && !(d.execucao && d.execucao.ok_fiscal_em);
   $('#apAlvo').innerHTML = tipo === 'TRECHO'
-    ? `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · ${esc(d.metodologia)}${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''} ${chipVerif(iv.verificacao)}
+    ? `<div class="aviso info">${esc(nomeCompleto(d.nome))}: ${nf(d.extensao_m)} m · DE${d.de_mm} · ${esc(d.metodologia)}${d.perfil_bloqueado ? ' · <b>perfil bloqueado (E06)</b>' : ''} ${chipVerif(iv.verificacao)}
         <div style="margin-top:6px">${htmlEtapas(iv)}</div></div>
       ${iv.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}
       ${iv.legado ? `<div class="caixa-retif" id="fLegado">
@@ -749,7 +782,7 @@ async function selecionarCampo(tipo, id) {
       ${editavel && !d.mnd ? `<div class="linha lin-compl" id="fCompl" style="margin-top:6px">
         <input data-c="ini_m" type="number" step="any" min="0" placeholder="escavado de (m)"><input data-c="fim_m" type="number" step="any" min="0" placeholder="até (m)">
         <input data-c="referencia" placeholder="observação (opcional)"><button type="button" class="btn" id="complBtn">Registrar escavação</button></div>` : ''}`
-    : `<div class="aviso info">${esc(curto(d.nome))}: ${esc(d.texto)}</div>`;
+    : `<div class="aviso info">${esc(nomeCompleto(d.nome))}: ${esc(d.texto)}</div>`;
   $('#apAlvo').insertAdjacentHTML('beforeend', `<h4 style="margin:10px 0 4px">Ocorrências</h4>${htmlOcorrencias(d.ocorrencias, pode('verificar'))}
     <div class="linha" id="fOcor" style="margin-top:6px"><select data-o="tipo"><option value="IMPEDIMENTO">Impedimento</option><option value="NAO_CONFORMIDADE">Não conformidade</option></select>
       <select data-o="categoria"></select><input data-o="descricao" placeholder="o que aconteceu"><button type="button" class="btn" id="ocorBtn">Abrir ocorrência</button></div>`);
@@ -1368,9 +1401,10 @@ async function carregarDiario() {
   const d = await acao(() => api('/api/diario?' + q)).catch(() => null); if (!d) return;
   const t = d.totais, fila = d.ns_dia.reduce((x, n) => x + n.fila.length, 0);
   $('#diaAlertas').innerHTML = d.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('');
-  $('#diaKpis').innerHTML = [['Notas do dia', nf(d.ns_dia.length, 0)], ['Aguardando a engenharia', nf(fila, 0)], ['Assentado', nf(t.assentado_m) + ' m'],
-    ['Cadastro de campo', nf(t.cadastro_m) + ' m'], ['Reaterrado', nf(t.reaterrado_m) + ' m'],
+  $('#diaKpis').innerHTML = [...(d.ns_visivel ? [['Notas do dia', nf(d.ns_dia.length, 0)], ['Aguardando a engenharia', nf(fila, 0)]] : []),
+    ['Assentado', nf(t.assentado_m) + ' m'], ['Cadastro de campo', nf(t.cadastro_m) + ' m'], ['Reaterrado', nf(t.reaterrado_m) + ' m'],
     ['Soldas', nf(t.soldas, 0)], ['Fotos', nf(t.fotos, 0)], ['Ocorrências', nf(t.ocorrencias, 0)]].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join('');
+  $('#painelDiaNs').hidden = !d.ns_visivel;            // a NS do dia e o croqui: só quem tem acesso às notas (D-134)
   renderDiarioNs(d.ns_dia);
   $('#diaProgExec').innerHTML = d.programado_executado.length ? tabelaHtml('<th>Equipe</th><th>Trecho / nó</th><th>Programado</th><th>Executado</th><th></th>',
     d.programado_executado.map(x => `<tr><td>${esc(x.equipe_id)}</td><td>${esc(curto(x.nome))}</td><td>${esc(x.servicos.join(', ') || '—')}</td>
@@ -1467,26 +1501,43 @@ document.addEventListener('click', async ev => {
 /* ---------------------------------------------------------------- campo: topografia e cadastro de campo (terceirizadas) */
 // as duas equipes são terceirizadas e não entram no sistema: a engenharia (ou a administração) registra o que elas entregam
 const kpi = ([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`;
+// o olhar macro do resumo (Topografia e Cadastro de campo): o feito e o que falta na rede da frente escolhida
+function htmlFeitoFalta(rotulo, feito, rede, falta) {
+  const p = rede ? Math.min(100, feito / rede * 100) : 0;
+  return `<div class="feito-falta"><b>${esc(rotulo)}: ${nf(feito)} m de ${nf(rede)} m da rede (${nf(p, 1)} %)</b>
+    <div class="trilho" role="img" aria-label="${nf(p, 1)} % feito"><i style="width:${p.toFixed(2)}%"></i></div><small>${falta}</small></div>`;
+}
 const opcoesFrente = sel => { if (sel.options.length < 2) sel.innerHTML += RESUMO.frentes.map(x => `<option>${esc(x)}</option>`).join(''); };
 const foraDe = ([a, b], cob) => lacunasDe((cob || []).map(([c, d]) => [Math.max(c, a) - a, Math.min(d, b) - a]).filter(([c, d]) => d > c), b - a)
   .map(([c, d]) => [c + a, d + a]);
 const ROT_SERVICO = { LOCACAO: 'Locação', ESCAVACAO: 'Escavação', ASSENTAMENTO: 'Assentamento' };
-const botaoTrecho = (attr, tid, ponto) => `<button type="button" class="btn" ${attr}="${esc(tid)}">${esc(curto(ponto))}</button>`;
+const botaoTrecho = (attr, tid, ponto) => `<button type="button" class="btn" ${attr}="${esc(tid)}" data-ponto="${esc(ponto)}">${esc(nomeCompleto(ponto))}</button>`;
+// o trecho tocado no Resumo (Topografia) ou em "O que foi feito" (Cadastro): quem registra vai à página de envio, com a
+// exceção aberta nesse trecho; quem só consulta vê o trecho no Mapa iluminado
+async function abrirTrechoDaLista(b, tela, perm, selecionar, form) {
+  if (!pode(perm)) return verNoMapa('TRECHO', b.dataset.ponto);
+  await abrirAba(tela + '/enviar');
+  await selecionar(b.dataset.topTrecho || b.dataset.cadTrecho); form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// "Ver no Mapa iluminado": a zona filtrada (ou a obra inteira)
+function zonaNoMapa(frente) { verNoMapa('ZONA', /^(Zona\d\d|ADUTORA)$/.test(frente || '') ? frente : null); }
 function preencherTrecho(form, d, id) {
-  const inp = $('input[name=alvo_txt]', form); inp.value = curto(d.nome); inp.dataset.tipo = 'TRECHO'; inp.dataset.id = id;
+  const inp = $('input[name=alvo_txt]', form); inp.value = nomeCompleto(d.nome); inp.dataset.tipo = 'TRECHO'; inp.dataset.id = id;
 }
 
 let TOP_LISTA = 'programados', TOP = null, TOP_DADOS = null;
 const fTop = $('#fTop');
 async function carregarTopografia() {
-  opcoesFrente($('#topFrente'));
   if (!fTop.data.value) fTop.data.value = hoje();
+  if (PAGINA.topografia === 'enviar') { prepararEnvioNs('TOPOGRAFIA'); $('#topExcecao').hidden = !pode('topografia'); return; }
+  opcoesFrente($('#topFrente'));
   $$('#topLista button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.topLista === TOP_LISTA)));
   const f = $('#topFrente').value;
   const r = await acao(() => api('/api/topografia' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   TOP_DADOS = r; const t = r.totais;
-  $('#topNsEnviar').hidden = !(pode('notas_servico') && podeTela('notas'));
   nsCarregarLista('TOPOGRAFIA', '#topNsLista');
+  $('#topMacro').innerHTML = htmlFeitoFalta('Liberado', t.liberado_m, t.rede_m,
+    `Falta liberar: <b>${nf(t.falta_liberar_m)} m</b> · ${nf(t.trechos_sem_liberacao, 0)} de ${nf(t.trechos, 0)} trechos sem nenhuma liberação`);
   $('#topKpis').innerHTML = [['Trechos liberados', nf(t.trechos_liberados, 0)], ['Liberados em parte', nf(t.trechos_parciais, 0)],
     ['Metros liberados', nf(t.liberado_m) + ' m'], ['Programado sem liberação (7 dias)', nf(t.programados_sem_liberacao, 0)],
     ['Executado sem liberação', nf(t.executado_sem_liberacao_m) + ' m']].map(kpi).join('');
@@ -1520,7 +1571,7 @@ async function selecionarTop(id) {
   const d = await acao(() => api(`/api/detalhe?tipo=TRECHO&id=${encodeURIComponent(id)}`)).catch(() => null); if (!d) return;
   TOP = { id, d }; preencherTrecho(fTop, d, id);
   $('#topExcecao').open = true;                       // o detalhe do trecho (e anular) fica no painel da exceção
-  $('#topAlvo').innerHTML = `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')}</div>
+  $('#topAlvo').innerHTML = `<div class="aviso info">${esc(nomeCompleto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')}</div>
     ${htmlComplementar(d.complementar, pode('retificar_campo'), ['LIBERACAO_TOPOGRAFICA'])}
     ${(d.complementar.alertas || []).map(a => `<div class="aviso problema">${esc(a)}</div>`).join('')}`;
 }
@@ -1530,10 +1581,10 @@ $('#topLista').addEventListener('click', ev => {
   const b = ev.target.closest('[data-top-lista]'); if (!b) return;
   TOP_LISTA = b.dataset.topLista; $$('#topLista button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderTopLista();
 });
-$('#topConteudo').addEventListener('click', async ev => {
-  const b = ev.target.closest('[data-top-trecho]'); if (!b) return;
-  await selecionarTop(b.dataset.topTrecho); fTop.scrollIntoView({ behavior: 'smooth', block: 'start' });
+$('#topConteudo').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-top-trecho]'); if (b) abrirTrechoDaLista(b, 'topografia', 'topografia', selecionarTop, fTop);
 });
+$('#topMapa').addEventListener('click', () => zonaNoMapa($('#topFrente').value));
 $('#topTodo').addEventListener('click', () => { if (!TOP) return toast('Escolha o trecho.', 'erro'); fTop.ini_m.value = 0; fTop.fim_m.value = TOP.d.extensao_m; });
 $('#topFalta').addEventListener('click', () => {
   if (!TOP) return toast('Escolha o trecho.', 'erro');
@@ -1553,14 +1604,16 @@ fTop.addEventListener('submit', async ev => {
 let CAD_LISTA = 'aberta', CADC = null, CAD_DADOS = null;
 const fCad = $('#fCad');
 async function carregarCadCampo() {
-  opcoesFrente($('#cadFrente'));
   if (!fCad.data.value) fCad.data.value = hoje();
+  if (PAGINA.cadastro_campo === 'enviar') { prepararEnvioNs('CADASTRO'); $('#cadExcecao').hidden = !pode('cadastro_campo'); return; }
+  opcoesFrente($('#cadFrente'));
   $$('#cadLista button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cadLista === CAD_LISTA)));
   const f = $('#cadFrente').value;
   const r = await acao(() => api('/api/cadastro-campo' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   CAD_DADOS = r; const t = r.totais;
-  $('#cadNsEnviar').hidden = !(pode('notas_servico') && podeTela('notas'));
   nsCarregarLista('CADASTRO', '#cadNsLista');
+  $('#cadMacro').innerHTML = htmlFeitoFalta('Levantado', t.levantado_m, t.rede_m,
+    `Falta levantar: <b>${nf(t.falta_levantar_m)} m já assentados</b> (vala aberta ou reaterrados) · ${nf(t.nao_assentado_m)} m ainda não assentados`);
   $('#cadAviso').innerHTML = t.reaterrado_sem_cadastro_m > 0 ? `<div class="aviso problema"><b>${nf(t.reaterrado_sem_cadastro_m)} m já reaterrados sem levantamento.</b>
     Com a vala fechada não dá mais para levantar: veja a lista "Reaterrado sem levantamento".</div>` : '';
   $('#cadKpis').innerHTML = [['Vala aberta sem levantamento', nf(t.vala_aberta_m) + ' m'], ['Reaterrado sem levantamento', nf(t.reaterrado_sem_cadastro_m) + ' m'],
@@ -1598,7 +1651,7 @@ async function selecionarCad(id) {
   const iv = d.intervalos, ass = iv.etapas.ASSENTADO, cad = iv.etapas.CADASTRO_CAMPO;
   const falta = ass.cobertura.flatMap(x => foraDe(x, cad.cobertura));
   $('#cadRetif').innerHTML = '';
-  $('#cadAlvo').innerHTML = `<div class="aviso info">${esc(curto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')} · assentado ${faixa(ass.cobertura)}</div>
+  $('#cadAlvo').innerHTML = `<div class="aviso info">${esc(nomeCompleto(d.nome))}: ${nf(d.extensao_m)} m · ${esc(d.metodologia || '')} · assentado ${faixa(ass.cobertura)}</div>
     <div class="registro"><div><b>Levantado</b> <span class="chip ${falta.length ? 'amarelo' : cad.metros ? 'azul' : 'cinza'}">${nf(cad.metros)} m</span></div>
       <small>Levantado: ${faixa(cad.cobertura)}${falta.length ? ` · <b>assentado sem levantamento: ${faixa(falta)}</b>` : ''}</small></div>
     ${htmlFases((d.fases_cadastro || []).slice(0, 1))}
@@ -1611,10 +1664,10 @@ $('#cadLista').addEventListener('click', ev => {
   const b = ev.target.closest('[data-cad-lista]'); if (!b) return;
   CAD_LISTA = b.dataset.cadLista; $$('#cadLista button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderCadLista();
 });
-$('#cadConteudo').addEventListener('click', async ev => {
-  const b = ev.target.closest('[data-cad-trecho]'); if (!b) return;
-  await selecionarCad(b.dataset.cadTrecho); fCad.scrollIntoView({ behavior: 'smooth', block: 'start' });
+$('#cadConteudo').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-cad-trecho]'); if (b) abrirTrechoDaLista(b, 'cadastro_campo', 'cadastro_campo', selecionarCad, fCad);
 });
+$('#cadMapa').addEventListener('click', () => zonaNoMapa($('#cadFrente').value));
 $('#cadFalta').addEventListener('click', () => {
   if (!CADC) return toast('Escolha o trecho.', 'erro');
   const f = CADC.d.intervalos.etapas.ASSENTADO.cobertura.flatMap(x => foraDe(x, CADC.d.intervalos.etapas.CADASTRO_CAMPO.cobertura))[0];
@@ -1759,7 +1812,7 @@ function aplicarPermissoes() {
   $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO;
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
-  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Execução; o almoxarife, também o Planejamento
+  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Execução (sem as notas de serviço); o almoxarife, também o Planejamento
   $$('.rail-item[data-tela]').forEach(b => { b.hidden = !podeTela(b.dataset.tela); });
   $$('button.rail-grupo').forEach(b => { b.hidden = $(`.rail-sub[data-grupo="${b.dataset.grupo}"]`).hidden = !telasDoGrupo(b.dataset.grupo).length; });
   $$('.rail-itens .rail-div').forEach(d => {                    // divisória sem nada visível depois dela some

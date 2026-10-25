@@ -1127,13 +1127,30 @@ def registrar_dia(conn, ns_id, por):
 
 
 def _clima_do_dia(conn, data, equipe_id, clima):
-    """O clima é o único toque da tela de envio: a NS não traz o clima e o apontamento exige manhã e tarde."""
+    """O clima é o único toque da tela de envio: a NS não traz o clima e o apontamento exige manhã e tarde. A NS do dia
+    é a fonte principal (D-131): o clima tocado no envio substitui o marcado antes; sem toque, vale o já marcado."""
     for turno in ("MANHA", "TARDE"):
         if (clima or {}).get(turno):
             S.registrar_clima(conn, data, equipe_id, turno, clima[turno])
     turnos = {r[0] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
     if turnos != {"MANHA", "TARDE"}:
-        raise RegraViolada(f"Informe o clima da manhã e da tarde de {_data_br(data)}: o diário precisa dele.")
+        raise RegraViolada(f"Informe o clima da manhã e da tarde de {_data_br(data)}: o diário precisa dele "
+                           "(toque no envio da NS ou marque em Lançamento do dia › Clima do dia).")
+
+
+def gravar_clima(conn, data, equipe_id, clima, corrigir=False):
+    """Clima do dia (e o do apontamento sem NS), para os dias sem NS do dia. Com NS do dia da equipe naquele dia, o clima
+    é o dela (D-131): só preenche o turno vazio, e mudar o que está gravado é correção da engenharia (`corrigir`)."""
+    ns = _one(conn, """SELECT numero FROM notas_servico WHERE tipo='EXECUCAO' AND status='REGISTRADA' AND equipe_id=? AND data=?
+                       ORDER BY id LIMIT 1""", equipe_id, data)
+    atual = dict(conn.execute("SELECT turno, condicao FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id)).fetchall())
+    muda = [t for t in ("MANHA", "TARDE") if (clima or {}).get(t) and atual.get(t) not in (None, clima[t])]
+    if ns and muda and not corrigir:
+        raise RegraViolada(f"O clima de {_data_br(data)} da equipe {equipe_id} veio com a NS do dia {ns['numero']}, que é a "
+                           "fonte principal: só a engenharia corrige.")
+    for turno in ("MANHA", "TARDE"):
+        if (clima or {}).get(turno):
+            S.registrar_clima(conn, data, equipe_id, turno, clima[turno])
 
 
 def enviar_dia(conn, equipe_id, pdf_b64, croqui_b64, por, planilha_b64=None, nomes=None, clima=None, hoje=None):

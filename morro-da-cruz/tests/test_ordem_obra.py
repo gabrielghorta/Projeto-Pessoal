@@ -43,7 +43,7 @@ class TestNsDoDiaSemLiberacao(BaseDia):
     LIBERAR_TUDO = False
 
     def test_execucao_sobre_o_nao_liberado_nao_e_gravada(self):
-        st, r = self.enviar("enc3", pdf_dia([grupo(["NÓ9.1 - TÊ 160x160", "CH_VRP-15 (CAIXA DA VRP)"], [295.98], obs=["ASSENTAMENTO", None])]))
+        st, r = self.enviar("eng1", pdf_dia([grupo(["NÓ9.1 - TÊ 160x160", "CH_VRP-15 (CAIXA DA VRP)"], [295.98], obs=["ASSENTAMENTO", None])]))
         texto = str(r)
         self.assertIn("falta a liberação topográfica", texto)
         self.assertEqual(self.gravado(), [])                                   # nada de execução fora de ordem

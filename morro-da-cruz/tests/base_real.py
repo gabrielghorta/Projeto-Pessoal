@@ -33,7 +33,7 @@ PB08 = "Zona03_PB08_Rede_"
 TR020, TR007, TR006 = PB08 + "TR020", PB08 + "TR007", PB08 + "TR006"
 USUARIOS = (("eng1", "ENGENHARIA", None), ("eng2", "ENGENHARIA", None), ("adm", "ADMINISTRACAO", None),
             ("enc3", "EQUIPE", "Zona03"), ("enc1", "EQUIPE", "Zona01"), ("sup1", "SUPERVISOR", None),
-            ("almox1", "ALMOXARIFADO", None), ("topo1", "TOPOGRAFIA", None), ("cad1", "CADASTRO", None))
+            ("almox1", "ALMOXARIFADO", None), ("topo1", "TOPOGRAFIA", None), ("cad1", "CADASTRO", None), ("rh1", "RH", None))
 _MODELO = {}
 MES = "jan fev mar abr mai jun jul ago set out nov dez".split()
 

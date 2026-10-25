@@ -384,20 +384,21 @@ class TestPermissoes(BaseReal):
     def test_quem_ve_o_que(self):
         topo = self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns()))["id"]
         serv = self.ok(self.registrar("eng1", "SERVICO", pdf_ns(numero="020"), croqui_b64=b64(NSS.pdf_de_texto(["CROQUI"]))))["id"]
-        # encarregado: a NS de serviço (lista, PDF e croqui), nunca a de topografia
-        self.assertEqual([n["id"] for n in self.ok(self.cli("enc3").get("/api/ns"))], [serv])
-        self.assertEqual(self.abrir("enc3", f"/api/ns/arquivo?id={serv}&qual=pdf")[0], 200)
-        self.assertEqual(self.abrir("enc3", f"/api/ns/arquivo?id={serv}&qual=croqui")[0], 200)
-        self.assertEqual(self.abrir("enc3", f"/api/ns/arquivo?id={topo}&qual=pdf")[0], 403)
-        self.assertEqual(self.cli("enc3").get("/api/ns?tipo=TOPOGRAFIA")[0], 403)
-        self.assertEqual(self.cli("enc3").get(f"/api/ns/detalhe?id={topo}")[0], 403)
+        # as equipes e o almoxarifado não têm acesso às notas (D-134); o supervisor e o RH consultam as da obra
+        for login in ("enc3", "almox1"):
+            self.assertEqual(self.cli(login).get("/api/ns")[0], 403, login)
+            self.assertEqual(self.abrir(login, f"/api/ns/arquivo?id={serv}&qual=pdf")[0], 403, login)
+        for login in ("sup1", "rh1"):
+            self.assertEqual([n["id"] for n in self.ok(self.cli(login).get("/api/ns"))], [serv], login)
+            self.assertEqual(self.abrir(login, f"/api/ns/arquivo?id={serv}&qual=croqui")[0], 200, login)
+            self.assertEqual(self.abrir(login, f"/api/ns/arquivo?id={topo}&qual=pdf")[0], 403, login)
+            self.assertEqual(self.cli(login).get(f"/api/ns/detalhe?id={topo}")[0], 403, login)
         # topografia e cadastro: só consultam o tipo deles
         self.assertEqual([n["id"] for n in self.ok(self.cli("topo1").get("/api/ns?tipo=TOPOGRAFIA"))], [topo])
         self.assertEqual(self.cli("topo1").get("/api/ns?tipo=CADASTRO")[0], 403)
         self.assertEqual(self.abrir("topo1", f"/api/ns/arquivo?id={topo}&qual=pdf")[0], 200)
         self.assertEqual(self.ok(self.cli("cad1").get("/api/ns")), [])
         self.assertEqual(self.abrir("cad1", f"/api/ns/arquivo?id={topo}&qual=pdf")[0], 403)
-        self.assertEqual(self.cli("almox1").get("/api/ns")[0], 200)          # almoxarifado abre a tela do campo
         self.assertEqual({n["id"] for n in self.ok(self.cli("eng1").get("/api/ns"))}, {topo, serv})
 
     def test_corpo_grande_recusado_sem_ler(self):

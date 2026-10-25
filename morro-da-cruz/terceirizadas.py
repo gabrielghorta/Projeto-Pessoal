@@ -76,13 +76,14 @@ def topografia(conn, frente=None, hoje=None, dias=7, limite=60):
                                             "faltas": [], "falta_m": 0.0})
             x["faltas"].append({"etapa": etapa, "data": d, "faixas": falta})
             x["falta_m"] = round(x["falta_m"] + R.comprimento(falta), 2)
-    parciais, liberado_m, total = [], 0.0, 0
+    parciais, liberado_m, total, com_liberacao = [], 0.0, 0, 0
     for tid, lst in lib.items():
         t = tr.get(tid)
         if not t:
             continue
         cob = _unir(lst)
         liberado_m += R.comprimento(cob)
+        com_liberacao += 1
         lac = R.lacunas(cob, float(t["extensao_m"]))
         if R.comprimento(lac) > R.TOL_M:
             parciais.append({"trecho_id": tid, "ponto": t["ponto"], "frente_id": t["frente_id"], "extensao_m": t["extensao_m"],
@@ -94,12 +95,15 @@ def topografia(conn, frente=None, hoje=None, dias=7, limite=60):
            WHERE e.etapa='LIBERACAO_TOPOGRAFICA' ORDER BY e.data DESC, e.id DESC LIMIT ?""", (limite * 3,)))
                 if r["trecho_id"] in tr][:limite]
     exec_lista = sorted(executados.values(), key=lambda x: (-x["falta_m"], x["ponto"]))
+    rede_m = sum(float(t["extensao_m"]) for t in tr.values())         # o olhar macro: feito × falta na rede da frente
     return {"hoje": hoje, "ate": ate, "frente": frente,
             "programados_sem_liberacao": programados, "executado_sem_liberacao": exec_lista,
             "parciais": sorted(parciais, key=lambda x: (-x["falta_m"], x["ponto"])), "recentes": recentes,
             "totais": {"trechos_liberados": total, "trechos_parciais": len(parciais), "liberado_m": round(liberado_m, 2),
                        "programados_sem_liberacao": len(programados), "executado_sem_liberacao": len(exec_lista),
-                       "executado_sem_liberacao_m": round(sum(x["falta_m"] for x in exec_lista), 2)}}
+                       "executado_sem_liberacao_m": round(sum(x["falta_m"] for x in exec_lista), 2),
+                       "rede_m": round(rede_m, 2), "trechos": len(tr), "falta_liberar_m": round(max(rede_m - liberado_m, 0.0), 2),
+                       "trechos_sem_liberacao": len(tr) - com_liberacao}}
 
 
 def cadastro_campo(conn, frente=None, limite=60):
@@ -113,12 +117,13 @@ def cadastro_campo(conn, frente=None, limite=60):
     alerta = dict(conn.execute(f"""SELECT trecho_id, COUNT(*) FROM intervalos_execucao WHERE {S.EFETIVO}
                                    AND sem_cadastro_campo=1 GROUP BY trecho_id"""))
     legado = {r[0] for r in conn.execute(f"SELECT DISTINCT ap.alvo_id {S._SQL_LEGADO}")}
-    fila, completos = [], 0
+    fila, completos, assentado_m, levantado_m = [], 0, 0.0, 0.0
     for tid, e in ivs.items():
         t = tr.get(tid)
         if not t:
             continue
         ass, cad, rea = (_unir(e.get(k, [])) for k in ("ASSENTADO", "CADASTRO_CAMPO", "REATERRADO"))
+        assentado_m, levantado_m = assentado_m + R.comprimento(ass), levantado_m + R.comprimento(cad)
         if cad and R.comprimento(cad) >= float(t["extensao_m"]) - R.TOL_M:
             completos += 1
         falta = _faltas(ass, cad)
@@ -138,8 +143,12 @@ def cadastro_campo(conn, frente=None, limite=60):
            WHERE i.etapa='CADASTRO_CAMPO' ORDER BY i.data DESC, i.id DESC LIMIT ?""", (limite * 3,)))
                 if r["trecho_id"] in tr][:limite]
     fila.sort(key=lambda x: (-x["vala_aberta_m"], -x["reaterrado_sem_cadastro_m"], x["ponto"]))
+    rede_m = sum(float(t["extensao_m"]) for t in tr.values())         # o olhar macro: feito × falta na rede da frente
     return {"frente": frente, "fila": fila, "recentes": recentes,
             "totais": {"vala_aberta_m": round(sum(x["vala_aberta_m"] for x in fila), 2),
                        "reaterrado_sem_cadastro_m": round(sum(x["reaterrado_sem_cadastro_m"] for x in fila), 2),
                        "trechos_pendentes": sum(1 for x in fila if x["falta_m"] > 0),
-                       "alertas_reaterro": sum(alerta.get(t, 0) for t in tr), "trechos_completos": completos}}
+                       "alertas_reaterro": sum(alerta.get(t, 0) for t in tr), "trechos_completos": completos,
+                       "rede_m": round(rede_m, 2), "assentado_m": round(assentado_m, 2), "levantado_m": round(levantado_m, 2),
+                       "falta_levantar_m": round(sum(x["falta_m"] for x in fila), 2),
+                       "nao_assentado_m": round(max(rede_m - assentado_m, 0.0), 2)}}

@@ -1,11 +1,11 @@
 'use strict';
-/* Apropriação direta (tela Lançamento do dia, aba "Apropriação direta") e a base de custo na tela Medição.
+/* Apropriação direta (Lançamento do dia › Apropriação direta) e a base de custo na tela Medição.
  * O item é escolhido como no BM Vertical (grupo → material ou serviço → item) ou pela busca, que acha por qualquer
  * identificador; o cartão mostra a situação (aprovado ou a aprovar), o preço, o contratado e o saldo. Item que não está
  * no orçamento entra pelo cadastro rápido, com o aviso de item parecido. Correção só por estorno com motivo.
  * Na Medição: "medível com restrição" (o dinheiro parado e a ação que libera) e os itens a aprovar. */
 
-const APR = { aba: 'ns', listas: null, item: null, busca: 0, tBusca: null, rest: null };
+const APR = { listas: null, item: null, busca: 0, tBusca: null, rest: null };
 const APR_COR = { APROVADO: 'verde', A_APROVAR: 'vermelho', REPROVADO: 'cinza' };
 const APR_SIT = { PROPOSTA: ['verde', 'na medição'], PARCIAL: ['amarelo', 'em parte na medição'], PARADA: ['vermelho', 'parada'],
   ESTORNADA: ['cinza', 'estornada'] };
@@ -14,22 +14,12 @@ const aprEtiqueta = it => `<span class="chip ${APR_COR[it.situacao] || ''}">${es
 const aprPreco = it => it.preco == null ? '—' : reais(it.preco) + (it.preco_estimado ? ' <small>(estimado)</small>' : '');
 const aprNome = it => `${esc(it.item_bm || it.item)} · ${esc(it.resumida || it.descricao)}`;
 
-/* ---------------------------------------------------------------- as duas abas do Lançamento do dia */
-function aprMostrarAba(aba) {
-  APR.aba = aba === 'apropriacao' && pode('apropriacao') ? 'apropriacao' : 'ns';
-  $('#campoAbaApr').hidden = !pode('apropriacao');
-  $$('#campoAbas button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.campoAba === APR.aba)));
-  $('#campoNs').hidden = APR.aba !== 'ns';
-  $('#campoApr').hidden = APR.aba !== 'apropriacao';
-}
+/* ---------------------------------------------------------------- Lançamento do dia: as páginas do lançamento solto */
+// apropriação direta, apontamento sem NS, fotos e soldas, clima do dia (PAGINAS.campo em app.js); a NS do dia é em Notas de serviço
 function carregarLancamentoDia() {
-  aprMostrarAba(APR.aba);
-  return APR.aba === 'ns' ? carregarNotaDia() : carregarApropriacao();
+  if (PAGINA.campo === 'apropriacao') return carregarApropriacao();
+  if (PAGINA.campo === 'clima') return carregarClimaDia();
 }
-$('#campoAbas').addEventListener('click', ev => {
-  const b = ev.target.closest('[data-campo-aba]'); if (!b || b.hidden) return;
-  APR.aba = b.dataset.campoAba; carregarLancamentoDia();
-});
 
 /* ---------------------------------------------------------------- aba Apropriação direta */
 async function carregarApropriacao() {
