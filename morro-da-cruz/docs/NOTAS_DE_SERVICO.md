@@ -43,7 +43,10 @@ o croqui certo é enviado. Foto e PDF sem texto não são conferidos. O desenho 
   (exceção)**, só para quem tem a permissão do tipo.
 - **Resumo** (na topografia) e **O que foi feito** (no cadastro): a frente, os indicadores, as listas de sempre, as NS do
   tipo (ver o PDF, anular com motivo e, no cadastro, a parte recusada pela ordem com "Aplicar de novo") e o atalho
-  **Ver no Mapa iluminado** para a frente escolhida.
+  **Ver no Mapa iluminado** para a frente escolhida. No topo, o olhar macro da rede da frente (ou da obra inteira, ao
+  abrir): o feito e o que falta, em metros e em %, com uma barra (D-133). Na topografia: liberado × falta liberar e os
+  trechos sem nenhuma liberação. No cadastro: levantado × falta levantar no que já foi assentado e o que ainda não foi
+  assentado.
 
 Os perfis Topografia e Cadastro, que só consultam, abrem direto no resumo.
 
@@ -130,8 +133,9 @@ nota de serviço (`docs/MODULO_B_CAMPO.md`).
 
 1. A equipe vem fixa para o encarregado (supervisor, engenharia e administração escolhem a equipe).
 2. **Nota de serviço do dia (PDF)** e **Croqui (PDF ou foto)**, os dois obrigatórios. Foto do celular vale.
-3. Toque no **clima de manhã** e no **clima à tarde**. É o único toque da tela: a nota não traz o clima e o diário
-   precisa dele.
+3. Toque no **clima de manhã** e no **clima à tarde**. A nota não traz o clima, e o diário precisa dele. A NS do dia é
+   a fonte principal (D-131): o clima tocado aqui substitui o marcado antes em Lançamento do dia › Clima do dia. Se já
+   foi marcado lá, pode deixar sem tocar: fica o marcado. Sem clima nenhum, o envio é recusado.
 4. **Enviar a nota do dia**. A data é a da nota.
 
 Nada a digitar sobre o que foi feito: vem da nota. Mais de uma nota por equipe e dia é permitido (folhas ou frentes
@@ -249,7 +253,7 @@ As regras não mudaram (o que cada NS grava, a ordem obrigatória, a medição);
 
 | Tipo | Aba (Execução ›) | Página | Quem envia | Quem consulta |
 |---|---|---|---|---|
-| Do dia (execução) | Notas de serviço | NS do dia | o encarregado (só a equipe dele); supervisor, Engenharia e Administração escolhem a equipe | os mesmos; o Diário de obra |
+| Do dia (execução) | Notas de serviço | NS do dia | o encarregado (só a equipe dele); supervisor, Engenharia e Administração escolhem a equipe (permissão `ns_dia`; o almoxarifado não envia, D-132) | os mesmos; o Diário de obra |
 | Serviço de obra | Notas de serviço | Serviço de obra | Engenharia e Administração (`notas_servico`) | todos que abrem Notas de serviço, Lançamento do dia ou o Diário (lista "Notas de serviço da zona") |
 | Topografia | Topografia | Enviar NS de topografia | Engenharia e Administração (`notas_servico` + `topografia`) | o perfil Topografia, no Resumo |
 | Cadastro de campo | Cadastro de campo | Enviar NS de cadastro | Engenharia e Administração (`notas_servico` + `cadastro_campo`) | o perfil Cadastro, em O que foi feito |

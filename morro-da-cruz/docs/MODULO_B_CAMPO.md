@@ -157,7 +157,7 @@ páginas; cada perfil vê só as que pode usar:
 | Apropriação direta | o lançamento direto no item do orçamento (acima) | Engenharia e Administração (`apropriacao`) |
 | Apontamento sem NS | o antigo "Sem nota de serviço (exceção)": trecho, nó ou caixa, metros, motivo obrigatório | Engenharia e Administração (`lancar_sem_ns`) |
 | Fotos e soldas | o trecho ou nó pela busca com o nome completo ("Zona 03 · PB06 · TR014") ou pelo Mapa iluminado ("Lançar avanço" na ficha); as 3 fotos obrigatórias e as soldas | quem tem `campo` (encarregado, supervisor, almoxarifado, Engenharia, Administração) |
-| Clima do dia | a equipe e os dois toques (manhã e tarde), gravados na tabela `clima`, onde a NS do dia grava; para o diário dos dias sem NS | quem tem `campo`; o encarregado, só a equipe dele |
+| Clima do dia | a equipe e os dois toques (manhã e tarde), gravados na tabela `clima`, onde a NS do dia grava. A NS do dia é a fonte principal (D-131): o clima tocado no envio dela substitui o daqui; sem toque, vale o daqui. Depois que a NS do dia chega, o Clima do dia só preenche o turno vazio, e mudar é correção da engenharia | quem tem `campo`; o encarregado, só a equipe dele |
 
 **Saiu daqui:** a NS do dia (o formulário, "Notas do dia enviadas" e "Notas de serviço da zona"), que foi para
 **Notas de serviço › NS do dia** (`docs/NOTAS_DE_SERVICO.md`, seção 6).

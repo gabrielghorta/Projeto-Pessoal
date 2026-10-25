@@ -44,7 +44,7 @@ O que acende no mapa aparece no **Mapa iluminado**, no botão **Situação**. Em
 
 > A NS do dia saiu do Lançamento do dia (23/10/2026). O Lançamento do dia ficou com o que não depende de nota: apropriação direta, apontamento sem NS, fotos e soldas e clima do dia.
 
-1. Escolha a equipe e toque no clima da manhã e da tarde.
+1. Escolha a equipe e toque no clima da manhã e da tarde. Se o clima já foi marcado em Lançamento do dia › Clima do dia, pode deixar sem tocar; se tocar, vale o da NS.
 2. Escolha a NS do dia e o croqui. Pode ser mais de uma; cada croqui casa com a sua nota.
 3. Toque em **Enviar a nota do dia**.
 
