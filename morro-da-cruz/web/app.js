@@ -169,7 +169,7 @@ const TELAS_ANTIGAS = {
 const PAGINAS = {
   campo: [['apropriacao', 'Apropriação direta', () => pode('apropriacao')], ['apontamento', 'Apontamento sem NS', () => pode('lancar_sem_ns')],
     ['fotos', 'Fotos e soldas', () => pode('campo')], ['clima', 'Clima do dia', () => pode('campo')]],
-  notas: [['dia', 'NS do dia', () => pode('ns_dia')], ['servico', 'Serviço de obra', () => pode('notas_servico')]],
+  notas: [['dia', 'NS do dia', () => true], ['servico', 'Serviço de obra', () => pode('notas_servico')]],      // a NS do dia: quem não envia, consulta
   topografia: [['enviar', 'Enviar NS de topografia', () => podeNs('TOPOGRAFIA')], ['resumo', 'Resumo', () => true]],
   cadastro_campo: [['enviar', 'Enviar NS de cadastro', () => podeNs('CADASTRO')], ['feito', 'O que foi feito', () => true]],
 };
@@ -1401,9 +1401,10 @@ async function carregarDiario() {
   const d = await acao(() => api('/api/diario?' + q)).catch(() => null); if (!d) return;
   const t = d.totais, fila = d.ns_dia.reduce((x, n) => x + n.fila.length, 0);
   $('#diaAlertas').innerHTML = d.alertas.map(a => `<div class="aviso problema">${esc(a)}</div>`).join('');
-  $('#diaKpis').innerHTML = [['Notas do dia', nf(d.ns_dia.length, 0)], ['Aguardando a engenharia', nf(fila, 0)], ['Assentado', nf(t.assentado_m) + ' m'],
-    ['Cadastro de campo', nf(t.cadastro_m) + ' m'], ['Reaterrado', nf(t.reaterrado_m) + ' m'],
+  $('#diaKpis').innerHTML = [...(d.ns_visivel ? [['Notas do dia', nf(d.ns_dia.length, 0)], ['Aguardando a engenharia', nf(fila, 0)]] : []),
+    ['Assentado', nf(t.assentado_m) + ' m'], ['Cadastro de campo', nf(t.cadastro_m) + ' m'], ['Reaterrado', nf(t.reaterrado_m) + ' m'],
     ['Soldas', nf(t.soldas, 0)], ['Fotos', nf(t.fotos, 0)], ['Ocorrências', nf(t.ocorrencias, 0)]].map(([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join('');
+  $('#painelDiaNs').hidden = !d.ns_visivel;            // a NS do dia e o croqui: só quem tem acesso às notas (D-134)
   renderDiarioNs(d.ns_dia);
   $('#diaProgExec').innerHTML = d.programado_executado.length ? tabelaHtml('<th>Equipe</th><th>Trecho / nó</th><th>Programado</th><th>Executado</th><th></th>',
     d.programado_executado.map(x => `<tr><td>${esc(x.equipe_id)}</td><td>${esc(curto(x.nome))}</td><td>${esc(x.servicos.join(', ') || '—')}</td>
@@ -1811,7 +1812,7 @@ function aplicarPermissoes() {
   $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO;
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
-  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Execução; o almoxarife, também o Planejamento
+  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Execução (sem as notas de serviço); o almoxarife, também o Planejamento
   $$('.rail-item[data-tela]').forEach(b => { b.hidden = !podeTela(b.dataset.tela); });
   $$('button.rail-grupo').forEach(b => { b.hidden = $(`.rail-sub[data-grupo="${b.dataset.grupo}"]`).hidden = !telasDoGrupo(b.dataset.grupo).length; });
   $$('.rail-itens .rail-div').forEach(d => {                    // divisória sem nada visível depois dela some

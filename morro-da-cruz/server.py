@@ -414,9 +414,14 @@ def r_ocorrencias(q, c):
 
 # ------------------------------------------------------------------ campo: diário do dia e interferências
 def r_diario(q, c, usuario):
-    """O encarregado (perfil restrito à equipe) vê só o diário da própria equipe."""
+    """O encarregado (perfil restrito à equipe) vê só o diário da própria equipe. A NS do dia e o croqui, só quem tem
+    acesso às notas de serviço (D-134); os outros veem o resto do diário."""
     equipe = usuario["equipe_id"] if usuario["restrito_a_equipe"] else q.get("equipe")
-    return DI.diario(c, q.get("data") or relogio.hoje().isoformat(), equipe)
+    d = DI.diario(c, q.get("data") or relogio.hoje().isoformat(), equipe)
+    d["ns_visivel"] = "notas" in usuario["telas"]
+    if not d["ns_visivel"]:
+        d["ns_dia"] = []
+    return d
 
 
 def r_lev_cronograma(q, c):
@@ -503,9 +508,9 @@ ROTAS_PLANEJAMENTO = {"/api/dados-obra/programar": ("planejar", p_dados_obra_pro
 
 # ------------------------------------------------------------------ nota de serviço por upload (v18)
 # Quem abre a tela vê as NS daquele tipo; o encarregado vê as de serviço e as do dia da equipe dele.
-# a aba Notas de serviço é das NS do campo da obra (a do dia e a de serviço); topografia e cadastro têm a aba deles
-TIPOS_DA_TELA = {"notas": {"SERVICO", "EXECUCAO"}, "topografia": {"TOPOGRAFIA"}, "cadastro_campo": {"CADASTRO"},
-                 "campo": {"SERVICO", "EXECUCAO"}, "diario": {"SERVICO", "EXECUCAO"}}
+# a aba Notas de serviço é das NS do campo da obra (a do dia e a de serviço); topografia e cadastro têm a aba deles.
+# As NS só para quem abre essas abas (D-134): Administração, Engenharia, RH e Supervisor; as equipes e o almoxarifado, não
+TIPOS_DA_TELA = {"notas": {"SERVICO", "EXECUCAO"}, "topografia": {"TOPOGRAFIA"}, "cadastro_campo": {"CADASTRO"}}
 
 
 def _tipos_visiveis(usuario):
@@ -522,7 +527,7 @@ def _exigir_ns(usuario, ns_ou_tipo):
     """Registrar, aplicar e anular exigem também a permissão do tipo (topografia, cadastro de campo)."""
     tipo = ns_ou_tipo if isinstance(ns_ou_tipo, str) else ns_ou_tipo["tipo"]
     if tipo == "EXECUCAO":
-        raise A.AcessoNegado("A NS do dia é enviada e anulada pela tela Nota do dia.", 403)
+        raise A.AcessoNegado("A NS do dia é enviada e anulada em Notas de serviço › NS do dia.", 403)
     if NS.PERMISSAO_TIPO.get(tipo):
         A.exigir(usuario, NS.PERMISSAO_TIPO[tipo])
 
@@ -571,7 +576,7 @@ def p_ns_anular(b, c, usuario):
 
 ROTAS_NS = {"/api/ns/ler": p_ns_ler, "/api/ns": p_ns, "/api/ns/anexo": p_ns_anexo, "/api/ns/aplicar": p_ns_aplicar,
             "/api/ns/anular": p_ns_anular}
-TELAS_NS = ("notas", "campo", "diario", "topografia", "cadastro_campo")
+TELAS_NS = ("notas", "topografia", "cadastro_campo")
 
 
 # NS do dia: a equipe (o encarregado só a dele) ou, em nome dela, supervisor, engenharia e administração
@@ -906,7 +911,7 @@ TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX 
             "/api/cadastro-campo": ("cadastro_campo",), "/api/topologia": ("mapa", "iluminado"),
             "/api/dados-obra/selecao": ("mapa",), "/api/dados-obra/estado": ("mapa",), "/api/cronograma": ("cronograma", "mapa"),
             "/api/almox/quarentena": ("almox", "compras"), "/api/almox/notas": ("almox", "compras"),
-            "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS, "/api/ns/fora-de-ordem": ("notas",), "/api/ns/dia": ("campo", "diario", "notas"),
+            "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS, "/api/ns/fora-de-ordem": ("notas",), "/api/ns/dia": ("notas",),
             "/api/base-custo/busca": TELAS_BASE_CUSTO, "/api/base-custo/itens": TELAS_BASE_CUSTO,
             "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}

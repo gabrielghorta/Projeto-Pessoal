@@ -1,6 +1,6 @@
 """Execução reorganizada (23/10/2026): cada nota de serviço na sua aba. A NS do dia e a de serviço de obra em Notas de
-serviço (o encarregado e o supervisor passam a ver a aba, para a NS do dia); a de topografia e a de cadastro nas abas
-Topografia e Cadastro de campo, com a página de envio e a do resumo. Pelo HTTP, sobre a base real, com NS sintéticas.
+serviço; a de topografia e a de cadastro nas abas Topografia e Cadastro de campo, com a página de envio e a do resumo.
+Quem envia é a engenharia; as equipes não têm acesso às notas (D-134). Pelo HTTP, sobre a base real, com NS sintéticas.
 As rotas e as regras de gravação não mudam: só onde cada coisa fica na tela. A página que cada perfil abre roda o
 código da tela no Node, se houver."""
 import json
@@ -52,28 +52,22 @@ console.log(JSON.stringify(r));
 
 
 class TestNotasDaObra(BaseDia):
-    def test_encarregado_envia_a_ns_do_dia_pela_aba_notas_so_da_propria_equipe(self):
+    """D-134 (25/10/2026): a nota de serviço, inclusive a do dia, é enviada pela engenharia; as equipes não têm acesso
+    às notas; a administração, a engenharia, o RH e o supervisor, sim (o RH e o supervisor só consultam)."""
+
+    def test_o_encarregado_nao_ve_as_notas_e_fica_com_o_lancamento_do_dia(self):
         enc = self.cli("enc3")
         sessao = self.ok(enc.get("/api/sessao"))["usuario"]
-        self.assertIn("notas", sessao["telas"])
-        self.assertEqual(sessao["permissoes"], ["campo", "ns_dia"])
-        # a página que ele usa na aba: só a NS do dia (o serviço de obra é da engenharia); no Lançamento, fotos e clima
-        p = paginas_abertas(sessao["permissoes"])
-        self.assertEqual((p["notas"]["usa"], p["notas"]["abre"]), (["dia"], "dia"))
-        self.assertEqual((p["campo"]["usa"], p["campo"]["abre"]), (["fotos", "clima"], "fotos"))
-        # envia a NS do dia da equipe dele; a de outra equipe é recusada, e a outra equipe não vê a dele
+        self.assertNotIn("notas", sessao["telas"])
+        self.assertEqual(sessao["permissoes"], ["campo"])
+        self.assertEqual(paginas_abertas(sessao["permissoes"])["campo"]["usa"], ["fotos", "clima"])   # o Lançamento do dia
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
-        self.recusa(self.enviar("enc3", pdf_dia(g), equipe="Zona04"), 403, "Zona03")
-        r = self.ok(self.enviar("enc3", pdf_dia(g)))
-        self.assertEqual(r["equipe_id"], "Zona03")
-        self.assertEqual(self.gravado(), [("TR006", 0.0, 293.47), ("TR007", 0.0, 2.51)])     # grava igual a antes
-        self.assertEqual([n["id"] for n in self.ok(enc.get("/api/ns?tipo=EXECUCAO"))], [r["id"]])
-        self.assertEqual(self.ok(self.cli("enc1").get("/api/ns?tipo=EXECUCAO")), [])
-        self.assertEqual(self.abrir("enc1", f"/api/ns/arquivo?id={r['id']}&qual=pdf")[0], 403)
-        # a aba Notas de serviço não abre as de topografia e de cadastro, nem o legado fora de ordem (da engenharia)
-        for rota in ("/api/ns?tipo=TOPOGRAFIA", "/api/ns?tipo=CADASTRO", "/api/ns/fora-de-ordem"):
+        self.assertEqual(self.enviar("enc3", pdf_dia(g))[0], 403)
+        r = self.ok(self.enviar("eng1", pdf_dia(g)))                                         # a engenharia envia pela equipe
+        self.assertEqual((r["equipe_id"], self.gravado()), ("Zona03", [("TR006", 0.0, 293.47), ("TR007", 0.0, 2.51)]))
+        for rota in ("/api/ns?tipo=EXECUCAO", "/api/ns?tipo=SERVICO", "/api/ns/dia", "/api/ns/fora-de-ordem"):
             self.assertEqual(enc.get(rota)[0], 403, rota)
-        self.assertEqual(enc.post("/api/ns", {"tipo": "SERVICO", "pdf_b64": b64(pdf_dia(g, numero="099"))})[0], 403)
+        self.assertEqual(self.abrir("enc3", f"/api/ns/arquivo?id={r['id']}&qual=croqui")[0], 403)
         # Lançamento do dia › Clima do dia: grava onde a NS do dia grava, só para a equipe dele
         dia = "2026-10-20"
         self.assertEqual(enc.post("/api/clima", {"data": dia, "equipe_id": "Zona04", "MANHA": "SOL", "TARDE": "SOL"})[0], 403)
@@ -81,21 +75,26 @@ class TestNotasDaObra(BaseDia):
         self.assertEqual([tuple(x) for x in self.c.execute("SELECT turno, condicao FROM clima WHERE equipe_id='Zona03' AND data=? ORDER BY turno", (dia,))],
                          [("MANHA", "SOL"), ("TARDE", "CHUVA_FRACA_TENDA")])
 
-    def test_supervisor_escolhe_a_equipe_e_a_engenharia_ve_as_duas_paginas(self):
-        sup = self.ok(self.cli("sup1").get("/api/sessao"))["usuario"]
-        self.assertIn("notas", sup["telas"])
-        self.assertEqual(paginas_abertas(sup["permissoes"])["notas"]["usa"], ["dia"])
-        g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98])]
-        self.assertEqual(self.ok(self.enviar("sup1", pdf_dia(g), equipe="Zona04"))["equipe_id"], "Zona04")
+    def test_supervisor_e_rh_consultam_e_a_engenharia_envia(self):
+        g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
+        r = self.ok(self.enviar("eng1", pdf_dia(g), equipe="Zona04"))
+        self.assertEqual(r["equipe_id"], "Zona04")
+        for login, telas in (("sup1", ["campo", "diario", "iluminado", "interferencias", "notas"]), ("rh1", ["iluminado", "notas"])):
+            u = self.ok(self.cli(login).get("/api/sessao"))["usuario"]
+            self.assertEqual(u["telas"], telas, login)
+            self.assertNotIn("ns_dia", u["permissoes"])
+            self.assertEqual(paginas_abertas(u["permissoes"])["notas"]["usa"], ["dia"], login)          # a NS do dia, para consultar
+            self.assertEqual([n["id"] for n in self.ok(self.cli(login).get("/api/ns/dia?equipe=Zona04"))], [r["id"]], login)
+            self.assertEqual(self.enviar(login, pdf_dia(g, numero="016"))[0], 403, login)
+            self.assertEqual(self.cli(login).get("/api/ns/fora-de-ordem")[0], 403, login)                 # o legado: a engenharia
         eng = self.ok(self.cli("eng1").get("/api/sessao"))["usuario"]
         p = paginas_abertas(eng["permissoes"])
         self.assertEqual(p["notas"]["usa"], ["dia", "servico"])
         self.assertEqual(p["campo"]["usa"], ["apropriacao", "apontamento", "fotos", "clima"])
         self.assertEqual(self.ok(self.cli("eng1").get("/api/ns/fora-de-ordem")), [])
 
-    def test_almoxarifado_nao_envia_a_ns_do_dia(self):
-        """D-132: quem envia nota de serviço é a engenharia; a NS do dia, a equipe (o encarregado) e o supervisor. O
-        almoxarife tem `campo` (fotos e soldas), mas não a permissão da NS do dia: nem a aba nem a rota."""
+    def test_almoxarifado_nao_envia_nem_ve_as_notas(self):
+        """D-132 e D-134: o almoxarife tem `campo` (fotos, soldas e clima), mas não a NS do dia nem acesso às notas."""
         alm = self.cli("almox1")
         sessao = self.ok(alm.get("/api/sessao"))["usuario"]
         self.assertNotIn("notas", sessao["telas"])
@@ -103,8 +102,11 @@ class TestNotasDaObra(BaseDia):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
         self.recusa(self.enviar("almox1", pdf_dia(g), equipe="Zona03"), 403, "Enviar e anular a NS do dia")
         self.assertEqual(self.n("notas_servico"), 0)
-        r = self.ok(self.enviar("enc3", pdf_dia(g)))
+        r = self.ok(self.enviar("eng1", pdf_dia(g)))
         self.assertEqual(alm.post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "x"})[0], 403)
+        self.assertEqual(alm.get("/api/ns/dia")[0], 403)
+        d = self.ok(alm.get(f"/api/diario?data={ONTEM.isoformat()}"))
+        self.assertEqual((d["ns_visivel"], d["ns_dia"]), (False, []))                      # o diário, sem as notas
 
 
 class TestClimaDoDia(BaseDia):
@@ -120,17 +122,17 @@ class TestClimaDoDia(BaseDia):
 
     def test_sem_toque_vale_o_marcado_e_com_toque_vale_a_ns(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
-        self.recusa(self.enviar("enc3", pdf_dia(g), clima=None), 422, "Informe o clima da manhã e da tarde")   # nada marcado
-        self.ok(self.marcar("enc3", "SOL", "CHUVA_FRACA_TENDA"))
-        r = self.ok(self.enviar("enc3", pdf_dia(g), clima=None))                       # sem toque: fica o marcado
+        self.recusa(self.enviar("eng1", pdf_dia(g), clima=None), 422, "Informe o clima da manhã e da tarde")   # nada marcado
+        self.ok(self.marcar("enc3", "SOL", "CHUVA_FRACA_TENDA"))                       # o encarregado marca o clima do dia
+        r = self.ok(self.enviar("eng1", pdf_dia(g), clima=None))                       # sem toque: fica o marcado
         self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "CHUVA_FRACA_TENDA")])
-        self.ok(self.cli("enc3").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "teste do clima"}))
-        self.ok(self.enviar("enc3", pdf_dia(g, numero="016"), clima={"MANHA": "SOL", "TARDE": "SOL"}))
+        self.ok(self.cli("eng1").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "teste do clima"}))
+        self.ok(self.enviar("eng1", pdf_dia(g, numero="016"), clima={"MANHA": "SOL", "TARDE": "SOL"}))
         self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "SOL")])           # tocado no envio: vale o da NS
 
     def test_depois_da_ns_o_clima_do_dia_nao_muda_o_dela(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
-        self.ok(self.enviar("enc3", pdf_dia(g), clima={"MANHA": "SOL", "TARDE": "PARALISADO_CHUVA"}))
+        self.ok(self.enviar("eng1", pdf_dia(g), clima={"MANHA": "SOL", "TARDE": "PARALISADO_CHUVA"}))
         self.recusa(self.marcar("enc3", "SOL", "SOL"), 422, "veio com a NS do dia 015, que é a fonte principal")
         self.recusa(self.marcar("sup1", "SOL", "SOL"), 422, "só a engenharia corrige")
         self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "PARALISADO_CHUVA")])

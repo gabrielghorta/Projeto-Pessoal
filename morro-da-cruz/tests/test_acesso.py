@@ -177,7 +177,7 @@ class TestPermissoesEAutoria(BaseHTTP):
 
     def test_cada_perfil_consulta_so_as_proprias_telas(self):
         enc, almox, eng, adm = (self.cliente(x) for x in ("enc1", "almox1", "eng1", "adm"))
-        self.assertEqual(enc.get("/api/sessao")[1]["usuario"]["telas"], ["campo", "diario", "iluminado", "interferencias", "notas"])   # notas: a NS do dia
+        self.assertEqual(enc.get("/api/sessao")[1]["usuario"]["telas"], ["campo", "diario", "iluminado", "interferencias"])   # sem as notas (D-134)
         for rota in ("/api/resumo", "/api/mapa/estado", "/api/buscar?q=TR001"):             # comuns: mapa e busca
             self.assertEqual((enc.get(rota)[0], almox.get(rota)[0]), (200, 200), rota)
         for rota in ("/api/estoque", "/api/movimentos", "/api/compras", "/api/medicoes", "/api/relatorios", "/api/planilhas"):

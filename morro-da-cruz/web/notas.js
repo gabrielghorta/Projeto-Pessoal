@@ -469,13 +469,14 @@ function htmlNdNota(n) {
       ${podeAnularDia(n) ? `<button type="button" class="btn" data-nd-anular="${n.id}">Anular este envio</button>` : ''}</div></div>`;
 }
 
-/* ---------------------------------------------------------------- NS do dia (Notas de serviço › NS do dia: o encarregado envia, sem digitar o que fez) */
+/* ---------------------------------------------------------------- NS do dia (Notas de serviço › NS do dia: a engenharia envia pela equipe, sem digitar o que foi feito) */
 const ND = { clima: {} };
 const zonaDaEquipe = eq => /^(Zona\d\d|ADUTORA)$/.test(eq || '') ? eq : '';
 async function carregarNotaDia() {
-  const sel = $('#ndEquipe');
-  if (sel.options.length < 2) sel.innerHTML = '<option value="">Escolha a equipe</option>' + RESUMO.equipes.map(e => `<option value="${esc(e.id)}">${esc(e.nome)}</option>`).join('');
-  if (USUARIO.restrito_a_equipe) { sel.value = USUARIO.equipe_id; sel.disabled = true; }        // o encarregado envia só a dele
+  const sel = $('#ndEquipe'), ver = $('#ndVerEquipe'), eqs = RESUMO.equipes.map(e => `<option value="${esc(e.id)}">${esc(e.nome)}</option>`).join('');
+  if (sel.options.length < 2) sel.innerHTML = '<option value="">Escolha a equipe</option>' + eqs;
+  if (ver.options.length < 2) ver.innerHTML = '<option value="">Todas as equipes</option>' + eqs;
+  $('#ndEnvio').hidden = !pode('ns_dia'); $('#ndSoConsulta').hidden = pode('ns_dia');    // a engenharia envia; os outros consultam (D-134)
   chipsClima($('#fNd'));
   await ndListas();
 }
@@ -490,9 +491,9 @@ function tocarClima(ev, guardar) {
   guardar[box.dataset.turno] = b.dataset.clima;
   $$('button', box).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
 }
-// as notas do dia enviadas: a equipe escolhida (a do encarregado, para ele) e o dia; sem dia, os últimos 7
+// as notas do dia enviadas: a equipe e o dia escolhidos na lista; sem dia, os últimos 7
 async function ndListas() {
-  const eq = $('#ndEquipe').value, dia = $('#ndDia').value, z = zonaDaEquipe(eq);
+  const eq = $('#ndVerEquipe').value, dia = $('#ndDia').value, z = zonaDaEquipe(eq);
   const q = new URLSearchParams(dia ? { data: dia } : { desde: somarDia(hoje(), -7) });
   if (eq) q.set('equipe', eq);
   const [env, serv] = await Promise.all([api('/api/ns/dia?' + q).catch(() => null), api('/api/ns?tipo=SERVICO' + (z ? '&zona=' + z : '')).catch(() => null)]);
@@ -502,7 +503,8 @@ async function ndListas() {
       <div class="acoes" style="margin-top:6px">${linkNs(n.id, 'pdf', 'Abrir a nota')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Abrir o croqui') : ''}</div></div>`).join('')
     || '<p class="vazio">Nenhuma nota de serviço da zona.</p>';
 }
-$('#ndEquipe').addEventListener('change', ndListas);
+$('#ndEquipe').addEventListener('change', () => { $('#ndVerEquipe').value = $('#ndEquipe').value; ndListas(); });   // enviando, a lista é a da equipe
+$('#ndVerEquipe').addEventListener('change', ndListas);
 $('#ndDia').addEventListener('change', ndListas);
 $('#fNd').addEventListener('click', ev => tocarClima(ev, ND.clima));
 // a NS do dia usa a mesma fila do envio em lote: cada nota é registrada ao enviar, e o resultado fica no cartão dela

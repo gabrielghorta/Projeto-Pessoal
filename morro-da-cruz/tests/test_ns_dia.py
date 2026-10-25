@@ -59,7 +59,7 @@ class BaseDia(BaseReal):
 
 class TestLancamento(BaseDia):
     def test_segmento_inteiro_lancado_sozinho_nas_duas_linhas(self):
-        r = self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1 - TÊ 160x160", "CH_VRP-15 (CAIXA DA VRP)"], [295.98],
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1 - TÊ 160x160", "CH_VRP-15 (CAIXA DA VRP)"], [295.98],
                                                        obs=["ASSENTAMENTO", None])])))
         self.assertEqual((r["tipo"], r["equipe_id"], r["data"], r["fila"], r["arquivo_trocado"]), ("EXECUCAO", "Zona03", ONTEM.isoformat(), [], False))
         s = r["segmentos"][0]
@@ -67,14 +67,14 @@ class TestLancamento(BaseDia):
         self.assertEqual(self.gravado(), [("TR006", 0.0, 293.47), ("TR007", 0.0, 2.51)])
         lin = self.c.execute("""SELECT i.informado_por, i.ns_segmento_id, i.origem, i.referencia, i.equipe_id, a.estaca_ini, a.estaca_fim,
                                        a.informado_por FROM intervalos_execucao i JOIN apontamentos a ON a.id=i.apontamento_id""").fetchall()
-        self.assertEqual({tuple(x) for x in lin}, {("enc3", s["id"], "INFORMADO", "NS 015 fl. 01/01", "Zona03", "NS 015 · 0+0,00",
-                                                     "14+15,98", "enc3")})
+        self.assertEqual({tuple(x) for x in lin}, {("eng1", s["id"], "INFORMADO", "NS 015 fl. 01/01", "Zona03", "NS 015 · 0+0,00",
+                                                     "14+15,98", "eng1")})
         self.assertEqual(self.n("clima", "equipe_id='Zona03' AND data=?", ONTEM.isoformat()), 2)    # o único toque da tela
         doc = self.c.execute("SELECT tipo FROM documentos WHERE id=?", (r["croqui_id"],)).fetchone()[0]
         self.assertEqual(doc, "NS_CROQUI")
 
     def test_distancia_menor_e_execucao_parcial(self):
-        r = self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [122.01], obs=["ASSENTAMENTO", None])])))
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [122.01], obs=["ASSENTAMENTO", None])])))
         s = r["segmentos"][0]
         self.assertEqual((s["situacao"], s["ini_fisico_m"], s["fim_fisico_m"], r["fila"]), ("AUTOMATICO", 0.0, 122.01, []))
         self.assertIn("execução parcial: 122,01 de 295,98 m, a partir do NÓ9.1", s["motivo"])
@@ -82,25 +82,25 @@ class TestLancamento(BaseDia):
 
     def test_parada_pela_programacao_do_dia_e_sem_ela_a_engenharia_confere(self):
         parada = [grupo(["NÓ9.1 - TÊ 160x160", ""], [122.01], obs=["ASSENTAMENTO", "PARADA"])]
-        r = self.ok(self.enviar("enc3", pdf_dia(parada, numero="020", data=ANTEONTEM)))            # sem programação: fila
+        r = self.ok(self.enviar("eng1", pdf_dia(parada, numero="020", data=ANTEONTEM)))            # sem programação: fila
         s = r["segmentos"][0]
         self.assertEqual((s["situacao"], r["fila"], self.gravado()), ("CONFIRMAR", [1], []))
         self.assertEqual(sorted(c["fisico_id"] for c in s["candidatos"]), ["TF-00337", "TF-00351"])
-        ver = self.ok(self.cli("enc3").get(f"/api/ns/dia?data={ANTEONTEM.isoformat()}"))
+        ver = self.ok(self.cli("sup1").get(f"/api/ns/dia?data={ANTEONTEM.isoformat()}"))
         self.assertEqual([x["fila"] for x in ver], [[1]])                                          # "aguardando a engenharia"
         k = next(i for i, c in enumerate(s["candidatos"]) if c["fisico_id"] == "TF-00337")
-        self.assertEqual(self.cli("enc3").post("/api/ns/dia/conferir", {"ns_id": r["id"], "decisoes": []})[0], 403)
+        self.assertEqual(self.cli("sup1").post("/api/ns/dia/conferir", {"ns_id": r["id"], "decisoes": []})[0], 403)
         r = self.ok(self.cli("eng1").post("/api/ns/dia/conferir", {"ns_id": r["id"], "decisoes": [{"ordem": 1, "acao": "ACEITAR",
                                                                                                     "candidato": k}]}))
         self.assertEqual((r["segmentos"][0]["situacao"], r["segmentos"][0]["origem_sentido"], r["fila"]), ("CONFIRMADO", "ENGENHARIA", []))
         self.assertEqual(self.gravado(), [("TR006", 0.0, 119.5), ("TR007", 0.0, 2.51)])
-        self.assertEqual(self.c.execute("SELECT DISTINCT informado_por FROM intervalos_execucao").fetchall()[0][0], "enc3")
+        self.assertEqual(self.c.execute("SELECT DISTINCT informado_por FROM intervalos_execucao").fetchall()[0][0], "eng1")
         self.ok(self.cli("eng1").post("/api/ns/dia/conferir", {"ns_id": r["id"]}))                 # repetir não duplica
         self.assertEqual(len(self.gravado()), 2)
 
     def test_parada_com_programacao(self):
         self.programar([TR006], ONTEM)
-        r = self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1 - TÊ 160x160", ""], [122.01], obs=["ASSENTAMENTO", "ATÉ AQUI"])])))
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1 - TÊ 160x160", ""], [122.01], obs=["ASSENTAMENTO", "ATÉ AQUI"])])))
         s = r["segmentos"][0]
         self.assertEqual((s["situacao"], s["origem_sentido"], r["fila"]), ("AUTOMATICO", "PROGRAMACAO", []))
         self.assertIn("sentido da programação do dia da equipe", s["avisos"])
@@ -108,27 +108,27 @@ class TestLancamento(BaseDia):
 
     def test_continuacao_do_dia_anterior_e_trecho_ja_lancado(self):
         titulo = "REDE ZONA 03 - PB08 - PEAD DE 160 (NÓ9.1 - VRP-15)"            # o título diz para onde a rede vai
-        self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1", ""], [122.01], obs=["ASSENTAMENTO", "PARADA"], titulo=titulo)],
+        self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1", ""], [122.01], obs=["ASSENTAMENTO", "PARADA"], titulo=titulo)],
                                             numero="030", data=ANTEONTEM)))
         self.assertEqual(self.gravado(), [("TR006", 0.0, 119.5), ("TR007", 0.0, 2.51)])
         # continuação: a 1ª linha é a estaca onde parou (sem elemento); as posições contam a partir do VRP-15
-        r = self.ok(self.enviar("enc3", pdf_dia([grupo(["", "CH_VRP-15"], [173.97], obs=["ASSENTAMENTO", None], titulo=titulo,
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["", "CH_VRP-15"], [173.97], obs=["ASSENTAMENTO", None], titulo=titulo,
                                                        inicio=122.01)], numero="031")))
         s = r["segmentos"][0]
         self.assertEqual((s["situacao"], s["ini_fisico_m"], s["fim_fisico_m"], r["fila"]), ("AUTOMATICO", 122.01, 295.98, []))
         self.assertEqual(self.gravado(), [("TR006", 0.0, 119.5), ("TR006", 119.5, 293.47), ("TR007", 0.0, 2.51)])
         # o trecho inteiro de novo: nada é lançado duas vezes, e a resposta diz quanto já estava
-        r = self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])], numero="032")))
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])], numero="032")))
         s = r["segmentos"][0]
         self.assertEqual((s["situacao"], s["agora"]["ja"], r["fila"]), ("AUTOMATICO", {"ASSENTADO": 295.98}, []))
         self.assertEqual(len(self.gravado()), 3)
 
     def test_reaterro_so_sobre_o_assentado_e_escavacao_complementar(self):
-        self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [122.01], obs=["ESCAVAÇÃO E ASSENTAMENTO", None])],
+        self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [122.01], obs=["ESCAVAÇÃO E ASSENTAMENTO", None])],
                                             numero="040", data=ANTEONTEM)))
         self.assertEqual(self.gravado("ESCAVADO"), [("TR006", 0.0, 119.5), ("TR007", 0.0, 2.51)])
         self.assertEqual(self.n("etapas_complementares", "ns_segmento_id IS NOT NULL AND etapa='ESCAVADO'"), 2)
-        r = self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["REATERRO", None])], numero="041")))
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["REATERRO", None])], numero="041")))
         self.assertEqual(self.gravado("REATERRADO"), [("TR006", 0.0, 119.5), ("TR007", 0.0, 2.51)])
         s = r["segmentos"][0]
         self.assertIn("reaterro sem assentamento", s["pendente"])
@@ -157,7 +157,7 @@ class TestLancamento(BaseDia):
         self.assertTrue(any("VTF-22 é conexão no meio do TR019" in a for a in r["segmentos"][0]["avisos"]))
 
     def test_par_de_nos_repetido_vai_para_a_fila_e_a_engenharia_confere(self):
-        r = self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ56.1", "NÓ8.1"], [32.4], titulo="REDE ZONA 03")], numero="070",
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ56.1", "NÓ8.1"], [32.4], titulo="REDE ZONA 03")], numero="070",
                                                 titulo='"REDE DE ÁGUA" - ZONA 03 - NOTA DO DIA')))
         self.assertEqual((r["segmentos"][0]["situacao"], r["fila"], self.gravado()), ("CONFIRMAR", [1], []))
         fila = self.ok(self.cli("eng1").get("/api/ns/dia?fila=1"))
@@ -179,7 +179,7 @@ class TestRevisao(BaseDia):
     def test_parada_nao_volta_sobre_o_trecho_anterior(self):
         self.programar(["Zona03_PB08_Rede_TR020"], ONTEM)                  # a programação só tem o trecho de antes
         g = grupo(["NÓ6.1 - TÊ 160x110", "NÓ9.1 - TÊ 160x160", ""], [277.99, 122.01], obs=["ASSENTAMENTO", None, "PARADA"])
-        r = self.ok(self.enviar("enc3", pdf_dia([g])))
+        r = self.ok(self.enviar("eng1", pdf_dia([g])))
         self.assertEqual([(s["fisico_id"], s["ini_fisico_m"], s["fim_fisico_m"]) for s in r["segmentos"]],
                          [("TF-00351", 0.0, 277.99), ("TF-00337", 0.0, 122.01)])
         self.assertEqual(self.gravado(), [("TR006", 0.0, 119.5), ("TR007", 0.0, 2.51), ("TR020", 0.0, 277.99)])
@@ -187,13 +187,13 @@ class TestRevisao(BaseDia):
     def test_continuacao_nao_cai_sobre_o_trecho_seguinte(self):
         self.programar([TR006], ONTEM)
         g = grupo(["", "NÓ9.1 - TÊ 160x160", "CH_VRP-15"], [77.99, 295.98], obs=["ASSENTAMENTO", None, None], inicio=200.0)
-        r = self.ok(self.enviar("enc3", pdf_dia([g])))
+        r = self.ok(self.enviar("eng1", pdf_dia([g])))
         self.assertEqual([(s["fisico_id"], s["ini_fisico_m"], s["fim_fisico_m"]) for s in r["segmentos"]],
                          [("TF-00351", 200.0, 277.99), ("TF-00337", 0.0, 295.98)])
 
     def test_o_que_foi_retificado_nao_volta_ao_conferir_a_fila(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98]), grupo(["NÓ56.1", "NÓ8.1"], [32.4], titulo="REDE ZONA 03")]
-        r = self.ok(self.enviar("enc3", pdf_dia(g, titulo='"REDE DE ÁGUA" - ZONA 03 - NOTA DO DIA')))
+        r = self.ok(self.enviar("eng1", pdf_dia(g, titulo='"REDE DE ÁGUA" - ZONA 03 - NOTA DO DIA')))
         self.recusa(self.cli("eng1").post("/api/ns/dia/conferir", {"ns_id": r["id"], "decisoes": [
             {"ordem": 1, "acao": "FORA", "motivo": "x"}]}), 422, "já tem execução")
         for (ap,) in self.c.execute("SELECT DISTINCT apontamento_id FROM intervalos_execucao WHERE anulado_por IS NULL").fetchall():
@@ -207,9 +207,9 @@ class TestRevisao(BaseDia):
         g = [grupo(["NÓ9.1", ""], [100.0], obs=["ASSENTAMENTO", "PARADA"], titulo="REDE ZONA 03 - PB08 - PEAD DE 160 - FRENTE A"),
              grupo(["NÓ9.1", ""], [80.0], obs=["REATERRO", "PARADA"], titulo="REDE ZONA 03 - PB08 - PEAD DE 160 - FRENTE B")]
         self.programar([TR006], ONTEM)
-        r = self.ok(self.enviar("enc3", pdf_dia(g)))
+        r = self.ok(self.enviar("eng1", pdf_dia(g)))
         self.assertEqual(len(self.gravado("REATERRADO")), 2)
-        self.ok(self.cli("enc3").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "nota errada"}))
+        self.ok(self.cli("eng1").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "nota errada"}))
         self.assertEqual((self.gravado(), self.gravado("REATERRADO")), ([], []))
 
     def test_apontamento_a_mao_nao_traz_verificacao_nem_ns(self):
@@ -227,63 +227,69 @@ class TestRevisao(BaseDia):
 class TestRecusas(BaseDia):
     def test_outra_obra_data_futura_sem_texto_sem_croqui_e_sem_clima(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98])]
-        self.recusa(self.enviar("enc3", pdf_dia(g, contrato="9702/2024")), 422, "V01")
-        self.recusa(self.enviar("enc3", pdf_dia(g, data=HOJE + timedelta(days=1))), 422, "V02")
+        self.recusa(self.enviar("eng1", pdf_dia(g, contrato="9702/2024")), 422, "V01")
+        self.recusa(self.enviar("eng1", pdf_dia(g, data=HOJE + timedelta(days=1))), 422, "V02")
         try:
-            self.recusa(self.enviar("enc3", NSS.pdf_sem_texto()), 422, "sem camada de texto")
+            self.recusa(self.enviar("eng1", NSS.pdf_sem_texto()), 422, "sem camada de texto")
         except ImportError:
             pass
-        self.recusa(self.enviar("enc3", pdf_dia(g), croqui=None), 422, "croqui")
-        self.recusa(self.enviar("enc3", pdf_dia(g), clima=None), 422, "clima")
+        self.recusa(self.enviar("eng1", pdf_dia(g), croqui=None), 422, "croqui")
+        self.recusa(self.enviar("eng1", pdf_dia(g), clima=None), 422, "clima")
         self.assertEqual(self.n("notas_servico") + self.n("intervalos_execucao") + self.n("documentos"), 0)   # nada gravado
         S.registrar_clima(self.c, ONTEM.isoformat(), "Zona03", "MANHA", "SOL")
         S.registrar_clima(self.c, ONTEM.isoformat(), "Zona03", "TARDE", "SOL")
-        self.ok(self.enviar("enc3", pdf_dia(g), clima=None))                                       # o clima do dia já estava
+        self.ok(self.enviar("eng1", pdf_dia(g), clima=None))                                       # o clima do dia já estava
 
     def test_mesma_ns_duas_vezes_e_versao_assinada(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98])]
-        r = self.ok(self.enviar("enc3", pdf_dia(g)))
-        self.recusa(self.enviar("enc3", pdf_dia(g)), 422, "já foi enviada")
-        t = self.ok(self.enviar("enc3", pdf_dia(g, girar=True), croqui=None))                     # mesmo conteúdo, outro arquivo
+        r = self.ok(self.enviar("eng1", pdf_dia(g)))
+        self.recusa(self.enviar("eng1", pdf_dia(g)), 422, "já foi enviada")
+        t = self.ok(self.enviar("eng1", pdf_dia(g, girar=True), croqui=None))                     # mesmo conteúdo, outro arquivo
         self.assertEqual((t["id"], t["arquivo_trocado"]), (r["id"], True))
         self.assertEqual(self.n("notas_servico", "status='SUBSTITUIDA'"), 1)
-        self.recusa(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [122.01])])), 422, "anule o envio anterior")
-        self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [122.01])], numero="016")))   # outra NS no mesmo dia
+        self.recusa(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [122.01])])), 422, "anule o envio anterior")
+        self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [122.01])], numero="016")))   # outra NS no mesmo dia
         self.assertEqual(len(self.gravado()), 2)
 
     def test_ns_enviada_com_atraso(self):
-        r = self.ok(self.enviar("enc3", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [295.98])], data=HOJE - timedelta(days=5))))
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ9.1", "CH_VRP-15"], [295.98])], data=HOJE - timedelta(days=5))))
         self.assertTrue(r["atrasada"])
         self.assertIn("NS enviada com atraso: 5 dias depois da data da nota", r["avisos"])
 
 
 class TestPermissoes(BaseDia):
-    def test_encarregado_envia_so_para_a_propria_equipe(self):
+    def test_so_a_engenharia_envia_e_as_equipes_nao_veem_as_notas(self):
+        """D-134 (25/10/2026): a nota de serviço, inclusive a do dia, é enviada pela engenharia, em nome da equipe. As
+        equipes e o almoxarifado não têm acesso às notas; a administração, a engenharia, o RH e o supervisor, sim."""
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98])]
-        self.recusa(self.enviar("enc3", pdf_dia(g), equipe="Zona04"), 403, "Zona03")
-        r = self.ok(self.enviar("enc3", pdf_dia(g), equipe=None))                                 # sem equipe: a dele
+        for login in ("enc3", "sup1", "almox1", "rh1"):
+            self.assertEqual(self.enviar(login, pdf_dia(g))[0], 403, login)
+        self.recusa(self.enviar("eng1", pdf_dia(g), equipe=None), 422, "Escolha a equipe")        # a engenharia escolhe a equipe
+        r = self.ok(self.enviar("eng1", pdf_dia(g)))
         self.assertEqual(r["equipe_id"], "Zona03")
-        for rota, corpo in (("/api/ns", {"tipo": "SERVICO", "pdf_b64": b64(pdf_dia(g, numero="099"))}),
-                            ("/api/ns/ler", {"tipo": "TOPOGRAFIA", "pdf_b64": b64(pdf_dia(g, numero="099"))})):
-            self.assertEqual(self.cli("enc3").post(rota, corpo)[0], 403, rota)
-        self.assertEqual(self.cli("enc3").post("/api/ns/anular", {"ns_id": r["id"], "motivo": "x"})[0], 403)  # NS do dia: rota própria
-        # a outra equipe não vê a NS do dia nem abre o PDF dela
-        self.assertEqual(self.ok(self.cli("enc1").get("/api/ns/dia?equipe=Zona03")), [])
-        self.assertEqual(self.abrir("enc1", f"/api/ns/arquivo?id={r['id']}&qual=pdf")[0], 403)
-        self.assertEqual(self.abrir("enc3", f"/api/ns/arquivo?id={r['id']}&qual=croqui")[0], 200)
-        self.assertEqual(self.ok(self.enviar("sup1", pdf_dia(g, numero="017"), equipe="Zona04"))["equipe_id"], "Zona04")
+        for login in ("enc3", "enc1", "almox1"):                                                  # nem a lista, nem o PDF
+            self.assertEqual(self.cli(login).get("/api/ns/dia?equipe=Zona03")[0], 403, login)
+            self.assertEqual(self.cli(login).get("/api/ns")[0], 403, login)
+            self.assertEqual(self.abrir(login, f"/api/ns/arquivo?id={r['id']}&qual=croqui")[0], 403, login)
+        for login in ("sup1", "rh1", "adm"):                                                      # consultam
+            self.assertEqual([n["id"] for n in self.ok(self.cli(login).get("/api/ns/dia?equipe=Zona03"))], [r["id"]], login)
+            self.assertEqual(self.abrir(login, f"/api/ns/arquivo?id={r['id']}&qual=pdf")[0], 200, login)
+        self.assertEqual(self.cli("rh1").get("/api/ns?tipo=TOPOGRAFIA")[0], 403)                 # o RH: as notas da obra
+        self.recusa(self.cli("eng1").post("/api/ns/anular", {"ns_id": r["id"], "motivo": "x"}), 403, "Notas de serviço › NS do dia")
+        self.assertEqual(self.ok(self.enviar("adm", pdf_dia(g, numero="017"), equipe="Zona04"))["equipe_id"], "Zona04")
 
-    def test_anular_antes_e_depois_da_verificacao(self):
+    def test_anular_so_a_engenharia_antes_e_depois_da_verificacao(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98])]
-        r = self.ok(self.enviar("enc3", pdf_dia(g)))
-        self.recusa(self.cli("enc3").post("/api/ns/dia/anular", {"ns_id": r["id"]}), 422, "motivo")
-        self.ok(self.cli("enc3").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "enviei a nota errada"}))
+        r = self.ok(self.enviar("eng1", pdf_dia(g)))
+        for login in ("enc3", "sup1"):
+            self.assertEqual(self.cli(login).post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "x"})[0], 403, login)
+        self.recusa(self.cli("eng1").post("/api/ns/dia/anular", {"ns_id": r["id"]}), 422, "motivo")
+        self.ok(self.cli("eng1").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "enviei a nota errada"}))
         self.assertEqual((self.gravado(), self.n("intervalos_execucao")), ([], 2))                  # anulado, não apagado
-        r = self.ok(self.enviar("enc3", pdf_dia(g, numero="016")))
+        r = self.ok(self.enviar("eng1", pdf_dia(g, numero="016")))
         iid = self.c.execute("SELECT id FROM intervalos_execucao WHERE anulado_por IS NULL LIMIT 1").fetchone()[0]
-        self.ok(self.cli("eng2").post("/api/intervalo/verificar", {"intervalo_id": iid}))
-        self.recusa(self.cli("enc3").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "x"}), 403, "verificado")
-        self.ok(self.cli("eng1").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "trecho refeito"}))
+        self.ok(self.cli("sup1").post("/api/intervalo/verificar", {"intervalo_id": iid}))          # quem enviou (eng1) não verifica
+        self.ok(self.cli("eng2").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "trecho refeito"}))
         self.assertEqual(self.gravado(), [])
 
 
@@ -294,7 +300,7 @@ class TestDiarioDeObra(BaseDia):
         self.programar([TR006, "Zona03_PB08_Rede_TR020"], ONTEM)
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None]),
              grupo(["NÓ56.1", "NÓ8.1"], [32.4], titulo="REDE ZONA 03")]
-        r = self.ok(self.enviar("enc3", pdf_dia(g, titulo='"REDE DE ÁGUA" - ZONA 03 - NOTA DO DIA')))   # o 2º grupo não diz a PB
+        r = self.ok(self.enviar("eng1", pdf_dia(g, titulo='"REDE DE ÁGUA" - ZONA 03 - NOTA DO DIA')))   # o 2º grupo não diz a PB
         d = self.ok(self.cli("eng1").get(f"/api/diario?data={dia}"))
         self.assertEqual([(n["id"], n["croqui_id"] is not None, n["fila"]) for n in d["ns_dia"]], [(r["id"], True, [2])])
         self.assertEqual(sorted((NS._curto(x["ponto"]), x["etapa"]) for s in d["ns_dia"][0]["segmentos"] for x in s["registros"]),
@@ -306,7 +312,8 @@ class TestDiarioDeObra(BaseDia):
         self.assertTrue(any("check-in feito e nenhuma NS do dia" in a and "ZONA 01" in a for a in d["alertas"]), d["alertas"])
         self.assertTrue(any("1 segmento(s) aguardando a engenharia" in a for a in d["alertas"]), d["alertas"])
         enc = self.ok(self.cli("enc3").get(f"/api/diario?data={dia}&equipe=Zona03"))
-        self.assertEqual(len(enc["ns_dia"]), 1)
+        self.assertEqual((enc["ns_visivel"], enc["ns_dia"]), (False, []))                         # a equipe: o diário sem as notas
+        self.assertEqual(len(self.ok(self.cli("sup1").get(f"/api/diario?data={dia}&equipe=Zona03"))["ns_dia"]), 1)
 
     def test_croqui_de_outra_nota_avisa_no_envio_e_no_diario(self):
         """O croqui em PDF diz outra NS: a nota é lançada do mesmo jeito, o aviso aparece no resultado do envio e vira
@@ -314,7 +321,7 @@ class TestDiarioDeObra(BaseDia):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
         errado = b64(NSS.pdf_de_texto(["CROQUI DO DIA - N.S.014 - TRECHOS EXECUTADOS"]))
         args = dict(numero="015", contrato="10239/2026", data_ns=ONTEM, titulo=TITULO, bloco="EXECUÇÃO", grupos=g)
-        r = self.ok(self.enviar("enc3", pdf_dia(g), croqui=errado, planilha_b64=b64(NSS.xls_de_ns(**args)),
+        r = self.ok(self.enviar("eng1", pdf_dia(g), croqui=errado, planilha_b64=b64(NSS.xls_de_ns(**args)),
                                 planilha_nome="nota.xls"))
         self.assertEqual(self.gravado(), [("TR006", 0.0, 293.47), ("TR007", 0.0, 2.51)])
         self.assertEqual(r["avisos_croqui"], ["o croqui é da NS 014, e a nota é a 015"])

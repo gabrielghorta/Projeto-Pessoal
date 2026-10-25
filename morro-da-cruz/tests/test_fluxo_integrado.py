@@ -50,8 +50,8 @@ class TestCaminhoAteAMedicao(BaseReal):
         self.assertEqual(etapas, dict.fromkeys(TRES, "execucao"))                      # em execução hoje
         self.assertLessEqual(set(TRES), {p["alvo_id"] for p in est["pins"]})          # o pino em cada um (e no nó que os liga)
         self.assertLessEqual(set(TRES), set(est["camadas"]["em_campo"]))
-        # 3. NS do dia com assentamento e reaterro: executado, aguardando verificação
-        r = self.ok(self.cli("enc3").post("/api/ns/dia", {
+        # 3. NS do dia com assentamento e reaterro, enviada pela engenharia: executado, aguardando verificação
+        r = self.ok(self.cli("eng1").post("/api/ns/dia", {
             "equipe_id": "Zona03", "pdf_b64": b64(pdf_dia([grupo(CAMINHO, [277.99, 295.98], obs=["ASSENTAMENTO E REATERRO"] * 3)],
                                                          numero="030", data=h)),
             "pdf_nome": "ns_030.pdf", "croqui_b64": b64(NSS.pdf_de_texto(["CROQUI NS 030"])), "croqui_nome": "c.pdf",

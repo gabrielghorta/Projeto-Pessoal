@@ -300,7 +300,7 @@
     </div>
     <div id="diaAlertas"></div>
     <div class="kpis" id="diaKpis"></div>
-    <div class="painel" style="margin-bottom:16px"><h3>Nota do dia e croqui</h3><div id="diaNs"></div></div>
+    <div class="painel" id="painelDiaNs" style="margin-bottom:16px"><h3>Nota do dia e croqui</h3><div id="diaNs"></div></div>
     <div class="grade-2">
       <div style="display:grid;gap:16px;min-width:0">
         <div class="painel"><h3>Programado × executado</h3><div id="diaProgExec"></div></div>
@@ -355,18 +355,19 @@
     <header class="cab-tela"><h1>Notas de serviço</h1><p>As notas do campo da obra: a NS do dia (o que a equipe executou, com o croqui e o clima) e a NS de serviço de obra (o plano da zona). As de topografia e de cadastro são enviadas nas abas Topografia e Cadastro de campo.</p></header>
     <div class="abas-chip grandes paginas-aba" role="group" aria-label="Tipo da nota" style="margin:0 0 16px"></div>
 
-    <!-- NS do dia: a equipe envia o que executou (o encarregado, só da própria equipe) -->
+    <!-- NS do dia: o que a equipe executou, enviado pela engenharia; o supervisor e o RH consultam (D-134) -->
     <div data-pagina="dia" hidden>
-      <p class="vazio" style="margin:0 0 12px">Envie a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a engenharia conferir.</p>
+      <p class="vazio" style="margin:0 0 12px">A engenharia envia a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a fila "NS do dia a conferir".</p>
+    <p class="vazio" id="ndSoConsulta" hidden style="margin:0 0 12px">Só consulta: a NS do dia é enviada pela engenharia.</p>
     <div class="grade-2">
-      <div style="display:grid;gap:16px;min-width:0;align-content:start">
+      <div id="ndEnvio" style="display:grid;gap:16px;min-width:0;align-content:start">
         <form class="painel nota-dia" id="fNd" data-perm="ns_dia">
           <label>Equipe<select id="ndEquipe" required></select></label>
           <label>Nota de serviço do dia (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
           <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
           <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
           <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
-          <p class="vazio" style="margin:0">O clima tocado aqui é o que vale. Se já marcou em Lançamento do dia › Clima do dia, pode deixar sem tocar: fica o marcado.</p>
+          <p class="vazio" style="margin:0">O clima tocado aqui é o que vale. Se a equipe já marcou em Lançamento do dia › Clima do dia, pode deixar sem tocar: fica o marcado.</p>
           <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
           <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
           <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
@@ -374,7 +375,7 @@
         <div class="painel" id="ndLote" hidden aria-live="polite"></div>
       </div>
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
-        <div class="painel"><h3>Notas do dia enviadas</h3><div class="linha"><label>Dia (vazio: os últimos 7)<input type="date" id="ndDia"></label></div><div id="ndEnviadas" style="margin-top:8px"></div></div>
+        <div class="painel"><h3>Notas do dia enviadas</h3><div class="linha"><label>Equipe<select id="ndVerEquipe"></select></label><label>Dia (vazio: os últimos 7)<input type="date" id="ndDia"></label></div><div id="ndEnviadas" style="margin-top:8px"></div></div>
         <div class="painel"><h3>Notas de serviço da zona</h3><p class="vazio" style="margin:0 0 6px">O plano do serviço (nota e croqui) enviado pela engenharia.</p><div id="ndServico"></div></div>
       </div>
     </div>
