@@ -9,10 +9,11 @@ function obterGeral() {
   if (!GERAL_P) GERAL_P = api('/api/mapa/geral').then(g => (GERAL = g)).catch(e => { GERAL_P = null; throw e; });
   return GERAL_P;
 }
-// a situação do mapa é lida uma vez por pedido: telas que pedem juntas (Dados da obra) dividem a mesma resposta
+// a situação do mapa é lida uma vez por pedido: telas que pedem juntas (Dados da obra) dividem a mesma resposta. O dia é
+// o da tela (Brasília, no navegador): o servidor no PythonAnywhere roda em UTC
 async function estadoMapa(novo) {
   if (novo || !ESTADO_MAPA || Date.now() - ESTADO_EM > 30000) {
-    if (!ESTADO_P) ESTADO_P = api('/api/mapa/estado' + (MEDICAO_ATUAL ? '?medicao=' + MEDICAO_ATUAL : ''))
+    if (!ESTADO_P) ESTADO_P = api('/api/mapa/estado?data=' + hoje() + (MEDICAO_ATUAL ? '&medicao=' + MEDICAO_ATUAL : ''))
       .then(e => { ESTADO_MAPA = e; ESTADO_EM = Date.now(); return e; }).finally(() => { ESTADO_P = null; });
     return ESTADO_P;
   }
@@ -110,7 +111,7 @@ async function desenharRede() {
   $('#redePins').innerHTML = est.pins.map(p => {
     const pos = posicaoAlvo(g, p.alvo_tipo, p.alvo_id); if (!pos) return '';
     const [x, y] = pos.xy;
-    return `<g><title>${esc(p.equipe)} em ${esc(curto(p.alvo_id))} (check-in de hoje)</title><circle cx="${x}" cy="${y}" r="${r}" fill="#F15922" stroke="#101010" stroke-width="${r / 5}"/>
+    return `<g><title>${esc(p.equipe)} em ${esc(nomeCompleto(p.alvo_id))} (check-in de hoje)</title><circle cx="${x}" cy="${y}" r="${r}" fill="#F15922" stroke="#101010" stroke-width="${r / 5}"/>
       <text x="${x}" y="${y}" fill="#fff" font-size="${r * 0.9}" font-weight="700" text-anchor="middle" dominant-baseline="central">${esc(rotuloEquipe(p.equipe))}</text></g>`;
   }).join('');
 }
@@ -122,25 +123,28 @@ function realcarRede(acesa) {
 }
 
 /* ---------------------------------------------------------------- Mapa iluminado */
-// situação de cada trecho, da mais atrasada à mais adiantada; "OK interno" é conferência da Ankara, não aprovação da Caesb
+// etapa de cada trecho, da mais atrasada à mais adiantada (calculada no servidor, regras.etapa_trecho). "Verificado" e
+// "OK interno" são conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada
 const SITU = [
   { id: 'nao', nome: 'Não iniciado', cor: '#8C8C8C', tracejado: true },
   { id: 'liberado', nome: 'Liberado pela topografia', cor: '#6CB8F0' },
-  { id: 'execucao', nome: 'Em execução', cor: '#F15922' },
-  { id: 'aguarda', nome: 'Concluído, aguarda o OK interno', cor: '#F2F2F2' },
-  { id: 'cadastro', nome: 'OK interno, falta o cadastro', cor: '#A77BF3' },
+  { id: 'execucao', nome: 'Em execução hoje', cor: '#F15922' },
+  { id: 'executado', nome: 'Executado, aguardando verificação', cor: '#F2C94C' },
+  { id: 'verificado', nome: 'Verificado pelo supervisor', cor: '#F28AC0' },
+  { id: 'campo', nome: 'Cadastro de campo feito', cor: '#2EC5D9' },
+  { id: 'pronto', nome: 'Pronto para o OK interno', cor: '#F2F2F2' },
+  { id: 'ok', nome: 'OK interno, na medição', cor: '#A77BF3' },
+  { id: 'cad_andamento', nome: 'Cadastro em andamento', cor: '#D6C2FF' },
   { id: 'cadastrado', nome: 'Cadastro aprovado pela Caesb', cor: '#3FD68F' },
 ];
 const SITU_ID = Object.fromEntries(SITU.map(s => [s.id, s]));
+const etapaDe = (est, nome) => ((est.camadas || {}).etapas || {})[nome];
 function situacao(est, nome) {
-  const st = est.status[nome], cam = est.camadas || {};
-  if ((cam.cadastro || {})[nome] === '6_APROVADO') return 'cadastrado';
-  if (st === 'OK_FISCAL' || st === 'MEDIDO_ANTERIOR') return 'cadastro';
-  if (st === 'CONCLUIDO_MES') return 'aguarda';
-  if (st === 'EM_EXECUCAO' || (cam.em_campo || {})[nome]) return 'execucao';     // equipe com check-in hoje no trecho (Dados da obra)
-  if ((cam.liberado || {})[nome]) return 'liberado';
-  return 'nao';
+  const e = etapaDe(est, nome);
+  return e && SITU_ID[e.s] ? e.s : 'nao';
 }
+// "parcial" quando a execução ainda não cobre o trecho inteiro
+const nomeSituacao = (est, nome, s) => SITU_ID[s].nome + ((etapaDe(est, nome) || {}).parcial && ['executado', 'verificado', 'campo'].includes(s) ? ' (parcial)' : '');
 // o visor (arrastar, aproximar, clique) serve a este mapa e ao do Dados da obra (planejamento.js): cada um passa o seu
 // contexto com svg(), caixa(), desenhar(px, zoom) e clique(alvo, ev)
 const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
@@ -225,6 +229,9 @@ async function carregarIluminado() {
   else ajustarAspecto();
   ILU.est = await estadoMapa(true).catch(() => ILU.est);
   if (ILU.est) colorirIluminado();
+  if (!ILU.lista && pode('verificar')) $('#iluBlocoLista').hidden = false;          // supervisor: "Aguardando verificação"
+  else if (ILU.lista && ILU.lista.verificacao) { ILU.lista = null; if (ILU.pop === 'lista') abrirPop('lista', true); }   // relê depois de verificar
+  if (ILU.abrirLista && ILU.est) { ILU.abrirLista = false; abrirPop('lista', true); }
 }
 function avisoIlu(msg) { const a = $('#iluAviso'); a.textContent = msg; a.hidden = !msg; }
 
@@ -517,6 +524,9 @@ function cliqueNoMapa(alvo, ev, i) {
   fecharPop();
   const pin = alvo.closest && alvo.closest('.ilu-pin'), zona = alvo.closest && alvo.closest('.ilu-zf');
   if (pin) return focarAlvo(pin.dataset.tipo, pin.dataset.alvo);
+  // com uma zona em foco, o primeiro toque em outra zona (no polígono ou num trecho dela) troca o foco
+  const outra = ILU.zona && (i >= 0 ? zonaDoTrecho(GERAL.trechos[i]) : zona && zona.dataset.zona);
+  if (outra && outra !== ILU.zona) return focarZona(outra);
   if (i >= 0) return abrirFicha('TRECHO', GERAL.trechos[i].n);
   if (zona) return focarZona(zona.dataset.zona);
 }
@@ -549,7 +559,7 @@ function desenharPins() {
   $('#iluPins').innerHTML = (ILU.est.pins || []).map(p => {
     const pos = posicaoAlvo(GERAL, p.alvo_tipo, p.alvo_id); if (!pos) return '';
     const [x, y] = pos.xy;
-    return `<g class="ilu-pin" data-tipo="${esc(p.alvo_tipo)}" data-alvo="${esc(p.alvo_id)}"><title>${esc(equipeNome(p.equipe))} em ${esc(curto(p.alvo_id))} (check-in de hoje)</title>
+    return `<g class="ilu-pin" data-tipo="${esc(p.alvo_tipo)}" data-alvo="${esc(p.alvo_id)}"><title>${esc(equipeNome(p.equipe))} em ${esc(nomeCompleto(p.alvo_id))} (check-in de hoje)</title>
       <circle cx="${x}" cy="${y}"/><text x="${x}" y="${y}">${esc(rotuloEquipe(p.equipe))}</text></g>`;
   }).join('');
 }
@@ -558,7 +568,8 @@ function aplicarCamadas() {
   satDe(ILU).style.display = ILU.fundo === 'sem' ? 'none' : '';
   $('.sat-veu', satDe(ILU)).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]);
   $('#iluZonas').style.display = ILU.cam.zonas ? '' : 'none';
-  $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.38 : 0.08) : 0.26));
+  // a zona em foco um pouco mais forte; as outras com a cor delas (nunca cinza) e clicáveis
+  $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.36 : 0.22) : 0.26));
   $('#iluNomes').style.display = ILU.cam.nomes ? '' : 'none';
   $('#iluPins').style.display = ILU.cam.equipes ? '' : 'none';
   $$('#iluLinhas .ilu-tr').forEach(p => p.style.display = ILU.vis[p.dataset.situ] ? '' : 'none');
@@ -596,17 +607,45 @@ function abrirPop(nome, recarregar) {
     Object.entries((ILU.est.camadas || {}).planejado || {}).forEach(([n, p]) => p.hoje && p.equipes.forEach(e => (plan[e] = plan[e] || []).push(n)));
     pop.innerHTML = '<h3>Equipes hoje</h3>' + ((RESUMO && RESUMO.equipes) || []).map(e => {
       const p = pins[e.id], pl = plan[e.id] || [];
-      const txt = p ? `em ${esc(curto(p.alvo_id))}, check-in de hoje` : pl.length ? `programada para ${esc(pl.slice(0, 3).map(curto).join(', '))}${pl.length > 3 ? '…' : ''}; sem check-in` : 'sem check-in hoje';
+      const txt = p ? `em ${esc(nomeCompleto(p.alvo_id))}, check-in de hoje` : pl.length ? `programada para ${esc(pl.slice(0, 3).map(nomeCompleto).join(', '))}${pl.length > 3 ? '…' : ''}; sem check-in` : 'sem check-in hoje';
       return `<button type="button" class="ilu-linha" ${p ? `data-ir-tipo="${esc(p.alvo_tipo)}" data-ir="${esc(p.alvo_id)}"` : pl.length ? `data-ir-tipo="TRECHO" data-ir="${esc(pl[0])}"` : 'disabled'}>
         <span class="num${p ? '' : ' sem'}">${esc(rotuloEquipe(e.id))}</span><span>${esc(e.nome)}<small>${txt}</small></span></button>`;
     }).join('') + '<p>O pino aparece onde a equipe fez o check-in hoje. Equipe sem check-in não tem pino.</p>';
   }
+  if (nome === 'lista') listaIlu(pop);
   if (nome === 'camadas') {
     const ch = (k, rot) => `<button type="button" class="ilu-linha" data-camada="${k}" aria-pressed="${ILU.cam[k]}"><span>${ILU.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`;
     pop.innerHTML = '<h3>Fundo de satélite</h3><div class="ilu-fundos">' + Object.entries(FUNDOS).map(([k, [rot]]) =>
       `<button type="button" class="ilu-fundo" data-fundo="${k}" aria-pressed="${ILU.fundo === k}">${rot}</button>`).join('') + '</div>'
       + '<h3 style="margin-top:14px">Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes');
   }
+}
+// lista de trechos à parte: "Aguardando verificação" (supervisor, o mais perto primeiro quando o celular dá a posição) ou
+// a que a tela Medição abriu. Tocar leva ao trecho e abre a ficha, onde está a ação
+function abrirListaIlu(titulo, nomes) {
+  ILU.lista = { titulo, itens: nomes.map(n => ({ nome: n })) };
+  $('#iluBtLista').textContent = titulo; $('#iluBlocoLista').hidden = false;
+  if (TELA !== 'iluminado') { ILU.abrirLista = true; return abrirAba('iluminado'); }
+  if (GERAL && ILU.est) abrirPop('lista', true);
+}
+async function listaIlu(pop) {
+  if (!ILU.lista || ILU.lista.verificacao) {
+    const pedir = pos => api('/api/verificacao/pendentes' + (pos ? `?lat=${pos.lat}&lon=${pos.lon}` : ''));
+    if (!ILU.lista) {
+      pop.innerHTML = '<h3>Aguardando verificação</h3><p>Carregando…</p>';
+      ILU.lista = { titulo: 'Aguardando verificação', verificacao: true, itens: await pedir(null).catch(() => []) };
+      gps().then(pos => pos && pedir(pos)).then(r => { if (r && ILU.lista && ILU.lista.verificacao) { ILU.lista.itens = r; if (ILU.pop === 'lista') listaIlu($('#popLista')); } });
+    }
+  }
+  const zonas = {};
+  ILU.lista.itens.forEach(x => (zonas[x.zona || zonaDoTrecho(indexar(GERAL).trecho.get(x.nome) || {}) || '—'] ||= []).push(x));
+  const sub = x => [x.intervalos ? `${x.intervalos} intervalo${x.intervalos > 1 ? 's' : ''}` : '', x.desde ? 'desde ' + dataBR(x.desde) : '',
+    x.distancia_m != null ? (x.distancia_m < 1000 ? `${x.distancia_m} m daqui` : km(x.distancia_m) + ' daqui') : ''].filter(Boolean).join(' · ');
+  pop.innerHTML = `<h3>${esc(ILU.lista.titulo)} (${ILU.lista.itens.length})</h3>`
+    + (Object.entries(zonas).map(([z, xs]) => `<h4>${esc(nomeZona(z))}</h4>` + xs.map(x =>
+      `<button type="button" class="ilu-linha" data-ir-tipo="TRECHO" data-ir="${esc(x.nome)}"><span>${esc(nomeCompleto(x.nome))}<small>${esc(sub(x))}</small></span></button>`).join('')).join('')
+      || '<p>Nenhum trecho.</p>')
+    + (ILU.lista.verificacao ? '<p>Trechos com execução informada e ainda não verificada. Toque para abrir a ficha e verificar (com as fotos que faltam).</p>' : '');
 }
 function fecharPop() {
   ILU.pop = null;
@@ -630,6 +669,12 @@ $('#iluTrilha').addEventListener('click', ev => { if (ev.target.closest('[data-i
 
 /* ---- ficha do trecho (ou do nó) tocado no mapa */
 const nomeCurto = n => String(n || '').split('_').pop();          // Zona03_PB06_Rede_TR014 → TR014
+// o nome para quem escolhe ou confere: Zona03_PB06_Rede_TR014 → "Zona 03 · PB06 · TR014". A numeração TR recomeça a cada PB
+// (o TR001 existe em dezenas delas): o TR sozinho não identifica o trecho (regras.nome_completo, no servidor)
+const nomeCompleto = n => {
+  const m = /^(?:Zona(\d+)|(ADUTORA))_(PB\d+)_(?:Rede_)?(.+)$/.exec(String(n || ''));
+  return m ? `${m[1] ? 'Zona ' + m[1] : 'Adutora'} · ${m[3]} · ${m[4]}` : String(n || '');
+};
 const FOTO_NOME = { SINALIZACAO: 'sinalização', EXECUCAO: 'execução', CONCLUIDO: 'concluído' };
 // o trecho tocado e, se ele faz parte de um trecho físico (cruzamento, divisa de zona…), as outras linhas dele
 function marcarSelecao() {
@@ -642,7 +687,7 @@ function fecharFicha() { ILU.sel = null; $('#iluFicha').hidden = true; marcarSel
 async function abrirFicha(tipo, nome) {
   ILU.sel = { tipo, nome }; marcarSelecao();
   const f = $('#iluFicha'); f.hidden = false;
-  f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button><h2>${esc(nomeCurto(nome))}</h2><p class="vazio">Carregando…</p>`;
+  f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button><h2>${esc(nomeCompleto(nome))}</h2><p class="vazio">Carregando…</p>`;
   const [d, topo] = await Promise.all([api(`/api/detalhe?tipo=${tipo}&id=${encodeURIComponent(nome)}`).catch(e => ({ erro: e.message })),
     tipo === 'TRECHO' ? api(`/api/topologia?trecho=${encodeURIComponent(nome)}`).catch(() => null) : null]);
   if (!ILU.sel || ILU.sel.nome !== nome) return;
@@ -664,14 +709,16 @@ async function abrirFicha(tipo, nome) {
   const prox = (d.programacoes || []).find(p => p.status === 'PLANEJADA');
   if (prox) linhas.push(['Programado', `${esc(prox.data.split('-').reverse().join('/'))} · ${esc(equipeNome(prox.equipe_id))}`]);
   f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button>
-    <h2>${esc(nomeCurto(d.nome || nome))}</h2>
-    ${tipo === 'TRECHO' ? `<span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(s.nome)}</span>` : ''}
+    <h2>${esc(nomeCompleto(d.nome || nome))}</h2>
+    ${tipo === 'TRECHO' ? `<span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(ILU.est ? nomeSituacao(ILU.est, nome, s.id) : s.nome)}</span>` : ''}
     ${d.retirado ? '<div class="aviso problema">Retirado da revisão vigente do projeto: só consulta.</div>' : ''}
     <dl>${linhas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
     <div class="acoes">${pode('campo') && !d.retirado ? `<button type="button" class="btn prim" data-ficha-campo>Lançar avanço</button>` : ''}
       <button type="button" class="btn" data-ficha-completa>Ver a ficha completa</button></div>
+    ${tipo === 'TRECHO' && !d.retirado ? '<div class="caminho-box" id="iluCaminho"><p class="vazio">Carregando o caminho até a medição…</p></div>' : ''}
     <p class="vazio" style="font-size:13px">${esc(d.nome || nome)}</p>`;
   f.dataset.tipo = tipo; f.dataset.id = d.id;
+  if (tipo === 'TRECHO' && !d.retirado) montarCaminho($('#iluCaminho'), d.nome || nome, () => { recarregarCamadaMapa(); abrirFicha(tipo, nome); });
 }
 $('#iluFicha').addEventListener('click', async ev => {
   const f = $('#iluFicha');

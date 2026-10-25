@@ -86,3 +86,14 @@ Sem erros de JavaScript.
   - D-43: expiração automática de reservas;
   - D-44 (nova): pedido sem solicitação aprovada em caso de emergência.
 - Pedido e nota com faturamento por etapas só **registram a intenção**: o regime continua bloqueado (D-53, D-54).
+
+## A NF no almoxarifado, sem pedido, e a NF da Caesb (esquema v20, 23/10/2026)
+
+Tela Estoque e movimentos › **Notas a receber** (o almoxarife):
+1. **Importar XML**, vários de uma vez (também em Compras e notas). Emitente sem cadastro: o sistema pergunta e cadastra pelo CNPJ e pela razão social do próprio XML.
+2. **Conferir as linhas:** cada linha vem com o material sugerido (`compras.sugerir_materiais`: código do produto = id do material; o de-para anterior do mesmo fornecedor; a descrição com os mesmos números e 60 % das palavras). O pedido é opcional.
+3. **Registrar o que chegou:** entra em quarentena (a linha de tubo da Caesb vira romaneio, sem quarentena).
+4. **Aceitar tudo desta entrega** ou registrar a inspeção com aceito e recusado. Um laudo por entrega, obrigatório só quando há recusa.
+5. **Nota sem pedido:** o aceito fica no almoxarifado, na coluna "Aguardando aprovação da nota", até a aprovação de Engenharia ou Administração (outra pessoa, não quem importou). Depois, libera no Dados da obra.
+
+Decisões D-105, D-110 e D-111. Testes: `TestNotaNoAlmoxarifado` em `tests/test_compras.py` (as NF-e de teste 18734, sem pedido, e 4521, remessa da Caesb) e `TestNotaFiscalPeloHTTP` em `tests/test_fluxo_integrado.py`.

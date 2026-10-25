@@ -28,7 +28,6 @@ try {                                 // só as camadas que existem: as antigas 
   const salvas = JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}');
   Object.keys(CAMADAS_PLN).forEach(k => { if (typeof salvas[k] === 'boolean') PLN.cam[k] = salvas[k]; });
 } catch (_) { /* sem storage */ }
-const DIAS_SEMANA = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
 const nomeAlvoCurto = n => nomeCurto(n).replace(/^NÓ/, 'NÓ ');
 
 function planSitu(nome, mapa) {
@@ -36,9 +35,9 @@ function planSitu(nome, mapa) {
   if ((e.em_campo || {})[nome]) return 'campo';
   const prog = (e.programado || {})[nome];
   if (prog) return prog.some(p => p.hoje) ? 'hoje' : 'programado';
-  const s = mapa ? situacao(mapa, nome) : 'nao';
-  if (s === 'execucao') return 'execucao';
-  if (['aguarda', 'cadastro', 'cadastrado'].includes(s)) return 'feito';
+  const et = mapa ? etapaDe(mapa, nome) : null, s = et ? et.s : 'nao';
+  if (s === 'execucao' || (et && et.parcial)) return 'execucao';        // executado em parte: ainda tem o que fazer
+  if (s !== 'nao' && s !== 'liberado') return 'feito';
   return s === 'liberado' ? 'liberado' : 'livre';
 }
 // equipe da frente do trecho (Zona01 … Zona11, ADUTORA)
@@ -54,6 +53,7 @@ async function carregarDadosObra() {
   if (!PLN.pronto) montarPln(g); else ajustarAspecto(PLN);
   if (!MATERIAIS.length && pode('almox')) MATERIAIS = await api('/api/estoque').catch(() => []);
   await recarregarPln();
+  if (PLN.abrir) { const a = PLN.abrir; PLN.abrir = null; escolherEquipeDoDia(a.equipe, a.aba); }   // vindo do Estoque
   if (podeTela('cronograma') && !PLN.crono) api('/api/cronograma').then(c => { PLN.crono = c.vazio ? null : c; if (PLN.crono) renderPainel(); }).catch(() => null);
   if (PLN.foco) aplicarFoco();
 }
@@ -82,13 +82,20 @@ function montarPln(g) {
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
   aplicarCamadasPln();
   PLN.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
-  PLN.vb = null; ajustarAspecto(PLN);
+  const salva = vistaSalvaPln();                       // a última vista da sessão: o mapa não volta sozinho para a obra inteira
+  PLN.vb = salva ? salva.vb : null; PLN.zona = salva ? salva.zona : null; zonasPln(); ajustarAspecto(PLN);
   ligarGestos(svg, PLN);
   PLN.pronto = true;
   new ResizeObserver(() => TELA === 'mapa' && ajustarAspecto(PLN)).observe($('#plnMapa'));
 }
 
+const VISTA_PLN = 'mc-pln-vista';
+function vistaSalvaPln() {
+  try { const v = JSON.parse(sessionStorage.getItem(VISTA_PLN) || 'null'); return v && Array.isArray(v.vb) && v.vb.length === 4 && v.vb.every(Number.isFinite) ? v : null; }
+  catch (_) { return null; }
+}
 function desenharPln(px, zoom) {
+  try { sessionStorage.setItem(VISTA_PLN, JSON.stringify({ vb: PLN.vb, zona: PLN.zona })); } catch (_) { /* sem storage */ }
   espessura($('#plnLinhas'), Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)));
   if (escalaMudou(PLN, px)) {                          // arrastar não muda a escala: só o zoom mexe em textos, pinos e nós
     $('#plnZonas').style.setProperty('--k', 1 / px);  // só no contorno tracejado: na raiz, refazia o estilo do mapa inteiro
@@ -115,7 +122,7 @@ function desenharNos(px, longe) {
   caixa.innerHTML = g.els.map((e, i) => {
     const k = sel.get(i); if (longe ? !k : !k && !dentro(e)) return '';
     const nome = e.n.find(n => n.includes('_Rede_')) || e.n[0];          // a ponta do trecho cita o nome da Rede
-    return `<circle class="pln-no${k ? ' sel' : ''}${k === 'auto' ? ' auto' : ''}" data-i="${i}" data-n="${esc(nome)}" cx="${e.x}" cy="${e.y}" r="${(k ? 7 : 4.5) * px}"><title>${esc(nomeCurto(nome))}</title></circle>`;
+    return `<circle class="pln-no${k ? ' sel' : ''}${k === 'auto' ? ' auto' : ''}" data-i="${i}" data-n="${esc(nome)}" cx="${e.x}" cy="${e.y}" r="${(k ? 7 : 4.5) * px}"><title>${esc(nomeCompleto(nome))}</title></circle>`;
   }).join('');
 }
 
@@ -129,13 +136,13 @@ function colorirPln() {
     return s.tracejado ? linhasTracejadas(por[s.id], `${attrs} stroke-dasharray="${s.tracejado}"`) : `<path ${attrs} d="${caminho(por[s.id].flatMap(t => t.p))}"/>`;
   }).join('');
   $$('#plnLinhas .ilu-tr').forEach(p => p.style.display = PLN.vis[p.dataset.situ] ? '' : 'none');
-  const doDia = ((PLN.est || {}).checkins || []).filter(c => c.data === PLN.dia && c.alvo_nome);
-  $('#plnPins').innerHTML = doDia.map(c => {
-    const tipo = indexar(GERAL).trecho.has(c.alvo_nome) ? 'TRECHO' : 'ATIVIDADE', pos = posicaoAlvo(GERAL, tipo, c.alvo_nome);
+  const doDia = ((PLN.est || {}).checkins || []).filter(c => c.data === PLN.dia);
+  $('#plnPins').innerHTML = doDia.flatMap(c => c.alvos.map(n => {        // o pino da equipe em cada trecho e nó do dia
+    const tipo = indexar(GERAL).trecho.has(n) ? 'TRECHO' : 'ATIVIDADE', pos = posicaoAlvo(GERAL, tipo, n);
     if (!pos) return '';
-    return `<g class="ilu-pin" data-alvo="${esc(c.alvo_nome)}"><title>${esc(equipeNome(c.equipe_id))}: ${esc(c.alvos.map(nomeCurto).join(', '))} (check-in de ${dataBR(c.data)})</title>
+    return `<g class="ilu-pin" data-alvo="${esc(n)}"><title>${esc(equipeNome(c.equipe_id))}: ${esc(c.alvos.map(nomeCompleto).join(', '))} (check-in de ${dataBR(c.data)})</title>
       <circle cx="${pos.xy[0]}" cy="${pos.xy[1]}"/><text x="${pos.xy[0]}" y="${pos.xy[1]}">${esc(rotuloEquipe(c.equipe_id))}</text></g>`;
-  }).join('');
+  })).join('');
   PLN.ultPx = 0; desenharVista(PLN); marcarSelPln(); agendarCopia(PLN);
   if (PLN.pop) abrirPopPln(PLN.pop, true);
 }
@@ -219,17 +226,24 @@ function cliquePln(alvo, ev, i) {
   const perto = s => alvo.closest && alvo.closest(s);
   const no = perto('.pln-no'), pin = perto('.ilu-pin'), zona = perto('.ilu-zf');
   const juntar = PLN.multi || !!(ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey));
-  if (no && !$('#plnNos').classList.contains('longe')) return alternarNo(no.dataset.n);
+  const noPerto = no && !$('#plnNos').classList.contains('longe');
+  // com uma zona em foco, o primeiro toque em outra zona (no polígono, num trecho ou num nó dela) troca o foco;
+  // juntando trechos, vale o trecho
+  const outra = PLN.zona && !juntar && (noPerto ? (/^(Zona\d\d|ADUTORA)_/.exec(no.dataset.n) || [])[1]
+    : i >= 0 ? zonaDoTrecho(GERAL.trechos[i]) : zona && zona.dataset.zona);
+  if (outra && outra !== PLN.zona) return focarZonaPln(outra);
+  if (noPerto) return alternarNo(no.dataset.n);
   if (pin) { PLN.sel = [pin.dataset.alvo].filter(n => indexar(GERAL).trecho.has(n)); return atualizarSelecao(); }
   if (i >= 0) return escolherTrecho(GERAL.trechos[i].n, juntar);
   if (zona && !juntar) return focarZonaPln(zona.dataset.zona);
 }
 function focarZonaPln(z) {
-  PLN.zona = z;
+  PLN.zona = z; zonasPln();
   const ts = GERAL.trechos.filter(t => zonaDoTrecho(t) === z), poli = GERAL.zonas.find(x => x.id === z);
   irPara(limites([...(poli ? [poli.p] : []), ...ts.flatMap(t => t.p)], 0.06), true, PLN);
 }
-function verTudoPln() { PLN.zona = null; irPara(PLN.base, true, PLN); }
+function verTudoPln() { PLN.zona = null; zonasPln(); irPara(PLN.base, true, PLN); }
+const zonasPln = () => $$('#plnZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', PLN.zona && p.dataset.zona === PLN.zona ? 0.26 : 0.16));
 function focarNomes(nomes) {
   const ix = indexar(GERAL), ps = [];
   nomes.forEach(n => { const t = ix.trecho.get(n); if (t) ps.push(...t.p); else { const e = ix.el.get(n); if (e) ps.push([e.x, e.y]); } });
@@ -246,9 +260,16 @@ function aplicarFoco() {
   focarNomes([f.nome]);
   if (f.tipo === 'TRECHO' && indexar(GERAL).trecho.has(f.nome) && !PLN.sel.includes(f.nome)) { PLN.sel = [f.nome]; PLN.nos = []; atualizarSelecao(); }
 }
-ligarBusca($('#plnBusca'), r => {
+// o trecho achado pisca no mapa (onde ele está, com o nome completo) antes de ficar escolhido
+function piscarTrecho(nome) {
+  const t = indexar(GERAL).trecho.get(nome); if (!t) return Promise.resolve();
+  const g = $('#plnSelG'), el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  el.setAttribute('class', 'pln-pisca'); el.setAttribute('d', caminho(t.p)); g.appendChild(el);
+  return new Promise(ok => setTimeout(() => { el.remove(); ok(); }, 1300));
+}
+ligarBusca($('#plnBusca'), async r => {
   $('#plnBusca').value = '';
-  if (r.tipo === 'TRECHO') { focarNomes([r.rotulo]); return escolherTrecho(r.rotulo, PLN.multi || PLN.sel.length > 0); }
+  if (r.tipo === 'TRECHO') { focarNomes([r.rotulo]); toast(`Achado: ${nomeCompleto(r.rotulo)} · ${r.extra || ''}`); await piscarTrecho(r.rotulo); return escolherTrecho(r.rotulo, PLN.multi || PLN.sel.length > 0); }
   focarNomes([r.rotulo]);
   if (PLN.sel.length) alternarNo(r.rotulo); else toast('Escolha os trechos no mapa: o nó entre dois trechos escolhidos entra sozinho.');
 });
@@ -266,6 +287,22 @@ $('#plnMulti').addEventListener('click', ev => {
 $('#plnMais').addEventListener('click', () => zoomEm(1 / 1.5, null, null, PLN));
 $('#plnMenos').addEventListener('click', () => zoomEm(1.5, null, null, PLN));
 $('#plnTudo').addEventListener('click', verTudoPln);
+const emTelaCheia = () => document.fullscreenElement === $('#pln') || $('#pln').classList.contains('tela-cheia');
+function marcarTelaCheia() {
+  const sim = emTelaCheia(), b = $('#plnTela');
+  b.setAttribute('aria-pressed', String(sim)); b.setAttribute('aria-label', sim ? 'Sair da tela cheia' : 'Entrar na tela cheia'); b.title = b.getAttribute('aria-label');
+  document.body.classList.toggle('pln-tela-cheia', sim);
+}
+function telaCheiaPln() {
+  const el = $('#pln');
+  if (emTelaCheia()) {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => null); else el.classList.remove('tela-cheia');
+  } else if (el.requestFullscreen) el.requestFullscreen().catch(() => el.classList.add('tela-cheia')).finally(marcarTelaCheia);
+  else el.classList.add('tela-cheia');
+  marcarTelaCheia();
+}
+$('#plnTela').addEventListener('click', telaCheiaPln);
+document.addEventListener('fullscreenchange', marcarTelaCheia);       // Esc do navegador também sai
 $('#plnTrilha').addEventListener('click', ev => { if (ev.target.closest('[data-pln-tudo]')) verTudoPln(); });
 function abrirPopPln(nome, recarregar) {
   if (PLN.pop === nome && !recarregar) return fecharPopPln();
@@ -313,7 +350,8 @@ function aplicarCamadasPln() {
 document.addEventListener('pointerdown', ev => { if (PLN.pop && !ev.target.closest('#plnFerr .ilu-bloco')) fecharPopPln(); });
 document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape' || TELA !== 'mapa') return;
-  if (PLN.pop) fecharPopPln(); else if (PLN.sel.length || PLN.nos.length) limparSelecao();
+  if (PLN.pop) fecharPopPln(); else if ($('#pln').classList.contains('tela-cheia')) telaCheiaPln();
+  else if (PLN.sel.length || PLN.nos.length) limparSelecao();
 });
 
 /* ---------------------------------------------------------------- painel ao lado do mapa */
@@ -339,10 +377,10 @@ function cabecalhoDia() {
 }
 function cabecalhoSel(r) {
   const t = r.totais, um = r.fisicos.length === 1;
-  return `<div class="pln-cab"><h2>${um ? esc(r.fisicos[0].membros.map(nomeCurto).join(' + ')) : `${t.trechos_fisicos} trechos`}</h2>
+  return `<div class="pln-cab"><h2>${um ? esc(r.fisicos[0].membros.map(nomeCompleto).join(' + ')) : `${t.trechos_fisicos} trechos`}</h2>
       <button type="button" class="btn-texto" data-pln-limpar>Limpar</button></div>
     <p class="pln-resumo">${nf(t.extensao_m)} m · falta assentar ${nf(t.falta_assentar_m)} m${t.nos ? ` · ${t.nos} nó${t.nos > 1 ? 's' : ''}` : ''}${um && r.fisicos[0].membros.length > 1 ? ' · trecho físico de ' + r.fisicos[0].membros.length + ' linhas' : ''}</p>
-    <div class="pln-chips">${r.fisicos.map(f => `<span class="chip" title="${esc(f.texto)}">${esc(f.membros.map(nomeCurto).join(' + '))} · DE ${esc(f.de_mm)}</span>`).join('')}
+    <div class="pln-chips">${r.fisicos.map(f => `<span class="chip" title="${esc(f.texto)}">${esc(f.membros.map(nomeCompleto).join(' + '))} · DE ${esc(f.de_mm)}</span>`).join('')}
       ${r.nos.map(n => `<span class="chip ${n.automatico ? 'azul' : 'laranja'}" title="${n.automatico ? 'Entrou sozinho: liga ' + esc(n.liga.join(' e ')) : 'Tocado no mapa'}">${esc(n.numero)}${n.automatico ? ' · liga ' + esc(n.liga.join(' e ')) : ''}</span>`).join('')}</div>
     ${r.avisos.map(a => `<div class="aviso sugestao">${esc(a)}</div>`).join('')}
     ${r.linhas.length === 1 || (r.nos.length === 1 && !r.linhas.length) ? `<button type="button" class="btn" data-pln-ficha style="margin-top:8px">Ver a ficha completa</button>` : ''}`;
@@ -365,8 +403,9 @@ function corpoDia() {
   const serv = s => (RESUMO.servicos_programacao || {})[s] || s;
   const lista = Object.entries(eqs).sort(([a], [b]) => a.localeCompare(b)).map(([eq, x]) => `<div class="registro"><div><b>${esc(equipeNome(eq))}</b>
       ${x.campo.size ? `<span class="chip laranja">em campo · ${x.campo.size} alvo${x.campo.size > 1 ? 's' : ''}</span>` : '<span class="chip">sem check-in</span>'}</div>
-    <small>${x.prog.size ? `programada: ${esc([...x.serv].map(serv).join(', '))} em ${esc([...x.prog].map(nomeCurto).slice(0, 8).join(', '))}${x.prog.size > 8 ? '…' : ''}` : 'sem programação no dia'}</small>
-    <div class="acoes"><button type="button" class="btn" data-pln-equipe-dia="${esc(eq)}">Escolher no mapa</button></div></div>`).join('');
+    <small>${x.prog.size ? `programada: ${esc([...x.serv].map(serv).join(', '))} em ${esc([...x.prog].map(nomeCompleto).slice(0, 8).join(', '))}${x.prog.size > 8 ? '…' : ''}` : 'sem programação no dia'}</small>
+    <div class="acoes"><button type="button" class="btn" data-pln-equipe-dia="${esc(eq)}">Escolher no mapa</button>
+      ${pode('almox') && !futuro() ? `<button type="button" class="btn prim" data-pln-equipe-dia="${esc(eq)}" data-aba="liberar">Liberar o material do dia</button>` : ''}</div></div>`).join('');
   const lotes = (e.lotes || []).filter(l => (l.status.PLANEJADA || 0) > 0);
   return `<h3>Equipes no dia</h3>${lista || '<div class="vazio">Nenhuma equipe programada nem com check-in neste dia.</div>'}
     <h3 style="margin-top:14px">Programado nas próximas semanas</h3>${lotes.length ? lotes.map(htmlLote).join('') : '<div class="vazio">Nada programado.</div>'}`;
@@ -375,7 +414,7 @@ function htmlLote(l) {
   const st = l.status, chips = [['PLANEJADA', 'amarelo', 'planejada'], ['REALIZADA', 'azul', 'realizada'], ['NAO_REALIZADA', 'vermelho', 'não realizada']]
     .filter(([k]) => st[k]).map(([k, c, rot]) => `<span class="chip ${c}">${st[k]} ${rot}${st[k] > 1 ? 's' : ''}</span>`).join(' ');
   return `<div class="registro"><div><b>${esc(equipeNome(l.equipe_id))} · ${esc(l.servico_nome)}</b> ${chips}</div>
-    <small>${dataBR(l.de)}${l.ate !== l.de ? ' a ' + dataBR(l.ate) : ''} · ${l.dias} dia${l.dias > 1 ? 's' : ''} · ${esc(l.alvos.map(nomeCurto).slice(0, 6).join(', '))}${l.alvos.length > 6 ? ` e mais ${l.alvos.length - 6}` : ''} · por ${esc(l.criada_por)}</small>
+    <small>${dataBR(l.de)}${l.ate !== l.de ? ' a ' + dataBR(l.ate) : ''} · ${l.dias} dia${l.dias > 1 ? 's' : ''} · ${esc(l.alvos.map(nomeCompleto).slice(0, 6).join(', '))}${l.alvos.length > 6 ? ` e mais ${l.alvos.length - 6}` : ''} · por ${esc(l.criada_por)}</small>
     <div class="acoes"><button type="button" class="btn" data-pln-lote-ver="${esc(l.lote)}">Ver no mapa</button>
       ${st.PLANEJADA && pode('planejar') ? `<button type="button" class="btn" data-pln-cancelar="${esc(l.lote)}">Cancelar o que falta</button>` : ''}</div></div>`;
 }
@@ -384,11 +423,10 @@ function corpoProgramar(r) {
   return `<form class="form" id="plnFormProg">
       <div class="linha"><label>Equipe<select name="equipe_id" data-pln-equipe required><option value="">—</option>${htmlEquipes(PLN.equipe)}</select></label>
         <label>Serviço<select name="servico" required>${serv}</select></label></div>
-      <div class="linha"><label>De<input type="date" name="data_ini" value="${PLN.dia}" required></label><label>Até<input type="date" name="data_fim" value="${maisDias(PLN.dia, 4)}" required></label></div>
-      <fieldset class="pln-semana"><legend>Dias de trabalho</legend>${DIAS_SEMANA.map((d, i) => `<label class="check"><input type="checkbox" name="dia" value="${i}"${i < 6 ? ' checked' : ''}> ${d}</label>`).join('')}</fieldset>
+      <div class="linha"><label>Dia<input type="date" name="data" value="${PLN.dia}" required></label></div>
       <label>Observação<input name="obs" placeholder="ex.: começar pelo NÓ2.7"></label>
-      <p class="vazio" style="margin:0">Uma programação por trecho e por dia de trabalho. Programar não é presença nem execução: o check-in da equipe naquele dia marca como realizada.</p>
-      <div class="acoes"><button class="btn prim">Programar</button></div></form>
+      <p class="vazio" style="margin:0">O que a equipe executa <b>nesse dia</b>, uma programação por trecho. O almoxarife libera as peças do dia para estes trechos e, na hora, eles ficam "em execução hoje" no Mapa iluminado, com o pino da equipe. Os 18 meses da obra ficam no Cronograma.</p>
+      <div class="acoes"><button class="btn prim">Programar para o dia</button></div></form>
     <h3 style="margin-top:14px">Já programado nestes trechos</h3>${r.programacoes.length ? r.programacoes.map(htmlLote).join('') : '<div class="vazio">Nada programado.</div>'}`;
 }
 function checkinDaEquipe(r) { return (r.checkins || []).find(c => c.equipe_id === PLN.equipe); }
@@ -396,7 +434,7 @@ function corpoLiberar(r) {
   const ck = PLN.equipe && checkinDaEquipe(r), fut = futuro();
   const aviso = !PLN.equipe ? '<div class="aviso info">Escolha a equipe.</div>'
     : ck && ck.data < PLN.dia ? `<div class="aviso problema">A ${esc(equipeNome(ck.equipe_id))} está com o check-in de ${dataBR(ck.data)} aberto: faça a devolução (aba Devolução) antes de liberar o material de outro dia.</div>`
-    : ck && ck.data === PLN.dia && !fut ? `<div class="aviso info">A equipe já fez check-in neste dia (${esc(ck.alvos.map(nomeCurto).join(', '))}): o material é somado a ele.</div>`
+    : ck && ck.data === PLN.dia && !fut ? `<div class="aviso info">A equipe já fez check-in neste dia (${esc(ck.alvos.map(nomeCompleto).join(', '))}): o material é somado a ele.</div>`
     : fut ? '<div class="aviso info">Dia que ainda não chegou: o material fica <b>reservado</b> para a equipe e sai no check-in daquele dia.</div>' : '';
   const linhas = [...r.materiais, ...PLN.extra.filter(x => !r.materiais.some(m => m.material_id === x.material_id))];
   const outros = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && !linhas.some(l => l.material_id === m.id));
@@ -429,7 +467,7 @@ function corpoDevolucao(cks) {
   return '<p class="vazio" style="margin:0 0 8px">No fim do dia, com o encarregado: o que volta para o almoxarifado, o que quebrou e o que fica com a equipe. O resto conta como aplicado.</p>'
     + cks.map(c => `<form class="registro pln-dev" data-ck="${c.id}"><div><b>${esc(equipeNome(c.equipe_id))}</b> <small>check-in de ${dataBR(c.data)}</small>
         ${c.atrasado ? '<span class="chip vermelho">de outro dia: feche antes do próximo</span>' : ''}</div>
-      <small>${esc(c.alvos.map(nomeCurto).join(', ') || c.contingencia || '')}</small>
+      <small>${esc(c.alvos.map(nomeCompleto).join(', ') || c.contingencia || '')}</small>
       ${c.materiais.length ? `<div class="pln-mat">${c.materiais.map(m => `<div class="pln-item pln-item-dev" data-m="${esc(m.material_id)}" data-c="${m.quantidade}">
           <div><b>${esc(m.material_id)}</b> <small>${esc(String(m.descricao || '').slice(0, 50))}</small>
             <small>com a equipe ${nf(m.quantidade, 3)} ${esc(m.unidade || '')} · aplicado <b data-aplicado>${nf(m.quantidade, 3)}</b></small></div>
@@ -461,10 +499,51 @@ function corpoCronoSel(r) {
 }
 function corpoTrechos(r) {
   return `<div class="tabela"><table><thead><tr><th>Linha</th><th class="n">Extensão</th><th class="n">Assentado</th><th class="n">Reaterrado</th><th class="n">Liberado (topografia)</th></tr></thead><tbody>
-    ${r.linhas.map(l => `<tr><td><b>${esc(nomeCurto(l.ponto))}</b><br><small>${esc(l.frente_id || '')} · DE ${esc(l.de_mm)} · ${esc(l.metodologia || '')}</small></td><td class="n">${nf(l.extensao_m)} m</td>
+    ${r.linhas.map(l => `<tr><td><b>${esc(nomeCompleto(l.ponto))}</b><br><small>${esc(l.frente_id || '')} · DE ${esc(l.de_mm)} · ${esc(l.metodologia || '')}</small></td><td class="n">${nf(l.extensao_m)} m</td>
       <td class="n">${nf(l.assentado_m)}</td><td class="n">${nf(l.reaterrado_m)}</td><td class="n">${nf(l.liberado_m)}</td></tr>`).join('')}</tbody></table></div>
     ${r.nos.length ? `<h3 style="margin-top:12px">Nós</h3>${r.nos.map(n => `<div><small><b>${esc(n.numero)}</b> · ${esc(n.tipo)} · ${n.automatico ? 'entrou sozinho: liga ' + esc(n.liga.join(' e ')) : 'tocado no mapa'}</small></div>`).join('')}` : ''}`;
 }
+
+// os trechos e nós do dia de uma equipe (o programado e o que já está no check-in) ficam escolhidos no mapa
+function escolherEquipeDoDia(eq, aba) {
+  const e = PLN.est || { programado: {}, em_campo: {} }, ix = indexar(GERAL);
+  const alvos = Object.entries(e.programado).filter(([, ps]) => ps.some(p => p.hoje && p.equipe === eq)).map(([n]) => n)
+    .concat(Object.entries(e.em_campo).filter(([, c]) => c.equipe === eq).map(([n]) => n));
+  PLN.sel = [...new Set(alvos.filter(n => ix.trecho.has(n)))]; PLN.nos = [...new Set(alvos.filter(n => !ix.trecho.has(n)))];
+  PLN.equipe = eq; PLN.equipeFixa = true; if (aba) PLN.aba = aba;
+  if (alvos.length) focarNomes(alvos);
+  atualizarSelecao();
+}
+// Estoque e movimentos › "Equipes programadas hoje": cada equipe com os trechos do dia (nome completo) e as peças
+// sugeridas pelo projeto; "Liberar" abre o Dados da obra com o dia da equipe escolhido, na aba Liberar material
+async function almoxEquipesDoDia() {
+  const box = $('#almoxDia'), dia = hoje();
+  $('#almoxDiaPainel').hidden = false;
+  const e = await api('/api/dados-obra/estado?data=' + dia).catch(() => null); if (!e) return;
+  const eqs = {};
+  Object.entries(e.programado).forEach(([n, ps]) => ps.filter(p => p.hoje).forEach(p => {
+    const x = eqs[p.equipe] = eqs[p.equipe] || { linhas: new Set(), nos: new Set() }; (p.tipo === 'TRECHO' ? x.linhas : x.nos).add(n);
+  }));
+  const ids = Object.keys(eqs).sort();
+  if (!ids.length) { box.className = 'vazio'; box.textContent = 'Nenhuma equipe programada para hoje (programe no Dados da obra).'; return; }
+  const sels = await Promise.all(ids.map(eq => api('/api/dados-obra/selecao?' + new URLSearchParams({ linhas: [...eqs[eq].linhas].join(','),
+    nos: [...eqs[eq].nos].join(','), data: dia, equipe: eq })).catch(() => null)));
+  box.className = '';
+  box.innerHTML = ids.map((eq, i) => {
+    const r = sels[i], alvos = [...eqs[eq].linhas, ...eqs[eq].nos], ja = Object.values(e.em_campo).some(c => c.equipe === eq);
+    const mats = r ? r.materiais.filter(m => m.sugerido > 0) : [];
+    return `<div class="registro"><div><b>${esc(equipeNome(eq))}</b> ${ja ? '<span class="chip laranja">material liberado · em campo</span>' : '<span class="chip amarelo">aguardando a liberação</span>'}</div>
+      <small>${alvos.map(n => esc(nomeCompleto(n))).join(' · ')}</small>
+      ${mats.length ? `<div><small>Peças sugeridas: ${mats.slice(0, 8).map(m => `${esc(m.material_id)} ${nf(m.liberavel, 3)} ${esc(m.unidade)}${m.falta_no_almox > 0 ? ` (faltam ${nf(m.falta_no_almox, 3)})` : ''}`).join(' · ')}${mats.length > 8 ? ' …' : ''}</small></div>` : ''}
+      <div class="acoes"><button type="button" class="btn prim" data-almox-liberar="${esc(eq)}">${ja ? 'Somar material no Dados da obra' : 'Liberar o material do dia'}</button></div></div>`;
+  }).join('');
+}
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-almox-liberar]'); if (!b) return;
+  PLN.dia = hoje(); if ($('#plnDia')) $('#plnDia').value = PLN.dia;
+  PLN.abrir = { equipe: b.dataset.almoxLiberar, aba: 'liberar' };
+  abrirAba('mapa');
+});
 
 /* ---------------------------------------------------------------- ações do painel */
 const PAINEL = $('#plnPainel');
@@ -476,13 +555,7 @@ PAINEL.addEventListener('click', async ev => {
     const r = PLN.resp, [tipo, id] = r.linhas.length ? ['TRECHO', r.linhas[0].id] : ['ATIVIDADE', r.nos[0].atividade_id];
     await mostrarFiscal(tipo, id); return $('#fiscDetalhe').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-  if (q('[data-pln-equipe-dia]')) {
-    const eq = q('[data-pln-equipe-dia]').dataset.plnEquipeDia, e = PLN.est, ix = indexar(GERAL);
-    const alvos = Object.entries(e.programado).filter(([, ps]) => ps.some(p => p.hoje && p.equipe === eq)).map(([n]) => n)
-      .concat(Object.entries(e.em_campo).filter(([, c]) => c.equipe === eq).map(([n]) => n));
-    PLN.sel = [...new Set(alvos.filter(n => ix.trecho.has(n)))]; PLN.nos = [...new Set(alvos.filter(n => !ix.trecho.has(n)))];
-    PLN.equipe = eq; PLN.equipeFixa = true; focarNomes(alvos); return atualizarSelecao();
-  }
+  if (q('[data-pln-equipe-dia]')) return escolherEquipeDoDia(q('[data-pln-equipe-dia]').dataset.plnEquipeDia, q('[data-pln-equipe-dia]').dataset.aba);
   if (q('[data-pln-lote-ver]')) {
     const l = [...((PLN.est || {}).lotes || []), ...((PLN.resp || {}).programacoes || [])].find(x => x.lote === q('[data-pln-lote-ver]').dataset.plnLoteVer);
     if (!l) return;
@@ -513,10 +586,14 @@ PAINEL.addEventListener('submit', async ev => {
   ev.preventDefault();
   const f = ev.target, r = PLN.resp, sel = { linhas: PLN.sel, nos: PLN.nos };
   if (f.id === 'plnFormProg') {
-    const o = formObj(f), dias = $$('input[name=dia]:checked', f).map(i => +i.value);
-    const x = await acao(() => api('/api/dados-obra/programar', { ...sel, equipe_id: o.equipe_id, servico: o.servico, data_ini: o.data_ini, data_fim: o.data_fim, dias_semana: dias, obs: o.obs })).catch(() => null);
+    const o = formObj(f), corpo = { ...sel, equipe_id: o.equipe_id, servico: o.servico, data: o.data, obs: o.obs };
+    let x = await acao(() => api('/api/dados-obra/programar', corpo)).catch(() => null);
+    if (x && x.confirmar) {                                        // outra equipe já está nesse trecho no dia
+      if (!confirm(x.confirmar)) return;
+      x = await acao(() => api('/api/dados-obra/programar', { ...corpo, confirmar: true })).catch(() => null);
+    }
     if (!x) return;
-    toast(`Programado: ${x.criadas} programaç${x.criadas > 1 ? 'ões' : 'ão'} (${x.alvos} alvo${x.alvos > 1 ? 's' : ''} × ${x.dias} dia${x.dias > 1 ? 's' : ''}, ${dataBR(x.de)} a ${dataBR(x.ate)})${x.ja_existiam ? `; ${x.ja_existiam} já existia${x.ja_existiam > 1 ? 'm' : ''}` : ''}.`, 'ok');
+    toast(`Programado para ${dataBR(x.data)}: ${x.criadas} trecho${x.criadas > 1 ? 's' : ''} e nó${x.criadas > 1 ? 's' : ''}${x.ja_existiam ? `; ${x.ja_existiam} já estava${x.ja_existiam > 1 ? 'm' : ''}` : ''}.`, 'ok');
     return recarregarCamadaMapa();
   }
   if (f.id === 'plnFormLib') {

@@ -34,6 +34,8 @@ class TestDataFutura(BaseCampo):
 
 
 class TestLiberacaoEEscavacao(BaseCampo):
+    LIBERAR_TUDO = False                  # a liberação é o próprio assunto
+
     def lib(self, a, b, data=D, ref="NS-012", etapa="LIBERACAO_TOPOGRAFICA", alvo=TR):
         return S.registrar_etapa_complementar(self.c, alvo, etapa, a, b, data, "topo1", ref)
 
@@ -53,24 +55,29 @@ class TestLiberacaoEEscavacao(BaseCampo):
         comp = S.detalhe(self.c, "TRECHO", TR)["complementar"]
         self.assertEqual((comp["LIBERACAO_TOPOGRAFICA"]["metros"], comp["ESCAVADO"]["metros"]), (40, 20))
 
-    def test_assentado_sem_liberacao_ate_a_data_e_alerta_nao_bloqueio(self):
-        for t in ("MANHA", "TARDE"):
-            S.registrar_clima(self.c, D2, "Zona01", t, "SOL")
+    def test_assentado_sem_liberacao_ate_a_data_e_recusado(self):
+        """D-20 DECIDIDA (23/10/2026): a ordem topografia → serviço é obrigatória; antes era só alerta."""
         self.lib(0, 20, data=D2)                                                 # liberação DEPOIS do assentamento
-        self.ap(("ASSENTADO", 0, 30))                                            # 15/10: aceito (alerta, D-20)
-        d = S.detalhe(self.c, "TRECHO", TR)
-        self.assertIn(f"Assentado sem liberação topográfica até a data (alerta): 0–30 m ({D})", d["complementar"]["alertas"])
-        self.assertTrue(any(p["area"] == "Topografia" and p["nivel"] == "ALERTA" for p in d["pendencias"]))
+        with self.assertRaisesRegex(S.RegraViolada, r"Zona 01 · PB01 · TR001, de 0,0 m a 30,0 m: falta a liberação topográfica "
+                                                    r"\(registre a NS de topografia antes\)"):
+            self.ap(("ASSENTADO", 0, 30))
+        self.assertFalse(self.q("SELECT 1 FROM intervalos_execucao"))            # nada gravado
         rid = self.q("SELECT id FROM etapas_complementares")[0][0]
         with self.assertRaisesRegex(S.RegraViolada, "motivo"):
             S.anular_etapa_complementar(self.c, rid, "", "eng1")
         S.anular_etapa_complementar(self.c, rid, "data errada: a liberação foi em 14/10", "eng1")
         self.lib(0, 40, data="2026-10-14")
+        self.ap(("ASSENTADO", 0, 30))                                            # agora liberado até a data
+        with self.assertRaisesRegex(S.RegraViolada, "de 40,0 m a 50,0 m: falta a liberação topográfica"):
+            self.lib(30, 50, etapa="ESCAVADO")                                  # escavação também só no liberado
         d = S.detalhe(self.c, "TRECHO", TR)
         self.assertEqual(d["complementar"]["alertas"], [])
         self.assertEqual(len(d["complementar"]["anulados"]), 1)                 # nada apagado
         with self.assertRaisesRegex(S.RegraViolada, "já anulado"):
             S.anular_etapa_complementar(self.c, rid, "de novo", "eng1")
+        lib2 = self.q("SELECT id FROM etapas_complementares WHERE anulado_em IS NULL")[0][0]
+        with self.assertRaisesRegex(S.RegraViolada, "retifique antes a execução"):
+            S.anular_etapa_complementar(self.c, lib2, "liberação errada", "eng1")   # a execução ficaria fora de ordem
 
 
 class TestOcorrencias(BaseCampo):
@@ -95,6 +102,8 @@ class TestOcorrencias(BaseCampo):
 
 
 class TestPermissoesModuloB(BaseHTTP):
+    LIBERAR_TUDO = False                  # registra a liberação pelo HTTP
+
     def test_liberacao_so_topografia_ou_engenharia_e_resolucao_so_engenharia(self):
         enc = self.cliente("enc1")
         st, _ = enc.post("/api/liberacao", {"trecho_id": TR, "ini_m": 0, "fim_m": 10, "data": D, "referencia": "NS-1"})

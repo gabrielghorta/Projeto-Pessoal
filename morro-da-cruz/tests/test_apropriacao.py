@@ -7,7 +7,7 @@ import os
 import sqlite3
 import sys
 import unittest
-from datetime import date, timedelta
+from datetime import timedelta
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
@@ -17,12 +17,13 @@ import fotos_teste as FT  # noqa: E402
 import lev as LV  # noqa: E402
 import medicao as M  # noqa: E402
 import regras as R  # noqa: E402
+import relogio as RL  # noqa: E402
 import servicos as S  # noqa: E402
 from base_real import BaseReal, b64  # noqa: E402
 from test_importacao import Base  # noqa: E402
 from test_notas_servico import _ddl  # noqa: E402
 
-ONTEM = date.today() - timedelta(days=1)
+ONTEM = RL.hoje() - timedelta(days=1)
 DIA = ONTEM.isoformat()
 INI_MES, FIM_MES = ONTEM.replace(day=1).isoformat(), (ONTEM.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
 FIM_MES = FIM_MES.isoformat()
@@ -196,7 +197,7 @@ class TestApropriacaoHttp(BaseAp):
 
     def test_recusas(self):
         cli = self.cli("eng1")
-        futuro = (date.today() + timedelta(days=1)).isoformat()
+        futuro = (RL.hoje() + timedelta(days=1)).isoformat()
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, data=futuro)), 422, "data futura")
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, evidencias=[])), 422, "pelo menos uma evidência")
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, executor_obra="")), 422, "qual obra ou contrato")

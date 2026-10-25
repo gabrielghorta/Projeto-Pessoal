@@ -63,6 +63,8 @@ class TestVisaoGeral(unittest.TestCase):
 
 
 class TestCamadasELigacoes(BaseHTTP):
+    LIBERAR_TUDO = False                  # a camada da liberação topográfica é o assunto
+
     def test_liberacao_topografica_total_e_parcial(self):
         t1, t2 = self.q("SELECT id, extensao_m FROM trechos WHERE vigente=1 AND metodologia='VCA' ORDER BY id LIMIT 2")
         S.registrar_etapa_complementar(self.c, t1[0], "LIBERACAO_TOPOGRAFICA", 0, t1[1], "2026-10-15", "eng1", "NS 01")
@@ -145,6 +147,9 @@ class TestPaginaECodigo(unittest.TestCase):
         usados = set(re.findall(r"\$\('#([\w-]+)'\)", self.js))
         criados = set(re.findall(r'id="([\w-]+)"', self.js))      # elementos que o próprio JavaScript desenha
         self.assertFalse(sorted(usados - self.ids - criados))
+        # campo achado pelo nome na página inteira: sem ele o início da página parava (contingência do check-in que saiu)
+        nomes = set(re.findall(r"\$\('\w*\[name=(\w+)\]'\)", self.js))
+        self.assertFalse(sorted(n for n in nomes if f'name="{n}"' not in self.html))
 
     def test_nomes_globais_sem_repeticao_entre_os_scripts(self):
         """Os scripts da página dividem o mesmo escopo global: um const/let repetido derruba o script que vem depois."""
@@ -210,6 +215,34 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertNotIn("${nos}</g>", pln)                            # nós sob demanda (desenharNos)
         self.assertIn("function desenharNos(", pln)
         self.assertIn("zonaDoTrecho(t)", re.search(r"function linhasTracejadas\(.*?\n\}", ilu, re.S).group(0))
+
+    def test_mapa_do_dados_da_obra_tela_cheia_vista_e_zonas(self):
+        """Fluxo integrado (23/10/2026): tela cheia de verdade (API e a classe para o Safari do iPhone), a vista guardada na
+        sessão (o mapa não volta sozinho para a obra inteira), zonas nunca cinzas e o primeiro toque em outra zona
+        troca o foco; a caixa das ferramentas não engole o toque; o menu fechado sem barra de rolagem."""
+        pln, ilu, css, html = ler("planejamento.js"), ler("iluminado.js"), ler("app.css"), self.html
+        for trecho in ("requestFullscreen", "classList.add('tela-cheia')", "fullscreenchange", "aria-pressed"):
+            self.assertIn(trecho, pln)
+        self.assertIn('id="plnTela"', html)
+        self.assertIn("⌖", html)
+        self.assertIn("sessionStorage.setItem(VISTA_PLN", pln)
+        self.assertNotIn("0.08", re.search(r"function aplicarCamadas\(\).*?\n\}", ilu, re.S).group(0))
+        for js, ctx in ((ilu, "ILU"), (pln, "PLN")):
+            self.assertIn(f"if (outra && outra !== {ctx}.zona)", js)
+        self.assertRegex(css, r"\.ilu-ferr \{ pointer-events: none; \}")
+        self.assertIn(".rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }", css)
+        self.assertIn("::-webkit-scrollbar { display: none; }", css)
+
+    def test_scripts_da_pagina_sem_erro_de_sintaxe(self):
+        """Um erro de sintaxe derruba o script inteiro (a tela dele não abre): node --check em cada um, se houver Node."""
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("sem Node")
+        for arq in ("app.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
+            r = subprocess.run([node, "--check", os.path.join(WEB, arq)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, f"{arq}: {r.stderr[-400:]}")
 
     def test_trecho_mais_perto_do_toque(self):
         """O clique por cálculo acha o trecho da mesma forma que o antigo caminho de 14 px: até 7 px da tela; com duas

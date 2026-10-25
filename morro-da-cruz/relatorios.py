@@ -10,7 +10,7 @@
 """
 import io
 from collections import defaultdict
-from datetime import date
+
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -18,6 +18,7 @@ from openpyxl.styles import Font
 import compras as C
 import planejamento as P
 import regras as R
+import relogio as RL
 import servicos as S
 from servicos import _rows
 
@@ -114,7 +115,7 @@ def avanco(conn, ini=None, fim=None, frente=None, equipe=None):
 
 # ------------------------------------------------------------------ pendências
 def pendencias(conn, frente=None, hoje=None):
-    hoje = hoje or date.today().isoformat()
+    hoje = hoje or RL.hoje().isoformat()
     fr_trecho = {r[0]: r[1] for r in conn.execute("SELECT id, frente_id FROM trechos")}
     fr_ativ = {r[0]: r[1] for r in conn.execute("SELECT id, frente_id FROM atividades")}
     fr = lambda tipo, aid: fr_trecho.get(aid) if tipo == "TRECHO" else fr_ativ.get(aid)

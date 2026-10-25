@@ -125,3 +125,19 @@ justificativa). Antes de gravar, o sistema avisa se a descrição e os identific
 | `GET /api/apropriacao/arquivo?doc=` (evidência ou documento da Caesb, inline) | telas `campo`, `diario`, `medicao` |
 
 Testes: `tests/test_apropriacao.py` (`TestBusca`, `TestApropriacaoHttp`).
+
+## Fluxo integrado (esquema v20, 23/10/2026): o caminho até a medição e a ordem obrigatória
+
+**Caminho até a medição** (ficha do trecho, bloco "Para entrar na medição", `servicos.caminho_medicao`), cada item com quem faz e onde:
+1. liberação topográfica (Topografia, NS de topografia);
+2. executado 100 %, assentado e reaterrado (a equipe, pela NS do dia no Lançamento do dia);
+3. verificado pelo supervisor (botão "Verificar" na ficha; quem informou não verifica; `servicos.verificar_trecho`);
+4. as 3 fotos (sinalização, execução, concluído), enviadas por quem manda a NS do dia ou pelo supervisor, no mesmo lugar da verificação;
+5. cadastro de campo (Cadastro, pela NS de cadastro);
+6. OK interno (Engenharia ou Administração, botão "OK interno" na ficha).
+
+O OK interno exige 2, 3 e 4 (D-112), e não depende mais de medição aberta (D-113). O supervisor tem a lista "Aguardando verificação" no Mapa iluminado, por zona, com o mais perto primeiro quando o celular dá a posição.
+
+**Ordem obrigatória** (D-20 DECIDIDA, D-115): assentamento e escavação só sobre a liberação topográfica até a data, venham do apontamento, da NS do dia ou da retificação. A mensagem diz o que falta, por exemplo "Zona 03 · PB06 · TR014, de 12,0 m a 30,0 m: falta a liberação topográfica (registre a NS de topografia antes)". A liberação que a execução já usou não é anulada. O legado conciliado só ganha posição; o legado fora de ordem fica listado em Notas de serviço › "Fora de ordem (legado)" (`servicos.fora_de_ordem`), sem apagar nada. A apropriação direta fica fora da regra.
+
+**O que acende no mapa** (`regras.etapa_trecho`, D-118): não iniciado → liberado → em execução hoje → executado, aguardando verificação (parcial ou não) → verificado → cadastro de campo feito → pronto para o OK → OK interno, na medição → cadastro em andamento → cadastro aprovado pela Caesb. Testes: `tests/test_etapas_mapa.py`, `tests/test_ordem_obra.py` e o ponta a ponta `tests/test_fluxo_integrado.py`.

@@ -104,6 +104,8 @@ class TestReservas(BaseEstoque):
 
 
 class TestEmprestimoEBaixaTeorica(BaseEstoque):
+    LIBERAR_TUDO = True                   # lança execução: a liberação topográfica antes (D-20)
+
     def test_emprestimo_exige_documento_responsavel_e_autorizacao(self):
         self.entrada(40)
         with self.assertRaisesRegex(S.RegraViolada, "autorização"):

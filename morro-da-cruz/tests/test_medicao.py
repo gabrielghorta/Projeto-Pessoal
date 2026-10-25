@@ -33,6 +33,7 @@ class BaseMedicao(BaseCampo):
 
     def concluir(self, alvo=TR, data=D, fotos=True):
         S.apontar(self.c, data, "Zona01", "TRECHO", alvo, concluido_100=True)
+        S.verificar_trecho(self.c, alvo, "sup1")                        # o OK interno exige a verificação (v20)
         if fotos:
             for cat in ("SINALIZACAO", "EXECUCAO", "CONCLUIDO"):
                 S.registrar_foto(self.c, "TRECHO", alvo, cat, jpeg(), dir_fotos=self.fotos)
@@ -101,7 +102,8 @@ class TestElegibilidade(BaseMedicao):
         self.assertIn("D-30", sit[MND]["impedimentos"][0])
         self.assertEqual((sit[MND]["assentado_periodo_m"], sit[MND]["verificado_periodo_m"]), (10, 10))
         self.assertIn("D-22", sit[MND]["alertas"][0])
-        self.assertEqual(el["contagem"], {"PROPOSTO_NESTA": 1, "APTO_SEM_OK": 1, "PARCIAL_NAO_ELEGIVEL": 1, "MEDIDO_ANTES": 0})
+        self.assertEqual(el["contagem"], {"PROPOSTO_NESTA": 1, "OK_SEM_MEDICAO": 0, "APTO_SEM_OK": 1, "PARCIAL_NAO_ELEGIVEL": 1,
+                                         "MEDIDO_ANTES": 0})
         self.assertEqual(el["resumo"]["proposto_nesta_m"], 76.55)
         mat = {m["material_id"]: m for m in el["materiais"]}[TUBO]
         self.assertEqual((mat["recebido"], mat["aplicado"], mat["situacao"]), (100, 24, "BLOQUEADO"))
@@ -164,6 +166,7 @@ class TestConferenciaEFechamento(BaseMedicao):
         S.apontar(self.c, D, "Zona02", "TRECHO", MND, concluido_100=True)
         for cat in ("SINALIZACAO", "EXECUCAO", "CONCLUIDO"):
             S.registrar_foto(self.c, "TRECHO", MND, cat, jpeg(), dir_fotos=self.fotos)
+        S.verificar_trecho(self.c, MND, "sup1")
         S.ok_fiscalizacao(self.c, "TRECHO", MND, "eng1", D)
         ass = self.q("SELECT status, bm_item_id, motivo FROM medicao_lancamentos WHERE servico='ASSENTAMENTO'")
         self.assertEqual((ass[0][0], ass[0][1]), ("PENDENTE", None))     # MND não vira vala aberta
@@ -217,6 +220,7 @@ class TestMedicaoPeloHTTP(BaseHTTP):
         S.apontar(self.c, D, "Zona01", "TRECHO", TR, concluido_100=True)
         for cat in ("SINALIZACAO", "EXECUCAO", "CONCLUIDO"):
             S.registrar_foto(self.c, "TRECHO", TR, cat, jpeg(), dir_fotos=self.fotos)
+        S.verificar_trecho(self.c, TR, "sup1")
         S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng1", D)
         eng, alm = self.cliente("eng2"), self.cliente("almox1")
         corpo = {"medicao_id": mid, "resultado": "CONFORME", "checklist": TUDO, "por": "Fiscal da Caesb"}
