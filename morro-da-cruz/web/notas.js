@@ -451,7 +451,7 @@ function htmlLancado(n) {
     return r.length ? `<li><b>Lançado:</b> ${juntarE(r.map(x => `${esc(linhaNs(x.ponto))} ${nf(x.ini_m)}–${nf(x.fim_m)} m`))} (${ETAPA_DIA[e]})</li>` : ''; }).join('');
 }
 const podeAnularDia = n => n.status === 'REGISTRADA' && (pode('retificar_campo')
-  || (pode('campo') && !n.verificada && (!USUARIO.restrito_a_equipe || n.equipe_id === USUARIO.equipe_id)));
+  || (pode('ns_dia') && !n.verificada && (!USUARIO.restrito_a_equipe || n.equipe_id === USUARIO.equipe_id)));
 function htmlNdNota(n) {
   const fila = n.segmentos.filter(s => s.na_fila), ja = {};
   n.segmentos.forEach(s => Object.entries((s.agora || {}).ja || {}).forEach(([e, m]) => { ja[e] = (ja[e] || 0) + m; }));
@@ -510,8 +510,7 @@ const ND_LOTE = criarFilaNs({ caixa: $('#ndLote'), tipo: () => 'EXECUCAO',
   extra: () => {
     const eq = $('#ndEquipe').value;
     if (!eq) throw new Error('Escolha a equipe.');
-    if (!ND.clima.MANHA || !ND.clima.TARDE) throw new Error('Toque no clima da manhã e no da tarde.');
-    return { equipe_id: eq, clima: { ...ND.clima } };
+    return { equipe_id: eq, clima: { ...ND.clima } };      // sem toque, vale o já marcado em Clima do dia (D-131)
   },
   depois: () => { ndListas(); recarregarCamadaMapa(); driveEmSegundoPlano(); } });
 $('#fNd').addEventListener('submit', async ev => {

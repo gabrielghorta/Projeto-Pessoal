@@ -267,10 +267,9 @@ def r_histograma(q, c):
     return S.histograma(c, q["ini"], q["fim"])
 
 
-def p_clima(b, c):
-    for turno in ("MANHA", "TARDE"):
-        if b.get(turno):
-            S.registrar_clima(c, b["data"], b["equipe_id"], turno, b[turno])
+def p_clima(b, c, usuario):
+    # a NS do dia é a fonte principal do clima: com ela no dia, só a engenharia (retificar_campo) muda o gravado
+    NS.gravar_clima(c, b["data"], b["equipe_id"], b, corrigir="retificar_campo" in usuario["permissoes"])
     return {"ok": True}
 
 
@@ -609,8 +608,8 @@ def p_ns_dia_anular(b, c, usuario):
     return NS.anular(c, ns["id"], b.get("motivo"), b["por"])
 
 
-ROTAS_NS_DIA = {"/api/ns/dia": ("campo", p_ns_dia), "/api/ns/numero": ("campo", p_ns_numero), "/api/ns/dia/conferir": ("retificar_campo", p_ns_dia_conferir),
-                "/api/ns/dia/anular": ("campo", p_ns_dia_anular)}
+ROTAS_NS_DIA = {"/api/ns/dia": ("ns_dia", p_ns_dia), "/api/ns/numero": ("campo", p_ns_numero), "/api/ns/dia/conferir": ("retificar_campo", p_ns_dia_conferir),
+                "/api/ns/dia/anular": ("ns_dia", p_ns_dia_anular)}
 
 
 # ------------------------------------------------------------------ apropriação direta e base de custo (D-90 em diante)
@@ -834,7 +833,7 @@ GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
                "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
-        "/api/nf/aceitar": p_nf_aceitar, "/api/checkout": p_checkout, "/api/clima": p_clima,
+        "/api/nf/aceitar": p_nf_aceitar, "/api/checkout": p_checkout,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
         "/api/recomposicao": p_recomposicao, "/api/cadastro": p_cadastro, "/api/medicao": p_medicao,
         "/api/medicao/fechar": p_medicao_fechar, "/api/estorno": p_estorno, "/api/retificar": p_retificar,
@@ -851,7 +850,7 @@ POST.update(ROTAS_DRIVE)
 POST.update({"/api/medicao/conferir": p_medicao_conferir})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_PLANEJAMENTO.items()})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_APROPRIACAO.items()})
-POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, **ROTAS_NS,
+POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, "/api/clima": p_clima, **ROTAS_NS,
                 **{rota: fn for rota, (_, fn) in ROTAS_NS_DIA.items()}}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
 PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",

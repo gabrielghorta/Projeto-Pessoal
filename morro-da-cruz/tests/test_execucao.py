@@ -15,7 +15,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
 sys.path.insert(0, AQUI)
 from base_real import TR006, TR007, BaseReal, b64, pdf_ns  # noqa: E402
-from test_ns_dia import BaseDia, grupo, pdf_dia  # noqa: E402
+from test_ns_dia import ONTEM, BaseDia, grupo, pdf_dia  # noqa: E402
 
 WEB = os.path.join(os.path.dirname(AQUI), "web")
 
@@ -56,7 +56,7 @@ class TestNotasDaObra(BaseDia):
         enc = self.cli("enc3")
         sessao = self.ok(enc.get("/api/sessao"))["usuario"]
         self.assertIn("notas", sessao["telas"])
-        self.assertEqual(sessao["permissoes"], ["campo"])
+        self.assertEqual(sessao["permissoes"], ["campo", "ns_dia"])
         # a página que ele usa na aba: só a NS do dia (o serviço de obra é da engenharia); no Lançamento, fotos e clima
         p = paginas_abertas(sessao["permissoes"])
         self.assertEqual((p["notas"]["usa"], p["notas"]["abre"]), (["dia"], "dia"))
@@ -92,6 +92,54 @@ class TestNotasDaObra(BaseDia):
         self.assertEqual(p["notas"]["usa"], ["dia", "servico"])
         self.assertEqual(p["campo"]["usa"], ["apropriacao", "apontamento", "fotos", "clima"])
         self.assertEqual(self.ok(self.cli("eng1").get("/api/ns/fora-de-ordem")), [])
+
+    def test_almoxarifado_nao_envia_a_ns_do_dia(self):
+        """D-132: quem envia nota de serviço é a engenharia; a NS do dia, a equipe (o encarregado) e o supervisor. O
+        almoxarife tem `campo` (fotos e soldas), mas não a permissão da NS do dia: nem a aba nem a rota."""
+        alm = self.cli("almox1")
+        sessao = self.ok(alm.get("/api/sessao"))["usuario"]
+        self.assertNotIn("notas", sessao["telas"])
+        self.assertNotIn("ns_dia", sessao["permissoes"])
+        g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
+        self.recusa(self.enviar("almox1", pdf_dia(g), equipe="Zona03"), 403, "Enviar e anular a NS do dia")
+        self.assertEqual(self.n("notas_servico"), 0)
+        r = self.ok(self.enviar("enc3", pdf_dia(g)))
+        self.assertEqual(alm.post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "x"})[0], 403)
+
+
+class TestClimaDoDia(BaseDia):
+    """D-131: a NS do dia é a fonte principal do clima. Tocado no envio, substitui o marcado; sem toque, vale o marcado em
+    Lançamento do dia › Clima do dia. Com a NS do dia no dia, o Clima do dia só preenche o turno vazio: mudar é da engenharia."""
+
+    def clima(self, data=None):
+        return [tuple(x) for x in self.c.execute("SELECT turno, condicao FROM clima WHERE equipe_id='Zona03' AND data=? ORDER BY turno",
+                                                 ((data or ONTEM).isoformat(),))]
+
+    def marcar(self, login, manha, tarde, data=None):
+        return self.cli(login).post("/api/clima", {"data": (data or ONTEM).isoformat(), "equipe_id": "Zona03", "MANHA": manha, "TARDE": tarde})
+
+    def test_sem_toque_vale_o_marcado_e_com_toque_vale_a_ns(self):
+        g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
+        self.recusa(self.enviar("enc3", pdf_dia(g), clima=None), 422, "Informe o clima da manhã e da tarde")   # nada marcado
+        self.ok(self.marcar("enc3", "SOL", "CHUVA_FRACA_TENDA"))
+        r = self.ok(self.enviar("enc3", pdf_dia(g), clima=None))                       # sem toque: fica o marcado
+        self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "CHUVA_FRACA_TENDA")])
+        self.ok(self.cli("enc3").post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "teste do clima"}))
+        self.ok(self.enviar("enc3", pdf_dia(g, numero="016"), clima={"MANHA": "SOL", "TARDE": "SOL"}))
+        self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "SOL")])           # tocado no envio: vale o da NS
+
+    def test_depois_da_ns_o_clima_do_dia_nao_muda_o_dela(self):
+        g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
+        self.ok(self.enviar("enc3", pdf_dia(g), clima={"MANHA": "SOL", "TARDE": "PARALISADO_CHUVA"}))
+        self.recusa(self.marcar("enc3", "SOL", "SOL"), 422, "veio com a NS do dia 015, que é a fonte principal")
+        self.recusa(self.marcar("sup1", "SOL", "SOL"), 422, "só a engenharia corrige")
+        self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "PARALISADO_CHUVA")])
+        self.ok(self.marcar("enc3", "SOL", "PARALISADO_CHUVA"))                       # o mesmo: nada muda
+        self.ok(self.marcar("eng1", "SOL", "SOL"))                                     # a engenharia corrige
+        self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "SOL")])
+        outro = ONTEM.replace(day=1) if ONTEM.day > 1 else ONTEM.replace(day=2)
+        self.ok(self.marcar("enc3", "SOL", "CHUVA_FRACA_TENDA", outro))                # dia sem NS do dia: o Clima do dia vale
+        self.assertEqual(self.clima(outro), [("MANHA", "SOL"), ("TARDE", "CHUVA_FRACA_TENDA")])
 
 
 class TestTopografia(BaseReal):

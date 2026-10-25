@@ -198,7 +198,7 @@
     <!-- clima do dia da equipe, para o diário dos dias sem nota do dia -->
     <div data-pagina="clima" hidden>
       <form class="painel nota-dia" id="fClima" data-perm="campo">
-        <p class="vazio" style="margin:0">O clima do dia da equipe, para o diário dos dias sem nota do dia. Quem envia a NS do dia já grava o clima junto.</p>
+        <p class="vazio" style="margin:0">O clima do dia da equipe, para o diário. A NS do dia é a fonte principal: se ela vier com o clima, vale o dela; se vier sem, vale o marcado aqui. Depois que a NS do dia chega, só a engenharia muda o clima daquele dia.</p>
         <div class="linha"><label>Equipe<select id="climaEquipe" required></select></label><label>Dia<input type="date" name="data" required></label></div>
         <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
         <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
@@ -360,12 +360,13 @@
       <p class="vazio" style="margin:0 0 12px">Envie a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a engenharia conferir.</p>
     <div class="grade-2">
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
-        <form class="painel nota-dia" id="fNd" data-perm="campo">
+        <form class="painel nota-dia" id="fNd" data-perm="ns_dia">
           <label>Equipe<select id="ndEquipe" required></select></label>
           <label>Nota de serviço do dia (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
           <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
           <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
           <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
+          <p class="vazio" style="margin:0">O clima tocado aqui é o que vale. Se já marcou em Lançamento do dia › Clima do dia, pode deixar sem tocar: fica o marcado.</p>
           <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
           <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
           <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
@@ -443,6 +444,7 @@
         <label>Frente<select id="topFrente"><option value="">Obra inteira</option></select></label>
         <button type="button" class="btn" id="topMapa">Ver no Mapa iluminado</button>
       </div>
+      <div id="topMacro"></div>
       <div class="kpis" id="topKpis"></div>
       <div class="painel" style="min-width:0">
         <div class="abas-chip" id="topLista" role="group" aria-label="Lista">
@@ -488,6 +490,7 @@
         <label>Frente<select id="cadFrente"><option value="">Obra inteira</option></select></label>
         <button type="button" class="btn" id="cadMapa">Ver no Mapa iluminado</button>
       </div>
+      <div id="cadMacro"></div>
       <div id="cadAviso"></div>
       <div class="kpis" id="cadKpis"></div>
       <div class="painel" style="min-width:0">

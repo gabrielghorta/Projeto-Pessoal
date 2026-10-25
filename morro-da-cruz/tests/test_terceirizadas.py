@@ -78,6 +78,11 @@ class TestTerceirizadas(BaseHTTP):
         r, f = self.fila()
         self.assertEqual((f["vala_aberta"], f["reaterrado_sem_cadastro"], f["alertas_reaterro"]), ([[0.0, 20.0]], [], 0))
         self.assertGreaterEqual(r["totais"]["vala_aberta_m"], 20)
+        rede = sum(e for (e,) in self.q("SELECT extensao_m FROM trechos WHERE vigente=1"))
+        tt = r["totais"]                                                  # o olhar macro: feito × falta na rede (D-133)
+        self.assertEqual((tt["assentado_m"], tt["levantado_m"], tt["falta_levantar_m"]), (20.0, 0.0, 20.0))
+        self.assertAlmostEqual(tt["rede_m"], rede, places=1)
+        self.assertAlmostEqual(tt["nao_assentado_m"], rede - 20, places=1)
         self.assertEqual(self.cliente("cad1").get("/api/cadastro-campo")[0], 200)     # CADASTRO só consulta
         for login in ("enc1", "almox1", "topo1"):
             self.assertEqual(self.cliente(login).get("/api/cadastro-campo")[0], 403, login)
@@ -89,6 +94,9 @@ class TestTerceirizadas(BaseHTTP):
         self.assertEqual([(x["nome"], x["faixas"]) for x in S.fora_de_ordem(self.c)], [(TR, [(20.0, 30.0)])])
         st, t = self.cliente("topo1").get("/api/topografia")
         self.assertEqual(st, 200, t)
+        tt = t["totais"]
+        self.assertEqual((tt["liberado_m"], tt["trechos_sem_liberacao"]), (20.0, tt["trechos"] - 1))
+        self.assertAlmostEqual(tt["falta_liberar_m"], tt["rede_m"] - 20, places=1)
         x = next(x for x in t["executado_sem_liberacao"] if x["ponto"] == TR)
         self.assertEqual(x["faltas"][0]["faixas"], [[20.0, 30.0]])
         p = next(x for x in t["parciais"] if x["ponto"] == TR)

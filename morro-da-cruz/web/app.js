@@ -169,7 +169,7 @@ const TELAS_ANTIGAS = {
 const PAGINAS = {
   campo: [['apropriacao', 'Apropriação direta', () => pode('apropriacao')], ['apontamento', 'Apontamento sem NS', () => pode('lancar_sem_ns')],
     ['fotos', 'Fotos e soldas', () => pode('campo')], ['clima', 'Clima do dia', () => pode('campo')]],
-  notas: [['dia', 'NS do dia', () => pode('campo')], ['servico', 'Serviço de obra', () => pode('notas_servico')]],
+  notas: [['dia', 'NS do dia', () => pode('ns_dia')], ['servico', 'Serviço de obra', () => pode('notas_servico')]],
   topografia: [['enviar', 'Enviar NS de topografia', () => podeNs('TOPOGRAFIA')], ['resumo', 'Resumo', () => true]],
   cadastro_campo: [['enviar', 'Enviar NS de cadastro', () => podeNs('CADASTRO')], ['feito', 'O que foi feito', () => true]],
 };
@@ -1500,6 +1500,12 @@ document.addEventListener('click', async ev => {
 /* ---------------------------------------------------------------- campo: topografia e cadastro de campo (terceirizadas) */
 // as duas equipes são terceirizadas e não entram no sistema: a engenharia (ou a administração) registra o que elas entregam
 const kpi = ([k, v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`;
+// o olhar macro do resumo (Topografia e Cadastro de campo): o feito e o que falta na rede da frente escolhida
+function htmlFeitoFalta(rotulo, feito, rede, falta) {
+  const p = rede ? Math.min(100, feito / rede * 100) : 0;
+  return `<div class="feito-falta"><b>${esc(rotulo)}: ${nf(feito)} m de ${nf(rede)} m da rede (${nf(p, 1)} %)</b>
+    <div class="trilho" role="img" aria-label="${nf(p, 1)} % feito"><i style="width:${p.toFixed(2)}%"></i></div><small>${falta}</small></div>`;
+}
 const opcoesFrente = sel => { if (sel.options.length < 2) sel.innerHTML += RESUMO.frentes.map(x => `<option>${esc(x)}</option>`).join(''); };
 const foraDe = ([a, b], cob) => lacunasDe((cob || []).map(([c, d]) => [Math.max(c, a) - a, Math.min(d, b) - a]).filter(([c, d]) => d > c), b - a)
   .map(([c, d]) => [c + a, d + a]);
@@ -1529,6 +1535,8 @@ async function carregarTopografia() {
   const r = await acao(() => api('/api/topografia' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   TOP_DADOS = r; const t = r.totais;
   nsCarregarLista('TOPOGRAFIA', '#topNsLista');
+  $('#topMacro').innerHTML = htmlFeitoFalta('Liberado', t.liberado_m, t.rede_m,
+    `Falta liberar: <b>${nf(t.falta_liberar_m)} m</b> · ${nf(t.trechos_sem_liberacao, 0)} de ${nf(t.trechos, 0)} trechos sem nenhuma liberação`);
   $('#topKpis').innerHTML = [['Trechos liberados', nf(t.trechos_liberados, 0)], ['Liberados em parte', nf(t.trechos_parciais, 0)],
     ['Metros liberados', nf(t.liberado_m) + ' m'], ['Programado sem liberação (7 dias)', nf(t.programados_sem_liberacao, 0)],
     ['Executado sem liberação', nf(t.executado_sem_liberacao_m) + ' m']].map(kpi).join('');
@@ -1603,6 +1611,8 @@ async function carregarCadCampo() {
   const r = await acao(() => api('/api/cadastro-campo' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   CAD_DADOS = r; const t = r.totais;
   nsCarregarLista('CADASTRO', '#cadNsLista');
+  $('#cadMacro').innerHTML = htmlFeitoFalta('Levantado', t.levantado_m, t.rede_m,
+    `Falta levantar: <b>${nf(t.falta_levantar_m)} m já assentados</b> (vala aberta ou reaterrados) · ${nf(t.nao_assentado_m)} m ainda não assentados`);
   $('#cadAviso').innerHTML = t.reaterrado_sem_cadastro_m > 0 ? `<div class="aviso problema"><b>${nf(t.reaterrado_sem_cadastro_m)} m já reaterrados sem levantamento.</b>
     Com a vala fechada não dá mais para levantar: veja a lista "Reaterrado sem levantamento".</div>` : '';
   $('#cadKpis').innerHTML = [['Vala aberta sem levantamento', nf(t.vala_aberta_m) + ' m'], ['Reaterrado sem levantamento', nf(t.reaterrado_sem_cadastro_m) + ' m'],

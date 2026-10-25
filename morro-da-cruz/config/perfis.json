@@ -24,6 +24,7 @@
     "documentos": "Ligar a conta Google da obra (fotos e notas no Drive)",
     "notas_servico": "Enviar e registrar notas de serviço e croquis (topografia, cadastro e serviço de obra)",
     "lancar_sem_ns": "Lançar à mão o avanço de um trecho sem nota de serviço (exceção, com motivo)",
+    "ns_dia": "Enviar e anular a NS do dia (o encarregado, só a da própria equipe)",
     "apropriacao": "Apropriação direta e cadastro de item a aprovar na base de custo"
   },
   "telas": {
@@ -49,18 +50,18 @@
                       "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar",
                                      "compras_pedir", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar",
                                      "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos",
-                                     "notas_servico", "lancar_sem_ns", "apropriacao"]},
+                                     "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia"]},
     "ENGENHARIA": {"nome": "Engenharia", "telas": ["*"],
                    "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar",
                                   "compras_pedir", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar",
                                   "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos",
-                                  "notas_servico", "lancar_sem_ns", "apropriacao"]},
+                                  "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia"]},
     "ALMOXARIFADO": {"nome": "Almoxarifado", "telas": ["iluminado", "campo", "diario", "interferencias", "mapa", "almox", "compras"],
                      "permissoes": ["almox", "receber", "inventario_contar", "compras_solicitar", "campo"]},
     "SUPERVISOR": {"nome": "Supervisor de campo", "telas": ["iluminado", "campo", "notas", "diario", "interferencias"],
-                   "permissoes": ["campo", "verificar"]},
+                   "permissoes": ["campo", "verificar", "ns_dia"]},
     "EQUIPE": {"nome": "Equipe de campo (encarregado)", "telas": ["iluminado", "campo", "notas", "diario", "interferencias"],
-               "permissoes": ["campo"], "restrito_a_equipe": true},
+               "permissoes": ["campo", "ns_dia"], "restrito_a_equipe": true},
     "TOPOGRAFIA": {"nome": "Topografia (consulta)", "telas": ["iluminado", "topografia"], "permissoes": []},
     "CADASTRO": {"nome": "Cadastro", "telas": ["iluminado", "cadastro_campo"], "permissoes": ["cadastro"]}
   }
