@@ -130,9 +130,9 @@ Testes: `tests/test_apropriacao.py` (`TestBusca`, `TestApropriacaoHttp`).
 
 **Caminho até a medição** (ficha do trecho, bloco "Para entrar na medição", `servicos.caminho_medicao`), cada item com quem faz e onde:
 1. liberação topográfica (Topografia, NS de topografia, em Topografia › Enviar NS de topografia);
-2. executado 100 %, assentado e reaterrado (a equipe, pela NS do dia em Notas de serviço › NS do dia);
+2. executado 100 %, assentado e reaterrado (a NS do dia da equipe, enviada pela engenharia em Notas de serviço › NS do dia);
 3. verificado pelo supervisor (botão "Verificar" na ficha; quem informou não verifica; `servicos.verificar_trecho`);
-4. as 3 fotos (sinalização, execução, concluído), enviadas por quem manda a NS do dia ou pelo supervisor, no mesmo lugar da verificação;
+4. as 3 fotos (sinalização, execução, concluído), enviadas pela equipe (Lançamento do dia › Fotos e soldas) ou pelo supervisor, no mesmo lugar da verificação;
 5. cadastro de campo (Cadastro, pela NS de cadastro, em Cadastro de campo › Enviar NS de cadastro);
 6. OK interno (Engenharia ou Administração, botão "OK interno" na ficha).
 

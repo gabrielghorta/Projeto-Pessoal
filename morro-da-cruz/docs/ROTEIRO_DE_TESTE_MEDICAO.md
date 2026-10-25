@@ -38,13 +38,13 @@ O que acende no mapa aparece no **Mapa iluminado**, no botão **Situação**. Em
 
 **No mapa:** os trechos ficam laranja, **"Em execução hoje"**, e o pino da equipe aparece em cada um, no Mapa iluminado e na tela Início.
 
-## 3. A equipe manda a NS do dia
+## 3. A engenharia manda a NS do dia da equipe
 
-**Quem:** o encarregado da equipe (ou o supervisor, ou a Engenharia). **Tela:** Execução › **Notas de serviço**, página **NS do dia**.
+**Quem:** Engenharia (ou Administração), em nome da equipe. As equipes não têm acesso às notas; o supervisor e o RH só consultam. **Tela:** Execução › **Notas de serviço**, página **NS do dia**.
 
 > A NS do dia saiu do Lançamento do dia (23/10/2026). O Lançamento do dia ficou com o que não depende de nota: apropriação direta, apontamento sem NS, fotos e soldas e clima do dia.
 
-1. Escolha a equipe e toque no clima da manhã e da tarde. Se o clima já foi marcado em Lançamento do dia › Clima do dia, pode deixar sem tocar; se tocar, vale o da NS.
+1. Escolha a equipe e toque no clima da manhã e da tarde. Se a equipe já marcou o clima em Lançamento do dia › Clima do dia, pode deixar sem tocar; se tocar, vale o da NS.
 2. Escolha a NS do dia e o croqui. Pode ser mais de uma; cada croqui casa com a sua nota.
 3. Toque em **Enviar a nota do dia**.
 

@@ -12,7 +12,7 @@ por linha da 06.1, convertendo pelo trecho físico (`topologia.py`, `docs/TOPOLO
 | Topografia | Topografia › Enviar NS de topografia | Engenharia e Administração | PDF | liberação topográfica |
 | Cadastro de campo | Cadastro de campo › Enviar NS de cadastro | Engenharia e Administração | PDF | cadastro de campo, só sobre o assentado |
 | Serviço de obra | Notas de serviço › Serviço de obra | Engenharia e Administração | PDF + croqui | o plano da zona (nada gravado nos trechos) |
-| Do dia (execução) | Notas de serviço › NS do dia | o encarregado (só a equipe dele) ou, em nome da equipe, supervisor, engenharia e administração | PDF + croqui | assentado, reaterrado e escavado, informados |
+| Do dia (execução) | Notas de serviço › NS do dia | Engenharia e Administração, em nome da equipe (D-134) | PDF + croqui | assentado, reaterrado e escavado, informados |
 
 Código: `ns_leitura.py` (leitor), `notas_servico.py` (casamento, registro e NS do dia), rotas `/api/ns*` em
 `server.py`, telas em `web/notas.js`. Pesquisa que deu origem: `docs/ns/`.
@@ -125,13 +125,14 @@ com `Content-Disposition: inline`, `X-Content-Type-Options: nosniff` e `Content-
 
 ## 2. NS do dia (Execução · Notas de serviço, página NS do dia)
 
-Desde 23/10/2026 (Execução reorganizada, seção 6) a NS do dia é enviada em **Notas de serviço › NS do dia**. O
-encarregado e o supervisor veem essa aba só com esta página. O **Lançamento do dia** ficou com o lançamento solto, sem
-nota de serviço (`docs/MODULO_B_CAMPO.md`).
+Desde 23/10/2026 (Execução reorganizada, seção 6) a NS do dia é enviada em **Notas de serviço › NS do dia**. Desde
+25/10/2026 (D-134), **quem envia é a engenharia** (e a administração), em nome da equipe; as equipes não têm acesso às
+notas. O supervisor e o RH consultam esta página, sem o formulário. O **Lançamento do dia** ficou com o lançamento
+solto, sem nota de serviço (`docs/MODULO_B_CAMPO.md`).
 
 ### Como enviar pelo celular
 
-1. A equipe vem fixa para o encarregado (supervisor, engenharia e administração escolhem a equipe).
+1. Escolha a equipe que executou (a nota é lançada em nome dela; quem informou é quem enviou).
 2. **Nota de serviço do dia (PDF)** e **Croqui (PDF ou foto)**, os dois obrigatórios. Foto do celular vale.
 3. Toque no **clima de manhã** e no **clima à tarde**. A nota não traz o clima, e o diário precisa dele. A NS do dia é
    a fonte principal (D-131): o clima tocado aqui substitui o marcado antes em Lançamento do dia › Clima do dia. Se já
@@ -173,16 +174,15 @@ com um apontamento por linha da 06.1 e a referência `NS 015 · 0+0,00` a `14+15
 Sem gravar nada, vão para a fila **NS do dia a conferir** (tela Notas de serviço): mais de um trecho possível (por
 exemplo, o mesmo par de nós em duas PBs), parada sem sentido definido, distância maior que a do projeto (até 5 %:
 aceitar a diferença; acima: erro), elemento que não existe na zona e o segmento cujo lançamento foi recusado (avanço
-legado sem posição, sobreposição…). O reaterro sem assentado espera na fila o assentamento. O encarregado vê
-"aguardando a engenharia". A engenharia escolhe o trecho (e com ele o sentido) ou deixa de fora com o motivo e toca
+legado sem posição, sobreposição…). O reaterro sem assentado espera na fila o assentamento. Na lista, a nota
+fica "aguardando a engenharia". A engenharia escolhe o trecho (e com ele o sentido) ou deixa de fora com o motivo e toca
 **Registrar o que foi conferido**; repetir não grava duas vezes.
 
 ### Como anular
 
 **Anular este envio**, com motivo: anula a nota e os registros dela (retificação com lista vazia; a escavação é
-anulada), sem apagar nada. O encarregado anula o envio da própria equipe **enquanto nenhum registro dele foi
-verificado**; depois disso, só a engenharia e a administração. Reenviar o mesmo conteúdo em outro arquivo troca só o
-arquivo.
+anulada), sem apagar nada. Só a engenharia e a administração anulam, antes ou depois da verificação. Reenviar o
+mesmo conteúdo em outro arquivo troca só o arquivo.
 
 ### Lançamento à mão (exceção)
 
@@ -253,8 +253,8 @@ As regras não mudaram (o que cada NS grava, a ordem obrigatória, a medição);
 
 | Tipo | Aba (Execução ›) | Página | Quem envia | Quem consulta |
 |---|---|---|---|---|
-| Do dia (execução) | Notas de serviço | NS do dia | o encarregado (só a equipe dele); supervisor, Engenharia e Administração escolhem a equipe (permissão `ns_dia`; o almoxarifado não envia, D-132) | os mesmos; o Diário de obra |
-| Serviço de obra | Notas de serviço | Serviço de obra | Engenharia e Administração (`notas_servico`) | todos que abrem Notas de serviço, Lançamento do dia ou o Diário (lista "Notas de serviço da zona") |
+| Do dia (execução) | Notas de serviço | NS do dia | Engenharia e Administração, escolhendo a equipe (permissão `ns_dia`, D-134) | Administração, Engenharia, RH e Supervisor; também no Diário de obra |
+| Serviço de obra | Notas de serviço | Serviço de obra | Engenharia e Administração (`notas_servico`) | Administração, Engenharia, RH e Supervisor (lista "Notas de serviço da zona") |
 | Topografia | Topografia | Enviar NS de topografia | Engenharia e Administração (`notas_servico` + `topografia`) | o perfil Topografia, no Resumo |
 | Cadastro de campo | Cadastro de campo | Enviar NS de cadastro | Engenharia e Administração (`notas_servico` + `cadastro_campo`) | o perfil Cadastro, em O que foi feito |
 
@@ -265,3 +265,9 @@ As regras não mudaram (o que cada NS grava, a ordem obrigatória, a medição);
 - O botão "Enviar nota de serviço", que levava da Topografia e do Cadastro de campo para Notas de serviço, saiu.
 - As rotas e as permissões são as mesmas: `/api/ns/dia` com `campo`; ler e registrar com `notas_servico` e, na
   topografia e no cadastro, também a permissão do tipo.
+
+**Quem tem acesso às notas (D-134, 25/10/2026):** Administração, Engenharia, RH e Supervisor de campo. As equipes
+(encarregado) e o almoxarifado não veem a aba Notas de serviço, as listas, os PDFs nem os croquis; no Diário de obra,
+eles veem o resto do dia, sem a nota e o croqui. Os perfis Topografia e Cadastro (terceirizadas, só consulta) continuam
+vendo as notas do tipo deles, no resumo da aba.
+
