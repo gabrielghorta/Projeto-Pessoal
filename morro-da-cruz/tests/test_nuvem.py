@@ -2,11 +2,13 @@
 pasta persistente, cria o administrador das variáveis de ambiente e desativa os usuários de demonstração; o adaptador
 WSGI (PythonAnywhere) e o comando de início (Render) atendem com as mesmas rotas, permissões e auditoria; nada é tratado
 como "do próprio computador" e o cookie de sessão vai com Secure."""
+import gzip
 import http.client
 import io
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -141,6 +143,17 @@ class TestNuvem(unittest.TestCase):
         st, _, r = self.pedir("GET", "/mapa", cookie=token)
         self.assertEqual(st, 200)
         self.assertIn(b"/mapa_iluminado.js", r)
+
+    def test_pelo_wsgi_texto_comprimido_e_304(self):
+        st, cab, html = self.pedir("GET", "/", cab={"Accept-Encoding": "gzip"})
+        self.assertEqual((st, cab["Content-Encoding"]), (200, "gzip"))
+        v = re.search(rb'src="/app\.js\?v=([0-9a-f]{12})"', gzip.decompress(html)).group(1).decode()
+        st, cab, js = self.pedir("GET", "/app.js?v=" + v, cab={"Accept-Encoding": "gzip"})
+        self.assertEqual((st, cab["Cache-Control"]), (200, "public, max-age=31536000, immutable"))
+        self.assertIn(b"function iniciar", gzip.decompress(js))
+        st, cab, corpo = self.pedir("GET", "/app.js", cab={"If-None-Match": f'"{v}"'})
+        self.assertEqual((st, corpo, cab["ETag"]), (304, b"", f'"{v}"'))
+        self.assertNotIn("Connection", cab)                                        # salto a salto: não vai ao WSGI
 
     def test_endereco_sem_https_vai_para_https(self):
         st, cab, _ = self.pedir("GET", "/?frente=Zona01", cab={"X-Forwarded-Proto": "http", "Host": "obra.exemplo.com"})
