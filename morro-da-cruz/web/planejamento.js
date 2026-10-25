@@ -47,11 +47,12 @@ const equipeDoTrecho = t => t ? (t.tp === 'Adutora' ? 'ADUTORA' : t.z) : null;
 async function carregarDadosObra() {
   carregarMapa().catch(e => toast(e.message, 'erro'));              // números da obra, bandeja e conciliação (app.js)
   if (!PLN.dia) { PLN.dia = hoje(); $('#plnDia').value = PLN.dia; }
+  const matsP = !MATERIAIS.length && pode('almox') ? api('/api/estoque').catch(() => []) : null;   // junto com o traçado
   let g;
   try { g = await obterGeral(); } catch (e) { return avisoPln('Não consegui abrir o traçado do mapa: ' + e.message); }
   if (g.ausente) return avisoPln('O mapa do projeto (REV02) não está na pasta mapa/ do sistema.');
   if (!PLN.pronto) montarPln(g); else ajustarAspecto(PLN);
-  if (!MATERIAIS.length && pode('almox')) MATERIAIS = await api('/api/estoque').catch(() => []);
+  if (matsP) MATERIAIS = await matsP;
   await recarregarPln();
   if (PLN.abrir) { const a = PLN.abrir; PLN.abrir = null; escolherEquipeDoDia(a.equipe, a.aba); }   // vindo do Estoque
   if (podeTela('cronograma') && !PLN.crono) api('/api/cronograma').then(c => { PLN.crono = c.vazio ? null : c; if (PLN.crono) renderPainel(); }).catch(() => null);

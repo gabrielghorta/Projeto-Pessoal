@@ -26,6 +26,7 @@ import relogio as RL
 BASE = caminhos.PASTA
 ITERACOES = 200_000
 VALIDADE_SESSAO = timedelta(hours=12)
+RENOVAR_SESSAO = timedelta(minutes=10)            # a validade anda no máximo a cada 10 min: renovar é gravar no disco
 MAX_FALHAS, JANELA_FALHAS = 5, timedelta(minutes=15)
 CAMPOS_OCULTOS = {"senha", "senha_atual", "nova_senha", "conteudo_b64", "xml", "arquivo_b64", "documento_b64", "pdf_b64",
                   "croqui_b64", "planilha_b64"}
@@ -256,11 +257,15 @@ def sessao(conn, token):
     if not token:
         return None
     sha = hashlib.sha256(token.encode()).hexdigest()
-    r = conn.execute("""SELECT u.* FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id
-                        WHERE s.token_sha=? AND s.expira_em>=? AND u.ativo=1""", (sha, _iso(_agora()))).fetchone()
+    agora = _agora()
+    r = conn.execute("""SELECT u.*, s.expira_em AS sessao_expira_em FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id
+                        WHERE s.token_sha=? AND s.expira_em>=? AND u.ativo=1""", (sha, _iso(agora))).fetchone()
     if not r:
         return None
-    conn.execute("UPDATE sessoes SET expira_em=? WHERE token_sha=?", (_iso(_agora() + VALIDADE_SESSAO), sha))
+    # cada pedido passa por aqui: gravar a validade nova a cada um era uma escrita no disco (com a trava do servidor)
+    # por pedido. Renovada no máximo a cada RENOVAR_SESSAO, a sessão continua expirando ~12 h depois do último uso
+    if r["sessao_expira_em"] <= _iso(agora + VALIDADE_SESSAO - RENOVAR_SESSAO):
+        conn.execute("UPDATE sessoes SET expira_em=? WHERE token_sha=?", (_iso(agora + VALIDADE_SESSAO), sha))
     return publico(dict(r))
 
 

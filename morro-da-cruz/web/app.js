@@ -111,6 +111,9 @@ async function api(url, body) {
   EM_CURSO.set(k, p);
   return p;
 }
+// consulta que sai já: as da mesma tela vão juntas (pelo link, cada ida e volta custa de 150 a 300 ms) e a tela é
+// desenhada na mesma ordem de antes, esperando cada uma no seu lugar; a falha aparece nesse await, como antes
+function pedir(url) { const p = api(url); p.catch(() => {}); return p; }
 const pode = perm => !!(USUARIO && USUARIO.permissoes.includes(perm));
 function toast(msg, tipo = '') {
   const t = $('#toast'); t.textContent = msg; t.className = tipo; t.style.display = 'block';
@@ -423,6 +426,10 @@ function recarregarCamadaMapa() {
 
 /* ---------------------------------------------------------------- 2. almoxarifado & equipes */
 async function carregarAlmox() {
+  const notasP = (podeTela('almox') || podeTela('compras')) ? pedir('/api/almox/notas') : null;
+  const [resP, consP, movsP, compP, nfsP] = ['/api/reservas', '/api/consumo', '/api/movimentos?limite=40', '/api/compat-caesb', '/api/nfs'].map(pedir);
+  if (!$('#hIni').value) { $('#hIni').value = hoje().slice(0, 8) + '01'; $('#hFim').value = hoje(); }
+  carregarHistograma();
   MATERIAIS = await api('/api/estoque');
   const opt = m => `<option value="${esc(m.id)}">${esc(m.id)} — ${esc(m.descricao.slice(0, 70))} (${esc(m.unidade)})</option>`;
   $$('.selMaterial').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'ANKARA').map(opt).join(''));
@@ -430,25 +437,23 @@ async function carregarAlmox() {
   $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
   if (TELA === 'almox' && pode('almox') && podeTela('mapa')) almoxEquipesDoDia();
-  if (podeTela('almox') || podeTela('compras')) renderNotasReceber(await api('/api/almox/notas'));
-  const res = await api('/api/reservas');
+  if (notasP) renderNotasReceber(await notasP);
+  const res = await resP;
   $('#reservasLista').innerHTML = res.length ? `<table><thead><tr><th>Dia</th><th>Equipe</th><th>Material</th><th class="n">Qtd.</th><th></th></tr></thead><tbody>${res.map(r => `<tr><td>${esc(r.data)}</td><td>${esc(r.equipe_id)}</td><td>${esc(r.material_id)}</td><td class="n">${nf(r.quantidade, 3)}</td><td><button class="btn" data-cancelar-reserva="${r.id}">Cancelar</button></td></tr>`).join('')}</tbody></table>` : '<span class="vazio">Nenhuma reserva ativa.</span>';
-  const cons = await api('/api/consumo');
+  const cons = await consP;
   $('#consumo').innerHTML = `<table><thead><tr><th>Tubo</th><th class="n">Previsto (metros apontados)</th><th class="n">Aplicado confirmado</th><th class="n">Diferença</th></tr></thead><tbody>${cons.map(c => `<tr><td>${esc(c.material_id)}</td><td class="n">${nf(c.previsto_apontado)}</td><td class="n">${nf(c.aplicado_confirmado)}</td><td class="n">${c.diferenca ? `<span class="chip amarelo">${nf(c.diferenca)}</span>` : '—'}</td></tr>`).join('')}</tbody></table><p class="vazio" style="margin:4px 0">O previsto é só referência: nunca baixa estoque.</p>`;
-  const movs = await api('/api/movimentos?limite=40');
+  const movs = await movsP;
   $('#movimentos').innerHTML = movs.length ? `<table><thead><tr><th>#</th><th>Data</th><th>Tipo</th><th>Material</th><th class="n">Qtd.</th><th>Equipe</th><th>Documento / responsável</th><th></th></tr></thead><tbody>${movs.map(m => `<tr${m.estornado_em ? ' style="opacity:.55;text-decoration:line-through"' : ''}><td>${m.id}</td><td>${esc(m.data)}</td><td>${esc(m.tipo)}${m.tipo === 'BAIXA_TEORICA' ? ' <small>(legado, fora do saldo)</small>' : ''}</td><td>${esc(m.material_id)}</td><td class="n">${nf(m.quantidade, 3)}</td><td>${esc(m.equipe_id || '')}</td><td>${esc([m.documento, m.responsavel, m.autorizacao].filter(Boolean).join(' · '))}</td>
     <td>${m.estornado_em ? `<small style="text-decoration:none">estornado: ${esc(m.estorno_motivo)}</small>` : m.tipo === 'ENTRADA_NF' ? ''
       : ['APLICADO', 'SOBRA', 'PERDA'].includes(m.tipo) && m.checkin_encerrado ? `<button class="btn" data-retificar="${m.id}" data-q="${m.quantidade}">Retificar fechamento</button>`
       : `<button class="btn" data-estornar="${m.id}">Estornar</button>`}${m.retificacao_id ? ` <small>retificação #${m.retificacao_id}</small>` : ''}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio" style="padding:10px">Nenhum movimento.</div>';
-  const comp = await api('/api/compat-caesb');
+  const comp = await compP;
   $('#compat').innerHTML = `<table><thead><tr><th>Tubo</th><th class="n">Projeto 06.1 (m)</th><th class="n">Estoque Caesb</th><th class="n">Emprestado p/ outras obras</th><th class="n">Retirado pela Ankara</th><th class="n">Aplicado em obra</th><th class="n">Perdido</th><th class="n">Saldo virtual a retirar</th><th class="n">Saldo físico</th></tr></thead><tbody>
     ${comp.map(c => `<tr><td>${esc(c.descricao)}</td><td class="n">${nf(c.projeto)}</td><td class="n">${nf(c.estoque_caesb)}</td><td class="n">${nf(c.emprestado)}</td><td class="n">${nf(c.retirado)}</td><td class="n">${nf(c.aplicado)}</td><td class="n">${nf(c.perdido)}</td><td class="n"><b>${nf(c.saldo_virtual)}</b></td><td class="n">${nf(c.saldo_fisico)}</td></tr>`).join('')}</tbody></table>`;
-  const nfs = await api('/api/nfs');
+  const nfs = await nfsP;
   $('#nfLista').innerHTML = nfs.length ? `<table><thead><tr><th>NF</th><th>Entrega</th><th>Status</th><th></th></tr></thead><tbody>${nfs.map(n => `<tr><td>${esc(n.numero)}${n.faturamento_etapas ? ' <span class="chip azul">etapas</span>' : ''}</td><td>${esc(n.data_entrega)}</td>
     <td><span class="chip ${n.status === 'ACEITO' ? 'verde' : 'amarelo'}">${n.status}</span></td>
     <td>${n.status === 'QUARENTENA' ? `<input placeholder="laudo (arquivo)" data-laudo="${n.id}" style="width:120px"> <button class="btn" data-aceitar="${n.id}">Aceitar</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '';
-  if (!$('#hIni').value) { $('#hIni').value = hoje().slice(0, 8) + '01'; $('#hFim').value = hoje(); }
-  carregarHistograma();
 }
 /* ---- Notas a receber (Estoque e movimentos): da importação do XML ao aceite, na tela do almoxarife */
 const ST_NOTA = { A_CONFERIR: ['a conferir', 'amarelo'], CONFERIDA: ['a receber', 'azul'], ENCERRADA: ['recebida', 'verde'] };
@@ -618,8 +623,9 @@ document.addEventListener('click', ev => {
 });
 const STATUS_NF = { A_CONFERIR: ['a conferir', 'amarelo'], CONFERIDA: ['conferida — recebendo', 'azul'], ENCERRADA: ['encerrada', ''], CANCELADA: ['cancelada', 'vermelho'], QUARENTENA: ['quarentena (registro direto)', 'amarelo'], ACEITO: ['aceita (registro direto)', ''] };
 async function carregarCompras() {
-  MATERIAIS = await api('/api/estoque');
-  COMPRAS = await api('/api/compras');
+  const [matsP, comprasP, invsP, vencP] = ['/api/estoque', '/api/compras', '/api/inventarios', '/api/reservas-vencidas?hoje=' + hoje()].map(pedir);
+  MATERIAIS = await matsP;
+  COMPRAS = await comprasP;
   const fs = COMPRAS.fornecedores.map(f => `<option value="${f.id}">${esc(f.nome)} · ${esc(f.cnpj)}</option>`).join('');
   $('#selForn').innerHTML = fs; $$('.selForn').forEach(x => x.innerHTML = fs);
   $$('.selMaterialTodos').forEach(x => x.innerHTML = opMat(() => true));
@@ -636,12 +642,12 @@ async function carregarCompras() {
       ${p.status === 'EMITIDO' && pode('compras_pedir') ? ` <button type="button" class="btn" data-pedido-enc="${p.id}">Encerrar saldo</button>` : ''}</td>`}
       <td>${esc(i.material_id)}</td><td class="n">${nf(i.quantidade, 3)}</td><td class="n">${nf(i.faturado, 3)}</td><td class="n">${nf(i.entregue, 3)}</td><td class="n">${nf(i.quarentena, 3)}</td><td class="n">${nf(i.aceito, 3)}</td><td class="n">${nf(i.recusado, 3)}</td><td class="n">${nf(i.devolvido, 3)}</td><td class="n"><b>${nf(i.pendente_entrega, 3)}</b></td></tr>`)).join('')}</tbody></table>` : '<div class="vazio" style="padding:8px">Nenhum pedido.</div>';
   renderNotas();
-  const invs = await api('/api/inventarios');
+  const invs = await invsP;
   $('#invLista').innerHTML = invs.map(v => `<div class="registro"><div><b>Inventário #${v.id} · ${esc(v.data)} · ${esc(v.contado_por)}</b> <span class="chip ${v.status === 'AJUSTADO' ? 'azul' : v.status === 'CONTADO' ? 'amarelo' : ''}">${esc(v.status.toLowerCase())}</span></div>
     ${v.itens.map(i => `<div><small>${esc(i.material_id)}: sistema ${nf(i.saldo_sistema, 3)} · contado ${nf(i.contado, 3)} · diferença <b>${nf(i.diferenca, 3)}</b></small></div>`).join('')}
     ${v.status === 'CONTADO' && pode('inventario_ajustar') && v.contado_por !== USUARIO.login ? `<button type="button" class="btn" data-inv="${v.id}" data-ap="1">Aprovar ajuste</button> <button type="button" class="btn" data-inv="${v.id}" data-ap="0">Descartar</button>` : ''}
     ${v.decidido_por ? `<div><small>${esc(v.decidido_por)}: ${esc(v.decisao_motivo || '')}</small></div>` : ''}</div>`).join('');
-  const venc = await api('/api/reservas-vencidas?hoje=' + hoje());
+  const venc = await vencP;
   $('#vencidasLista').innerHTML = venc.length ? `${venc.map(r => `<label class="check"><input type="checkbox" data-venc="${r.id}" checked> #${r.id} · ${esc(r.data)} · ${esc(r.equipe_id)} · ${esc(r.material_id)} ${nf(r.quantidade, 3)}</label>`).join('')}
     <div class="linha"><input id="vencMotivo" placeholder="motivo (ex.: equipe não compareceu)"><button type="button" class="btn" id="vencBtn">Liberar selecionadas</button></div>` : '<div class="vazio">Nenhuma reserva vencida.</div>';
 }
@@ -1831,12 +1837,16 @@ async function iniciar() {
   carregarLink();
   if (INICIADO) return;
   INICIADO = true;
+  obterGeral().catch(() => null);                 // o traçado (Início e mapas) já vem enquanto o resumo chega
+  const medicoesP = podeTela('medicao') ? pedir('/api/medicoes') : null;
   RESUMO = await api('/api/resumo');
   $$('.selEquipe').forEach(s => s.innerHTML = '<option value="">—</option>' + RESUMO.equipes.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join(''));
   $$('.selClima').forEach(s => s.innerHTML = '<option value="">—</option>' + Object.entries(RESUMO.clima).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''));
   $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
-  if (podeTela('medicao')) { const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }
+  if (medicoesP) { const ms = await medicoesP; const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }
   abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });
   setTimeout(() => driveEmSegundoPlano(), 4000);   // o que ficou na fila (sem rede, sem conexão) sobe agora
 }
-iniciar();
+// depois dos outros scripts da página (iluminado.js, planejamento.js…): o Início já desenha o traçado, e com o código
+// guardado no navegador a sessão pode responder antes de eles rodarem
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();

@@ -14,6 +14,7 @@ A planilha do BM não muda: o código oficial fica em codigos_oficiais e o item 
 """
 import base64
 import binascii
+import functools
 import json
 import re
 import unicodedata
@@ -64,7 +65,14 @@ _TOKEN = re.compile(r"[A-Z0-9]+(?:[._,/-][A-Z0-9]+)*")
 
 
 def _norm(s):
-    s = str(s if s is not None else "").replace("Ø", " DN ").replace("ø", " DN ")
+    return _norm_texto(str(s if s is not None else ""))
+
+
+# o catálogo (864 itens) é remontado a cada busca, letra a letra: o texto normalizado de cada item fica guardado (os
+# mesmos textos se repetem a cada busca; a normalização era 3/4 do tempo da busca)
+@functools.lru_cache(maxsize=32768)
+def _norm_texto(s):
+    s = s.replace("Ø", " DN ").replace("ø", " DN ")
     s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).upper()
     return re.sub(r"\s+", " ", s).strip()
 
@@ -73,12 +81,13 @@ def _compacto(s):
     return re.sub(r"\s+", "", _norm(s))
 
 
+@functools.lru_cache(maxsize=8192)
 def _tokens(texto):
     out = set()
     for t in _TOKEN.findall(texto):
         out.add(t)
         out.update(p for p in re.split(r"[._,/-]", t) if p)
-    return out
+    return frozenset(out)
 
 
 def palavras(q):
