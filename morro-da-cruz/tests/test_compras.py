@@ -224,6 +224,48 @@ class TestNotaNoAlmoxarifado(BaseCompras):
         self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("ENCERRADA",)])
         self.assertEqual(self.q("SELECT COUNT(*) FROM medicao_lancamentos")[0][0], 0)        # estoque ≠ faturável
 
+    def _sem_pedido_aceita(self, numero=18735, q=4):
+        """Nota sem pedido com `q` peças aceitas e ainda não aprovada."""
+        nf = self.importar(numero, [(MAT, "peça do nó", "UN", q, 12.0)])
+        (l1, _), = self.linhas(nf)
+        C.conferir_nf(self.c, nf, 0, [{"linha_id": l1, "material_id": MAT}], "almox1")
+        ni = self.q("SELECT id FROM nf_itens WHERE nf_id=?", nf)[0][0]
+        rid = C.receber(self.c, nf, D2, [{"nf_item_id": ni, "quantidade": q}], "almox1")
+        C.inspecionar_entrega(self.c, rid, [], None, "almox1", D2)
+        return nf, ni
+
+    def test_inventario_com_nota_sem_aprovacao_nao_duplica(self):
+        """Reprodução: contar as 4 peças da nota não aprovada não pode virar ajuste de entrada (senão, com a aprovação, o
+        saldo iria a 8 com 4 na prateleira)."""
+        nf, _ = self._sem_pedido_aceita()
+        self.assertEqual((self.saldo()[0], S.fisico_almox(self.c, MAT)), (0, 4))
+        inv = C.registrar_contagem(self.c, D2, [{"material_id": MAT, "contado": 4}], "almox1")
+        C.decidir_inventario(self.c, inv, True, "conferido", "eng1")
+        self.assertEqual(self.q("SELECT COUNT(*) FROM movimentos WHERE ref_tipo='INVENTARIO'")[0][0], 0)
+        C.aprovar_nf_sem_pedido(self.c, nf, "eng1")
+        self.assertEqual(self.saldo()[0], 4)
+        # falta uma peça da nota ainda não aprovada: o ajuste não sai do estoque aprovado
+        nf2, _ = self._sem_pedido_aceita(18736, 2)
+        inv = C.registrar_contagem(self.c, D2, [{"material_id": MAT, "contado": 5}], "almox1")
+        C.decidir_inventario(self.c, inv, True, "falta uma", "eng1")
+        self.assertEqual((self.saldo()[0], S.aguardando_aprovacao(self.c, MAT)), (3, 2))
+        inv = C.registrar_contagem(self.c, D2, [{"material_id": MAT, "contado": 0}], "almox1")
+        with self.assertRaisesRegex(S.RegraViolada, "aguarda a aprovação"):
+            C.decidir_inventario(self.c, inv, True, "sumiu tudo", "eng1")
+
+    def test_nota_sem_pedido_nao_aprovada_pode_voltar_ao_fornecedor(self):
+        """Reprodução: a engenharia não aprova a compra; as peças aceitas voltam ao fornecedor sem mexer no estoque
+        aprovado, e a nota sai das pendências."""
+        anterior, _ = self._sem_pedido_aceita(18737, 10)                                     # estoque já aprovado
+        C.aprovar_nf_sem_pedido(self.c, anterior, "eng1")
+        nf, ni = self._sem_pedido_aceita()
+        self.assertEqual((self.saldo()[0], S.aguardando_aprovacao(self.c, MAT)), (10, 4))
+        with self.assertRaisesRegex(S.RegraViolada, "aceito ainda não devolvido \(4\)"):
+            C.devolver_ao_fornecedor(self.c, ni, D2, 5, "compra não aprovada", "almox1")
+        C.devolver_ao_fornecedor(self.c, ni, D2, 4, "compra não aprovada", "almox1")
+        self.assertEqual((self.saldo()[0], S.aguardando_aprovacao(self.c, MAT)), (10, 0))
+        self.assertNotIn(nf, [n["id"] for n in C.notas_a_receber(self.c)])
+
     def test_recusa_na_entrega_exige_laudo(self):
         nf = self.importar(91, [(MAT, "peça", "UN", 5, 1.0)])
         (l1, _), = self.linhas(nf)
@@ -240,6 +282,8 @@ class TestNotaNoAlmoxarifado(BaseCompras):
     def test_remessa_da_caesb_vira_romaneio(self):
         tubo = self.q("SELECT id FROM materiais WHERE propriedade='CAESB' ORDER BY id LIMIT 1")[0][0]
         de = tubo.rsplit("DE", 1)[1]
+        # nos testes, o emitente fictício faz o papel da Caesb (no sistema, o CNPJ da Caesb é o padrão do parâmetro)
+        self.c.execute("INSERT OR REPLACE INTO parametros(chave, valor, fonte) VALUES ('cnpj_caesb', ?, 'teste')", (NT.CNPJ_FORNECEDOR,))
         nf = self.importar(4521, [("T1", f"TUBO PEAD DE {de} PN 10", "M", 120, 0.01)])
         (l1, _), = self.linhas(nf)
         sug = C.sugerir_materiais(self.c, nf)[0]
@@ -254,6 +298,21 @@ class TestNotaNoAlmoxarifado(BaseCompras):
         self.assertEqual(C.a_inspecionar(self.c), [])                                       # sem quarentena de compra
         self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("ENCERRADA",)])
         self.assertEqual([n["id"] for n in C.notas_a_receber(self.c)], [])
+
+    def test_tubo_da_caesb_em_nota_de_outro_emitente_e_recusado(self):
+        """Reprodução: um fornecedor comum fatura tubo PEAD; a linha não pode virar romaneio da Caesb (estoque da Caesb a
+        R$ 0, sem quarentena nem aprovação)."""
+        tubo = self.q("SELECT id FROM materiais WHERE propriedade='CAESB' ORDER BY id LIMIT 1")[0][0]
+        de = tubo.rsplit("DE", 1)[1]
+        nf = self.importar(4522, [("T1", f"TUBO PEAD DE {de} PN 10", "M", 120, 9.5)])
+        (l1, _), = self.linhas(nf)
+        sug = C.sugerir_materiais(self.c, nf)[0]
+        self.assertFalse(sug["caesb"])
+        self.assertNotEqual(sug["material_id"], tubo)
+        with self.assertRaisesRegex(S.RegraViolada, "só entra por romaneio ou por nota emitida pela Caesb"):
+            C.conferir_nf(self.c, nf, 0, [{"linha_id": l1, "material_id": tubo}], "almox1")
+        self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("A_CONFERIR",)])
+
 
 class TestTransferenciaInventarioReservas(BaseCompras):
     def entrada(self, q=50, mat="CAESB-PEAD-DE63"):

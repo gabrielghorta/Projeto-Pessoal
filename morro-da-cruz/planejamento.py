@@ -214,7 +214,10 @@ def camadas_mapa(conn, hoje=None, dias=7):
 def etapas_mapa(conn, hoje, nomes, liberado, campo_hoje):
     """Etapa de cada trecho vigente (regras.etapa_trecho), por nome visível: {"s": etapa, "parcial": execução
     incompleta}. Só os que saíram de "não iniciado"."""
-    ex = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT alvo_id, concluido, ok_fiscal_em FROM execucao WHERE alvo_tipo='TRECHO'")}
+    # a linha de execucao só conta como execução se tiver metros (um apontamento anulado deixa a linha com 0 m)
+    ex = {r[0]: (r[1], r[2], r[3]) for r in conn.execute(
+        """SELECT alvo_id, concluido, ok_fiscal_em, metros_executados > 0.001 OR metros_reaterrados > 0.001 OR concluido = 1
+                  OR ok_fiscal_em IS NOT NULL FROM execucao WHERE alvo_tipo='TRECHO'""")}
     fotos = {}
     for r in conn.execute(f"SELECT alvo_id, categoria FROM fotos WHERE alvo_tipo='TRECHO' AND {S.FOTO_VALIDA}"):
         fotos.setdefault(r[0], []).append(r[1])
@@ -229,9 +232,9 @@ def etapas_mapa(conn, hoje, nomes, liberado, campo_hoje):
     for (tipo, tid), nome in nomes.items():
         if tipo != "TRECHO":
             continue
-        concl, ok = ex.get(tid, (0, None))
+        concl, ok, com_metros = ex.get(tid, (0, None, 0))
         n_exec, n, n_ver, ult = inter.get(tid, (0, 0, 0, None))
-        executado = bool(n_exec) or tid in legado or tid in ex
+        executado = bool(n_exec) or tid in legado or bool(com_metros)
         s = R.etapa_trecho(liberado=nome in liberado, equipe_hoje=nome in campo_hoje, informado_hoje=ult == hoje,
                            executado=executado, concluido=bool(concl), verificado=bool(n) and n_ver >= n and tid not in legado,
                            fotos_ok=not R.fotos_pendentes("TRECHO", fotos.get(tid, []), False),

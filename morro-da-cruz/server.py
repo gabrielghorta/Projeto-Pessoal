@@ -335,8 +335,27 @@ def p_recomposicao(b, c):
     return {"ok": True}
 
 
-def r_esteira(q, c):
-    return S.esteira(c)
+# a etapa do cadastro aparece para todos no Mapa iluminado; empresa, protocolo GDOC, memorando ESET, motivo de negativa e a
+# conferência interna só para quem trabalha a esteira (cadastro, conferência) ou a medição
+VER_ESTEIRA = ("cadastro", "conferir_cadastro", "medicao")
+CADASTRO_PUBLICO = ("trecho_id", "etapa", "revisao", "rotulo", "ponto", "extensao_m", "frente_id", "levantamento_m",
+                    "levantamento_completo", "medicao_id")
+
+
+def _cadastro_para(usuario, cad):
+    if cad is None or any(p in usuario["permissoes"] for p in VER_ESTEIRA):
+        return cad
+    return {k: v for k, v in cad.items() if k in CADASTRO_PUBLICO}
+
+
+def r_esteira(q, c, usuario):
+    return [_cadastro_para(usuario, x) for x in S.esteira(c)]
+
+
+def r_caminho(q, c, usuario):
+    cam = S.caminho_medicao(c, q.get("trecho"))
+    cam["cadastro"] = _cadastro_para(usuario, cam["cadastro"])
+    return cam
 
 
 def p_cadastro(b, c):
@@ -489,6 +508,15 @@ def p_dados_obra_reservar(b, c):
     return DO.reservar(c, b.get("data"), b.get("equipe_id"), b.get("linhas"), b.get("nos"), b.get("materiais") or [], b["por"])
 
 
+def p_dados_obra_contingencia(b, c):
+    return DO.contingencia(c, b.get("data"), b.get("equipe_id"), b.get("contingencia"), b["por"], b.get("materiais") or [],
+                           b.get("funcionarios"), b.get("maquinas"))
+
+
+def p_dados_obra_nao_realizada(b, c):
+    return DO.nao_realizada(c, b.get("data"), b.get("equipe_id"), b.get("motivo"), b["por"])
+
+
 def r_cronograma(q, c):
     return CR.consultar(c)
 
@@ -505,6 +533,8 @@ ROTAS_PLANEJAMENTO = {"/api/dados-obra/programar": ("planejar", p_dados_obra_pro
                       "/api/dados-obra/cancelar-lote": ("planejar", p_dados_obra_cancelar),
                       "/api/dados-obra/liberar": ("almox", p_dados_obra_liberar),
                       "/api/dados-obra/reservar": ("almox", p_dados_obra_reservar),
+                      "/api/dados-obra/contingencia": ("almox", p_dados_obra_contingencia),
+                      "/api/dados-obra/nao-realizada": ("planejar", p_dados_obra_nao_realizada),
                       "/api/cronograma": ("planejar", p_cronograma)}
 
 
@@ -819,7 +849,6 @@ def r_auditoria(q, c, usuario):
 GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detalhe, "/api/previsto": r_previsto,
        "/api/mapa/estado": r_mapa_estado, "/api/equipe": r_equipe, "/api/estoque": r_estoque,
        "/api/compat-caesb": r_compat, "/api/nfs": r_nfs, "/api/histograma": r_histograma,
-       "/api/esteira": r_esteira, "/api/caminho": lambda q, c: S.caminho_medicao(c, q.get("trecho")),
        "/api/verificacao/pendentes": r_verificacao_pendentes,
        "/api/medicao/caminho": lambda q, c: P.caminho_da_medicao(c, int(q["id"]) if q.get("id") else None), "/api/medicoes": r_medicoes, "/api/medicao": r_medicao,
        "/api/movimentos": r_movimentos, "/api/reservas": r_reservas, "/api/consumo": r_consumo,
@@ -838,7 +867,8 @@ GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios"),
             "/api/ns/fora-de-ordem": (lambda q, c: S.fora_de_ordem(c), "notas_servico")}      # o legado: só a engenharia
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
-               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
+               "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes,
+               "/api/esteira": r_esteira, "/api/caminho": r_caminho}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
         "/api/nf/aceitar": p_nf_aceitar, "/api/checkout": p_checkout,
         "/api/apontamento": p_apontamento, "/api/foto": p_foto, "/api/ok-fiscal": p_ok_fiscal,
@@ -905,7 +935,7 @@ TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX 
             "/api/consumo": _ALMOX, "/api/histograma": ("equipes",) + _CAMPO,
             "/api/compras": ("compras",), "/api/inventarios": ("compras",), "/api/reservas-vencidas": ("compras",),
             "/api/ocorrencias": _CAMPO + ("mapa", "topografia", "cadastro_campo"),
-            "/api/esteira": ("iluminado", "mapa"), "/api/verificacao/pendentes": ("iluminado", "mapa", "medicao"),
+            "/api/esteira": ("iluminado", "mapa", "medicao"), "/api/verificacao/pendentes": ("iluminado", "mapa", "medicao"),
             "/api/medicao/caminho": ("medicao",), "/api/relatorios": ("relatorios",), "/api/medicoes": ("medicao",),
             "/api/medicao": ("medicao",), "/api/medicao/elegibilidade": ("medicao",), "/api/planilhas": ("lev",),
             "/api/documentos": ("admin",), "/api/drive": ("admin",), "/api/usuarios": ("admin",), "/api/auditoria": ("admin", "mapa"),

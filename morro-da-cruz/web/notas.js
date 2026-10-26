@@ -73,8 +73,10 @@ async function hashArquivo(arq) {          // sem https (rede local) não há cr
 function criarFilaNs(op) {
   const F = { cartoes: [], soltos: [], seq: 0, ocupado: false };
   const dia = () => op.tipo() === 'EXECUCAO';
-  const numeros = async arq => (await api('/api/ns/numero', { arquivo_b64: await lerOriginal(arq) }).catch(() => ({ numeros: [] }))).numeros;
-  const b64 = async a => a ? { b64: await lerOriginal(a), nome: a.name } : {};
+  // o conteúdo de cada arquivo é lido uma vez só (o mesmo PDF vai para o número, a leitura e o registro)
+  const lidos = new WeakMap(), conteudo = arq => { if (!lidos.has(arq)) lidos.set(arq, lerOriginal(arq)); return lidos.get(arq); };
+  const numeros = async arq => (await api('/api/ns/numero', { arquivo_b64: await conteudo(arq) }).catch(() => ({ numeros: [] }))).numeros;
+  const b64 = async a => a ? { b64: await conteudo(a), nome: a.name } : {};
   const progresso = t => { const p = $('[data-lote-progresso]', op.caixa); if (p) p.textContent = t; };
   F.adicionar = async (pdfs, croquis = [], planilhas = []) => {
     if (F.ocupado) return toast('Espere terminar o lote em andamento.', 'erro');
@@ -83,11 +85,11 @@ function criarFilaNs(op) {
     let extra; try { extra = op.extra(); } catch (e) { return toast(e.message, 'erro'); }
     F.ocupado = true; F.render();
     try {
-      const novos = [];
+      const novos = [], casar = croquis.length + planilhas.length > 0;   // sem croqui nem planilha no lote, o número vem da leitura
       for (const [k, arq] of pdfs.entries()) {
         progresso(`Lendo o número da nota ${k + 1} de ${pdfs.length}…`);
         const hash = await hashArquivo(arq).catch(() => arq.name + arq.size);
-        const c = { id: ++F.seq, pdf: arq, hash, tipo: op.tipo(), extra, numeros: await numeros(arq), estado: 'lendo', croqui: null, planilha: null };
+        const c = { id: ++F.seq, pdf: arq, hash, tipo: op.tipo(), extra, numeros: casar ? await numeros(arq) : [], estado: 'lendo', croqui: null, planilha: null };
         const rep = F.cartoes.concat(novos).find(x => x.hash === hash);
         if (rep) Object.assign(c, { estado: 'repetida', motivo: `o mesmo arquivo de ${rep.pdf.name}` });
         novos.push(c);

@@ -8,7 +8,8 @@ parciais em QUARENTENA → inspeção item a item ou da entrega inteira (aceito 
 Também a nota que chega SEM pedido (o almoxarife importa o XML e confere): cada linha vem com o material sugerido
 (sugerir_materiais); a nota fica marcada "sem pedido" e o aceito só fica disponível para as equipes depois da aprovação de
 Engenharia ou Administração, por outra pessoa (aprovar_nf_sem_pedido). Linha de tubo da Caesb (remessa) não é compra:
-vira romaneio Caesb na entrega, sem pedido nem quarentena, e entra na compatibilização dos tubos.
+vira romaneio Caesb na entrega, sem pedido nem quarentena, e entra na compatibilização dos tubos. Só a nota emitida pela
+própria Caesb (CNPJ conferido em emitente_caesb) traz tubo da Caesb; a de outro emitente é recusada nessa linha.
 
 Garantias:
 * pedido nunca vira estoque; NF importada ou digitada não gera movimento antes da conferência;
@@ -110,6 +111,18 @@ def cadastrar_fornecedor(conn, cnpj, nome, por, contato=None):
         raise RegraViolada("Fornecedor com este CNPJ já cadastrado.")
     return conn.execute("INSERT INTO fornecedores(cnpj,nome,contato,criado_por,criado_em) VALUES (?,?,?,?,?)",
                         (d, nome.strip(), contato, por, _agora())).lastrowid
+
+
+# CNPJ da Caesb (dado público). Outros CNPJs da Caesb, se houver, vão no parâmetro `cnpj_caesb`, separados por vírgula.
+CNPJ_CAESB = "00082024000137"
+
+
+def emitente_caesb(conn, nf):
+    """A nota foi emitida pela Caesb? Só a nota da Caesb traz tubo da Caesb (remessa que vira romaneio): a de qualquer
+    outro emitente é compra e nunca entra como estoque da Caesb."""
+    aceitos = {re.sub(r"\D", "", x) for x in str(S.parametro(conn, "cnpj_caesb", CNPJ_CAESB)).split(",")} - {""}
+    f = _one(conn, "SELECT cnpj FROM fornecedores WHERE id=?", nf["fornecedor_id"]) if nf["fornecedor_id"] else None
+    return bool(f and re.sub(r"\D", "", f["cnpj"] or "") in aceitos)
 
 
 # ------------------------------------------------------------------ solicitação e pedido
@@ -355,6 +368,8 @@ def sugerir_materiais(conn, nf_id):
     if not nf:
         raise RegraViolada("Nota não encontrada.")
     mats = {r["id"]: r for r in _rows(conn.execute("SELECT id, descricao, unidade, propriedade FROM materiais"))}
+    if not emitente_caesb(conn, nf):                  # tubo da Caesb só vem em nota da Caesb: nunca é sugerido para compra
+        mats = {k: m for k, m in mats.items() if m["propriedade"] != "CAESB"}
     cand = []
     for m in mats.values():
         ps = _palavras(m["descricao"])
@@ -432,6 +447,7 @@ def conferir_nf(conn, nf_id, pedido_id, linhas_conf, por):
     if set(conf) != set(linhas):
         raise RegraViolada(f"Confira todas as linhas da nota ({len(linhas)}): cada uma vai para um material ou fica fora do estoque.")
     itens_pedido = {r["id"]: r for r in _rows(conn.execute("SELECT * FROM pedido_itens WHERE pedido_id=?", (pedido_id,)))} if p else {}
+    da_caesb = emitente_caesb(conn, nf)
     plano, por_item = [], {}
     for lid, li in sorted(linhas.items()):
         c = conf[lid]
@@ -442,6 +458,10 @@ def conferir_nf(conn, nf_id, pedido_id, linhas_conf, por):
         if not m:
             raise RegraViolada(f"Linha {li['n_item']}: material '{c.get('material_id')}' não cadastrado.")
         caesb = m["propriedade"] == "CAESB"
+        if caesb and not da_caesb:
+            raise RegraViolada(f"Linha {li['n_item']}: {m['descricao']} é tubo fornecido pela Caesb e só entra por romaneio ou por "
+                               "nota emitida pela Caesb. Esta nota é de outro emitente: se o tubo foi comprado, confira a linha "
+                               "para o material comprado.")
         pi = None
         if p and not caesb:
             pi = itens_pedido.get(int(c.get("pedido_item_id") or 0))
@@ -638,7 +658,8 @@ def inspecionar_entrega(conn, recebimento_id, itens, laudo, por, data, motivo_re
 
 def devolver_ao_fornecedor(conn, nf_item_id, data, quantidade, motivo, por, documento=None):
     """Devolução de material JÁ aceito (defeito descoberto depois). Sai do disponível: material reservado ou com as
-    equipes não pode ser devolvido sem antes voltar ao almoxarifado/liberar a reserva."""
+    equipes não pode ser devolvido sem antes voltar ao almoxarifado/liberar a reserva. Da nota sem pedido que não foi
+    aprovada (a compra não foi aceita), a devolução sai do que aguarda a aprovação: é a saída para essa nota."""
     S.exigir_data_ocorrida(data, "Devolução ao fornecedor")
     ni = _one(conn, "SELECT ni.*, nf.numero FROM nf_itens ni JOIN notas_fiscais nf ON nf.id=ni.nf_id WHERE ni.id=?", nf_item_id)
     if not ni:
@@ -651,10 +672,17 @@ def devolver_ao_fornecedor(conn, nf_item_id, data, quantidade, motivo, por, docu
         raise RegraViolada(f"Devolução deve ser > 0 e ≤ aceito ainda não devolvido ({aceito - dev:g}).")
     if not str(motivo or "").strip():
         raise RegraViolada("Informe o motivo da devolução.")
-    disp = S.disponivel(conn, ni["material_id"])
-    if q > disp + TOL:
-        raise RegraViolada(f"Disponível no almoxarifado ({disp:g}) menor que a devolução: traga o material de volta das equipes "
-                           "ou libere reservas antes.")
+    nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", ni["nf_id"])
+    if nf["sem_pedido"] and not nf["aprovada_em"]:
+        # nota sem pedido não aprovada: o aceito dela está no almoxarifado, fora do saldo; é dele que sai a devolução
+        resta = S.aguardando_aprovacao(conn, ni["material_id"], ni["nf_id"])
+        if q > resta + TOL:
+            raise RegraViolada(f"Desta nota ainda aguardam a aprovação {resta:g} no almoxarifado: não devolve {q:g}.")
+    else:
+        disp = S.disponivel(conn, ni["material_id"])
+        if q > disp + TOL:
+            raise RegraViolada(f"Disponível no almoxarifado ({disp:g}) menor que a devolução: traga o material de volta das equipes "
+                               "ou libere reservas antes.")
     with transacao(conn):
         mid = conn.execute(
             """INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,motivo,nf_id,responsavel,ref_tipo)
@@ -705,7 +733,8 @@ def transferir(conn, data, material_id, quantidade, de_equipe, para_equipe, auto
 
 
 def registrar_contagem(conn, data, itens, por, obs=None):
-    """Contagem física do almoxarifado; guarda o saldo do sistema no momento para conferir no ajuste."""
+    """Contagem física do almoxarifado; guarda o que o sistema tem fisicamente no almoxarifado no momento (o saldo mais o
+    aceito que aguarda a aprovação da nota sem pedido) para conferir no ajuste."""
     if not itens:
         raise RegraViolada("Informe ao menos um material contado.")
     vistos = set()
@@ -721,7 +750,7 @@ def registrar_contagem(conn, data, itens, por, obs=None):
             if c < 0:
                 raise RegraViolada(f"{m['id']}: informe a quantidade contada (≥ 0).")
             conn.execute("INSERT INTO inventario_itens(inventario_id,material_id,saldo_sistema,contado) VALUES (?,?,?,?)",
-                         (iid, m["id"], S.saldo_almox(conn, m["id"])[0], c))
+                         (iid, m["id"], S.fisico_almox(conn, m["id"]), c))
     return iid
 
 
@@ -739,12 +768,15 @@ def decidir_inventario(conn, inventario_id, aprovar, motivo, por):
     with transacao(conn):
         if aprovar:
             for it in itens:
-                atual = S.saldo_almox(conn, it["material_id"])[0]
+                atual = S.fisico_almox(conn, it["material_id"])
                 if abs(atual - it["saldo_sistema"]) > TOL:
                     raise RegraViolada(f"{it['material_id']}: o saldo mudou desde a contagem ({it['saldo_sistema']:g} → {atual:g}). Recontar.")
                 dif = round(it["contado"] - it["saldo_sistema"], 6)
                 if abs(dif) <= TOL:
                     continue
+                if dif < 0 and S.saldo_almox(conn, it["material_id"])[0] + dif < -TOL:
+                    raise RegraViolada(f"{it['material_id']}: a falta de {-dif:g} alcança o material de nota sem pedido que aguarda a "
+                                       "aprovação. Aprove a nota ou devolva o material ao fornecedor antes de ajustar.")
                 if dif < 0 and S.disponivel(conn, it["material_id"]) + dif < -TOL:
                     raise RegraViolada(f"{it['material_id']}: o ajuste de {dif:g} deixaria reservas sem cobertura. Cancele ou reduza "
                                        "reservas antes.")
@@ -819,6 +851,13 @@ def a_inspecionar(conn):
            WHERE ri.id NOT IN (SELECT recebimento_item_id FROM inspecoes) AND """ + _SEM_ROMANEIO + " ORDER BY r.data, ri.id"))
 
 
+def _aguarda_na_nota(conn, nf_id):
+    """Aceito da nota menos o devolvido ao fornecedor (o que da nota ainda está no almoxarifado)."""
+    return conn.execute(f"""SELECT COALESCE(SUM(CASE WHEN tipo='ENTRADA_NF' AND status='ACEITO' THEN quantidade
+                                                   WHEN tipo='DEVOLUCAO_FORNECEDOR' THEN -quantidade END),0)
+                            FROM movimentos WHERE nf_id=? AND {S.VALIDO}""", (nf_id,)).fetchone()[0]
+
+
 def notas_a_receber(conn):
     """O que o almoxarife tem a fazer com as notas (tela Estoque e movimentos): a conferir (com o material sugerido em cada
     linha e os pedidos emitidos do emitente), a receber (o que falta chegar), em quarentena (por entrega) e, da nota sem
@@ -826,6 +865,8 @@ def notas_a_receber(conn):
     out = []
     for n in _rows(conn.execute("""SELECT * FROM notas_fiscais WHERE origem<>'DIRETA' AND (status IN ('A_CONFERIR','CONFERIDA')
                                      OR (sem_pedido=1 AND aprovada_em IS NULL AND status<>'CANCELADA')) ORDER BY id DESC LIMIT 100""")):
+        if n["status"] not in ("A_CONFERIR", "CONFERIDA") and _aguarda_na_nota(conn, n["id"]) <= TOL:
+            continue                                  # sem pedido, não aprovada e já toda devolvida: nada mais a fazer
         n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
         if n["status"] == "A_CONFERIR":
             n["sugestoes"] = sugerir_materiais(conn, n["id"])

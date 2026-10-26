@@ -56,7 +56,7 @@ jobs:
           $ok = $false
           for ($i = 0; $i -lt 180; $i++) { Start-Sleep 1
             try { $r = Invoke-WebRequest "$local/" -UseBasicParsing -TimeoutSec 3
-                  if ($r.Content -match 'Gestão de Obra') { $ok = $true; break } } catch {} }
+                  if ($r.Content -match '<title>Morro da Cruz') { $ok = $true; break } } catch {} }
           if (-not $ok) { throw "O sistema não abriu (montagem da obra a partir das planilhas)." }
           $senha = "ci-" + [guid]::NewGuid().ToString("N")
           $corpo = @{ login = "admin.ci"; nome = "Teste CI"; senha = $senha } | ConvertTo-Json
