@@ -759,6 +759,9 @@ ROTAS_COMPRAS = {
     "/api/nf/cancelar": ("receber", ("por",), lambda b, c: (C.cancelar_nf(c, int(b["nf_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
     "/api/recebimento": ("receber", ("por",), _c(lambda b, c: C.receber(c, int(b["nf_id"]), b.get("data"), b.get("itens") or [], b["por"],
                                                                        b.get("documento")))),
+    # recebimento num toque (D-135): conferir pelo sugerido, receber e aceitar; com "problema", o que faltou ou veio avariado
+    "/api/nf/receber": ("receber", ("por",), lambda b, c: C.receber_nota(
+        c, int(b["nf_id"]), b["por"], b.get("data") or relogio.hoje().isoformat(), int(b.get("pedido_id") or 0) or None, b.get("problema"))),
     "/api/inspecao": ("receber", ("por",), _c(lambda b, c: C.inspecionar(
         c, int(b["recebimento_item_id"]), b.get("aceito"), b.get("recusado"), b.get("laudo"), b["por"], b.get("data"),
         b.get("motivo_recusa"), b.get("documento_b64"), b.get("documento_nome")))),

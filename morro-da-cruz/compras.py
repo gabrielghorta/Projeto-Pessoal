@@ -382,9 +382,20 @@ def sugerir_materiais(conn, nf_id):
             if notas and (len(notas) == 1 or notas[0][0] > notas[1][0]):
                 mid, motivo = notas[0][1], "pela descrição"
         m = mats.get(mid)
-        out.append({"linha_id": li["id"], "material_id": mid, "motivo": motivo, "caesb": bool(m and m["propriedade"] == "CAESB"),
+        fora = not mid and _frete_ou_servico(li)
+        out.append({"linha_id": li["id"], "material_id": mid, "motivo": "frete ou serviço: fora do estoque" if fora else motivo,
+                    "caesb": bool(m and m["propriedade"] == "CAESB"), "fora_do_estoque": fora,
                     "fator": 1.0 if m and R.normalizar_unidade(li["unidade"]) == R.normalizar_unidade(m["unidade"]) else None})
     return out
+
+
+_NAO_MATERIAL = {"frete", "fretes", "servico", "servicos", "taxa", "taxas", "seguro", "despesa", "despesas"}
+
+
+def _frete_ou_servico(linha):
+    """Linha que não é material (frete, serviço, taxa, seguro): fica fora do estoque no recebimento num toque."""
+    ps = _palavras(linha["descricao"])
+    return R.normalizar_unidade(linha["unidade"]) in ("SV", "SERV") or bool(ps and ps[0] in _NAO_MATERIAL)
 
 
 def documento_dir(conn):
@@ -634,6 +645,68 @@ def inspecionar_entrega(conn, recebimento_id, itens, laudo, por, data, motivo_re
     with transacao(conn):
         return [inspecionar(conn, int(i["recebimento_item_id"]), i.get("aceito"), i.get("recusado"), laudo, por, data, motivo_recusa,
                             documento_b64, documento_nome) for i in itens]
+
+
+def receber_nota(conn, nf_id, por, data, pedido_id=None, problema=None):
+    """Recebimento num toque (D-135): a nota que chegou certa. Confere as linhas pelo material sugerido (se ainda está a
+    conferir), registra a entrega do que falta chegar e aceita tudo na inspeção, numa transação só. Com problema
+    {"observacao", "linhas": {nf_linha_id: {"chegou", "avariado"}}}, nas unidades da nota: o que não chegou continua a
+    receber na nota; o avariado é recusado, com a observação como motivo e laudo; o tubo da Caesb avariado não entra no
+    romaneio. A nota sem pedido continua precisando da aprovação de outra pessoa (aprovar_nf_sem_pedido)."""
+    nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
+    if not nf or nf["status"] not in ("A_CONFERIR", "CONFERIDA"):
+        raise RegraViolada("Só nota a conferir ou conferida, com algo a receber, é recebida aqui.")
+    obs = str((problema or {}).get("observacao") or "").strip()
+    if problema is not None and not obs:
+        raise RegraViolada("Descreva o problema: o que faltou ou o que veio avariado.")
+    pedido_lin = (problema or {}).get("linhas") or {}
+    with transacao(conn):
+        if nf["status"] == "A_CONFERIR":
+            sug = sugerir_materiais(conn, nf_id)
+            sem = [s for s in sug if not s["material_id"] and not s["fora_do_estoque"]]
+            if sem:
+                desc = {r["id"]: f"linha {r['n_item']} ({str(r['descricao'])[:40]})" for r in conn.execute(
+                    "SELECT id, n_item, descricao FROM nf_linhas WHERE nf_id=?", (nf_id,))}
+                raise RegraViolada("Sem material sugerido: " + "; ".join(desc[s["linha_id"]] for s in sem)
+                                   + '. Use "Conferir linha a linha" para escolher o material (ou deixar fora do estoque).')
+            conferir_nf(conn, nf_id, pedido_id, [{"linha_id": s["linha_id"], "fora_do_estoque": True} if s["fora_do_estoque"] else
+                                                 {"linha_id": s["linha_id"], "material_id": s["material_id"], "fator": s["fator"]}
+                                                 for s in sug], por)
+        itens, avariado = [], {}
+        for ni in _rows(conn.execute("""SELECT ni.*, l.romaneio_caesb, l.fator, l.n_item FROM nf_itens ni
+                                        LEFT JOIN nf_linhas l ON l.id=ni.linha_id WHERE ni.nf_id=? ORDER BY ni.id""", (nf_id,))):
+            resta = ni["quantidade"] - _recebido(conn, ni["id"])
+            if resta <= TOL:
+                continue
+            fator = float(ni["fator"] or 1)
+            p = pedido_lin.get(str(ni["linha_id"])) or pedido_lin.get(ni["linha_id"]) or {}
+            try:
+                chegou = float(p["chegou"]) * fator if p.get("chegou") not in (None, "") else resta
+                avar = float(p.get("avariado") or 0) * fator
+            except (TypeError, ValueError):
+                raise RegraViolada(f"Linha {ni['n_item']}: quantidade inválida.")
+            if chegou < -TOL or avar < -TOL or chegou > resta + TOL or avar > chegou + TOL:
+                raise RegraViolada(f"Linha {ni['n_item']}: chegou deve ficar entre 0 e o que falta receber, e o avariado não "
+                                   "passa do que chegou.")
+            if ni["romaneio_caesb"]:                   # tubo da Caesb: entra no romaneio só o que veio em condições
+                chegou, avar = chegou - avar, 0.0
+            if chegou > TOL:
+                itens.append({"nf_item_id": ni["id"], "quantidade": round(min(chegou, resta), 6)})
+                avariado[ni["id"]] = round(avar, 6)
+        if not itens:
+            raise RegraViolada("Nada a receber: informe o que chegou de ao menos uma linha.")
+        rid = receber(conn, nf_id, data, itens, por, documento=f"obs.: {obs}" if obs else None)
+        insp = [{"recebimento_item_id": r["id"], "aceito": round(r["quantidade"] - avariado.get(r["nf_item_id"], 0), 6),
+                 "recusado": avariado.get(r["nf_item_id"], 0)}
+                for r in _rows(conn.execute("""SELECT ri.id, ri.nf_item_id, ri.quantidade FROM recebimento_itens ri
+                                               JOIN nf_itens ni ON ni.id=ri.nf_item_id WHERE ri.recebimento_id=? AND """
+                                            + _SEM_ROMANEIO, (rid,)))]
+        if insp:
+            inspecionar_entrega(conn, rid, insp, obs or None, por, data, obs or None)
+        final = _one(conn, "SELECT status, sem_pedido, aprovada_em FROM notas_fiscais WHERE id=?", nf_id)
+    recusado = round(sum(i["recusado"] for i in insp), 6)
+    return {"recebimento_id": rid, "itens": len(itens), "recusado": recusado, "encerrada": final["status"] == "ENCERRADA",
+            "aguarda_aprovacao": bool(final["sem_pedido"] and not final["aprovada_em"])}
 
 
 def devolver_ao_fornecedor(conn, nf_item_id, data, quantidade, motivo, por, documento=None):

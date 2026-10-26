@@ -577,3 +577,9 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 /* a caixa das ferramentas do mapa não engole o toque no mapa (no celular ela quebra em várias linhas): só os botões */
 .ilu-ferr { pointer-events: none; }
 .ilu-ferr > * { pointer-events: auto; }
+/* recebimento da nota num toque (D-135) */
+.nota-itens { margin: 8px 0; padding-left: 18px; }
+.nota-itens li { margin: 2px 0; }
+.nota-problema { border-top: 1px solid var(--borda); margin-top: 10px; padding-top: 10px; }
+.nota-detalhe { margin-top: 10px; }
+

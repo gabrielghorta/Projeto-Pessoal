@@ -97,3 +97,11 @@ Tela Estoque e movimentos › **Notas a receber** (o almoxarife):
 5. **Nota sem pedido:** o aceito fica no almoxarifado, na coluna "Aguardando aprovação da nota", até a aprovação de Engenharia ou Administração (outra pessoa, não quem importou). Depois, libera no Dados da obra.
 
 Decisões D-105, D-110 e D-111. Testes: `TestNotaNoAlmoxarifado` em `tests/test_compras.py` (as NF-e de teste 18734, sem pedido, e 4521, remessa da Caesb) e `TestNotaFiscalPeloHTTP` em `tests/test_fluxo_integrado.py`.
+
+### Recebimento num toque (26/10/2026, D-135)
+
+Na maioria das vezes a nota chega certa. Cada nota em "Notas a receber" mostra as linhas (com o material sugerido) e dois botões:
+- **Recebido conforme a nota:** confere pelo material sugerido, registra a entrega do que falta chegar e aceita tudo na inspeção, de uma vez (`compras.receber_nota`, rota `/api/nf/receber`, permissão `receber`). Linha de frete, serviço, taxa ou seguro (unidade SV ou a descrição começando assim) fica fora do estoque sozinha. Linha de material sem sugestão trava o botão: escolha o material em "Conferir linha a linha".
+- **Registrar problema:** em cada linha, o que chegou e o que veio avariado, na unidade da nota, e o que aconteceu (obrigatório). O que não chegou continua a receber na nota (o mesmo botão recebe o resto depois); o avariado é recusado, com o texto como motivo e laudo; o texto também fica na entrega ("obs.: …"). Tubo da Caesb avariado não entra no romaneio.
+
+A nota sem pedido continua esperando a aprovação de outra pessoa. O passo a passo antigo (conferir, o que chegou, inspeção) continua em "Conferir linha a linha". Testes: `TestRecebimentoNumToque` em `tests/test_compras.py`.

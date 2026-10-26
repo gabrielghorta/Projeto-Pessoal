@@ -460,9 +460,33 @@ function renderNotasReceber(notas) {
   box.innerHTML = notas.map(n => {
     const st = ST_NOTA[n.status] || [n.status.toLowerCase(), ''], sug = Object.fromEntries((n.sugestoes || []).map(x => [x.linha_id, x]));
     const aprovar = n.sem_pedido && !n.aprovada_em;
-    let corpo = '';
+    let corpo = '', detalhe = '';
+    // recebimento num toque (D-135): o que falta receber de cada linha, na unidade da nota
+    const linhaDe = Object.fromEntries(n.linhas.map(l => [l.id, l]));
+    const falta = n.status === 'A_CONFERIR' ? n.linhas.map(l => ({ l, resta: l.quantidade }))
+      : n.status === 'CONFERIDA' ? n.itens.filter(i => i.quantidade - i.recebido > 1e-9 && linhaDe[i.linha_id])
+        .map(i => ({ l: linhaDe[i.linha_id], resta: (i.quantidade - i.recebido) / (linhaDe[i.linha_id].fator || 1) })) : [];
+    if (rec && falta.length) {
+      const sem = n.status === 'A_CONFERIR' ? n.linhas.filter(l => !(sug[l.id] || {}).material_id && !(sug[l.id] || {}).fora_do_estoque) : [];
+      corpo = `<div class="nota-rapida" data-nf="${n.id}">
+        <ul class="nota-itens">${falta.map(({ l, resta }) => `<li>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(resta, 4)} ${esc(l.unidade)}${n.status === 'A_CONFERIR'
+          ? ((sug[l.id] || {}).material_id ? ' · ' + esc(sug[l.id].material_id) : (sug[l.id] || {}).fora_do_estoque ? ' · frete ou serviço (fora do estoque)'
+            : ' · <b>sem material sugerido</b>') : ''}</small></li>`).join('')}</ul>
+        ${n.status === 'A_CONFERIR' ? `<label>Pedido<select data-c="pedido"><option value="">sem pedido (precisa de aprovação)</option>${n.pedidos.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('')}</select></label>` : ''}
+        ${sem.length ? `<div class="aviso problema">${sem.length} linha${sem.length > 1 ? 's' : ''} sem material sugerido: escolha o material em "Conferir linha a linha".</div>` : ''}
+        <div class="acoes"><button type="button" class="btn ok grande" data-nota-ok${sem.length ? ' disabled' : ''}>Recebido conforme a nota</button>
+          <button type="button" class="btn grande" data-nota-problema${sem.length ? ' disabled' : ''}>Registrar problema</button></div>
+        <div class="nota-problema" hidden>
+          <p class="vazio" style="margin:0 0 6px">Em cada linha, o que chegou e o que veio avariado (na unidade da nota). O que não chegou continua a receber nesta nota; o avariado é recusado.</p>
+          ${falta.map(({ l, resta }) => `<div class="linha" data-pl="${l.id}"><span>${l.n_item}. ${esc(l.descricao.slice(0, 60))}</span>
+            <label>Chegou<input data-k="chegou" type="number" step="any" min="0" value="${+resta.toFixed(6)}"></label>
+            <label>Avariado<input data-k="avariado" type="number" step="any" min="0" value="0"></label></div>`).join('')}
+          <label>O que aconteceu<textarea data-obs rows="2" placeholder="ex.: faltaram 2 luvas DN 110; 1 tê chegou trincado"></textarea></label>
+          <div class="acoes"><button type="button" class="btn prim" data-nota-problema-ok>Registrar com o problema</button></div>
+        </div></div>`;
+    }
     if (n.status === 'A_CONFERIR' && rec) {
-      corpo = `<div class="nota-conf"><label>Pedido<select data-c="pedido"><option value="">sem pedido (precisa de aprovação)</option>${n.pedidos.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('')}</select></label>
+      detalhe = `<div class="nota-conf"><label>Pedido<select data-c="pedido"><option value="">sem pedido (precisa de aprovação)</option>${n.pedidos.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('')}</select></label>
         ${n.linhas.map(l => { const s = sug[l.id] || {};
           return `<div class="nota-l" data-l="${l.id}"><div>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(l.quantidade, 4)} ${esc(l.unidade)}${l.codigo ? ' · código ' + esc(l.codigo) : ''}</small></div>
             <div class="linha"><label>Material<input data-k="material_id" list="listaMateriais" value="${esc(s.material_id || '')}" placeholder="vazio = fora do estoque"></label>
@@ -470,11 +494,11 @@ function renderNotasReceber(notas) {
             <small>${s.material_id ? `sugerido (${esc(s.motivo)}): ${esc(((MATERIAIS.find(m => m.id === s.material_id) || {}).descricao || '').slice(0, 60))}${s.caesb ? ' · tubo da Caesb: entra como romaneio' : ''}` : 'sem sugestão: escolha o material ou deixe vazio (frete, serviço)'}</small></div>`; }).join('')}
         <div class="acoes"><button type="button" class="btn prim" data-nota-conferir="${n.id}">Conferir as linhas</button></div></div>`;
     } else if (n.status === 'CONFERIDA') {
-      const falta = n.itens.filter(i => i.quantidade - i.recebido > 1e-9);
-      corpo = (falta.length && rec ? `<div class="nota-chegou"><b>O que chegou</b>${falta.map(i => `<div class="linha" data-ni="${i.id}"><span>${esc(i.material_id)} <small>${esc((i.descricao || '').slice(0, 60))}${i.romaneio_caesb ? ' · romaneio Caesb' : ''}</small><br><small>na nota ${nf(i.quantidade, 3)} · já chegou ${nf(i.recebido, 3)} ${esc(i.unidade || '')}</small></span>
+      const faltaItens = n.itens.filter(i => i.quantidade - i.recebido > 1e-9);
+      detalhe = faltaItens.length && rec ? `<div class="nota-chegou"><b>O que chegou</b>${faltaItens.map(i => `<div class="linha" data-ni="${i.id}"><span>${esc(i.material_id)} <small>${esc((i.descricao || '').slice(0, 60))}${i.romaneio_caesb ? ' · romaneio Caesb' : ''}</small><br><small>na nota ${nf(i.quantidade, 3)} · já chegou ${nf(i.recebido, 3)} ${esc(i.unidade || '')}</small></span>
           <label>Chegou<input data-chegou type="number" step="any" min="0" value="${+(i.quantidade - i.recebido).toFixed(6)}"></label></div>`).join('')}
-          <div class="linha"><input data-doc-entrega placeholder="canhoto / romaneio da entrega"><button type="button" class="btn prim" data-nota-receber="${n.id}">Registrar o que chegou</button></div></div>` : '')
-        + n.entregas.map(e => `<div class="nota-insp" data-rec="${e.id}"><b>Em quarentena · entrega de ${dataBR(e.data)}${e.documento ? ' · ' + esc(e.documento) : ''}</b>
+          <div class="linha"><input data-doc-entrega placeholder="canhoto / romaneio da entrega"><button type="button" class="btn prim" data-nota-receber="${n.id}">Registrar o que chegou</button></div></div>` : '';
+      corpo += n.entregas.map(e => `<div class="nota-insp" data-rec="${e.id}"><b>Em quarentena · entrega de ${dataBR(e.data)}${e.documento ? ' · ' + esc(e.documento) : ''}</b>
           ${e.itens.map(i => `<div class="linha" data-ri="${i.id}"><span>${esc(i.material_id)} · ${nf(i.quantidade, 3)} ${esc(i.unidade || '')}</span>
             <label>Aceito<input data-k="aceito" type="number" step="any" min="0" value="${i.quantidade}"></label><label>Recusado<input data-k="recusado" type="number" step="any" min="0" value="0"></label></div>`).join('')}
           ${rec ? `<div class="linha"><input data-laudo placeholder="laudo da entrega (obrigatório só com recusa)"><input data-motivo placeholder="motivo da recusa"></div>
@@ -486,7 +510,7 @@ function renderNotasReceber(notas) {
     return `<div class="registro nota-card"><div><b>NF ${esc(n.numero)}${n.serie ? '/' + esc(n.serie) : ''} · ${esc(n.fornecedor || '')}</b>
         <span class="chip ${st[1]}">${esc(st[0])}</span>${n.sem_pedido ? ` <span class="chip ${n.aprovada_em ? 'verde' : 'amarelo'}">sem pedido · ${n.aprovada_em ? 'aprovada por ' + esc(n.aprovada_por) : 'aguardando aprovação'}</span>` : ''}</div>
       <small>emissão ${esc(dataBR(n.data_emissao || ''))} · ${n.linhas.length} linha${n.linhas.length > 1 ? 's' : ''} · ${brl(n.valor_total)} · importada por ${esc(n.registrada_por || '')}</small>
-      ${corpo}${aprovacao}</div>`;
+      ${corpo}${detalhe ? `<details class="nota-detalhe"><summary>Conferir linha a linha</summary>${detalhe}</details>` : ''}${aprovacao}</div>`;
   }).join('');
 }
 // vários XML de uma vez, um pedido por nota; o fornecedor que falta é cadastrado pelo próprio XML, com confirmação.
@@ -505,7 +529,7 @@ async function importarNotasXml(form, depois) {
       feitas.push(`NF ${r.numero}`);
     } catch (e) { erros.push(`${arq.name}: ${e.message}`); }
   }
-  if (feitas.length) toast(`Importada${feitas.length > 1 ? 's' : ''}: ${feitas.join(', ')}. Confira as linhas antes de receber.`, 'ok');
+  if (feitas.length) toast(`Importada${feitas.length > 1 ? 's' : ''}: ${feitas.join(', ')}. Quando o material chegar, toque em "Recebido conforme a nota" (ou "Registrar problema").`, 'ok');
   if (erros.length) toast(erros.join(' · '), 'erro');
   form.reset(); depois(); driveEmSegundoPlano(depois);
 }
@@ -513,7 +537,16 @@ $('#fXmlAlmox').addEventListener('submit', ev => { ev.preventDefault(); importar
 $('#notasReceber').addEventListener('click', async ev => {
   const q = s => ev.target.closest(s);
   let r = null;
-  if (q('[data-nota-conferir]')) {
+  if (q('[data-nota-problema]')) { const p = $('.nota-problema', q('.nota-rapida')); p.hidden = !p.hidden; return; }
+  if (q('[data-nota-ok]') || q('[data-nota-problema-ok]')) {         // num toque (D-135), ou com o que faltou e o avariado
+    const box = q('.nota-rapida'), problema = !!q('[data-nota-problema-ok]'), ped = $('[data-c=pedido]', box);
+    const corpo = { nf_id: box.dataset.nf, data: hoje(), pedido_id: ped ? ped.value || 0 : 0 };
+    if (problema) corpo.problema = { observacao: $('[data-obs]', box).value,
+      linhas: Object.fromEntries($$('[data-pl]', box).map(l => [l.dataset.pl, { chegou: $('[data-k=chegou]', l).value, avariado: $('[data-k=avariado]', l).value }])) };
+    r = await acao(() => api('/api/nf/receber', corpo), problema ? 'Recebimento registrado com o problema: o que faltou continua a receber nesta nota.'
+      : 'Nota recebida: o material entrou no estoque.').catch(() => null);
+    if (r && r.aguarda_aprovacao) toast('Nota sem pedido: o material só vai para as equipes depois da aprovação de Engenharia ou Administração.');
+  } else if (q('[data-nota-conferir]')) {
     const box = q('.nota-conf');
     const linhas = $$('[data-l]', box).map(l => { const m = $('[data-k=material_id]', l).value.trim();
       return m ? { linha_id: l.dataset.l, material_id: m, fator: $('[data-k=fator]', l).value || null } : { linha_id: l.dataset.l, fora_do_estoque: true }; });
