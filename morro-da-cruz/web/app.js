@@ -1520,7 +1520,7 @@ async function abrirTrechoDaLista(b, tela, perm, selecionar, form) {
   await selecionar(b.dataset.topTrecho || b.dataset.cadTrecho); form.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 // "Ver no Mapa iluminado": a zona filtrada (ou a obra inteira)
-function zonaNoMapa(frente) { verNoMapa('ZONA', /^(Zona\d\d|ADUTORA)$/.test(frente || '') ? frente : null); }
+function zonaNoMapa(frente) { verNoMapa('ZONA', /^(Zona\d\d|adutora)$/i.test(frente || '') ? zonaDoMapa(frente) : null); }
 function preencherTrecho(form, d, id) {
   const inp = $('input[name=alvo_txt]', form); inp.value = nomeCompleto(d.nome); inp.dataset.tipo = 'TRECHO'; inp.dataset.id = id;
 }

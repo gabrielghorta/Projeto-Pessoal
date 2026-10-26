@@ -365,6 +365,39 @@ def liberar(conn, data, equipe_id, linhas, nos, materiais, por, funcionarios=(),
     return {"checkin_id": cid, "novo": novo, "itens": len(itens), "programacoes_realizadas": n}
 
 
+def contingencia(conn, data, equipe_id, contingencia, por, materiais=(), funcionarios=None, maquinas=None):
+    """Equipe em campo sem trecho (contingência: bloquetes, calçadas): o check-in do dia sem alvo, para a presença (o
+    histograma e o diário) e, se houver, a retirada de material. Sem a lista de presentes, conta todos os funcionários e
+    máquinas da equipe. Fecha-se na devolução, como qualquer check-in."""
+    S.exigir_data_ocorrida(data, "Contingência")
+    if contingencia not in R.CONTINGENCIAS:
+        raise RegraViolada("Escolha a contingência: " + ", ".join(R.CONTINGENCIAS) + ".")
+    if funcionarios is None:
+        funcionarios = [r[0] for r in conn.execute("SELECT id FROM funcionarios WHERE equipe_id=?", (equipe_id,))]
+    if maquinas is None:
+        maquinas = [r[0] for r in conn.execute("SELECT id FROM maquinas WHERE equipe_id=?", (equipe_id,))]
+    itens = [{"material_id": m.get("material_id"), "quantidade": float(m.get("quantidade") or 0)} for m in materiais or []]
+    cid = S.checkin(conn, data, equipe_id, funcionarios=[int(i) for i in funcionarios], maquinas=[int(i) for i in maquinas],
+                    materiais=[m for m in itens if m["quantidade"] > 0], contingencia=contingencia)
+    return {"checkin_id": cid}
+
+
+def nao_realizada(conn, data, equipe_id, motivo, por):
+    """O programado de um dia que já chegou e não aconteceu: as programações ainda PLANEJADAS da equipe nesse dia passam a
+    NAO_REALIZADA, com o motivo (o dia futuro se cancela pelo lote)."""
+    dia = _data(data, "dia").isoformat()
+    if dia > RL.hoje().isoformat():
+        raise RegraViolada("Dia que ainda não chegou: cancele a programação pelo lote.")
+    ids = [r[0] for r in conn.execute("SELECT id FROM programacoes WHERE equipe_id=? AND data=? AND status='PLANEJADA'",
+                                      (equipe_id, dia))]
+    if not ids:
+        raise RegraViolada("Nada planejado para a equipe nesse dia (já realizado, encerrado ou sem programação).")
+    with transacao(conn):
+        for i in ids:
+            P.encerrar(conn, i, "NAO_REALIZADA", motivo, por)
+    return {"nao_realizadas": len(ids)}
+
+
 def reservar(conn, data, equipe_id, linhas, nos, materiais, por):
     """Para um dia que ainda não chegou: reserva o material da seleção para a equipe (não sai do almoxarifado; o check-in
     daquele dia consome a reserva)."""

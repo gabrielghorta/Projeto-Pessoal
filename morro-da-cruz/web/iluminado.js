@@ -86,6 +86,9 @@ function posicaoAlvo(g, tipo, nome) {
 const rotuloEquipe = id => /^Zona(\d\d)$/.test(id) ? id.slice(4) : id === 'ADUTORA' ? 'AD' : String(id || '?').slice(0, 2).toUpperCase();
 const ZONA_ADUTORA = 'Adutora';
 const zonaDoTrecho = t => t.tp === 'Adutora' ? ZONA_ADUTORA : t.z;
+// a frente como vem das listas ("ADUTORA", "Zona03") na zona do mapa; o nó da adutora é Zona02_PB07_Adutora_NÓ94.1
+const zonaDoMapa = z => /^adutora$/i.test(z || '') ? ZONA_ADUTORA : z;
+const zonaDoNo = n => /(^|_)adutora_/i.test(n || '') ? ZONA_ADUTORA : (/^(Zona\d\d)_/.exec(n || '') || [])[1];
 const nomeZona = z => z === ZONA_ADUTORA ? 'Adutora' : String(z).replace(/^Zona(\d\d)$/, 'Zona $1');
 
 /* ---------------------------------------------------------------- tela inicial: a rede acendendo */
@@ -532,8 +535,10 @@ function cliqueNoMapa(alvo, ev, i) {
   if (zona) return focarZona(zona.dataset.zona);
 }
 function focarZona(z) {
-  ILU.zona = z;
+  z = zonaDoMapa(z);
   const ts = GERAL.trechos.filter(t => zonaDoTrecho(t) === z), poli = GERAL.zonas.find(x => x.id === z);
+  if (!poli && !ts.length) return verTudo();             // zona sem desenho: a obra inteira, nunca um mapa em branco
+  ILU.zona = z;
   const b = limites([...(poli ? [poli.p] : []), ...ts.flatMap(t => t.p)], 0.06);
   aplicarCamadas(); irPara(b);
 }

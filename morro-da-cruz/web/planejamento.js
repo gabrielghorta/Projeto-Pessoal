@@ -229,7 +229,7 @@ function cliquePln(alvo, ev, i) {
   const noPerto = no && !$('#plnNos').classList.contains('longe');
   // com uma zona em foco, o primeiro toque em outra zona (no polígono, num trecho ou num nó dela) troca o foco;
   // juntando trechos, vale o trecho
-  const outra = PLN.zona && !juntar && (noPerto ? (/^(Zona\d\d|ADUTORA)_/.exec(no.dataset.n) || [])[1]
+  const outra = PLN.zona && !juntar && (noPerto ? zonaDoNo(no.dataset.n)
     : i >= 0 ? zonaDoTrecho(GERAL.trechos[i]) : zona && zona.dataset.zona);
   if (outra && outra !== PLN.zona) return focarZonaPln(outra);
   if (noPerto) return alternarNo(no.dataset.n);
@@ -238,8 +238,10 @@ function cliquePln(alvo, ev, i) {
   if (zona && !juntar) return focarZonaPln(zona.dataset.zona);
 }
 function focarZonaPln(z) {
-  PLN.zona = z; zonasPln();
+  z = zonaDoMapa(z);
   const ts = GERAL.trechos.filter(t => zonaDoTrecho(t) === z), poli = GERAL.zonas.find(x => x.id === z);
+  if (!poli && !ts.length) return verTudoPln();          // zona sem desenho: a obra inteira, nunca um mapa em branco
+  PLN.zona = z; zonasPln();
   irPara(limites([...(poli ? [poli.p] : []), ...ts.flatMap(t => t.p)], 0.06), true, PLN);
 }
 function verTudoPln() { PLN.zona = null; zonasPln(); irPara(PLN.base, true, PLN); }
@@ -405,9 +407,16 @@ function corpoDia() {
       ${x.campo.size ? `<span class="chip laranja">em campo · ${x.campo.size} alvo${x.campo.size > 1 ? 's' : ''}</span>` : '<span class="chip">sem check-in</span>'}</div>
     <small>${x.prog.size ? `programada: ${esc([...x.serv].map(serv).join(', '))} em ${esc([...x.prog].map(nomeCompleto).slice(0, 8).join(', '))}${x.prog.size > 8 ? '…' : ''}` : 'sem programação no dia'}</small>
     <div class="acoes"><button type="button" class="btn" data-pln-equipe-dia="${esc(eq)}">Escolher no mapa</button>
-      ${pode('almox') && !futuro() ? `<button type="button" class="btn prim" data-pln-equipe-dia="${esc(eq)}" data-aba="liberar">Liberar o material do dia</button>` : ''}</div></div>`).join('');
+      ${pode('almox') && !futuro() ? `<button type="button" class="btn prim" data-pln-equipe-dia="${esc(eq)}" data-aba="liberar">Liberar o material do dia</button>` : ''}
+      ${x.prog.size && !x.campo.size && !futuro() && pode('planejar') ? `<button type="button" class="btn" data-pln-nao-realizada="${esc(eq)}">Não aconteceu</button>` : ''}</div></div>`).join('');
   const lotes = (e.lotes || []).filter(l => (l.status.PLANEJADA || 0) > 0);
-  return `<h3>Equipes no dia</h3>${lista || '<div class="vazio">Nenhuma equipe programada nem com check-in neste dia.</div>'}
+  // equipe em campo sem trecho (bloquetes, calçadas): a presença do dia, sem alvo; fecha na devolução
+  const cont = pode('almox') && !futuro() ? `<details style="margin-top:14px"><summary>Equipe sem trecho hoje (contingência)</summary>
+      <form class="form" id="plnFormCont"><div class="linha"><label>Equipe<select name="equipe_id" required><option value="">—</option>${htmlEquipes()}</select></label>
+        <label>Contingência<select name="contingencia" required>${((RESUMO && RESUMO.contingencias) || []).map(c => `<option>${esc(c)}</option>`).join('')}</select></label></div>
+        <p class="vazio" style="margin:0">Registra a presença do dia (histograma e diário) com os funcionários e as máquinas da equipe. O dia se fecha na Devolução.</p>
+        <div class="acoes"><button class="btn">Registrar o dia em contingência</button></div></form></details>` : '';
+  return `<h3>Equipes no dia</h3>${lista || '<div class="vazio">Nenhuma equipe programada nem com check-in neste dia.</div>'}${cont}
     <h3 style="margin-top:14px">Programado nas próximas semanas</h3>${lotes.length ? lotes.map(htmlLote).join('') : '<div class="vazio">Nada programado.</div>'}`;
 }
 function htmlLote(l) {
@@ -563,6 +572,13 @@ PAINEL.addEventListener('click', async ev => {
     PLN.sel = l.alvos.filter(n => ix.trecho.has(n)); PLN.nos = l.alvos.filter(n => !ix.trecho.has(n));
     PLN.equipe = l.equipe_id; PLN.equipeFixa = true; focarNomes(l.alvos); return atualizarSelecao();
   }
+  if (q('[data-pln-nao-realizada]')) {
+    const eq = q('[data-pln-nao-realizada]').dataset.plnNaoRealizada;
+    const motivo = prompt(`Por que o programado da ${equipeNome(eq)} em ${dataBR(PLN.dia)} não aconteceu?`); if (!motivo) return;
+    const r = await acao(() => api('/api/dados-obra/nao-realizada', { equipe_id: eq, data: PLN.dia, motivo })).catch(() => null);
+    if (r) { toast(`${r.nao_realizadas} programaç${r.nao_realizadas > 1 ? 'ões marcadas' : 'ão marcada'} como não realizada${r.nao_realizadas > 1 ? 's' : ''}.`, 'ok'); recarregarCamadaMapa(); }
+    return;
+  }
   if (q('[data-pln-cancelar]')) {
     const motivo = prompt('Motivo do cancelamento (as programações já realizadas continuam):'); if (!motivo) return;
     const r = await acao(() => api('/api/dados-obra/cancelar-lote', { lote: q('[data-pln-cancelar]').dataset.plnCancelar, motivo, a_partir_de: hoje() })).catch(() => null);
@@ -612,6 +628,13 @@ PAINEL.addEventListener('submit', async ev => {
     }
     PLN.extra = []; PLN.qtd = {};
     MATERIAIS = await api('/api/estoque').catch(() => MATERIAIS);
+    return recarregarCamadaMapa();
+  }
+  if (f.id === 'plnFormCont') {
+    const o = formObj(f);
+    const x = await acao(() => api('/api/dados-obra/contingencia', { equipe_id: o.equipe_id, contingencia: o.contingencia, data: PLN.dia })).catch(() => null);
+    if (!x) return;
+    toast(`Dia em contingência registrado para a ${equipeNome(o.equipe_id)}: feche na Devolução no fim do dia.`, 'ok');
     return recarregarCamadaMapa();
   }
   if (f.matches('.pln-dev')) {

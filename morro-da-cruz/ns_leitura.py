@@ -223,8 +223,24 @@ def _abrir_pdf(dados):
     return pypdf, r
 
 
+_CACHE_PAGINAS = {}          # (sha256, extrator) → (páginas, meta): o lote lê o mesmo PDF ao casar, ao ler e ao registrar
+_CACHE_MAX = 24
+
+
 def extrair_paginas(dados, extrator='auto'):
-    """Texto de cada página do PDF (bytes) e de onde veio. 'auto' = pypdf; sem texto, pdftotext (se existir)."""
+    """Texto de cada página do PDF (bytes) e de onde veio. 'auto' = pypdf; sem texto, pdftotext (se existir).
+    O resultado fica guardado pelo conteúdo do arquivo (poucos, em memória): o envio em lote pede o número, a leitura e o
+    registro da mesma NS, e só a primeira vez abre o PDF (é o que segura a trava do servidor)."""
+    chave = (hashlib.sha256(dados).hexdigest(), extrator)
+    if chave not in _CACHE_PAGINAS:
+        if len(_CACHE_PAGINAS) >= _CACHE_MAX:
+            _CACHE_PAGINAS.pop(next(iter(_CACHE_PAGINAS)))
+        _CACHE_PAGINAS[chave] = _extrair_paginas(dados, extrator)
+    paginas, meta = _CACHE_PAGINAS[chave]
+    return list(paginas), dict(meta)
+
+
+def _extrair_paginas(dados, extrator='auto'):
     meta = {'sha256': hashlib.sha256(dados).hexdigest(), 'bytes': len(dados)}
     pypdf, r = _abrir_pdf(dados)
     if extrator in ('auto', 'pypdf'):
