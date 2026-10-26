@@ -621,7 +621,7 @@
       </div>
       <div class="painel largo">
         <h3>Notas a receber</h3>
-        <p class="vazio" style="margin:0 0 8px">Importe o XML da nota fiscal (pode escolher vários de uma vez). Em cada nota: confira o material de cada linha (vem sugerido), registre o que chegou (entra em quarentena) e aceite ou recuse. Nota sem pedido: o aceito só vai para as equipes depois da aprovação de Engenharia ou Administração. Tubo da Caesb (remessa) entra como romaneio, sem quarentena.</p>
+        <p class="vazio" style="margin:0 0 8px">Importe o XML da nota fiscal (pode escolher vários de uma vez). Chegou tudo certo: toque em <b>Recebido conforme a nota</b> (o material sugerido de cada linha é conferido, recebido e aceito de uma vez). Faltou algo ou veio avariado: <b>Registrar problema</b>. O passo a passo linha a linha continua em "Conferir linha a linha". Nota sem pedido: o aceito só vai para as equipes depois da aprovação de Engenharia ou Administração. Tubo da Caesb (remessa) entra como romaneio.</p>
         <form id="fXmlAlmox" class="linha" data-perm="receber"><label>XML da NF-e<input type="file" name="arquivos" accept=".xml,text/xml,application/xml" multiple required></label>
           <div class="acoes"><button class="btn prim">Importar</button></div></form>
         <datalist id="listaMateriais"></datalist>
@@ -629,6 +629,7 @@
       </div>
       <div class="painel">
         <h3>Entradas no almoxarifado</h3>
+        <p class="vazio" style="margin:0 0 8px">Nota fiscal de material: use "Notas a receber", acima. Aqui ficam o romaneio da Caesb, o empréstimo de tubo e o consumo diário.</p>
         <form id="fMov" data-perm="almox">
           <div class="linha">
             <label>Data<input type="date" name="data" required></label>
