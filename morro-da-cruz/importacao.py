@@ -1153,6 +1153,12 @@ def preparar_v20(conn):
         raise RuntimeError(f"checkin_alvos: {len(pares)} pares nos registros antigos, {depois - antes} gravados")
 
 
+
+def preparar_v21(conn):
+    """Esquema v20 → v21: medicao_folhas, as fotos e a justificativa de cada folha da memória de cálculo no modelo
+    oficial do BM. Tabela nova e vazia: o pacote sugere as fotos até a engenharia escolher."""
+    S.aplicar_esquema(conn)
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

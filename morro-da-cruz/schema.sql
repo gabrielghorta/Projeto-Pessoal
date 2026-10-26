@@ -704,6 +704,18 @@ CREATE TABLE IF NOT EXISTS conferencias_medicao (
   em TEXT NOT NULL
 );
 
+-- v21: a memória de cálculo do modelo oficial (aba nª MC, pacote_medicao.py), uma folha por item da medição: as fotos da
+-- galeria (até 6, na ordem) e a justificativa técnica. Sem linha (ou fotos NULL) = o sistema sugere as 6 fotos mais
+-- recentes dos trechos e nós do item. Item acima de 100 % do contrato só fecha com justificativa (aditivo pendente).
+CREATE TABLE IF NOT EXISTS medicao_folhas (
+  medicao_id INTEGER NOT NULL REFERENCES medicoes(id),
+  item TEXT NOT NULL,                  -- chave do BM vertical (CÓD.CRON.FF_ITEM-BM, ex.: 2.2_5.8.44)
+  fotos TEXT,                          -- JSON [id da foto, ...] escolhidas; NULL = sugestão do sistema
+  justificativa TEXT,
+  por TEXT NOT NULL, em TEXT NOT NULL,
+  PRIMARY KEY (medicao_id, item)
+);
+
 -- ---------------------------------------------------------------- planejamento (v12, módulo D)
 -- Programação das equipes: o PLANEJADO (equipe, dia, trecho/nó, serviço e materiais previstos). Não é presença nem
 -- execução: o check-in da equipe naquele dia e alvo a marca como REALIZADA; o que não aconteceu é encerrado com motivo.

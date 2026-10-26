@@ -1,8 +1,7 @@
-"""Exportação da medição para .xlsx (conferência interna).
+"""Exportação da medição para .xlsx (conferência interna: gavetas, regras, elegibilidade, parcelas).
 
-Esta planilha NÃO é o modelo oficial: o BM oficial puxa as quantidades da aba `01ª MC` do modelo
-03.3.2. Enquanto a exportação no modelo oficial não for implementada e validada, toda exportação
-sai marcada como TESTE / NÃO OFICIAL. Valores seguem a ordem do BM (ROUND por item; BDI por classe; K no total).
+Esta planilha NÃO é o modelo oficial: o pacote no modelo oficial do BM (juntada, nª MC, cronograma FF e gráficos) sai de
+pacote_medicao.py. Enquanto a medição oficial estiver bloqueada (D-56), toda exportação sai marcada TESTE / NÃO OFICIAL. Valores seguem a ordem do BM (ROUND por item; BDI por classe; K no total).
 """
 import io
 from collections import defaultdict
@@ -23,7 +22,7 @@ FINO = Side(style="thin", color="E2E5EA")
 BORDA = Border(left=FINO, right=FINO, top=FINO, bottom=FINO)
 MOEDA = 'R$ #,##0.00'
 QTD = '#,##0.000'
-AVISO_TESTE = "TESTE — NÃO OFICIAL · regras financeiras, acesso e modelo oficial (01ª MC) pendentes de validação"
+AVISO_TESTE = "TESTE — NÃO OFICIAL · conferência interna; regras financeiras e acesso pendentes de validação"
 
 
 def _cabecalho(ws, titulo, sub, colunas, larguras, teste):

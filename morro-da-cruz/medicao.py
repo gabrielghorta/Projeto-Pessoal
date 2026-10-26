@@ -70,9 +70,9 @@ def regras(conn):
         None, "D-16")
     add("Conferência interna da engenharia antes de fechar", "PROVISÓRIA",
         "fechamento exige conferência CONFORME sobre os lançamentos atuais", None, "D-59")
-    add("Medição OFICIAL e exportação no modelo 01ª MC", "BLOQUEADA",
-        "só medição de TESTE (parâmetro medicao_oficial_liberada = " + ("SIM" if S.medicao_oficial_liberada(conn) else "NAO") + ")",
-        None, "D-56")
+    add("Medição OFICIAL", "BLOQUEADA",
+        "só medição de TESTE (parâmetro medicao_oficial_liberada = " + ("SIM" if S.medicao_oficial_liberada(conn) else "NAO")
+        + "); o pacote no modelo oficial do BM (juntada, nª MC, FF, gráficos) sai marcado TESTE – NÃO OFICIAL", None, "D-56")
     return out
 
 
