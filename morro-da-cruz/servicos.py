@@ -342,25 +342,39 @@ CUSTODIA_SQL = """COALESCE(SUM(CASE WHEN tipo IN ('CUSTODIA','TRANSF_ENTRADA') T
 VALIDO = "id NOT IN (SELECT movimento_id FROM estornos)"
 
 
-# aceito de nota conferida SEM pedido e ainda não aprovada (compras.aprovar_nf_sem_pedido): no almoxarifado, fora do saldo
+# aceito de nota conferida SEM pedido e ainda não aprovada (compras.aprovar_nf_sem_pedido): no almoxarifado, fora do saldo.
+# A devolução ao fornecedor dessa nota também fica fora do saldo: sai do que aguarda a aprovação, não do estoque aprovado.
 NF_SEM_APROVACAO = "nf_id IN (SELECT id FROM notas_fiscais WHERE sem_pedido=1 AND aprovada_em IS NULL)"
+_DA_NF_SEM_APROVACAO = f"tipo IN ('ENTRADA_NF','DEVOLUCAO_FORNECEDOR') AND COALESCE({NF_SEM_APROVACAO}, 0)"
 
 
 def saldo_almox(conn, material_id):
     r = conn.execute(
         f"""SELECT
               COALESCE(SUM(CASE WHEN tipo IN {ENTRA_ALMOX} AND COALESCE(status,'ACEITO')='ACEITO'
-                                     AND NOT (tipo='ENTRADA_NF' AND COALESCE({NF_SEM_APROVACAO}, 0)) THEN quantidade END),0)
-            - COALESCE(SUM(CASE WHEN tipo IN {SAI_ALMOX} THEN quantidade END),0) AS saldo,
+                                     AND NOT ({_DA_NF_SEM_APROVACAO}) THEN quantidade END),0)
+            - COALESCE(SUM(CASE WHEN tipo IN {SAI_ALMOX} AND NOT ({_DA_NF_SEM_APROVACAO}) THEN quantidade END),0) AS saldo,
               COALESCE(SUM(CASE WHEN tipo='ENTRADA_NF' AND status='QUARENTENA' THEN quantidade END),0) AS quarentena
             FROM movimentos WHERE material_id=? AND {VALIDO}""", (material_id,)).fetchone()
     return r["saldo"], r["quarentena"]
 
 
-def aguardando_aprovacao(conn, material_id):
-    """Aceito de nota sem pedido ainda não aprovada: está no almoxarifado, mas não pode ser liberado às equipes."""
-    return conn.execute(f"""SELECT COALESCE(SUM(quantidade),0) FROM movimentos WHERE material_id=? AND tipo='ENTRADA_NF'
-                            AND status='ACEITO' AND {NF_SEM_APROVACAO} AND {VALIDO}""", (material_id,)).fetchone()[0]
+def aguardando_aprovacao(conn, material_id, nf_id=None):
+    """Aceito de nota sem pedido ainda não aprovada, menos o que já voltou ao fornecedor: está no almoxarifado, mas não
+    pode ser liberado às equipes. Com `nf_id`, só o daquela nota."""
+    sql = f"""SELECT COALESCE(SUM(CASE WHEN tipo='ENTRADA_NF' AND status='ACEITO' THEN quantidade
+                                       WHEN tipo='DEVOLUCAO_FORNECEDOR' THEN -quantidade END),0)
+              FROM movimentos WHERE material_id=? AND {NF_SEM_APROVACAO} AND {VALIDO}"""
+    args = [material_id]
+    if nf_id is not None:
+        sql, args = sql + " AND nf_id=?", args + [nf_id]
+    return conn.execute(sql, args).fetchone()[0]
+
+
+def fisico_almox(conn, material_id):
+    """O que está fisicamente no almoxarifado: o saldo mais o aceito que aguarda a aprovação da nota sem pedido. É com
+    isso que se compara a contagem do inventário."""
+    return saldo_almox(conn, material_id)[0] + aguardando_aprovacao(conn, material_id)
 
 
 def reservado(conn, material_id, equipe_id=None, data=None):
