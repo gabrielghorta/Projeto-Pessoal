@@ -124,18 +124,19 @@ function realcarRede(acesa) {
 
 /* ---------------------------------------------------------------- Mapa iluminado */
 // etapa de cada trecho, da mais atrasada à mais adiantada (calculada no servidor, regras.etapa_trecho). "Verificado" e
-// "OK interno" são conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada
+// "OK interno" são conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada. Cores claras (26/10/2026:
+// o mesmo tom, 35 % mais perto do branco, para se destacarem sobre o satélite); a transparência é a de sempre
 const SITU = [
-  { id: 'nao', nome: 'Não iniciado', cor: '#8C8C8C', tracejado: true },
-  { id: 'liberado', nome: 'Liberado pela topografia', cor: '#6CB8F0' },
-  { id: 'execucao', nome: 'Em execução hoje', cor: '#F15922' },
-  { id: 'executado', nome: 'Executado, aguardando verificação', cor: '#F2C94C' },
-  { id: 'verificado', nome: 'Verificado pelo supervisor', cor: '#F28AC0' },
-  { id: 'campo', nome: 'Cadastro de campo feito', cor: '#2EC5D9' },
-  { id: 'pronto', nome: 'Pronto para o OK interno', cor: '#F2F2F2' },
-  { id: 'ok', nome: 'OK interno, na medição', cor: '#A77BF3' },
-  { id: 'cad_andamento', nome: 'Cadastro em andamento', cor: '#D6C2FF' },
-  { id: 'cadastrado', nome: 'Cadastro aprovado pela Caesb', cor: '#3FD68F' },
+  { id: 'nao', nome: 'Não iniciado', cor: '#B4B4B4', tracejado: true },
+  { id: 'liberado', nome: 'Liberado pela topografia', cor: '#9FD1F5' },
+  { id: 'execucao', nome: 'Em execução hoje', cor: '#F6936F' },
+  { id: 'executado', nome: 'Executado, aguardando verificação', cor: '#F7DC8B' },
+  { id: 'verificado', nome: 'Verificado pelo supervisor', cor: '#F7B3D6' },
+  { id: 'campo', nome: 'Cadastro de campo feito', cor: '#77D9E6' },
+  { id: 'pronto', nome: 'Pronto para o OK interno', cor: '#F7F7F7' },
+  { id: 'ok', nome: 'OK interno, na medição', cor: '#C6A9F7' },
+  { id: 'cad_andamento', nome: 'Cadastro em andamento', cor: '#E4D7FF' },
+  { id: 'cadastrado', nome: 'Cadastro aprovado pela Caesb', cor: '#82E4B6' },
 ];
 const SITU_ID = Object.fromEntries(SITU.map(s => [s.id, s]));
 const etapaDe = (est, nome) => ((est.camadas || {}).etapas || {})[nome];
