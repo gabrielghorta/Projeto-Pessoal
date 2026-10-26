@@ -44,7 +44,7 @@ Com o BM real (REV04), os dois itens existem e a regra aparece como hipótese.
 | Reajuste (revisão elegível e pedido) | hipótese (impede a oficial) | D-55 |
 | Estorno de proposta depois do OK | bloqueada | D-16 |
 | Conferência interna obrigatória antes de fechar | provisória | **D-59 (nova)** |
-| Medição oficial e modelo 01ª MC | bloqueada | D-56 |
+| Medição oficial | bloqueada; o pacote no modelo oficial sai marcado TESTE – NÃO OFICIAL (seção "Pacote no modelo oficial") | D-56 · D-139 |
 
 ## Esquema v13 (migração sem perda)
 
@@ -209,3 +209,45 @@ Testes: `tests/test_apropriacao.py` (`TestMedicao`, `TestSituacao`, `TestMigraca
   - executados sem as 3 fotos.
   Cada número abre a lista dos trechos no Mapa iluminado.
 - O botão "Ver o cadastro parado no mapa" substitui o atalho da esteira.
+
+## Pacote no modelo oficial do BM (esquema v21, 26/10/2026)
+
+O que a Caesb recebe todo mês é o BM do Morro da Cruz preenchido, no mesmo arquivo do modelo (pacote do Lago Sul como
+referência). Na tela Medição, "Pacote da medição no modelo oficial" mostra o total P0 da juntada, a administração local,
+os avisos e uma folha por item; "Baixar pacote (.xlsx)" gera o arquivo. O "Resumo interno (.xlsx)" continua sendo a
+planilha de conferência (gavetas, regras, elegibilidade).
+
+**Como sai** (`pacote_medicao.gerar`, sobre `planilhas/BM_MORRO_DA_CRUZ_REV04_IDENTIFICACAO_09-10-26.xlsx`):
+
+| Aba | O que muda | O que fica do modelo |
+|---|---|---|
+| BM MORRO DA CRUZ (juntada) | linhas sem medição no mês e colunas das outras medições ocultas; uma página de largura (D-154) | fórmulas (SUMIFS do vertical por código Caesb), resumo, BDI, K, % medido e % saldo |
+| BM MORRO DA CRUZ - VERTICAL | coluna do mês = SUMIFS da nª MC; medições anteriores como valor congelado (D-152); a ADM do mês = folha da ADM; data do boletim | todo o resto |
+| nª MC | uma folha (92 linhas, uma página) por item medido, na ordem do vertical: chave, 6 fotos com carimbo, justificativa, memorial (estacas 0 → fim do trecho em metro; D-153); folhas de continuação acima de 66 linhas; a folha da ADM no fim, com a equipe | cabeçalho, logo, fórmulas da linha do item e do memorial |
+| REAJUSTE | fração elegível 0 até a medição do pacote: R$ 0,00, "não pedido" (D-140) | índices, regras e notas da CEFR |
+| CRONOGRAMA FF CAESB, GRÁFICOS, CONFERÊNCIA CONTRATO | nº do contrato | tudo (as fórmulas puxam o executado do vertical) |
+| AVISOS DO TESTE (nova, só no teste) | o total, a ADM e os avisos | — |
+
+Marca TESTE – NÃO OFICIAL no título de cada aba, no cabeçalho de impressão e no nome do arquivo (D-139). Os comentários
+de preenchimento manual da MC saem (o sistema preenche). Fórmulas compartilhadas das abas editadas viram explícitas, os
+valores guardados saem e o arquivo pede recálculo completo ao abrir; sem a cadeia de cálculo antiga.
+
+**Folha do item** (`medicao_folhas`, uma linha por medição × item): fotos escolhidas (JSON, até 6, na ordem) ou NULL
+= sugestão (as 6 mais recentes dos trechos e nós do item); justificativa (frase pronta ou livre, até 600 caracteres).
+Só com a medição ABERTA e permissão `medicao`; o autor é o usuário da sessão. Item com acumulado acima do contrato só
+fecha com justificativa e sai "ADITIVO PENDENTE" (D-144).
+
+**Números** (`pacote_medicao.resumo`): o total P0 da juntada (ROUND por código Caesb) e o do vertical (ROUND por chave);
+se diferirem, aviso de arredondamento. A ADM proporcional (D-141) entra no total do pacote; o resumo da tela de cima
+(gavetas) continua sem ela. O teto por subgrupo (D-57, hipótese) não é aplicado no modelo: aviso com o excedente.
+
+**Conferido** (`tests/test_pacote_medicao.py`, 10 testes, sobre as planilhas reais): ida e volta do modelo sem mudar
+nenhuma das 56 mil células recalculadas; estrutura do pacote (abas, folhas, fórmulas, linhas e colunas ocultas, reajuste,
+marca, imagens, quebras de página); com o LibreOffice instalado, o pacote recalculado bate com o sistema (P0 da juntada
+e do vertical, ADM, total geral e cronograma FF); fotos e justificativa (validações); acima de 100 % só fecha com
+justificativa; a 2ª medição congela a 1ª e puxa da "02ª MC"; BM diferente do importado é recusado; rotas, autor da
+sessão e permissão.
+
+**Limitações:** no PDF gerado pelo LibreOffice, logos e fotos descem um pouco a cada folha (o modelo original tem o
+mesmo efeito); no Excel ficam no lugar — gere o PDF pelo Excel. O período no cabeçalho é o do modelo (data da OS);
+aviso se o do sistema for outro (D-155). Item novo (fora do BM) não cabe no modelo e fica de fora, com aviso.

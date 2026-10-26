@@ -582,4 +582,14 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .nota-itens li { margin: 2px 0; }
 .nota-problema { border-top: 1px solid var(--borda); margin-top: 10px; padding-top: 10px; }
 .nota-detalhe { margin-top: 10px; }
+/* pacote no modelo oficial: uma folha da memória de cálculo por item, fotos escolhidas na ordem */
+.folha-mc { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: 4px 12px; margin: 8px 0; background: var(--painel); }
+.folha-mc > summary { color: var(--texto); min-height: 44px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.folha-mc .folha-desc { flex: 1 1 220px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suave); }
+.fotos-mc figure { position: relative; cursor: pointer; }
+.fotos-mc figure.escolhida { outline: 3px solid var(--verde-forte); outline-offset: -3px; }
+.fotos-mc .ordem:empty { display: none; }
+.fotos-mc .ordem { position: absolute; top: 6px; left: 6px; min-width: 28px; height: 28px; border-radius: 999px; background: var(--verde-forte);
+  color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.folha-mc textarea { width: 100%; box-sizing: border-box; margin: 6px 0; }
 

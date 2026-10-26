@@ -872,11 +872,20 @@
       <p class="vazio" style="margin:0 0 8px">Um trecho entra na medição com a execução completa, verificada pelo supervisor, com as 3 fotos e o OK interno. Toque num número para ver os trechos no mapa.</p>
       <div id="medCaminho" class="numeros-caminho vazio">—</div>
     </div>
+    <div class="painel largo" id="painelPacote" style="margin-bottom:16px">
+      <div class="acoes" style="justify-content:space-between;align-items:center">
+        <h3 style="margin:0">Pacote da medição no modelo oficial</h3>
+        <a class="btn ok" id="medPacote" data-perm="medicao" href="#">⬇ Baixar pacote (.xlsx)</a>
+      </div>
+      <p class="vazio" style="margin:6px 0 10px">O BM oficial do Morro da Cruz preenchido: juntada só com os itens do mês, BM vertical, memória de cálculo (uma folha por item, com 6 fotos e a justificativa), reajuste, cronograma FF e gráficos. Toque numa folha para trocar as fotos ou escrever a justificativa.</p>
+      <div id="medPacoteResumo" class="vazio">—</div>
+      <div id="medFolhas"></div>
+    </div>
     <div class="grade-2">
       <div class="painel">
         <div class="acoes" style="justify-content:space-between;margin-bottom:12px">
           <div class="acoes"><label>Medição<select id="medSel"></select></label></div>
-          <div class="acoes"><a class="btn azul" id="medExport" data-perm="medicao" href="#">⬇ Exportar .xlsx</a><button class="btn" id="medFechar" data-perm="medicao">Fechar medição</button></div>
+          <div class="acoes"><a class="btn azul" id="medExport" data-perm="medicao" href="#" title="Planilha de conferência interna (gavetas, regras, elegibilidade)">⬇ Resumo interno (.xlsx)</a><button class="btn" id="medFechar" data-perm="medicao">Fechar medição</button></div>
         </div>
         <div id="medResumo" class="vazio">Crie a medição do mês ao lado.</div>
         <h3 style="margin-top:16px">Elegibilidade do período</h3>

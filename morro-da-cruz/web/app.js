@@ -1140,8 +1140,10 @@ async function carregarMedicao() {
   carregarCaminhoMedicao(id);
   const r = await api('/api/medicao?id=' + id);
   $('#medExport').href = '/api/medicao/exportar?id=' + id;
+  $('#medPacote').href = '/api/medicao/pacote/baixar?id=' + id;
+  carregarPacote(id);
   $('#medResumo').className = '';
-  $('#medResumo').innerHTML = (r.teste ? `<div class="aviso problema"><b>MEDIÇÃO DE TESTE — NÃO OFICIAL.</b> Regras financeiras, controle de acesso e exportação no modelo oficial (01ª MC) ainda não validados.</div>` : '')
+  $('#medResumo').innerHTML = (r.teste ? `<div class="aviso problema"><b>MEDIÇÃO DE TESTE — NÃO OFICIAL.</b> Regras financeiras e controle de acesso ainda não validados; o pacote no modelo oficial do BM sai marcado TESTE.</div>` : '')
     + ((r.hipoteses || []).length ? `<div class="aviso info"><b>Simulação com hipóteses não validadas:</b><ul style="margin:4px 0 0 18px">${r.hipoteses.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : '')
     + (r.congelada ? `<div class="aviso info"><b>Medição fechada — valores congelados no fechamento.</b>${r.alerta_recalculo ? ' ' + esc(r.alerta_recalculo) : ''}</div>` : '') + `<div class="kpis">${Object.entries(r.gavetas).map(([g, d]) => `<div class="kpi"><span>Gaveta ${g} — ${esc(d.nome)}</span><b>${brl(d.valor)}</b></div>`).join('')}</div>
     <table style="max-width:560px;margin-bottom:12px">
@@ -1159,10 +1161,86 @@ async function carregarMedicao() {
   renderMedComplementos(r);
   carregarElegibilidade(id);
   $('#medTetos').className = r.tetos.length ? '' : 'vazio';
-  $('#medTetos').innerHTML = r.tetos.length ? `<table><thead><tr><th>Subgrupo</th><th class="n">Teto</th><th class="n">Anterior</th><th class="n">Atual</th><th class="n">Excedente</th></tr></thead><tbody>
-    ${r.tetos.map(t => `<tr><td>${esc(t.subgrupo)} ${esc(t.nome || '')}</td><td class="n">${brl(t.teto)}</td><td class="n">${brl(t.anterior)}</td><td class="n">${brl(t.atual)}</td><td class="n">${t.excedente ? `<span class="chip vermelho">${brl(t.excedente)}</span>` : '—'}</td></tr>`).join('')}</tbody></table>` : 'Sem lançamentos com item de BM.';
+  $('#medTetos').innerHTML = r.tetos.length ? `<div class="tabela"><table><thead><tr><th>Subgrupo</th><th class="n">Teto</th><th class="n">Anterior</th><th class="n">Atual</th><th class="n">Excedente</th></tr></thead><tbody>
+    ${r.tetos.map(t => `<tr><td>${esc(t.subgrupo)} ${esc(t.nome || '')}</td><td class="n">${brl(t.teto)}</td><td class="n">${brl(t.anterior)}</td><td class="n">${brl(t.atual)}</td><td class="n">${t.excedente ? `<span class="chip vermelho">${brl(t.excedente)}</span>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : 'Sem lançamentos com item de BM.';
   aprCarregarRestricoes(id);
 }
+/* pacote no modelo oficial: as folhas da nª MC, com as fotos (até 6, na ordem) e a justificativa de cada item */
+const ESCOLHA = {};
+async function carregarPacote(id, abrir) {
+  const r = await api('/api/medicao/pacote?id=' + id).catch(e => ({ erro: e.message }));
+  if (String(id) !== $('#medSel').value) return;
+  const box = $('#medPacoteResumo');
+  if (r.erro) { box.className = ''; box.innerHTML = `<div class="aviso problema">${esc(r.erro)}</div>`; $('#medFolhas').innerHTML = ''; return; }
+  const edita = r.medicao.status === 'ABERTA' && pode('medicao');
+  box.className = '';
+  box.innerHTML = `<div class="kpis">
+      <div class="kpi"><span>Total P0 da juntada (com BDI e K)</span><b>${brl(r.totais.juntada)}</b></div>
+      <div class="kpi"><span>Administração local proporcional</span><b>${brl(r.adm.valor)}</b></div>
+      <div class="kpi"><span>Folhas da ${esc(r.aba_mc)}</span><b>${r.folhas.length} + ADM</b></div>
+      <div class="kpi"><span>Reajuste</span><b>R$ 0,00</b></div></div>
+    ${r.avisos.length ? `<div class="aviso info"><ul style="margin:0 0 0 18px">${r.avisos.map(a => `<li>${esc(a)}</li>`).join('')}</ul></div>` : ''}`;
+  r.folhas.forEach(f => { ESCOLHA[f.item] = [...f.fotos]; });
+  $('#medFolhas').innerHTML = r.folhas.map((f, i) => folhaMcHtml(f, i, r.frases, edita)).join('')
+    || '<p class="vazio">Nenhum item com quantidade proposta: o pacote sai só com a folha da administração local.</p>';
+  $$('#medFolhas details.folha-mc').forEach(marcarEscolha);
+  if (abrir) { const d = $(`#medFolhas details[data-item="${CSS.escape(abrir)}"]`); if (d) d.open = true; }
+}
+function folhaMcHtml(f, i, frases, edita) {
+  const pct = f.percentual != null ? nf(f.percentual * 100, 1) + ' %' : '—', just = (f.justificativa || '').trim();
+  return `<details class="folha-mc" data-item="${esc(f.item)}">
+    <summary><b>Folha ${String(i + 1).padStart(3, '0')} · ${esc(f.item_bm || f.item)}</b> <span class="folha-desc">${esc(f.descricao || '')}</span>
+      <span class="chip">${nf(f.quantidade, 3)} ${esc(f.unidade || '')}</span>
+      <span class="chip ${f.excede ? 'vermelho' : 'cinza'}" title="Acumulado sobre a quantidade do contrato">${pct}</span>
+      ${f.excede ? '<span class="chip forte">ADITIVO PENDENTE</span>' : ''}
+      <span class="chip ${f.fotos.length ? 'verde' : 'amarelo'}">${f.fotos.length} foto(s)${f.fotos_sugeridas ? ', sugeridas' : ''}</span>
+      ${just ? '<span class="chip azul">com justificativa</span>' : f.excede ? '<span class="chip vermelho">falta justificativa</span>' : ''}</summary>
+    <p class="vazio" style="margin:4px 0 8px">Chave ${esc(f.item)} · ${f.linhas} linha(s) no memorial · acumulado ${nf(f.acumulado, 3)} de ${nf(f.contrato, 3)} ${esc(f.unidade || '')}.
+      ${edita ? 'Toque nas fotos para escolher até 6; o número é a ordem na folha.' : ''}</p>
+    <div class="fotos fotos-mc">${f.candidatas.map(c => `<figure data-foto="${c.id}">
+        <img src="/fotos/${esc(c.arquivo)}" loading="lazy" alt="Foto ${esc(c.categoria.toLowerCase())} de ${esc(curto(c.alvo))}"><span class="ordem"></span>
+        <figcaption>${esc(String(c.data_hora || '').replace('T', ' ').slice(0, 16))} · ${esc(c.categoria.toLowerCase())}<br>${esc(curto(c.alvo))}</figcaption></figure>`).join('')
+      || '<p class="vazio">Sem fotos válidas dos trechos e nós deste item.</p>'}</div>
+    <label style="margin-top:10px">Justificativa técnica${f.excede ? ' <b>— obrigatória: acima de 100 % do contrato</b>' : ''}
+      <select data-frase ${edita ? '' : 'disabled'}><option value="">Usar uma frase pronta…</option>${frases.map(x => `<option>${esc(x)}</option>`).join('')}</select></label>
+    <textarea data-just rows="3" maxlength="600" ${edita ? '' : 'disabled'} placeholder="Escreva ou escolha uma frase pronta">${esc(just)}</textarea>
+    ${edita ? `<div class="acoes"><button type="button" class="btn prim" data-salvar-folha>Salvar folha</button>
+      <button type="button" class="btn" data-sugestao>Voltar às fotos sugeridas</button></div>` : ''}
+  </details>`;
+}
+function marcarEscolha(det) {
+  const sel = ESCOLHA[det.dataset.item] || [];
+  det.querySelectorAll('[data-foto]').forEach(fig => {
+    const k = sel.indexOf(+fig.dataset.foto);
+    fig.classList.toggle('escolhida', k >= 0);
+    fig.querySelector('.ordem').textContent = k >= 0 ? k + 1 : '';
+  });
+}
+async function salvarFolha(det, fotos) {
+  const id = +$('#medSel').value, item = det.dataset.item;
+  const ok = await acao(() => api('/api/medicao/folha', { medicao_id: id, item, fotos, justificativa: det.querySelector('[data-just]').value }),
+    'Folha salva.').catch(() => null);
+  if (ok) carregarPacote(id, item);
+}
+$('#medFolhas').addEventListener('click', ev => {
+  const det = ev.target.closest('details.folha-mc'); if (!det) return;
+  const fig = ev.target.closest('[data-foto]');
+  if (fig && !det.querySelector('[data-just]').disabled) {
+    const sel = ESCOLHA[det.dataset.item], fid = +fig.dataset.foto, k = sel.indexOf(fid);
+    if (k >= 0) sel.splice(k, 1);
+    else if (sel.length >= 6) return toast('A galeria tem 6 lugares: toque numa foto escolhida para tirá-la.', 'erro');
+    else sel.push(fid);
+    return marcarEscolha(det);
+  }
+  if (ev.target.closest('[data-salvar-folha]')) salvarFolha(det, ESCOLHA[det.dataset.item]);
+  if (ev.target.closest('[data-sugestao]')) salvarFolha(det, null);
+});
+$('#medFolhas').addEventListener('change', ev => {
+  const s = ev.target.closest('[data-frase]'); if (!s || !s.value) return;
+  const t = s.closest('details').querySelector('[data-just]');
+  t.value = t.value.trim() ? t.value.trim() + '\n' + s.value : s.value;
+  s.value = '';
+});
 const SIT_REGRA = { 'CONFIRMADA': 'verde', 'PROVISÓRIA': 'amarelo', 'HIPÓTESE': 'amarelo', 'BLOQUEADA': 'vermelho', 'VÍNCULO INCOMPLETO': 'vermelho' };
 const SIT_ELEG = { PROPOSTO_NESTA: ['verde', 'proposto nesta'], OK_SEM_MEDICAO: ['amarelo', 'OK interno, espera a medição abrir'], APTO_SEM_OK: ['amarelo', 'completo, sem OK interno'],
   PARCIAL_NAO_ELEGIVEL: ['cinza', 'parcial — não elegível (D-30)'], MEDIDO_ANTES: ['azul', 'medido antes'] };

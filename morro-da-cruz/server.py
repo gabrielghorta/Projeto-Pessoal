@@ -34,6 +34,7 @@ import documentos as D
 import drive as DR
 import medicao as M
 import notas_servico as NS
+import pacote_medicao as PM
 import planejamento as P
 import relatorios as RL
 import exportar
@@ -378,6 +379,22 @@ def r_medicao_elegibilidade(q, c):
 def p_medicao_fechar(b, c):
     S.fechar_medicao(c, int(b.get("medicao_id") or b["id"]), b.get("por"))
     return {"ok": True}
+
+
+def r_medicao_pacote(q, c):
+    """As folhas da nª MC no modelo oficial: fotos (escolhidas ou sugeridas), candidatas, justificativa e avisos."""
+    r = PM.resumo(c, int(q["id"]))
+    for f in r["folhas"]:
+        f["candidatas"] = [{k: x[k] for k in ("id", "arquivo", "data_hora", "categoria", "alvo_tipo", "alvo_id")}
+                           | {"alvo": S.nome_alvo(c, x["alvo_tipo"], x["alvo_id"])} for x in f["candidatas"]]
+        f["linhas"] = len(f["linhas"])
+    return r
+
+
+def p_medicao_folha(b, c):
+    fotos = b.get("fotos")
+    return PM.salvar_folha(c, int(b["medicao_id"]), b.get("item") or "", b["por"], fotos if fotos is None else list(fotos),
+                           b.get("justificativa"))
 
 
 def p_medicao_conferir(b, c):
@@ -834,7 +851,7 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/dados-obra/selecao": r_dados_obra_selecao, "/api/dados-obra/estado": r_dados_obra_estado,
        "/api/cronograma": r_cronograma, "/api/almox/quarentena": r_quarentena, "/api/almox/notas": lambda q, c: C.notas_a_receber(c),
        "/api/base-custo/busca": r_base_custo_busca, "/api/base-custo/itens": r_base_custo_itens,
-       "/api/medicao/restricoes": r_medicao_restricoes}
+       "/api/medicao/restricoes": r_medicao_restricoes, "/api/medicao/pacote": r_medicao_pacote}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios"),
             "/api/ns/fora-de-ordem": (lambda q, c: S.fora_de_ordem(c), "notas_servico")}      # o legado: só a engenharia
 GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
@@ -855,7 +872,7 @@ POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movi
 POST.update({rota: fn for rota, (_, _, fn) in ROTAS_COMPRAS.items()})
 POST.update(ROTAS_DOCUMENTOS)
 POST.update(ROTAS_DRIVE)
-POST.update({"/api/medicao/conferir": p_medicao_conferir})
+POST.update({"/api/medicao/conferir": p_medicao_conferir, "/api/medicao/folha": p_medicao_folha})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_PLANEJAMENTO.items()})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_APROPRIACAO.items()})
 POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, "/api/clima": p_clima, **ROTAS_NS,
@@ -880,8 +897,8 @@ AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "
          "/api/liberacao": ("registrado_por",), "/api/escavacao": ("registrado_por",), "/api/etapa-complementar/anular": ("por",),
          "/api/ocorrencia": ("aberta_por",), "/api/ocorrencia/resolver": ("por",), "/api/cadastro-campo": ("por",)}
 PERMISSAO.update({rota: perm for rota, (perm, _, _) in ROTAS_COMPRAS.items()})
-PERMISSAO.update({"/api/medicao/conferir": "medicao"})
-AUTOR.update({"/api/medicao/conferir": ("por",),
+PERMISSAO.update({"/api/medicao/conferir": "medicao", "/api/medicao/folha": "medicao"})
+AUTOR.update({"/api/medicao/conferir": ("por",), "/api/medicao/folha": ("por",),
               "/api/medicao/fechar": ("por",)})
 AUTOR.update({rota: campos for rota, (_, campos, _) in ROTAS_COMPRAS.items()})
 PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_PLANEJAMENTO.items()})
@@ -916,10 +933,10 @@ TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX 
             "/api/almox/quarentena": ("almox", "compras"), "/api/almox/notas": ("almox", "compras"),
             "/api/ns": TELAS_NS, "/api/ns/detalhe": TELAS_NS, "/api/ns/fora-de-ordem": ("notas",), "/api/ns/dia": ("notas",),
             "/api/base-custo/busca": TELAS_BASE_CUSTO, "/api/base-custo/itens": TELAS_BASE_CUSTO,
-            "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",),
+            "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",), "/api/medicao/pacote": ("medicao",),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
-TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",),   # downloads (/arquivos/: LEV)
+TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",), "/api/medicao/pacote/baixar": ("medicao",),   # downloads (/arquivos/: LEV)
                 "/api/ns/arquivo": TELAS_NS, "/api/apropriacao/arquivo": TELAS_APROPRIACAO}
 LIMITE_CORPO = 32 * 1024 * 1024                  # PDF + croqui + planilha da NS em base64 cabem; acima: 413 sem ler o corpo
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
@@ -1075,6 +1092,18 @@ class Handler(BaseHTTPRequestHandler):
                 A.exigir(usuario, "medicao")
                 with LOCK:
                     nome, dados = exportar.planilha_medicao(CONN, int(q["id"]))
+                    A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
+                return self._send(200, dados, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  {"Content-Disposition": f'attachment; filename="{nome}"'})
+            except A.AcessoNegado as e:
+                return self._send(e.status, {"erro": str(e)})
+            except R.RegraViolada as e:
+                return self._send(422, {"erro": str(e)})
+        if u.path == "/api/medicao/pacote/baixar":       # a medição no modelo oficial do BM (juntada, MC, FF, gráficos)
+            try:
+                A.exigir(usuario, "medicao")
+                with LOCK:
+                    nome, dados, _ = PM.gerar(CONN, int(q["id"]), dir_fotos=DIR_FOTOS)
                     A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
                 return self._send(200, dados, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   {"Content-Disposition": f'attachment; filename="{nome}"'})

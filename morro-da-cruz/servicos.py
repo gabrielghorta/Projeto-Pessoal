@@ -26,7 +26,7 @@ import relogio as RL
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 20
+VERSAO_ESQUEMA = 21
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -70,7 +70,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "check-in com vários trechos e nós (checkin_alvos), o dia da equipe no Dados da obra"))
+                 (VERSAO_ESQUEMA, _agora(), "memória de cálculo no modelo oficial do BM: fotos e justificativa de cada folha (medicao_folhas)"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -2414,6 +2414,12 @@ def fechar_medicao(conn, medicao_id, por=None):
         raise RegraViolada(f"A última conferência interna foi NÃO CONFORME ({conf['obs']}): corrija e confira de novo.")
     if not conf["vale"]:
         raise RegraViolada("Os lançamentos mudaram depois da conferência interna: confira de novo antes de fechar.")
+    import pacote_medicao                           # item acima de 100 % do contrato: só com justificativa (D-144)
+    falta = pacote_medicao.sem_justificativa(conn, medicao_id)
+    if falta:
+        raise RegraViolada("Item acima de 100 % do contrato sem justificativa técnica (aditivo pendente): "
+                           + ", ".join(f"{f['item_bm']} ({f['item']})" for f in falta)
+                           + ". Escreva a justificativa na folha do item, em Pacote da medição.")
     with transacao(conn):
         congelar_medicao(conn, medicao_id, "fechamento")
         conn.execute("UPDATE medicoes SET status='FECHADA', fechada_por=?, fechada_em=?, conferencia_id=? WHERE id=?",
