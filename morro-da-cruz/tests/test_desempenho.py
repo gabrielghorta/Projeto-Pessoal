@@ -60,6 +60,11 @@ class TestDesempenhoHTTP(BaseHTTP):
         self.assertEqual(r.getheader("Cache-Control"), "no-cache")
         r, corpo, _ = self.http("GET", "/app.js", {"If-None-Match": f'"{v}"'})    # já tem: 304 sem corpo
         self.assertEqual((r.status, corpo, r.getheader("ETag")), (304, b"", f'"{v}"'))
+        # pelo link, o proxy devolve o ETag fraco (W/"…"), às vezes numa lista: a comparação é a fraca
+        r, corpo, _ = self.http("GET", "/app.js", {"If-None-Match": f'"outra", W/"{v}"'})
+        self.assertEqual((r.status, corpo), (304, b""))
+        r, _, _ = self.http("GET", "/app.js", {"If-None-Match": 'W/"000000000000"'})
+        self.assertEqual(r.status, 200)
         r, _, _ = self.http("GET", "/notas.js")                                   # o código da tela abre antes do login
         self.assertEqual(r.status, 200)
 

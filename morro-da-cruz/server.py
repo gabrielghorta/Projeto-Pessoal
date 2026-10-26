@@ -1016,9 +1016,11 @@ class Handler(BaseHTTPRequestHandler):
         return any(p.split(";")[0].strip() == "gzip" for p in (self.headers.get("Accept-Encoding") or "").split(","))
 
     def _validar(self, impressao, cache):
-        """ETag da resposta; se o navegador já tem esta versão, 304 sem corpo (True)."""
+        """ETag da resposta; se o navegador já tem esta versão, 304 sem corpo (True). A comparação é a fraca da RFC 9110:
+        o proxy do link (túnel da Cloudflare) recomprime e reescreve o ETag como W/"…", e é assim que o navegador o devolve."""
         etag = f'"{impressao}"'
-        if etag not in [x.strip() for x in (self.headers.get("If-None-Match") or "").split(",")]:
+        pedidos = [x.strip() for x in (self.headers.get("If-None-Match") or "").split(",")]
+        if "*" not in pedidos and etag not in [x[2:] if x.startswith("W/") else x for x in pedidos]:
             return etag, False
         self.send_response(304)
         self.send_header("ETag", etag)
