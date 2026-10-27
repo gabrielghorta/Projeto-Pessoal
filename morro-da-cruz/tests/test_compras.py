@@ -284,7 +284,7 @@ class TestRecebimentoNumToque(BaseCompras):
     def test_problema_falta_e_avaria(self):
         nf = self.importar(503, [(MAT, "peça", "UN", 10, 1.0)])
         (l1, _), = self.linhas(nf)
-        with self.assertRaisesRegex(S.RegraViolada, "Descreva o problema"):
+        with self.assertRaisesRegex(S.RegraViolada, "Diga o porquê"):
             C.receber_nota(self.c, nf, "almox1", D2, problema={"observacao": " ", "linhas": {}})
         with self.assertRaisesRegex(S.RegraViolada, "não passa do que chegou"):
             C.receber_nota(self.c, nf, "almox1", D2, problema={"observacao": "x", "linhas": {str(l1): {"chegou": 2, "avariado": 3}}})
@@ -310,6 +310,89 @@ class TestRecebimentoNumToque(BaseCompras):
         with self.assertRaisesRegex(S.RegraViolada, 'Sem material sugerido: linha 2 .*Conferir linha a linha'):
             C.receber_nota(self.c, nf, "almox1", D2)
         self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("A_CONFERIR",)])
+
+
+class TestRecebimentoNaLateral(BaseCompras):
+    """D-169 e D-170 (27/10/2026): a nota sobe em Compras e notas; no Estoque, cada nota tem na lateral Aceitar a entrega,
+    Recusar a entrega (com o porquê) e Aceite ou recusa parcial (o aceito e o recusado de cada linha, e o porquê).
+    A nota conferida sem nenhuma linha para o estoque não fica mais "a receber" sem nada a receber."""
+
+    def tubo(self):
+        t = self.q("SELECT id FROM materiais WHERE propriedade='CAESB' ORDER BY id LIMIT 1")[0][0]
+        return t, t.rsplit("DE", 1)[1]
+
+    def test_recusa_total_nada_entra_e_a_nota_fecha(self):
+        tubo, de = self.tubo()
+        nf = self.importar(601, [(MAT, "peça do nó", "UN", 5, 12.0), ("T1", f"TUBO PEAD DE {de} PN 10", "M", 30, 0.01)])
+        with self.assertRaisesRegex(S.RegraViolada, "Diga por que a entrega foi recusada"):
+            C.receber_nota(self.c, nf, "almox1", D2, recusa="  ")
+        self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("A_CONFERIR",)])     # nada gravado
+        r = C.receber_nota(self.c, nf, "almox1", D2, recusa="material diferente do pedido")
+        self.assertEqual((r["recusado"], r["encerrada"], r["aguarda_aprovacao"]), (35, True, False))
+        self.assertEqual(self.saldo(), (0, 0))                                          # nada entrou no estoque
+        self.assertEqual(S.aguardando_aprovacao(self.c, MAT), 0)
+        self.assertEqual(self.q("SELECT aceito, recusado, motivo_recusa FROM inspecoes ORDER BY id"),
+                         [(0, 30, "material diferente do pedido"), (0, 5, "material diferente do pedido")])
+        self.assertEqual(self.q("SELECT quantidade, documento FROM movimentos WHERE nf_id=? AND tipo='ROMANEIO_CAESB'", nf),
+                         [(0, "NF 601 (remessa Caesb); 30 recusado, fora do romaneio")])   # o tubo não entrou
+        self.assertEqual(self.q("SELECT documento FROM recebimentos WHERE nf_id=?", nf), [("recusa: material diferente do pedido",)])
+        self.assertEqual([n["id"] for n in C.notas_a_receber(self.c)], [])             # sem pedido e toda recusada: some
+
+    def test_aceite_ou_recusa_parcial(self):
+        tubo, de = self.tubo()
+        nf = self.importar(602, [(MAT, "peça", "UN", 10, 1.0), ("T1", f"TUBO PEAD DE {de} PN 10", "M", 30, 0.01)])
+        l1, l2 = [l for l, _ in self.linhas(nf)]
+        with self.assertRaisesRegex(S.RegraViolada, "no máximo 10"):
+            C.receber_nota(self.c, nf, "almox1", D2, problema={"observacao": "x", "linhas": {str(l1): {"aceito": 8, "recusado": 3}}})
+        r = C.receber_nota(self.c, nf, "almox1", D2, problema={
+            "observacao": "1 trincada; faltaram 3; 5 m de tubo amassado",
+            "linhas": {str(l1): {"aceito": 6, "recusado": 1}, str(l2): {"aceito": 25, "recusado": 5}}})
+        self.assertEqual((r["recusado"], r["encerrada"]), (6, False))                  # faltam 3 peças: a receber
+        self.assertEqual(self.q("SELECT aceito, recusado FROM inspecoes ORDER BY id"), [(25, 5), (6, 1)])
+        self.assertEqual(self.q("SELECT quantidade FROM movimentos WHERE nf_id=? AND tipo='ROMANEIO_CAESB'", nf), [(25,)])
+        nota = next(n for n in C.notas_a_receber(self.c) if n["id"] == nf)
+        self.assertEqual(sorted((i["quantidade"], i["recebido"]) for i in nota["itens"]), [(10, 7), (30, 30)])
+        r = C.receber_nota(self.c, nf, "almox1", D2)                                   # as 3 que faltavam chegaram
+        self.assertEqual(r["encerrada"], True)
+        self.assertEqual(self.q("SELECT SUM(aceito), SUM(recusado) FROM inspecoes"), [(34, 6)])
+
+    def test_conferida_sem_material_nao_fica_presa(self):
+        nf = self.importar(603, [(MAT, "peça", "UN", 2, 1.0), ("F1", "Frete", "SV", 1, 30.0)])
+        fora = [{"linha_id": l, "fora_do_estoque": True} for l, _ in self.linhas(nf)]
+        with self.assertRaisesRegex(S.RegraViolada, "Nenhuma linha vai para o estoque"):
+            C.conferir_nf(self.c, nf, 0, fora, "almox1")
+        self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("A_CONFERIR",)])
+        self.assertEqual(C.conferir_nf(self.c, nf, 0, fora, "almox1", so_fora_do_estoque=True), {"sem_pedido": False, "encerrada": True})
+        self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("ENCERRADA",)])   # só frete: fecha
+        self.assertNotIn(nf, [n["id"] for n in C.notas_a_receber(self.c)])
+
+    def test_refazer_a_conferencia_da_nota_que_ficou_presa(self):
+        nf = self.importar(604, [(MAT, "peça", "UN", 4, 1.0)])
+        # como ficavam as notas conferidas sem material antes da D-169: "a receber" sem nada a receber
+        self.c.execute("UPDATE nf_linhas SET fora_do_estoque=1 WHERE nf_id=?", (nf,))
+        self.c.execute("UPDATE notas_fiscais SET status='CONFERIDA', conferida_por='almox1' WHERE id=?", (nf,))
+        nota = next(n for n in C.notas_a_receber(self.c) if n["id"] == nf)
+        self.assertEqual((nota["status"], nota["itens"], nota["entregas"]), ("CONFERIDA", [], []))
+        C.refazer_conferencia(self.c, nf, "almox1")
+        self.assertEqual(self.q("SELECT status, conferida_por FROM notas_fiscais WHERE id=?", nf), [("A_CONFERIR", None)])
+        self.assertEqual(self.q("SELECT fora_do_estoque, material_id FROM nf_linhas WHERE nf_id=?", nf), [(0, None)])
+        r = C.receber_nota(self.c, nf, "almox1", D2)                                   # agora recebe pelos botões
+        self.assertEqual((r["encerrada"], r["recusado"]), (True, 0))
+        with self.assertRaisesRegex(S.RegraViolada, "Só nota conferida"):
+            C.refazer_conferencia(self.c, nf, "almox1")
+        outra = self.importar(605, [(MAT, "peça", "UN", 4, 1.0)])
+        (l1, _), = self.linhas(outra)
+        C.conferir_nf(self.c, outra, 0, [{"linha_id": l1, "material_id": MAT}], "almox1")
+        with self.assertRaisesRegex(S.RegraViolada, "já tem material conferido"):
+            C.refazer_conferencia(self.c, outra, "almox1")
+
+    def test_tubo_da_caesb_nao_volta_ao_fornecedor(self):
+        tubo, de = self.tubo()
+        nf = self.importar(606, [("T1", f"TUBO PEAD DE {de} PN 10", "M", 30, 0.01)])
+        C.receber_nota(self.c, nf, "almox1", D2)
+        ni = self.q("SELECT id FROM nf_itens WHERE nf_id=?", nf)[0][0]
+        with self.assertRaisesRegex(S.RegraViolada, "não volta ao fornecedor"):
+            C.devolver_ao_fornecedor(self.c, ni, D2, 1, "amassado", "almox1")
 
 
 class TestTransferenciaInventarioReservas(BaseCompras):

@@ -330,6 +330,20 @@ console.log(JSON.stringify(r));
         for proibido in ("htmlSatelite", "ligarSatelite", "detalheSatelite", "/mapa/pb/", "/mapa/geral", "plnQuadros", "g.quadros"):
             self.assertNotIn(proibido, pln)
 
+    def test_nota_sobe_em_compras_e_e_recebida_pelos_botoes_da_lateral(self):
+        """D-170 (27/10/2026): a importação do XML só em Compras e notas; no Estoque, as notas com Aceitar a entrega,
+        Recusar a entrega (com o porquê) e Aceite ou recusa parcial na lateral."""
+        estoque = self.html.split('id="aba-almox"', 1)[1].split('<section', 1)[0]
+        compras = self.html.split('id="aba-compras"', 1)[1].split('<section', 1)[0]
+        self.assertNotIn('type="file"', estoque.split("Notas a receber", 1)[1].split('class="painel', 1)[0])
+        self.assertNotIn("fXmlAlmox", self.html + self.js)
+        self.assertIn('id="fXml"', compras)
+        app = ler("app.js")
+        for texto in ("Aceitar a entrega", "Recusar a entrega", "Aceite ou recusa parcial", "data-nota-recusar-ok",
+                      "data-nota-parcial-ok", "data-nota-refazer", "class=\"nota-lado\"", "so_fora_do_estoque"):
+            self.assertIn(texto, app)
+        self.assertIn(".nota-lado", ler("app.css"))
+
     def test_ids_unicos_e_scripts_carregados(self):
         todos = re.findall(r'id="([^"]+)"', self.html)
         self.assertEqual(len(todos), len(set(todos)))

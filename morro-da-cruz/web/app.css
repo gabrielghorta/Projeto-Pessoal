@@ -526,8 +526,22 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .form-inline { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; margin-top: 8px; }
 /* Notas a receber (Estoque e movimentos) */
 .nota-card > div + div, .nota-card > .acoes { margin-top: 8px; }
-.nota-card > div:first-child { flex-wrap: wrap; justify-content: flex-start; }
-.nota-card > div:first-child b { flex-basis: 100%; }
+/* a nota à esquerda e, na lateral, os botões do recebimento (D-170); no celular, os botões embaixo */
+.registro.nota-card > .nota-grade { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; align-items: start; }
+.registro.nota-card > .nota-grade.sem-lado { grid-template-columns: minmax(0, 1fr); }
+.nota-cab { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.nota-cab b { flex-basis: 100%; }
+.nota-lado { display: flex; flex-direction: column; gap: 8px; }
+.nota-lado .btn.grande { font-size: 15.5px; }
+.btn.recusar { background: var(--vermelho-claro); border-color: var(--vermelho); color: var(--vermelho); }
+.nota-recusa, .nota-parcial { border-top: 1px solid var(--borda); margin-top: 10px; padding-top: 10px; }
+.nota-parcial .linha { grid-template-columns: minmax(0, 1fr) 110px 110px; align-items: end; margin: 6px 0; }
+.nota-mais > summary { color: var(--suave); cursor: pointer; min-height: 32px; }
+@media (max-width: 760px) {
+  .registro.nota-card > .nota-grade { grid-template-columns: minmax(0, 1fr); }
+  .nota-parcial .linha { grid-template-columns: 1fr 1fr; }
+  .nota-parcial .linha > span { grid-column: 1 / -1; }
+}
 .nota-l { border-top: 1px solid var(--borda); padding: 8px 0; }
 .nota-l .linha { grid-template-columns: 1fr 96px; margin: 6px 0 2px; }
 .nota-chegou, .nota-insp { border-top: 1px solid var(--borda); padding-top: 8px; }
@@ -580,7 +594,6 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 /* recebimento da nota num toque (D-135) */
 .nota-itens { margin: 8px 0; padding-left: 18px; }
 .nota-itens li { margin: 2px 0; }
-.nota-problema { border-top: 1px solid var(--borda); margin-top: 10px; padding-top: 10px; }
 .nota-detalhe { margin-top: 10px; }
 /* pacote no modelo oficial: uma folha da memória de cálculo por item, fotos escolhidas na ordem */
 .folha-mc { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: 4px 12px; margin: 8px 0; background: var(--painel); }
