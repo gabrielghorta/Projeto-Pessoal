@@ -772,13 +772,18 @@ ROTAS_COMPRAS = {
         c, b.get("numero"), int(b.get("fornecedor_id") or 0), b.get("data_emissao"), b.get("linhas") or [], b["por"],
         b.get("documento_b64"), b.get("documento_tipo"), b.get("documento_nome"), b.get("serie"), b.get("chave"), b.get("valor_total")))),
     "/api/nf/conferir": ("receber", ("por",), lambda b, c: dict(C.conferir_nf(c, int(b["nf_id"]), int(b.get("pedido_id") or 0),
-                                                                               b.get("linhas") or [], b["por"]), ok=True)),
+                                                                               b.get("linhas") or [], b["por"],
+                                                                               bool(b.get("so_fora_do_estoque"))), ok=True)),
+    # a nota que ficou "a receber" sem nada a receber (conferida sem material, antes da D-169) volta a "a conferir"
+    "/api/nf/refazer-conferencia": ("receber", ("por",), lambda b, c: C.refazer_conferencia(c, int(b["nf_id"]), b["por"])),
     "/api/nf/cancelar": ("receber", ("por",), lambda b, c: (C.cancelar_nf(c, int(b["nf_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
     "/api/recebimento": ("receber", ("por",), _c(lambda b, c: C.receber(c, int(b["nf_id"]), b.get("data"), b.get("itens") or [], b["por"],
                                                                        b.get("documento")))),
-    # recebimento num toque (D-135): conferir pelo sugerido, receber e aceitar; com "problema", o que faltou ou veio avariado
+    # recebimento no Estoque (D-135, D-170): aceitar a entrega; "recusa" (o porquê) recusa tudo; "problema", o aceite ou a
+    # recusa parcial de cada linha
     "/api/nf/receber": ("receber", ("por",), lambda b, c: C.receber_nota(
-        c, int(b["nf_id"]), b["por"], b.get("data") or relogio.hoje().isoformat(), int(b.get("pedido_id") or 0) or None, b.get("problema"))),
+        c, int(b["nf_id"]), b["por"], b.get("data") or relogio.hoje().isoformat(), int(b.get("pedido_id") or 0) or None, b.get("problema"),
+        b.get("recusa"))),
     "/api/inspecao": ("receber", ("por",), _c(lambda b, c: C.inspecionar(
         c, int(b["recebimento_item_id"]), b.get("aceito"), b.get("recusado"), b.get("laudo"), b["por"], b.get("data"),
         b.get("motivo_recusa"), b.get("documento_b64"), b.get("documento_nome")))),

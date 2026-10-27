@@ -105,3 +105,12 @@ Na maioria das vezes a nota chega certa. Cada nota em "Notas a receber" mostra a
 - **Registrar problema:** em cada linha, o que chegou e o que veio avariado, na unidade da nota, e o que aconteceu (obrigatório). O que não chegou continua a receber na nota (o mesmo botão recebe o resto depois); o avariado é recusado, com o texto como motivo e laudo; o texto também fica na entrega ("obs.: …"). Tubo da Caesb avariado não entra no romaneio.
 
 A nota sem pedido continua esperando a aprovação de outra pessoa. O passo a passo antigo (conferir, o que chegou, inspeção) continua em "Conferir linha a linha". Testes: `TestRecebimentoNumToque` em `tests/test_compras.py`.
+
+### Aceite ou recusa na lateral (27/10/2026, D-169 e D-170)
+
+A nota sobe só em **Compras e notas** (XML ou digitada); a tela Estoque e movimentos não importa mais. Em "Notas a receber", os dois botões acima deram lugar a três, na lateral de cada nota (no celular, embaixo):
+- **Aceitar a entrega** (verde): o mesmo "Recebido conforme a nota".
+- **Recusar a entrega:** abre o campo do porquê (obrigatório). Tudo o que falta chegar é entregue e recusado: nada entra no estoque, a nota é encerrada e a recusa fica como motivo e laudo da inspeção e na entrega ("recusa: …"). Rota `/api/nf/receber` com `recusa`.
+- **Aceite ou recusa parcial:** em cada linha, o aceito e o recusado (na unidade da nota) e o porquê (obrigatório). O que não for nem aceito nem recusado não chegou e continua a receber; o mesmo botão verde recebe o resto depois. Rota `/api/nf/receber` com `problema.linhas[linha] = {aceito, recusado}`.
+
+O tubo da Caesb recusado conta como entregue, não entra no romaneio e fica registrado como recusado; ele não volta ao fornecedor pela devolução (não é compra). A conferência em que nenhuma linha vai para o estoque é recusada, a menos que se confirme que a nota é só de frete ou serviço (aí ela é encerrada). A nota que ficou "a receber" sem nada a receber (conferida sem material antes disso) mostra **Refazer a conferência** (`/api/nf/refazer-conferencia`). Testes: `TestRecebimentoNaLateral` em `tests/test_compras.py`.

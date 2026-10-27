@@ -404,9 +404,12 @@ cadastrado na hora pelo CNPJ do XML) ou digitada do PDF/imagem (anexo obrigatór
 fora do estoque; material sugerido por código, de-para anterior ou descrição) → entrega em **quarentena** → inspeção
 (aceito + recusado = entregue; recusa com motivo e laudo) → estoque. **Nota sem pedido:** o aceito espera a aprovação
 de Engenharia/Administração, outra pessoa (D-110). **NF da Caesb:** a linha de tubo da Caesb vira `ROMANEIO_CAESB`, sem
-quarentena (D-111). **Recebimento num toque (D-135):** "Recebido conforme a nota" confere, recebe e aceita numa
-transação; "Registrar problema" pede o que chegou e o avariado por linha e o texto do problema (o que faltou continua
-a receber; o avariado é recusado). **Material recebido nunca vira lançamento de medição.**
+quarentena (D-111). **A nota sobe só em Compras e notas (D-170);** em Estoque › Notas a receber, cada nota tem na
+lateral **Aceitar a entrega** (confere pelo sugerido, recebe e aceita numa transação, D-135), **Recusar a entrega** (o
+porquê é obrigatório; nada entra no estoque e a nota fecha) e **Aceite ou recusa parcial** (aceito e recusado por linha
+e o porquê; o que não chegou continua a receber). Tubo da Caesb recusado não entra no romaneio nem volta ao fornecedor.
+Conferência sem nenhuma linha para o estoque é recusada, salvo nota só de frete ou serviço, que fecha (D-169); a nota
+que ficou presa assim tem "Refazer a conferência". **Material recebido nunca vira lançamento de medição.**
 
 ---
 
