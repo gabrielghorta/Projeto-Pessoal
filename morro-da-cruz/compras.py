@@ -345,48 +345,129 @@ def _palavras(texto):
     return re.findall(r"[a-z]+|\d+", t)                  # "DE63" → de, 63
 
 
+def _medidas(ps):
+    """Os números que são medida (DE, bitola, comprimento…): o da classe do material (PE 100, PE-80) e o do SDR não contam,
+    porque o fornecedor escreve e o cadastro da obra não ("TUBO PEAD PE100 DE63 SDR17" é o tubo DE63)."""
+    return {p for i, p in enumerate(ps) if p.isdigit() and not (i and ps[i - 1] in ("pe", "sdr"))}
+
+
+def _bitola_tubo_pead(ps):
+    """O DE do tubo de PEAD escrito na linha (DE63, DE 63, DE = 63 mm), ou None se a linha não é tubo de PEAD."""
+    if "tubo" not in ps or not ({"pead", "polietileno"} & set(ps)):
+        return None
+    return next((ps[i + 1] for i, p in enumerate(ps[:-1]) if p == "de" and ps[i + 1].isdigit()), None)
+
+
 def sugerir_materiais(conn, nf_id):
-    """O material provável de cada linha da nota, e o porquê. Nada é gravado: quem confere aceita ou troca.
+    """O material de cada linha da nota, e o porquê. Nada é gravado aqui. Ninguém escolhe material na tela do
+    almoxarife (D-171): o que esta função reconhece ele só confere e marca; o que ela não reconhece fica "faltando a
+    confirmação" em Compras e notas, com os candidatos mais prováveis para marcar.
+    0. a linha já foi confirmada em Compras e notas (confirmar_linhas);
     1. o código do produto é o id de um material (ex.: 5.1_1.14.15);
-    2. a mesma linha (código ou descrição) já foi conferida numa nota anterior deste fornecedor;
-    3. a descrição bate com a de um material: as mesmas medidas (todos os números) e a maior parte das palavras; empate
-       entre dois materiais não sugere nada."""
+    2. a mesma linha (código ou descrição) já foi conferida ou confirmada numa nota anterior deste fornecedor;
+    3. tubo de PEAD da Caesb (a linha ou o emitente diz Caesb): o tubo CAESB-PEAD-DE<n> pela bitola;
+    4. a descrição bate com a de um material: as mesmas medidas (_medidas) e a maior parte das palavras; empate entre
+       dois materiais não sugere nada.
+    Material com unidade diferente da da nota e sem fator conhecido também fica faltando a confirmação (com ele como
+    primeiro candidato): só quem confirma diz quantos vêm em cada unidade da nota."""
     nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
     if not nf:
         raise RegraViolada("Nota não encontrada.")
     mats = {r["id"]: r for r in _rows(conn.execute("SELECT id, descricao, unidade, propriedade FROM materiais"))}
+    nota_caesb = "caesb" in _palavras(nf["fornecedor"])
     cand = []
     for m in mats.values():
         ps = _palavras(m["descricao"])
-        cand.append((m["id"], {p for p in ps if not p.isdigit()}, {p for p in ps if p.isdigit()}))
-    hist_cod, hist_desc = {}, {}
-    for cod, desc, mid in conn.execute(
-            """SELECT l.codigo, l.descricao, l.material_id FROM nf_linhas l JOIN notas_fiscais n ON n.id=l.nf_id
+        cand.append((m["id"], {p for p in ps if not p.isdigit()}, _medidas(ps)))
+    hist_cod, hist_desc = {}, {}                       # (material, fator) da linha igual numa nota anterior
+    for cod, desc, mid, fat in conn.execute(
+            """SELECT l.codigo, l.descricao, l.material_id, l.fator FROM nf_linhas l JOIN notas_fiscais n ON n.id=l.nf_id
                WHERE n.fornecedor_id=? AND n.id<>? AND n.status<>'CANCELADA' AND l.material_id IS NOT NULL ORDER BY l.id""",
             (nf["fornecedor_id"], nf_id)):
         if cod:
-            hist_cod[cod] = mid
-        hist_desc[" ".join(_palavras(desc))] = mid
+            hist_cod[cod] = (mid, fat)
+        hist_desc[" ".join(_palavras(desc))] = (mid, fat)
     out = []
     for li in _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (nf_id,))):
         mid, motivo, desc = None, None, " ".join(_palavras(li["descricao"]))
-        if li["codigo"] in mats:
+        ps = _palavras(li["descricao"])
+        pal, num = {p for p in ps if not p.isdigit()}, _medidas(ps)
+        bitola = _bitola_tubo_pead(ps)
+        fator = None
+        if li["material_id"] in mats or li["fora_do_estoque"]:                  # 0. confirmada em Compras e notas
+            mid, motivo, fator = li["material_id"], "confirmado em Compras e notas", li["fator"]
+        elif li["codigo"] in mats:
             mid, motivo = li["codigo"], "código do produto"
-        elif hist_cod.get(li["codigo"]) in mats or hist_desc.get(desc) in mats:
-            mid, motivo = hist_cod.get(li["codigo"]) or hist_desc[desc], "como na nota anterior deste fornecedor"
+        elif (hist_cod.get(li["codigo"]) or hist_desc.get(desc) or (None,))[0] in mats:
+            (mid, fator), motivo = hist_cod.get(li["codigo"]) or hist_desc[desc], "como na nota anterior deste fornecedor"
+        elif bitola and (nota_caesb or "caesb" in pal) and f"CAESB-PEAD-DE{bitola}" in mats:
+            mid, motivo = f"CAESB-PEAD-DE{bitola}", "tubo da Caesb pela bitola"
         else:
-            ps = _palavras(li["descricao"])
-            pal, num = {p for p in ps if not p.isdigit()}, {p for p in ps if p.isdigit()}
             notas = sorted(((len(pal & mp) / len(pal), i) for i, mp, mn in cand if pal and mn == num and len(pal & mp) / len(pal) >= 0.6),
                            reverse=True)
             if notas and (len(notas) == 1 or notas[0][0] > notas[1][0]):
                 mid, motivo = notas[0][1], "pela descrição"
         m = mats.get(mid)
-        fora = not mid and _frete_ou_servico(li)
+        fora = bool(li["fora_do_estoque"]) if motivo == "confirmado em Compras e notas" else (not mid and _frete_ou_servico(li))
+        mesma = m and R.normalizar_unidade(li["unidade"]) == R.normalizar_unidade(m["unidade"])
+        candidatos = []
+        if m and not mesma and not fator:              # unidade diferente sem fator: quem confirma diz o fator
+            candidatos = [{"material_id": mid, "descricao": m["descricao"], "unidade": m["unidade"], "caesb": m["propriedade"] == "CAESB"}]
+            mid = m = None
+            motivo = "unidade diferente da do material: falta dizer quantos vêm em cada"
+        elif not mid and not fora:                     # para quem confirma: os mais prováveis, para só marcar
+            pontos = []
+            for i, mp, mn in cand:
+                if mats[i]["propriedade"] == "CAESB" and not (nota_caesb or "caesb" in pal):
+                    continue                           # tubo da Caesb só na nota da Caesb
+                s = len(pal & mp) / len(pal) if pal else 0
+                s *= (0.5 + 0.5 * len(num & mn) / len(num)) if num else 1
+                if s >= 0.35:
+                    pontos.append((s, i))
+            candidatos = [{"material_id": i, "descricao": mats[i]["descricao"], "unidade": mats[i]["unidade"],
+                           "caesb": mats[i]["propriedade"] == "CAESB"} for _, i in sorted(pontos, reverse=True)[:3]]
         out.append({"linha_id": li["id"], "material_id": mid, "motivo": "frete ou serviço: fora do estoque" if fora else motivo,
                     "caesb": bool(m and m["propriedade"] == "CAESB"), "fora_do_estoque": fora,
-                    "fator": 1.0 if m and R.normalizar_unidade(li["unidade"]) == R.normalizar_unidade(m["unidade"]) else None})
+                    "descricao_material": m["descricao"] if m else None,
+                    "fator": 1.0 if mesma else fator, "candidatos": candidatos})
     return out
+
+
+def confirmar_linhas(conn, nf_id, linhas, por):
+    """Compras e notas, "faltando a confirmação" (D-171): quem tem a permissão de receber (na prática, a engenharia)
+    diz o que é cada linha que o sistema não reconheceu, marcando um dos candidatos ou outro material, ou que é frete ou
+    serviço. A nota continua a conferir: o almoxarife a recebe no Estoque. A próxima nota deste fornecedor com a
+    mesma linha já vem reconhecida."""
+    nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
+    if not nf or nf["status"] != "A_CONFERIR":
+        raise RegraViolada("Só a nota que ainda não foi recebida tem linhas a confirmar.")
+    feitas = 0
+    with transacao(conn):
+        for c in linhas or []:
+            li = _one(conn, "SELECT * FROM nf_linhas WHERE id=? AND nf_id=?", int(c.get("linha_id") or 0), nf_id)
+            if not li:
+                raise RegraViolada("Linha fora desta nota.")
+            if c.get("fora_do_estoque"):
+                conn.execute("UPDATE nf_linhas SET material_id=NULL, fator=NULL, fora_do_estoque=1 WHERE id=?", (li["id"],))
+                feitas += 1
+                continue
+            m = _one(conn, "SELECT * FROM materiais WHERE id=?", c.get("material_id"))
+            if not m:
+                raise RegraViolada(f"Linha {li['n_item']}: escolha o material.")
+            if R.normalizar_unidade(li["unidade"]) == R.normalizar_unidade(m["unidade"]):
+                fator = 1.0
+            else:
+                try:
+                    fator = float(c.get("fator") or 0)
+                except (TypeError, ValueError):
+                    fator = 0
+                if fator <= 0:
+                    raise RegraViolada(f"Linha {li['n_item']}: a nota está em {li['unidade']} e o material em {m['unidade']}: "
+                                       f"diga quantos {m['unidade']} vem em cada {li['unidade']}.")
+            conn.execute("UPDATE nf_linhas SET material_id=?, fator=?, fora_do_estoque=0 WHERE id=?", (m["id"], fator, li["id"]))
+            feitas += 1
+    faltam = sum(1 for s in sugerir_materiais(conn, nf_id) if not s["material_id"] and not s["fora_do_estoque"])
+    return {"confirmadas": feitas, "faltam": faltam, "por": por}
 
 
 _NAO_MATERIAL = {"frete", "fretes", "servico", "servicos", "taxa", "taxas", "seguro", "despesa", "despesas"}
@@ -690,7 +771,10 @@ def inspecionar_entrega(conn, recebimento_id, itens, laudo, por, data, motivo_re
 
 def receber_nota(conn, nf_id, por, data, pedido_id=None, problema=None, recusa=None):
     """O recebimento na tela Estoque (D-135, D-170): aceitar a entrega, recusar a entrega ou aceite/recusa parcial.
-    Confere as linhas pelo material sugerido (se ainda está a conferir), registra a entrega e a inspeção, numa transação.
+    Confere as linhas pelo material reconhecido (se ainda está a conferir), registra a entrega e a inspeção, numa
+    transação. Conferir é marcar (D-171): o almoxarife não escolhe material nem pedido. Linha ainda não reconhecida trava
+    o aceite (falta a confirmação em Compras e notas), mas não a recusa; o pedido é achado sozinho (_pedido_automatico).
+    A nota só de frete ou serviço é encerrada pelo aceite.
     - Sem problema nem recusa: tudo o que falta chegar é entregue e aceito.
     - recusa (o porquê, obrigatório): tudo o que falta chegar é entregue e recusado; nada entra no estoque e a nota fecha.
     - problema {"observacao", "linhas": {nf_linha_id: {"aceito", "recusado"}}}, nas unidades da nota (ou, como antes,
@@ -714,14 +798,30 @@ def receber_nota(conn, nf_id, por, data, pedido_id=None, problema=None, recusa=N
         if nf["status"] == "A_CONFERIR":
             sug = sugerir_materiais(conn, nf_id)
             sem = [s for s in sug if not s["material_id"] and not s["fora_do_estoque"]]
-            if sem:
+            if sem and recusa is None:
                 desc = {r["id"]: f"linha {r['n_item']} ({str(r['descricao'])[:40]})" for r in conn.execute(
                     "SELECT id, n_item, descricao FROM nf_linhas WHERE nf_id=?", (nf_id,))}
-                raise RegraViolada("Sem material sugerido: " + "; ".join(desc[s["linha_id"]] for s in sem)
-                                   + '. Use "Conferir linha a linha" para escolher o material (ou deixar fora do estoque).')
-            conferir_nf(conn, nf_id, pedido_id, [{"linha_id": s["linha_id"], "fora_do_estoque": True} if s["fora_do_estoque"] else
-                                                 {"linha_id": s["linha_id"], "material_id": s["material_id"], "fator": s["fator"]}
-                                                 for s in sug], por)
+                raise RegraViolada("Falta confirmar o material de: " + "; ".join(desc[s["linha_id"]] for s in sem)
+                                   + ". Isso é feito em Compras e notas (linhas faltando a confirmação); depois a nota é recebida aqui.")
+            if not any(s["material_id"] for s in sug):
+                if recusa is not None:
+                    # recusada sem nenhum material reconhecido: nada entrou e nada há a registrar por material
+                    cancelar_nf(conn, nf_id, f"Entrega recusada: {obs}", por)
+                else:                                  # só frete ou serviço: o aceite encerra a nota, sem nada a receber
+                    conferir_nf(conn, nf_id, None, [{"linha_id": s["linha_id"], "fora_do_estoque": True} for s in sug], por,
+                                so_fora_do_estoque=True)
+                return {"recebimento_id": None, "itens": 0, "recusado": 0, "encerrada": True, "cancelada": recusa is not None,
+                        "aguarda_aprovacao": False}
+            # na recusa, a linha não reconhecida fica fora do estoque: ela é recusada junto, sem entrar
+            conf = [{"linha_id": s["linha_id"], "material_id": s["material_id"], "fator": s["fator"]} if s["material_id"]
+                    else {"linha_id": s["linha_id"], "fora_do_estoque": True} for s in sug]
+            auto = None if pedido_id else _pedido_automatico(conn, nf, sug)
+            try:
+                conferir_nf(conn, nf_id, pedido_id or auto, conf, por)
+            except RegraViolada:
+                if not auto:
+                    raise
+                conferir_nf(conn, nf_id, None, conf, por)   # o pedido achado não serve: sem pedido (aprovação da engenharia)
         itens, avariado = [], {}
         for ni in _rows(conn.execute("""SELECT ni.*, l.romaneio_caesb, l.fator, l.n_item FROM nf_itens ni
                                         LEFT JOIN nf_linhas l ON l.id=ni.linha_id WHERE ni.nf_id=? ORDER BY ni.id""", (nf_id,))):
@@ -767,6 +867,18 @@ def receber_nota(conn, nf_id, por, data, pedido_id=None, problema=None, recusa=N
     recusado = round(sum(i["recusado"] for i in insp) + recusado_caesb, 6)
     return {"recebimento_id": rid, "itens": len(itens), "recusado": recusado, "encerrada": final["status"] == "ENCERRADA",
             "aguarda_aprovacao": bool(final["sem_pedido"] and not final["aprovada_em"] and _tem_aceito(conn, nf_id))}
+
+
+def _pedido_automatico(conn, nf, sug):
+    """O pedido emitido deste fornecedor com todos os materiais comprados da nota, se houver só um: o almoxarife não
+    escolhe pedido (D-171). Nenhum ou mais de um: a nota entra sem pedido e espera a aprovação da engenharia."""
+    comprados = {s["material_id"] for s in sug if s["material_id"] and not s["caesb"]}
+    if not comprados:
+        return None
+    serve = [pid for (pid,) in conn.execute("SELECT id FROM pedidos_compra WHERE fornecedor_id=? AND status='EMITIDO' ORDER BY id",
+                                            (nf["fornecedor_id"],))
+             if comprados <= {r[0] for r in conn.execute("SELECT material_id FROM pedido_itens WHERE pedido_id=?", (pid,))}]
+    return serve[0] if len(serve) == 1 else None
 
 
 def _tem_aceito(conn, nf_id):
@@ -932,6 +1044,8 @@ def painel(conn):
     nfs = _rows(conn.execute("SELECT * FROM notas_fiscais ORDER BY id DESC LIMIT 200"))
     for n in nfs:
         n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
+        if n["status"] == "A_CONFERIR" and n["origem"] != "DIRETA":      # as linhas "faltando a confirmação" (D-171)
+            n["sugestoes"] = sugerir_materiais(conn, n["id"])
         n["itens"] = _rows(conn.execute(
             """SELECT ni.*, (SELECT COALESCE(SUM(quantidade),0) FROM recebimento_itens WHERE nf_item_id=ni.id) recebido,
                       (SELECT COALESCE(SUM(i.aceito),0) FROM inspecoes i JOIN recebimento_itens ri ON ri.id=i.recebimento_item_id

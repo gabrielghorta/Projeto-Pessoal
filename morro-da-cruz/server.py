@@ -776,6 +776,8 @@ ROTAS_COMPRAS = {
                                                                                bool(b.get("so_fora_do_estoque"))), ok=True)),
     # a nota que ficou "a receber" sem nada a receber (conferida sem material, antes da D-169) volta a "a conferir"
     "/api/nf/refazer-conferencia": ("receber", ("por",), lambda b, c: C.refazer_conferencia(c, int(b["nf_id"]), b["por"])),
+    # Compras e notas: o que é cada linha que o sistema não reconheceu (D-171); a nota continua a receber no Estoque
+    "/api/nf/confirmar-linhas": ("receber", ("por",), lambda b, c: C.confirmar_linhas(c, int(b["nf_id"]), b.get("linhas") or [], b["por"])),
     "/api/nf/cancelar": ("receber", ("por",), lambda b, c: (C.cancelar_nf(c, int(b["nf_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
     "/api/recebimento": ("receber", ("por",), _c(lambda b, c: C.receber(c, int(b["nf_id"]), b.get("data"), b.get("itens") or [], b["por"],
                                                                        b.get("documento")))),
