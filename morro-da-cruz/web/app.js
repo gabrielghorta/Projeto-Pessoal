@@ -430,7 +430,13 @@ async function carregarAlmox() {
   $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
   if (TELA === 'almox' && pode('almox') && podeTela('mapa')) almoxEquipesDoDia();
-  if (podeTela('almox') || podeTela('compras')) renderNotasReceber(await api('/api/almox/notas'));
+  if (podeTela('almox') || podeTela('compras')) {
+    // "Nenhuma nota a receber" só depois da resposta: enquanto carrega, ou se a consulta falha, o painel diz isso
+    const box = $('#notasReceber');
+    if (!box.querySelector('.nota-card')) { box.className = 'vazio'; box.textContent = 'Carregando as notas…'; }
+    try { renderNotasReceber(await api('/api/almox/notas')); }
+    catch (e) { box.className = 'aviso problema'; box.textContent = `Não consegui mostrar as notas a receber: ${e.message} Recarregue a página (F5).`; }
+  }
   const res = await api('/api/reservas');
   $('#reservasLista').innerHTML = res.length ? `<table><thead><tr><th>Dia</th><th>Equipe</th><th>Material</th><th class="n">Qtd.</th><th></th></tr></thead><tbody>${res.map(r => `<tr><td>${esc(r.data)}</td><td>${esc(r.equipe_id)}</td><td>${esc(r.material_id)}</td><td class="n">${nf(r.quantidade, 3)}</td><td><button class="btn" data-cancelar-reserva="${r.id}">Cancelar</button></td></tr>`).join('')}</tbody></table>` : '<span class="vazio">Nenhuma reserva ativa.</span>';
   const cons = await api('/api/consumo');
