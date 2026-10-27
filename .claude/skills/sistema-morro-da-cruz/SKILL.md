@@ -405,11 +405,18 @@ fora do estoque; material sugerido por código, de-para anterior ou descrição)
 (aceito + recusado = entregue; recusa com motivo e laudo) → estoque. **Nota sem pedido:** o aceito espera a aprovação
 de Engenharia/Administração, outra pessoa (D-110). **NF da Caesb:** a linha de tubo da Caesb vira `ROMANEIO_CAESB`, sem
 quarentena (D-111). **A nota sobe só em Compras e notas (D-170);** em Estoque › Notas a receber, cada nota tem na
-lateral **Aceitar a entrega** (confere pelo sugerido, recebe e aceita numa transação, D-135), **Recusar a entrega** (o
+lateral **Aceitar a entrega** (recebe e aceita numa transação, D-135), **Recusar a entrega** (o
 porquê é obrigatório; nada entra no estoque e a nota fecha) e **Aceite ou recusa parcial** (aceito e recusado por linha
 e o porquê; o que não chegou continua a receber). Tubo da Caesb recusado não entra no romaneio nem volta ao fornecedor.
 Conferência sem nenhuma linha para o estoque é recusada, salvo nota só de frete ou serviço, que fecha (D-169); a nota
-que ficou presa assim tem "Refazer a conferência". **Material recebido nunca vira lançamento de medição.**
+que ficou presa assim tem "Refazer a conferência". **Conferir é marcar (D-171):** cada linha mostra o material que o
+sistema reconheceu (código; nota anterior do fornecedor, com o fator; tubo da Caesb pela bitola; descrição, sem contar
+PE 100 e SDR 17 como medida), com uma caixinha e "Marcar todas"; o verde só libera com todas marcadas, e o pedido é
+achado sozinho (um só pedido emitido do fornecedor com todos os materiais, senão sem pedido). O almoxarife não escolhe
+material nem pedido. A linha não reconhecida (ou de unidade diferente sem fator) fica **faltando a confirmação** em
+Compras e notas, confirmada por quem tem `receber` (na prática, a engenharia) com os candidatos mais parecidos
+(`compras.confirmar_linhas`); até lá a entrega pode ser recusada, não aceita. **Material recebido nunca vira lançamento
+de medição.**
 
 ---
 

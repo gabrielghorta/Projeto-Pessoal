@@ -340,9 +340,26 @@ console.log(JSON.stringify(r));
         self.assertIn('id="fXml"', compras)
         app = ler("app.js")
         for texto in ("Aceitar a entrega", "Recusar a entrega", "Aceite ou recusa parcial", "data-nota-recusar-ok",
-                      "data-nota-parcial-ok", "data-nota-refazer", "class=\"nota-lado\"", "so_fora_do_estoque"):
+                      "data-nota-parcial-ok", "data-nota-refazer", "class=\"nota-lado\""):
             self.assertIn(texto, app)
         self.assertIn(".nota-lado", ler("app.css"))
+
+    def test_conferir_e_marcar_e_o_que_falta_e_confirmado_em_compras(self):
+        """D-171 (27/10/2026): no Estoque, uma caixinha por linha com o material reconhecido, "Marcar todas" e o verde só
+        com todas marcadas; ninguém escolhe material nem pedido ali. Em Compras e notas, as linhas faltando a confirmação."""
+        app, css = ler("app.js"), ler("app.css")
+        receber = app.split("function renderNotasReceber", 1)[1].split("\nfunction ", 1)[0]
+        for texto in ("data-confere", "data-marcar-todas", "data-contagem", "falta confirmar o que é, em Compras e notas"):
+            self.assertIn(texto, receber)
+        for texto in ("<select", "opMat(", "data-c=pedido", "listaMateriais"):
+            self.assertNotIn(texto, receber)                    # o almoxarife não busca nem escolhe material
+        self.assertNotIn("listaMateriais", self.html)
+        for texto in ("Faltando a confirmação", "data-confirmar-linhas", "/api/nf/confirmar-linhas", "data-corrigir-linha"):
+            self.assertIn(texto, app)
+        for texto in ("conferirNf", "data-conferir-nf", "conf-nf", "__fora\">— fora do estoque"):
+            self.assertNotIn(texto, app)                        # a tabela de conferência antiga saiu
+        for texto in (".nota-confere", ".nota-marcar", ".nf-confirmar", ".nf-conf-linha"):
+            self.assertIn(texto, css)
 
     def test_ids_unicos_e_scripts_carregados(self):
         todos = re.findall(r'id="([^"]+)"', self.html)

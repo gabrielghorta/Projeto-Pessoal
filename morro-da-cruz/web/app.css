@@ -542,9 +542,36 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
   .nota-parcial .linha { grid-template-columns: 1fr 1fr; }
   .nota-parcial .linha > span { grid-column: 1 / -1; }
 }
-.nota-l { border-top: 1px solid var(--borda); padding: 8px 0; }
-.nota-l .linha { grid-template-columns: 1fr 96px; margin: 6px 0 2px; }
-.nota-chegou, .nota-insp { border-top: 1px solid var(--borda); padding-top: 8px; }
+.nota-insp { border-top: 1px solid var(--borda); padding-top: 8px; }
+/* conferir é marcar (D-171): uma caixinha grande por linha, com o material que o sistema reconheceu */
+.nota-linhas { display: grid; gap: 6px; margin-top: 8px; }
+.nota-confere { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; min-height: 44px; padding: 8px 10px;
+  border: 1px solid var(--borda); border-radius: var(--raio-p); background: var(--painel); font-size: 14px; overflow-wrap: anywhere; }
+label.nota-confere { cursor: pointer; font-weight: 400; color: var(--texto); }
+.nota-confere input[type=checkbox] { width: 24px; height: 24px; margin: 0; accent-color: var(--verde-forte); }
+label.nota-confere:has(input:checked) { border-color: var(--verde); background: var(--verde-claro); }
+.nota-confere > span:first-child[aria-hidden] { text-align: center; font-weight: 800; }
+.nota-confere.fora { opacity: .75; }
+.nota-confere.falta { border-color: var(--amarelo); background: var(--info-claro); }
+.nota-mat { display: block; margin-top: 2px; font-weight: 700; }
+.nota-confere.fora .nota-mat { font-weight: 400; }
+.nota-marcar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; }
+.nota-marcar .btn { min-height: 44px; }
+.nota-marcar [data-contagem] { color: var(--suave); font-size: 14px; }
+/* Compras e notas: as linhas faltando a confirmação (D-171) */
+.nf-confirmar { border: 1px solid var(--amarelo); border-radius: var(--raio-p); background: var(--info-claro); padding: 8px 10px; margin-top: 8px; }
+.nf-conf-linha { border: 1px solid var(--borda); border-radius: var(--raio-p); background: var(--painel); margin: 8px 0 0; padding: 6px 10px 8px; min-width: 0; }
+.nf-conf-linha legend { padding: 0 4px; font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+.nf-conf-linha .opcao { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 40px;
+  font-weight: 400; color: var(--texto); font-size: 14px; cursor: pointer; overflow-wrap: anywhere; }
+.nf-conf-linha .opcao input { width: 20px; height: 20px; margin: 0; }
+.nf-conf-linha select, .nf-conf-linha .nf-fator { width: 100%; max-width: 100%; margin: 2px 0 4px; }
+.nf-conf-linha .nf-fator { display: grid; gap: 4px; font-size: 14px; }
+.nf-conf-linha .nf-fator[hidden], .nf-conf-linha select[hidden] { display: none; }
+.nf-reconhecidas { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 6px; }
+.nf-reconhecidas > li:not(.nf-corrigir) { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 14px;
+  border-top: 1px solid var(--borda); padding-top: 6px; overflow-wrap: anywhere; }
+.nf-reconhecidas .btn { min-height: 40px; flex: none; }
 
 /* Para entrar na medição (ficha do trecho) e o resumo do topo da Medição */
 .caminho-box { margin-top: 14px; border-top: 1px solid var(--borda); padding-top: 10px; }
@@ -591,10 +618,6 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 /* a caixa das ferramentas do mapa não engole o toque no mapa (no celular ela quebra em várias linhas): só os botões */
 .ilu-ferr { pointer-events: none; }
 .ilu-ferr > * { pointer-events: auto; }
-/* recebimento da nota num toque (D-135) */
-.nota-itens { margin: 8px 0; padding-left: 18px; }
-.nota-itens li { margin: 2px 0; }
-.nota-detalhe { margin-top: 10px; }
 /* pacote no modelo oficial: uma folha da memória de cálculo por item, fotos escolhidas na ordem */
 .folha-mc { border: 1px solid var(--borda); border-radius: var(--raio-p); padding: 4px 12px; margin: 8px 0; background: var(--painel); }
 .folha-mc > summary { color: var(--texto); min-height: 44px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

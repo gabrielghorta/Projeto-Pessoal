@@ -457,39 +457,46 @@ async function carregarAlmox() {
   carregarHistograma();
 }
 /* ---- Notas a receber (Estoque e movimentos): a nota vem de Compras e notas; aqui, o aceite ou a recusa da entrega.
-   Na lateral de cada nota (D-170): Aceitar a entrega, Recusar a entrega (com o porquê) e Aceite ou recusa parcial. */
+   Na lateral de cada nota (D-170): Aceitar a entrega, Recusar a entrega (com o porquê) e Aceite ou recusa parcial.
+   Conferir é marcar (D-171): cada linha mostra o material que o sistema reconheceu e o almoxarife marca a que conferiu
+   no caminhão; ninguém escolhe material nem pedido aqui. O verde só libera com todas marcadas. */
 const ST_NOTA = { A_CONFERIR: ['a conferir', 'amarelo'], CONFERIDA: ['a receber', 'azul'], ENCERRADA: ['recebida', 'verde'] };
-const NOTA_LINHAS_VISIVEIS = 8;
+const nomeMaterial = id => { const m = MATERIAIS.find(x => x.id === id); return m ? m.descricao.replace(/\s+—.*$/, '').slice(0, 90) : id; };
 function renderNotasReceber(notas) {
   const box = $('#notasReceber'), rec = pode('receber');
-  $('#listaMateriais').innerHTML = MATERIAIS.map(m => `<option value="${esc(m.id)}">${esc(m.descricao.slice(0, 70))} (${esc(m.unidade)})</option>`).join('');
   box.className = notas.length ? '' : 'vazio';
   if (!notas.length) { box.textContent = 'Nenhuma nota a receber.'; return; }
   box.innerHTML = notas.map(n => {
     const st = ST_NOTA[n.status] || [n.status.toLowerCase(), ''], sug = Object.fromEntries((n.sugestoes || []).map(x => [x.linha_id, x]));
     const aprovar = n.sem_pedido && !n.aprovada_em;
-    let corpo = '', lado = '', paineis = '', detalhe = '';
-    // o que falta receber de cada linha, na unidade da nota
+    let corpo = '', lado = '', paineis = '';
+    // o que falta receber de cada linha (na unidade da nota) e o material de cada uma
     const linhaDe = Object.fromEntries(n.linhas.map(l => [l.id, l]));
-    const falta = n.status === 'A_CONFERIR' ? n.linhas.map(l => ({ l, resta: l.quantidade }))
+    const falta = n.status === 'A_CONFERIR' ? n.linhas.map(l => ({ l, resta: l.quantidade, s: sug[l.id] || {} }))
       : n.status === 'CONFERIDA' ? n.itens.filter(i => i.quantidade - i.recebido > 1e-9 && linhaDe[i.linha_id])
-        .map(i => ({ l: linhaDe[i.linha_id], resta: (i.quantidade - i.recebido) / (linhaDe[i.linha_id].fator || 1) })) : [];
+        .map(i => ({ l: linhaDe[i.linha_id], resta: (i.quantidade - i.recebido) / (linhaDe[i.linha_id].fator || 1),
+          s: { material_id: i.material_id, caesb: !!i.romaneio_caesb } })) : [];
     // conferida sem nenhum material (antes da D-169): "a receber" sem nada a receber; volta a "a conferir"
     const presa = n.status === 'CONFERIDA' && !n.itens.length && !n.entregas.length;
     if (rec && falta.length) {
-      const sem = n.status === 'A_CONFERIR' ? n.linhas.filter(l => !(sug[l.id] || {}).material_id && !(sug[l.id] || {}).fora_do_estoque) : [];
-      const item = ({ l, resta }) => `<li>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(resta, 4)} ${esc(l.unidade)}${n.status === 'A_CONFERIR'
-        ? ((sug[l.id] || {}).material_id ? ' · ' + esc(sug[l.id].material_id) : (sug[l.id] || {}).fora_do_estoque ? ' · frete ou serviço (fora do estoque)'
-          : ' · <b>sem material sugerido</b>') : ''}</small></li>`;
-      const resto = falta.slice(NOTA_LINHAS_VISIVEIS);
-      corpo = `<ul class="nota-itens">${falta.slice(0, NOTA_LINHAS_VISIVEIS).map(item).join('')}</ul>
-        ${resto.length ? `<details class="nota-mais"><summary>e mais ${resto.length} linha${resto.length > 1 ? 's' : ''}</summary><ul class="nota-itens">${resto.map(item).join('')}</ul></details>` : ''}
-        ${n.status === 'A_CONFERIR' ? `<label>Pedido<select data-c="pedido"><option value="">sem pedido (precisa de aprovação)</option>${n.pedidos.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('')}</select></label>` : ''}
-        ${sem.length ? `<div class="aviso problema">${sem.length} linha${sem.length > 1 ? 's' : ''} sem material sugerido: escolha o material em "Conferir linha a linha".</div>` : ''}`;
-      const trava = sem.length ? ' disabled' : '';
-      lado = `<button type="button" class="btn ok grande" data-nota-ok${trava}>Aceitar a entrega</button>
-        <button type="button" class="btn recusar grande" data-nota-recusar${trava} aria-expanded="false">Recusar a entrega</button>
-        <button type="button" class="btn grande" data-nota-parcial${trava} aria-expanded="false">Aceite ou recusa parcial</button>`;
+      const mats = falta.filter(f => f.s.material_id), fora = falta.filter(f => !f.s.material_id && f.s.fora_do_estoque);
+      const sem = falta.filter(f => !f.s.material_id && !f.s.fora_do_estoque);
+      const linha = ({ l, resta, s }) => s.material_id
+        ? `<label class="nota-confere"><input type="checkbox" data-confere>
+            <span>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(resta, 4)} ${esc(l.unidade)}</small>
+              <span class="nota-mat">→ ${esc(nomeMaterial(s.material_id))}${s.caesb ? ' (Caesb)' : ''}</span></span></label>`
+        : `<div class="nota-confere ${s.fora_do_estoque ? 'fora' : 'falta'}"><span aria-hidden="true">${s.fora_do_estoque ? '·' : '⚠'}</span>
+            <span>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(resta, 4)} ${esc(l.unidade)}</small>
+              <span class="nota-mat">${s.fora_do_estoque ? 'frete ou serviço: não entra no estoque' : 'falta confirmar o que é, em Compras e notas'}</span></span></div>`;
+      corpo = `<div class="nota-linhas">${falta.map(linha).join('')}</div>
+        ${mats.length ? `<div class="nota-marcar"><button type="button" class="btn" data-marcar-todas>Marcar todas</button>
+          <span data-contagem>0 de ${mats.length} conferida${mats.length > 1 ? 's' : ''}</span></div>` : ''}
+        ${sem.length ? `<div class="aviso problema">${sem.length} linha${sem.length > 1 ? 's' : ''} que o sistema não reconheceu: falta confirmar o que ${sem.length > 1 ? 'são' : 'é'}, em <b>Compras e notas</b>. Até lá, dá para recusar a entrega, mas não aceitar.</div>` : ''}
+        ${!mats.length && !sem.length && fora.length ? '<div class="aviso info">Nota só de frete ou serviço: nada entra no estoque. "Aceitar a entrega" a encerra.</div>' : ''}`;
+      const travaAceite = sem.length ? ' disabled' : '';
+      lado = `<button type="button" class="btn ok grande" data-nota-ok${sem.length || mats.length ? ' disabled' : ''}>Aceitar a entrega</button>
+        <button type="button" class="btn recusar grande" data-nota-recusar aria-expanded="false">Recusar a entrega</button>
+        <button type="button" class="btn grande" data-nota-parcial${travaAceite || (!mats.length ? ' disabled' : '')} aria-expanded="false">Aceite ou recusa parcial</button>`;
       paineis = `<div class="nota-recusa" hidden>
           <label>Por que a entrega foi recusada<textarea data-recusa rows="3" placeholder="ex.: tubos amassados; material diferente do pedido"></textarea></label>
           <p class="vazio" style="margin:4px 0 0">Nada desta entrega entra no estoque, e a nota é encerrada com a recusa registrada.</p>
@@ -497,7 +504,7 @@ function renderNotasReceber(notas) {
         </div>
         <div class="nota-parcial" hidden>
           <p class="vazio" style="margin:0 0 6px">Em cada linha, o que foi aceito e o que foi recusado (na unidade da nota). O que não for nem aceito nem recusado não chegou: continua a receber nesta nota.</p>
-          ${falta.map(({ l, resta }) => `<div class="linha" data-pl="${l.id}"><span>${l.n_item}. ${esc(l.descricao.slice(0, 60))} <small>· falta ${nf(resta, 4)} ${esc(l.unidade)}</small></span>
+          ${mats.map(({ l, resta }) => `<div class="linha" data-pl="${l.id}"><span>${l.n_item}. ${esc(l.descricao.slice(0, 60))} <small>· falta ${nf(resta, 4)} ${esc(l.unidade)}</small></span>
             <label>Aceito<input data-k="aceito" type="number" step="any" min="0" value="${+resta.toFixed(6)}"></label>
             <label>Recusado<input data-k="recusado" type="number" step="any" min="0" value="0"></label></div>`).join('')}
           <label>Por quê<textarea data-obs rows="2" placeholder="ex.: 2 luvas DN 110 trincadas (recusadas); faltaram 5 tês"></textarea></label>
@@ -507,21 +514,9 @@ function renderNotasReceber(notas) {
       corpo = '<div class="aviso info">Esta nota foi conferida sem nenhuma linha para o estoque: não há o que receber. Se foi engano, refaça a conferência (ela volta a "a conferir", com as linhas como vieram).</div>';
       lado = `<button type="button" class="btn prim grande" data-nota-refazer>Refazer a conferência</button>`;
     }
-    if (n.status === 'A_CONFERIR' && rec) {
-      detalhe = `<div class="nota-conf"><label>Pedido<select data-c="pedido"><option value="">sem pedido (precisa de aprovação)</option>${n.pedidos.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('')}</select></label>
-        ${n.linhas.map(l => { const s = sug[l.id] || {};
-          return `<div class="nota-l" data-l="${l.id}"><div>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(l.quantidade, 4)} ${esc(l.unidade)}${l.codigo ? ' · código ' + esc(l.codigo) : ''}</small></div>
-            <div class="linha"><label>Material<input data-k="material_id" list="listaMateriais" value="${esc(s.material_id || '')}" placeholder="vazio = fora do estoque"></label>
-              <label>Fator<input data-k="fator" type="number" step="any" min="0" value="${s.fator || ''}" placeholder="1" title="quantidade no material = quantidade da nota × fator"></label></div>
-            <small>${s.material_id ? `sugerido (${esc(s.motivo)}): ${esc(((MATERIAIS.find(m => m.id === s.material_id) || {}).descricao || '').slice(0, 60))}${s.caesb ? ' · tubo da Caesb: entra como romaneio' : ''}` : 'sem sugestão: escolha o material ou deixe vazio (frete, serviço)'}</small></div>`; }).join('')}
-        <div class="acoes"><button type="button" class="btn prim" data-nota-conferir="${n.id}">Conferir as linhas</button></div></div>`;
-    } else if (n.status === 'CONFERIDA') {
-      const faltaItens = n.itens.filter(i => i.quantidade - i.recebido > 1e-9);
-      detalhe = faltaItens.length && rec ? `<div class="nota-chegou"><b>O que chegou</b>${faltaItens.map(i => `<div class="linha" data-ni="${i.id}"><span>${esc(i.material_id)} <small>${esc((i.descricao || '').slice(0, 60))}${i.romaneio_caesb ? ' · romaneio Caesb' : ''}</small><br><small>na nota ${nf(i.quantidade, 3)} · já chegou ${nf(i.recebido, 3)} ${esc(i.unidade || '')}</small></span>
-          <label>Chegou<input data-chegou type="number" step="any" min="0" value="${+(i.quantidade - i.recebido).toFixed(6)}"></label></div>`).join('')}
-          <div class="linha"><input data-doc-entrega placeholder="canhoto / romaneio da entrega"><button type="button" class="btn prim" data-nota-receber="${n.id}">Registrar o que chegou</button></div></div>` : '';
+    if (n.status === 'CONFERIDA') {                    // entregas de antes, ainda em quarentena: a inspeção
       corpo += n.entregas.map(e => `<div class="nota-insp" data-rec="${e.id}"><b>Em quarentena · entrega de ${dataBR(e.data)}${e.documento ? ' · ' + esc(e.documento) : ''}</b>
-          ${e.itens.map(i => `<div class="linha" data-ri="${i.id}"><span>${esc(i.material_id)} · ${nf(i.quantidade, 3)} ${esc(i.unidade || '')}</span>
+          ${e.itens.map(i => `<div class="linha" data-ri="${i.id}"><span>${esc(nomeMaterial(i.material_id))} · ${nf(i.quantidade, 3)} ${esc(i.unidade || '')}</span>
             <label>Aceito<input data-k="aceito" type="number" step="any" min="0" value="${i.quantidade}"></label><label>Recusado<input data-k="recusado" type="number" step="any" min="0" value="0"></label></div>`).join('')}
           ${rec ? `<div class="linha"><input data-laudo placeholder="laudo da entrega (obrigatório só com recusa)"><input data-motivo placeholder="motivo da recusa"></div>
           <div class="acoes"><button type="button" class="btn prim" data-nota-aceitar="${e.id}">Aceitar tudo desta entrega</button><button type="button" class="btn" data-nota-inspecionar="${e.id}">Registrar a inspeção</button></div>` : ''}</div>`).join('');
@@ -534,21 +529,16 @@ function renderNotasReceber(notas) {
           <span class="chip ${st[1]}">${esc(st[0])}</span>${n.sem_pedido ? ` <span class="chip ${n.aprovada_em ? 'verde' : 'amarelo'}">sem pedido · ${n.aprovada_em ? 'aprovada por ' + esc(n.aprovada_por) : 'aguardando aprovação'}</span>` : ''}</div>
         <small>emissão ${esc(dataBR(n.data_emissao || ''))} · ${n.linhas.length} linha${n.linhas.length > 1 ? 's' : ''} · ${brl(n.valor_total)} · importada por ${esc(n.registrada_por || '')}</small>
         ${corpo}</div>${lado ? `<div class="nota-lado">${lado}</div>` : ''}</div>
-      ${paineis}${detalhe ? `<details class="nota-detalhe"><summary>${n.status === 'A_CONFERIR' ? 'Conferir linha a linha' : 'Registrar a entrega linha a linha'}</summary>${detalhe}</details>` : ''}${aprovacao}</div>`;
+      ${paineis}${aprovacao}</div>`;
   }).join('');
 }
-// conferência das linhas (Estoque e Compras e notas): nenhuma linha com material só passa confirmando que a nota é só de
-// frete ou serviço, e aí ela é encerrada (D-169); antes, ficava "a receber" sem nada a receber
-async function conferirNf(corpo, okMsg) {
-  if (corpo.linhas.length && corpo.linhas.every(l => l.fora_do_estoque)) {
-    if (!confirm('Nenhuma linha vai para o estoque. A nota é só de frete ou serviço? Ela será encerrada sem nada a receber.\n\n'
-      + 'Se não for, cancele e escolha o material das linhas.')) return null;
-    corpo = { ...corpo, so_fora_do_estoque: true };
-  }
-  const r = await acao(() => api('/api/nf/conferir', corpo), okMsg).catch(() => null);
-  if (r && r.encerrada) toast('Nota só de frete ou serviço: encerrada, sem material a receber.', 'ok');
-  return r;
+// a conferência por marcação: o verde libera quando todas as linhas com material estão marcadas
+function contarConferidas(card) {
+  const cx = $$('[data-confere]', card), feitas = cx.filter(c => c.checked).length, ok = $('[data-nota-ok]', card), cont = $('[data-contagem]', card);
+  if (cont) cont.textContent = `${feitas} de ${cx.length} conferida${cx.length > 1 ? 's' : ''}`;
+  if (ok && !$('.nota-confere.falta', card)) ok.disabled = feitas < cx.length;
 }
+$('#notasReceber').addEventListener('change', ev => { if (ev.target.matches('[data-confere]')) contarConferidas(ev.target.closest('.nota-card')); });
 // vários XML de uma vez, um pedido por nota; o fornecedor que falta é cadastrado pelo próprio XML, com confirmação.
 // A nota sobe só em Compras e notas (D-170); o recebimento é em Estoque e movimentos › Notas a receber.
 async function importarNotasXml(form, depois) {
@@ -581,10 +571,10 @@ $('#notasReceber').addEventListener('click', async ev => {
   };
   if (q('[data-nota-recusar]')) return painel(q('[data-nota-recusar]'), '.nota-recusa');
   if (q('[data-nota-parcial]')) return painel(q('[data-nota-parcial]'), '.nota-parcial');
+  if (q('[data-marcar-todas]')) { const card = q('.nota-card'); $$('[data-confere]', card).forEach(c => { c.checked = true; }); return contarConferidas(card); }
   if (q('[data-nota-ok]') || q('[data-nota-recusar-ok]') || q('[data-nota-parcial-ok]')) {
-    const card = q('.nota-card'), ped = $('.nota-corpo [data-c=pedido]', card);
-    const corpo = { nf_id: card.dataset.nf, data: hoje(), pedido_id: ped ? ped.value || 0 : 0 };
-    let ok = 'Entrega aceita: o material entrou no estoque.';
+    const card = q('.nota-card'), corpo = { nf_id: card.dataset.nf, data: hoje() };
+    let ok = $('[data-confere]', card) ? 'Entrega aceita: o material entrou no estoque.' : 'Nota encerrada: era só frete ou serviço, nada entrou no estoque.';
     if (q('[data-nota-recusar-ok]')) {
       corpo.recusa = $('[data-recusa]', card).value;
       ok = 'Entrega recusada: nada entrou no estoque; a recusa ficou registrada na nota.';
@@ -597,17 +587,7 @@ $('#notasReceber').addEventListener('click', async ev => {
     if (r) toast(ok + (r.aguarda_aprovacao ? ' Nota sem pedido: o aceito só vai para as equipes depois da aprovação de Engenharia ou Administração.' : ''), 'ok');
   } else if (q('[data-nota-refazer]')) {
     r = await acao(() => api('/api/nf/refazer-conferencia', { nf_id: q('.nota-card').dataset.nf }),
-      'A nota voltou para "a conferir": confira o material de cada linha e receba.').catch(() => null);
-  } else if (q('[data-nota-conferir]')) {
-    const box = q('.nota-conf');
-    const linhas = $$('[data-l]', box).map(l => { const m = $('[data-k=material_id]', l).value.trim();
-      return m ? { linha_id: l.dataset.l, material_id: m, fator: $('[data-k=fator]', l).value || null } : { linha_id: l.dataset.l, fora_do_estoque: true }; });
-    r = await conferirNf({ nf_id: q('[data-nota-conferir]').dataset.notaConferir, pedido_id: $('[data-c=pedido]', box).value || 0, linhas },
-      'Nota conferida: registre o que chegou.');
-  } else if (q('[data-nota-receber]')) {
-    const box = q('.nota-chegou'), itens = $$('[data-ni]', box).map(l => ({ nf_item_id: l.dataset.ni, quantidade: +$('[data-chegou]', l).value || 0 })).filter(i => i.quantidade > 0);
-    r = await acao(() => api('/api/recebimento', { nf_id: q('[data-nota-receber]').dataset.notaReceber, data: hoje(), itens, documento: $('[data-doc-entrega]', box).value }),
-      'Entrega registrada: o material está em quarentena (o tubo da Caesb entrou como romaneio).').catch(() => null);
+      'A nota voltou para "a conferir": marque as linhas que chegaram e aceite.').catch(() => null);
   } else if (q('[data-nota-aceitar]') || q('[data-nota-inspecionar]')) {
     const box = q('.nota-insp'), tudo = !!q('[data-nota-aceitar]');
     const itens = tudo ? [] : $$('[data-ri]', box).map(l => ({ recebimento_item_id: l.dataset.ri, aceito: $('[data-k=aceito]', l).value, recusado: $('[data-k=recusado]', l).value }));
@@ -738,42 +718,62 @@ function renderItensPedido() {
     <input data-k="quantidade" type="number" step="any" min="0" value="${Math.max(0, i.quantidade - (ja[i.material_id] || 0))}"><input data-k="valor_unitario" type="number" step="any" min="0" placeholder="valor unit."></div>`).join('');
 }
 $('#selSolicAprov').addEventListener('change', renderItensPedido);
+/* Compras e notas (D-171): a nota sobe aqui e o sistema reconhece o material de cada linha. A linha que ele não
+   reconheceu fica "faltando a confirmação": quem tem a permissão de receber (na prática, a engenharia) marca um dos
+   candidatos, outro material ou frete/serviço. O almoxarife só confere e aceita, em Estoque e movimentos. */
+const unidade = u => String(u || '').trim().toUpperCase().replace(/\./g, '');   // como regras.normalizar_unidade
+function linhaConfirmar(l, cands, marcado, todos) {
+  const nome = `cf${l.id}`, pre = marcado && cands[0], difere = pre && unidade(pre.unidade) !== unidade(l.unidade);
+  return `<fieldset class="nf-conf-linha" data-l="${l.id}"><legend>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(l.quantidade, 4)} ${esc(l.unidade)}</small></legend>
+    ${cands.map((c, k) => `<label class="opcao"><input type="radio" name="${nome}" value="${esc(c.material_id)}"${pre && !k ? ' checked' : ''}>
+      <span>${esc(nomeMaterial(c.material_id))} <small>(${esc(c.unidade)})${c.caesb ? ' · Caesb' : ''}</small></span></label>`).join('')}
+    <label class="opcao"><input type="radio" name="${nome}" value="__outro"> <span>${cands.length ? 'Outro material' : 'Escolher o material'}</span></label>
+    <select data-outro hidden><option value="">— escolha o material —</option>${todos}</select>
+    <label class="opcao"><input type="radio" name="${nome}" value="__fora"> <span>Frete ou serviço: não entra no estoque</span></label>
+    <label class="nf-fator"${difere ? '' : ' hidden'}><span>Quantos <b data-un-mat>${difere ? esc(pre.unidade) : ''}</b> vêm em cada ${esc(l.unidade)} da nota?</span>
+      <input data-fator type="number" step="any" min="0" inputmode="decimal"></label></fieldset>`;
+}
 function renderNotas() {
-  const pedidosDe = f => COMPRAS.pedidos.filter(p => p.status === 'EMITIDO' && p.fornecedor_id === f);
+  const rec = pode('receber'), todos = opMat(() => true);
   $('#notasLista').innerHTML = COMPRAS.notas.filter(n => n.origem !== 'DIRETA').map(n => {
     const st = STATUS_NF[n.status] || [n.status, ''];
     let corpo = '';
-    if (n.status === 'A_CONFERIR' && pode('receber')) {
-      const ps = pedidosDe(n.fornecedor_id);
-      corpo = `<div class="conf-nf" data-nf="${n.id}"><label>Pedido<select data-c="pedido">${ps.map(p => `<option value="${p.id}">${esc(p.numero)}</option>`).join('') || '<option value="">nenhum pedido emitido deste fornecedor</option>'}</select></label>
-        <table><thead><tr><th>Linha da nota</th><th>Material</th><th>Fator</th><th>Item do pedido</th></tr></thead><tbody>${n.linhas.map(l => `<tr data-l="${l.id}">
-          <td>${l.n_item}. ${esc(l.descricao)}<br><small>${nf(l.quantidade, 4)} ${esc(l.unidade)} × ${nf(l.valor_unitario, 4)}</small></td>
-          <td><select data-k="material_id"><option value="__fora">— fora do estoque (frete, serviço)</option>${opMat(m => m.propriedade !== 'CAESB')}</select></td>
-          <td><input data-k="fator" type="number" step="any" min="0" placeholder="1" style="width:80px" title="quantidade no material = quantidade da nota × fator"></td>
-          <td><select data-k="pedido_item_id"></select></td></tr>`).join('')}</tbody></table>
-        <div class="acoes"><button type="button" class="btn prim" data-conferir-nf="${n.id}">Conferir nota</button>${n.origem === 'DIGITADA' && n.registrada_por === USUARIO.login ? ' <small>(você digitou esta nota: outra pessoa confere)</small>' : ''}</div></div>`;
-    } else if (n.status !== 'A_CONFERIR') {
-      corpo = `<table><thead><tr><th>Material</th><th class="n">Na nota</th><th class="n">Entregue</th><th class="n">Aceito</th><th class="n">Devolvido</th><th></th></tr></thead><tbody>${n.itens.map(i => `<tr data-ni="${i.id}">
-        <td>${esc(i.material_id)}</td><td class="n">${nf(i.quantidade, 3)}</td><td class="n">${nf(i.recebido, 3)}</td><td class="n">${nf(i.aceito, 3)}</td><td class="n">${nf(i.devolvido, 3)}</td>
-        <td>${n.status === 'CONFERIDA' && pode('receber') && i.quantidade - i.recebido > 1e-9 ? `<input data-entrega type="number" step="any" min="0" value="${+(i.quantidade - i.recebido).toFixed(6)}" style="width:90px">` : ''}
-          ${pode('receber') && i.aceito - i.devolvido > 1e-9 ? `<button type="button" class="btn" data-devolver="${i.id}">Devolver</button>` : ''}</td></tr>`).join('')}</tbody></table>
-        ${n.status === 'CONFERIDA' && pode('receber') && n.itens.some(i => i.quantidade - i.recebido > 1e-9) ? `<div class="linha"><input data-doc-entrega placeholder="canhoto / romaneio"><button type="button" class="btn prim" data-receber="${n.id}">Registrar entrega (entra em quarentena)</button></div>` : ''}
-        ${n.a_inspecionar.length ? `<b>Em quarentena — inspeção</b>${n.a_inspecionar.map(r => `<div class="linha lin-insp" data-ri="${r.id}"><span>${esc(r.material_id)} · ${nf(r.quantidade, 3)} · entregue ${esc(r.data)}</span>
-          <input data-k="aceito" type="number" step="any" min="0" value="${r.quantidade}" title="aceito"><input data-k="recusado" type="number" step="any" min="0" value="0" title="recusado">
-          <input data-k="laudo" placeholder="laudo / inspeção"><input data-k="motivo_recusa" placeholder="motivo da recusa">${pode('receber') ? `<button type="button" class="btn" data-inspecionar="${r.id}">Inspecionar</button>` : ''}</div>`).join('')}` : ''}`;
+    if (n.status === 'A_CONFERIR') {
+      const sug = Object.fromEntries((n.sugestoes || []).map(x => [x.linha_id, x]));
+      const sem = n.linhas.filter(l => sug[l.id] && !sug[l.id].material_id && !sug[l.id].fora_do_estoque), ok = n.linhas.filter(l => !sem.includes(l));
+      corpo = !sem.length ? '<div class="aviso ok">Pronta para receber: o almoxarife confere e aceita em <b>Estoque e movimentos › Notas a receber</b>.</div>'
+        : rec ? `<div class="nf-confirmar"><b>Faltando a confirmação · ${sem.length} linha${sem.length > 1 ? 's' : ''}</b>
+            <p class="vazio" style="margin:2px 0 6px">O sistema não reconheceu o que ${sem.length > 1 ? 'são estas linhas' : 'é esta linha'}. Marque o material (os mais parecidos vêm primeiro) ou frete/serviço. Depois o almoxarife só confere e aceita no Estoque, e a próxima nota deste fornecedor já vem reconhecida.</p>
+            ${sem.map(l => linhaConfirmar(l, sug[l.id].candidatos || [], (sug[l.id].motivo || '').startsWith('unidade'), todos)).join('')}
+            <div class="acoes"><button type="button" class="btn prim" data-confirmar-linhas>Confirmar</button></div></div>`
+        : `<div class="aviso info">Faltando a confirmação de ${sem.length} linha${sem.length > 1 ? 's' : ''}: quem recebe notas (a engenharia) confirma o que ${sem.length > 1 ? 'são' : 'é'}.</div>`;
+      if (ok.length) corpo += `<details class="nota-mais"><summary>Linhas reconhecidas (${ok.length})</summary><ul class="nf-reconhecidas">${ok.map(l => {
+        const s = sug[l.id] || {};
+        return `<li data-l="${l.id}"><span>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(l.quantidade, 4)} ${esc(l.unidade)}</small><br>→ ${s.material_id ? esc(nomeMaterial(s.material_id)) + (s.caesb ? ' (Caesb)' : '') : 'frete ou serviço (fora do estoque)'}
+          <small>· ${esc(s.motivo || '')}</small></span>${rec ? '<button type="button" class="btn" data-corrigir-linha>Corrigir</button>' : ''}</li>`; }).join('')}</ul></details>`;
+    } else if (n.itens.length) {
+      corpo = `<div class="tabela"><table><thead><tr><th>Material</th><th class="n">Na nota</th><th class="n">Entregue</th><th class="n">Aceito</th><th class="n">Devolvido</th><th></th></tr></thead><tbody>${n.itens.map(i => `<tr>
+        <td>${esc(nomeMaterial(i.material_id))}</td><td class="n">${nf(i.quantidade, 3)}</td><td class="n">${nf(i.recebido, 3)}</td><td class="n">${nf(i.aceito, 3)}</td><td class="n">${nf(i.devolvido, 3)}</td>
+        <td>${rec && i.aceito - i.devolvido > 1e-9 ? `<button type="button" class="btn" data-devolver="${i.id}">Devolver</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+        + (n.status === 'CONFERIDA' && n.itens.some(i => i.quantidade - i.recebido > 1e-9) ? '<div class="aviso info">Falta receber: o almoxarife recebe em <b>Estoque e movimentos › Notas a receber</b>.</div>' : '');
     }
-    return `<div class="registro"><div><b>NF ${esc(n.numero)}${n.serie ? '/' + esc(n.serie) : ''} · ${esc(n.fornecedor || '')}</b>
+    return `<div class="registro" data-nf="${n.id}"><div><b>NF ${esc(n.numero)}${n.serie ? '/' + esc(n.serie) : ''} · ${esc(n.fornecedor || '')}</b>
       <span><span class="chip ${st[1]}">${esc(st[0])}</span> <small>${esc(n.origem)} · emissão ${esc(n.data_emissao || '')} · ${brl(n.valor_total)} · reg. ${esc(n.registrada_por || '')}${n.conferida_por ? ' · conf. ' + esc(n.conferida_por) : ''}</small>
-      ${['A_CONFERIR', 'CONFERIDA'].includes(n.status) && pode('receber') && !n.itens.some(i => i.recebido > 0) ? ` <button type="button" class="btn" data-cancelar-nf="${n.id}">Cancelar</button>` : ''}</span></div>${htmlDrive(n.drive)}${corpo}</div>`;
+      ${['A_CONFERIR', 'CONFERIDA'].includes(n.status) && rec && !n.itens.some(i => i.recebido > 0) ? ` <button type="button" class="btn" data-cancelar-nf="${n.id}">Cancelar</button>` : ''}</span></div>
+      ${n.cancelada_motivo ? `<small>${esc(n.cancelada_motivo)}</small>` : ''}${htmlDrive(n.drive)}${corpo}</div>`;
   }).join('') || '<div class="vazio">Nenhuma nota no fluxo novo.</div>';
-  $$('.conf-nf').forEach(box => {
-    const sel = $('[data-c=pedido]', box);
-    const atual = () => { const p = COMPRAS.pedidos.find(x => x.id === +sel.value);
-      $$('tr[data-l]', box).forEach(tr => { const m = $('[data-k=material_id]', tr).value;
-        $('[data-k=pedido_item_id]', tr).innerHTML = (p ? p.itens.filter(i => i.material_id === m) : []).map(i => `<option value="${i.id}">${esc(i.material_id)} · a faturar ${nf(i.a_faturar, 3)}</option>`).join('') || '<option value="">—</option>'; }); };
-    sel.addEventListener('change', atual); $$('[data-k=material_id]', box).forEach(x => x.addEventListener('change', atual)); atual();
-  });
 }
+// a linha a confirmar: "Outro material" abre a lista; unidade diferente da da nota pede o fator
+$('#notasLista').addEventListener('change', ev => {
+  const f = ev.target.closest('.nf-conf-linha'); if (!f) return;
+  const r = $('input[type=radio]:checked', f), outro = $('[data-outro]', f), fat = $('.nf-fator', f);
+  outro.hidden = !r || r.value !== '__outro';
+  const m = r && r.value !== '__fora' && MATERIAIS.find(x => x.id === (r.value === '__outro' ? outro.value : r.value));
+  const linha = COMPRAS.notas.flatMap(n => n.linhas).find(l => l.id === +f.dataset.l);
+  fat.hidden = !m || unidade(m.unidade) === unidade(linha.unidade);
+  if (m) $('[data-un-mat]', f).textContent = m.unidade;
+  if (ev.target === r && !outro.hidden) outro.focus();
+});
 const recarregarCompras = r => { if (r) carregarCompras(); };
 $('#fSolic').addEventListener('submit', async ev => {
   ev.preventDefault();
@@ -812,16 +812,29 @@ document.addEventListener('click', async ev => {
     r = await acao(() => api('/api/solicitacao/decidir', { solicitacao_id: b.dataset.solic, aprovar: ap, motivo }), ap ? 'Solicitação aprovada.' : 'Solicitação recusada.').catch(() => null); }
   else if (q('[data-pedido-enc]')) { const motivo = prompt('Motivo do encerramento do saldo (o já recebido continua valendo):'); if (!motivo) return;
     r = await acao(() => api('/api/pedido/encerrar', { pedido_id: q('[data-pedido-enc]').dataset.pedidoEnc, motivo }), 'Pedido encerrado.').catch(() => null); }
-  else if (q('[data-conferir-nf]')) { const box = q('.conf-nf');
-    const linhas = $$('tr[data-l]', box).map(tr => { const m = $('[data-k=material_id]', tr).value; return m === '__fora' ? { linha_id: tr.dataset.l, fora_do_estoque: true }
-      : { linha_id: tr.dataset.l, material_id: m, fator: $('[data-k=fator]', tr).value || null, pedido_item_id: $('[data-k=pedido_item_id]', tr).value }; });
-    r = await conferirNf({ nf_id: box.dataset.nf, pedido_id: $('[data-c=pedido]', box).value, linhas }, 'Nota conferida: receba em Estoque e movimentos › Notas a receber.'); }
-  else if (q('[data-receber]')) { const card = q('.registro');
-    const itens = $$('tr[data-ni]', card).map(tr => ({ nf_item_id: tr.dataset.ni, quantidade: +($('[data-entrega]', tr) || { value: 0 }).value })).filter(i => i.quantidade > 0);
-    r = await acao(() => api('/api/recebimento', { nf_id: q('[data-receber]').dataset.receber, data: hoje(), itens, documento: $('[data-doc-entrega]', card).value }), 'Entrega registrada em quarentena.').catch(() => null); }
-  else if (q('[data-inspecionar]')) { const l = q('.lin-insp'), o = Object.fromEntries($$('[data-k]', l).map(i => [i.dataset.k, i.value]));
-    r = await acao(() => api('/api/inspecao', { recebimento_item_id: l.dataset.ri, ...o, data: hoje() }), 'Inspeção registrada: o aceito entrou no estoque.').catch(() => null);
-    if (r) driveEmSegundoPlano(); }
+  else if (q('[data-corrigir-linha]')) {          // linha reconhecida errada: vira linha a confirmar, com o material de agora marcado
+    const li = q('li[data-l]'), card = q('.registro'), n = COMPRAS.notas.find(x => x.id === +card.dataset.nf), l = n.linhas.find(x => x.id === +li.dataset.l);
+    const s = (n.sugestoes || []).find(x => x.linha_id === l.id) || {}, m = MATERIAIS.find(x => x.id === s.material_id);
+    li.outerHTML = `<li class="nf-corrigir">${linhaConfirmar(l, m ? [{ material_id: m.id, unidade: m.unidade, caesb: m.propriedade === 'CAESB' }] : [], !!m, opMat(() => true))}
+      ${$('[data-confirmar-linhas]', card) ? '' : '<div class="acoes"><button type="button" class="btn prim" data-confirmar-linhas>Confirmar a correção</button></div>'}</li>`;
+    if (!m) $(`li.nf-corrigir input[value=__fora]`, card).checked = true;
+    return; }
+  else if (q('[data-confirmar-linhas]')) {
+    const card = q('.registro'), linhas = [];
+    for (const f of $$('.nf-conf-linha', card)) {
+      const m = $('input[type=radio]:checked', f), leg = $('legend', f).textContent.split('.')[0];
+      if (!m) continue;
+      if (m.value === '__fora') { linhas.push({ linha_id: f.dataset.l, fora_do_estoque: true }); continue; }
+      const mid = m.value === '__outro' ? $('[data-outro]', f).value : m.value;
+      if (!mid) { toast(`Linha ${leg}: escolha o material na lista de "Outro material".`, 'erro'); return; }
+      const fat = $('.nf-fator', f);
+      if (!fat.hidden && !(+$('[data-fator]', fat).value > 0)) { toast(`Linha ${leg}: ${fat.textContent.replace(/\s+/g, ' ').trim()}`, 'erro'); return; }
+      linhas.push({ linha_id: f.dataset.l, material_id: mid, fator: fat.hidden ? null : $('[data-fator]', fat).value });
+    }
+    if (!linhas.length) { toast('Marque o que é cada linha (ou frete/serviço).', 'erro'); return; }
+    r = await acao(() => api('/api/nf/confirmar-linhas', { nf_id: card.dataset.nf, linhas })).catch(() => null);
+    if (r) toast(r.faltam ? `Confirmada${r.confirmadas > 1 ? 's' : ''} ${r.confirmadas}; falta${r.faltam > 1 ? 'm' : ''} ${r.faltam}.`
+      : 'Tudo confirmado: a nota já aparece para o almoxarife conferir e aceitar em Estoque e movimentos.', 'ok'); }
   else if (q('[data-devolver]')) { const qt = prompt('Quantidade a devolver ao fornecedor:'); if (!qt) return; const motivo = prompt('Motivo:'); if (!motivo) return; const doc = prompt('Documento (NF de devolução):') || null;
     r = await acao(() => api('/api/devolucao-fornecedor', { nf_item_id: q('[data-devolver]').dataset.devolver, data: hoje(), quantidade: qt, motivo, documento: doc }), 'Devolução registrada (saiu do estoque).').catch(() => null); }
   else if (q('[data-cancelar-nf]')) { const motivo = prompt('Motivo do cancelamento da nota:'); if (!motivo) return;
