@@ -3,44 +3,133 @@ import base64
 import json
 import os
 import re
+import unicodedata
 
 import compras as C
 import servicos as S
 from recebimento import numero
 from servicos import RegraViolada, _one, _rows, transacao
 
-UNIDADES = {'M': 'metros', 'UN': 'unidades', 'PÇ': 'peças', 'PC': 'peças', 'KG': 'quilos', 'M2': 'metros quadrados', 'M3': 'metros cúbicos'}
+UNIDADES = {'M': 'metros', 'UN': 'unidades', 'PÇ': 'peças', 'PC': 'peças', 'KG': 'quilos', 'M2': 'metros quadrados',
+            'M3': 'metros cúbicos', 'SC': 'sacos'}
+
+# Pedir material (D-173): o tipo vem do começo da descrição; a ordem importa ("TE DE SERVICO" é ligação de água, não tê)
+_TIPOS = [("Ligação de água", r"(HIDROMETRO|KIT CAVALETE|CAIXA DE PROTECAO|ABRIGO|ADAPTADOR|TE DE SERVICO|UNIAO)"),
+          ("Tubo", r"TUBO"), ("Luva", r"LUVA"), ("Tê", r"TE\b"), ("Curva", r"CURVA"), ("Redução", r"REDUCAO"),
+          ("Flange", r"(FLANGE|COLARINHO|ACESSORIOS? PARA FLANGE)"), ("Toco", r"(TOCO|EXTREMIDADE)"),
+          ("Válvula", r"(VALVULA|VENTOSA|HIDRANTE)"), ("Tampa", r"TAMPA"),
+          ("Obra", r"(AREIA|BRITA|CIMENTO|MADEIRA|TERRA|CONCRETO|CONE|TELA|TENDA|PLACA|PILAR|ESCADA|ANEL|FOSSA)")]
+_CONEXOES = {"Tubo", "Luva", "Tê", "Curva", "Redução", "Flange", "Toco"}
+_NAO_E_MATERIAL = r"(SERVICO|LOCACAO|TAXA|INFRAESTRUTURA|RECURSOS)"      # serviço e administração local não se pedem
+_SEM_BITOLA = ("ABRIGO", "CAIXA")                    # o "diâmetro de 50 mm" do abrigo é o do tubo que passa nele
+_ACENTOS = {"Te": "Tê", "servico": "serviço", "Uniao": "União", "Tampao": "Tampão", "sinalizacao": "sinalização",
+            "septica": "séptica", "autoadensavel": "autoadensável", "bombeavel": "bombeável", "nao": "não", "pvc": "PVC"}
+# tamanho: duas bitolas (redução, tê de redução, tê de sela) antes de uma; polegada antes de milímetro
+_DUAS = [r"DIAMETRO (?:MAIOR|DE ENTRADA)\s*:\s*(\d+)\s*MM\s*/\s*DIAMETRO (?:MENOR|DE SAIDA)\s*:\s*(\d+)",
+         r"\bDN[\s-]*(\d+)\s*X\s*(\d+)\s*MM", r"DIAMETRO EXTERNO DE\s*(\d+)\s*MM.*?DA SAIDA\s*:\s*(\d+)"]
+_POLEGADA = [r"DIAMETRO[^:/(]*:\s*(\d+ \d/\d|\d/\d|\d+)\s*\"", r"\b(\d/\d)\""]
+_UMA = [r"DIAMETRO[^:/(]*:\s*(\d+)\s*MM", r"DIAMETRO EXTERNO DE\s*(\d+)\s*MM", r"\bDN\s*[=:]?\s*(\d+)",
+        r"\bDE\s*[=:]?\s*(\d+)\s*MM", r"\bDE(\d+)\b", r"\b(\d+)\s*X\s*(\d+)\s*MM", r"\bTAMPA (\d+)\s*MM", r",\s*(\d+)\s*MM\b"]
+# o que separa dois materiais de mesmo nome (o primeiro que difere entre eles entra no nome)
+_DETALHES = [(r"(SEM|COM) ALMA", lambda m: m.group(1).lower() + " alma"),
+             (r"COMPRIMENTO\s*:\s*([\d,]+)\s*(MM|M)\b", lambda m: f"{m.group(1)} {m.group(2).lower()} de comprimento"),
+             (r"CLASSE DE PRESSAO\s*:\s*([\d/]+)", lambda m: "PN " + m.group(1)),
+             (r"\bPN[\s-]*(\d+)", lambda m: "PN " + m.group(1)), (r"AUTO OPERADA", lambda m: "auto operada")]
+
+
+def _maiusculo(texto):
+    return unicodedata.normalize("NFKD", str(texto or "")).encode("ascii", "ignore").decode().upper()
+
+
+def _tamanho(t):
+    for padrao in _DUAS:
+        m = re.search(padrao, t)
+        if m:
+            return f"{m.group(1)}×{m.group(2)} mm"
+    for padrao in _POLEGADA:
+        m = re.search(padrao, t)
+        if m:
+            return m.group(1) + '"'
+    for padrao in _UMA:
+        m = re.search(padrao, t)
+        if m:
+            return "×".join(g for g in m.groups() if g) + " mm"
+    return ""
+
+
+def _nome_curto(descricao):
+    """O começo da descrição: até a vírgula, o parêntese ou o primeiro "com/em/para/de/do/da" depois de duas palavras."""
+    texto = re.split(r"\s*[(:;]|, | - |\. ", descricao.replace("*", ""))[0].strip()
+    palavras = texto.split()
+    for i in range(2, len(palavras)):
+        if _maiusculo(palavras[i]) in ("COM", "EM", "PARA", "DE", "DO", "DA", "SEM", "TIPO") and i < len(palavras) - 1:
+            palavras = palavras[:i]
+            break
+    nome = " ".join(palavras[:8]).capitalize().split()
+    return " ".join(_ACENTOS.get(p, p) for p in nome)
+
+
+def _nome_conexao(tipo, t):
+    """Tubo e conexões: o nome como se fala na obra ("Luva eletrofusão", "Redução ferro", "Tê de sela")."""
+    metodo = "eletrofusão" if "ELETROFUSAO" in t else "termofusão" if "TERMOFUSAO" in t else ""
+    material = "ferro" if "FERRO FUNDIDO" in t else "PEAD" if ("POLIETILENO" in t or "PEAD" in t) else ""
+    if tipo == "Flange":
+        if "PARAFUSO" in t:                          # o parafuso vem "com porca e duas arruelas"
+            return "Parafuso sextavado"
+        if "ARRUELA" in t:
+            return "Arruela de borracha"
+        return "Colarinho PEAD" if t.startswith("COLARINHO") else "Flange solto" if "SOLTO" in t else "Flange"
+    if tipo == "Toco":
+        base = "Extremidade flange e ponta" if t.startswith("EXTREMIDADE") else "Toco com aba" if "ABA DE VEDACAO" in t else "Toco"
+        return base + (" ferro" if material == "ferro" and base == "Toco" else "")
+    nome = {"Curva": "Curva 90°" if "90" in t[:12] else "Curva", "Tê": "Tê de sela" if "SELA" in t else "Tê de redução"
+            if "DE REDUCAO" in t else "Tê", "Redução": "Redução excêntrica" if "EXCENTRICA" in t else "Redução",
+            "Luva": "Luva de correr" if "DE CORRER" in t else "Luva"}.get(tipo, tipo)
+    if tipo == "Tubo" and material == "ferro":
+        return "Tubo ferro " + ("flange e ponta" if "FLANGE E PONTA" in t else "com flanges")
+    return " ".join(x for x in (nome, metodo or material) if x)
 
 
 def catalogo(conn):
+    """Os materiais da tela Pedir material (D-173), sem código: tipo, tamanho e um nome curto tirados da descrição.
+    config/materiais_pedido.json corrige o nome, o tipo ou o tamanho de um material, pelo id."""
     with open(os.path.join(S.BASE, 'config', 'materiais_pedido.json'), encoding='utf-8') as f:
         ajustes = json.load(f).get('materiais', {})
     out = []
     for m in _rows(conn.execute('SELECT id,descricao,unidade,propriedade FROM materiais ORDER BY descricao')):
-        texto = ' '.join(C._palavras(m['descricao']))
-        grupo = next((rot for palavra, rot in [('luva', 'Luva'), ('te', 'Tê'), ('curva', 'Curva'), ('reducao', 'Redução'),
-                     ('flange', 'Flange'), ('tampao', 'Tampão'), ('tubo', 'Tubo')] if palavra in texto.split()), 'Outros')
-        medida = re.search(r'(?:diametro(?: externo)?|de|dn)\s*[:=]?\s*(\d+(?:[.,]\d+)?(?:\s*[xX/]\s*\d+)*)', m['descricao'], re.I)
-        # A busca normalizada também aceita descrições com acento.
-        if not medida:
-            medida = re.search(r'(?:diametro(?: externo)?|de|dn)\s+(\d+(?:\s+x\s+\d+)*)', texto)
-        tamanho = medida.group(1).replace(' ', '') + ' mm' if medida else 'Outros tamanhos'
-        metodo = ' eletrofusão' if 'eletrofusao' in texto else ' termofusão' if 'termofusao' in texto else ''
-        nome = (grupo + metodo + (' ' + tamanho if medida else '')) if grupo != 'Outros' else m['descricao'].split('(')[0].strip().capitalize()
-        # Pressão, resina e ângulo distinguem peças de mesma bitola.
-        detalhes = []
-        for padrao, prefixo in [(r'(?:pressao|pn)\s*(\d+(?:\s+\d+)?)', 'PN '), (r'pe\s*(\d+)', 'PE'), (r'(\d+)\s*graus', '')]:
-            v = re.search(padrao, texto)
-            if v:
-                detalhes.append(prefixo + v.group(1) + ('°' if not prefixo else ''))
-        if detalhes:
-            nome += ' · ' + ' · '.join(detalhes)
-        item = {'id': m['id'], 'nome': nome, 'tipo': grupo, 'tamanho': tamanho, 'descricao': m['descricao'],
-                'unidade': m['unidade'], 'unidade_nome': UNIDADES.get(m['unidade'], m['unidade'].lower()),
-                'caesb': m['propriedade'] == 'CAESB'}
-        item.update({k: v for k, v in ajustes.get(m['id'], {}).items() if k in ('nome', 'tipo', 'tamanho')})
-        out.append(item)
-    return out
+        t = _maiusculo(m['descricao'])
+        if re.match(_NAO_E_MATERIAL, t) and m['id'] not in ajustes:
+            continue
+        tipo = next((rot for rot, padrao in _TIPOS if re.match(padrao, t)), 'Outros')
+        tamanho = _tamanho(t) if tipo != 'Obra' and not t.startswith(_SEM_BITOLA) else ''
+        nome = _nome_conexao(tipo, t) if tipo in _CONEXOES else _nome_curto(m['descricao'])
+        if tamanho and tamanho.replace(' mm', '') not in nome.split():
+            nome += ' ' + tamanho
+        out.append({'id': m['id'], 'nome': nome, 'tipo': tipo, 'tamanho': tamanho, 'descricao': m['descricao'],
+                    'unidade': m['unidade'], 'unidade_nome': UNIDADES.get(m['unidade'].upper(), m['unidade'].lower()),
+                    'caesb': m['propriedade'] == 'CAESB', '_t': t})
+    # mesmo nome, descrições diferentes, do mesmo dono: entra o primeiro detalhe que os separa
+    grupos = {}
+    for item in out:
+        grupos.setdefault((item['nome'], item['caesb']), []).append(item)
+    for itens in grupos.values():
+        if len({i['descricao'] for i in itens}) < 2:
+            continue
+        for padrao, rotulo in _DETALHES:
+            achados = [re.search(padrao, i['_t']) for i in itens]
+            valores = [rotulo(a) if a else '' for a in achados]
+            if len(set(valores)) > 1:
+                for i, v in zip(itens, valores):
+                    if v:
+                        i['nome'] += ' · ' + v
+                break
+    for item in out:
+        del item['_t']
+        item.update({k: v for k, v in ajustes.get(item['id'], {}).items() if k in ('nome', 'tipo', 'tamanho')})
+    # os botões de tipo saem nesta ordem; dentro do tipo, da bitola menor para a maior
+    ordem = [rot for rot, _ in _TIPOS] + ['Outros']
+    bitola = lambda i: int(re.match(r'\d*', i['tamanho']).group() or 0)
+    return sorted(out, key=lambda i: (ordem.index(i['tipo']) if i['tipo'] in ordem else len(ordem), bitola(i), i['nome']))
 
 
 def abrir(conn, corpo, usuario):

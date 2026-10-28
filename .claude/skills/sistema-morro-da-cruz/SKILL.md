@@ -6,7 +6,8 @@ description: Lógica completa do sistema web de gestão da obra Morro da Cruz (A
 # Sistema Morro da Cruz — a obra, o contrato Caesb × Ankara e o web app
 
 Estado de 28/10/2026, esquema do banco **v22**, ramo do site `claude/powerbi-modifications-wqxekj` (repositório
-`gabrielghorta/Projeto-Pessoal`, pasta `morro-da-cruz/`). Último PR desta fase: medição no modelo oficial do BM.
+`gabrielghorta/Projeto-Pessoal`, pasta `morro-da-cruz/`). Último PR desta fase: v22 (pedir material, entrega por linha,
+satélite no Dados da obra e trechos do dia no apontamento sem NS; `docs/ATUALIZACAO_V22.md`).
 
 ## 0. Como usar este arquivo
 
@@ -199,7 +200,9 @@ migração (`python importar.py --aplicar`, servidor parado; na nuvem o site mig
 estável · v5 estoque (reservas, estornos, custódia) · v7/v8 intervalos, retificação, foto original · v9 acesso · v10
 liberação e ocorrências · v11 compras · v12 programação · v13 parcela única e conferência da medição · v14 documentos ·
 v15/v16 Drive · v17 levantamento avulso · v18 NS · v19 apropriação e gaveta 5 · v20 `checkin_alvos`, NF sem pedido,
-romaneio · **v21 `medicao_folhas`** (fotos e justificativa da memória de cálculo).
+romaneio · v21 `medicao_folhas` (fotos e justificativa da memória de cálculo) · **v22** solicitação de material
+(`solicitacao_detalhes`, `solicitacao_avulsos`, `solicitacao_notas`), entrega por linha (`nf_entregas_linhas`,
+`nf_confirmacoes`) e `nf_liberadas_v22`.
 
 Tabelas centrais: `trechos`, `elementos`, `atividades`, `itens_projeto`, `bm_itens` (planilha JUNTADA/VERTICAL, item,
 código Caesb, classificação, quantidade, preço sem BDI, `linha_origem`), `intervalos_execucao`, `apontamentos`,
@@ -262,29 +265,29 @@ semicírculo é o mesmo trecho"**. A 06.1 continua intacta para o BM e a mediç�
 
 Menu principal: **Mapa iluminado · Execução · Planejamento · Administrativo** (D-67, D-75).
 - Execução: Lançamento do dia, Notas de serviço, Topografia, Cadastro de campo, Interferências e ocorrências, Diário de obra.
-- Planejamento: Dados da obra, Cronograma da obra, Estoque e movimentos, Compras e notas.
+- Planejamento: Dados da obra, Cronograma da obra, Estoque e movimentos, Pedir material, Compras e notas.
 - Administrativo: Equipes, Relatórios, Usuários e histórico, LEV, Medição.
 - Links antigos redirecionam: `#prog` e `#ponto` → Dados da obra; `#esteira` → Mapa iluminado.
 
 | Perfil | Telas | Permissões |
 |---|---|---|
-| ADMINISTRACAO, ENGENHARIA | todas | todas (25), inclusive usuários |
-| ALMOXARIFADO | Mapa iluminado, Lançamento do dia, Diário, Interferências, Dados da obra, Estoque, Compras | `almox`, `receber`, `inventario_contar`, `compras_solicitar`, `campo` |
-| SUPERVISOR | Mapa iluminado, Lançamento do dia, Notas de serviço (consulta), Diário, Interferências | `campo`, `verificar` |
-| EQUIPE (encarregado, preso à equipe) | Mapa iluminado, Lançamento do dia, Diário, Interferências | `campo` |
+| ADMINISTRACAO, ENGENHARIA | todas | todas (26), inclusive usuários |
+| ALMOXARIFADO | Mapa iluminado, Lançamento do dia, Diário, Interferências, Dados da obra, Estoque, Pedir material, Compras | `almox`, `receber`, `inventario_contar`, `compras_solicitar`, `campo` |
+| SUPERVISOR | Mapa iluminado, Lançamento do dia, Notas de serviço (consulta), Diário, Interferências, Pedir material | `campo`, `verificar`, `compras_solicitar` |
+| EQUIPE (encarregado, preso à equipe) | Mapa iluminado, Lançamento do dia, Diário, Interferências, Pedir material | `campo`, `compras_solicitar` |
 | RH | Mapa iluminado, Notas de serviço (consulta) | — |
 | TOPOGRAFIA (consulta) | Mapa iluminado, Topografia | — |
 | CADASTRO | Mapa iluminado, Cadastro de campo | `cadastro` |
 
 Permissões: `usuarios`, `auditoria`, `equipes`, `almox`, `receber`, `compras_solicitar`, `compras_aprovar`,
-`compras_pedir`, `inventario_contar`, `inventario_ajustar`, `campo`, `topografia`, `cadastro_campo`, `verificar`,
+`fornecedores`, `nf_confirmar`, `inventario_contar`, `inventario_ajustar`, `campo`, `topografia`, `cadastro_campo`, `verificar`,
 `retificar_campo`, `ok_interno`, `cadastro`, `conferir_cadastro`, `planejar`, `medicao`, `documentos`, `notas_servico`,
 `lancar_sem_ns`, `ns_dia`, `apropriacao`. A matriz é provisória (D-10) e mora em `config/perfis.json`.
 
 **Segregação de funções (sempre pela identidade da sessão; o nome digitado é ignorado):**
 - quem informa não verifica (intervalos, soldas: nem o soldador nem quem informou);
-- quem solicita a compra não aprova;
-- quem importa ou digita a NF não confere nem aprova a nota sem pedido;
+- quem pede material não aprova o próprio pedido;
+- quem digita a NF não a confere;
 - quem conta o inventário não aprova o ajuste;
 - a engenharia envia as NS (inclusive a do dia, em nome da equipe); o supervisor verifica.
 
@@ -383,7 +386,10 @@ estorno com motivo. Item que não está no BM: cadastro de item novo (a aprovar)
 
 ## 10. Planejamento e almoxarifado
 
-**Dados da obra = o dia da equipe (D-104):** programar equipe + trechos (na obra inteira, um por toque; com zona escolhida, soma/retira sem Ctrl; nós compartilhados e terminais reais da 06.2 entram sozinhos) para um dia ou período (uma programação por alvo e dia, num lote cancelável) → o
+**Dados da obra = o dia da equipe (D-104):** programar equipe + trechos (na obra inteira, um por toque; com uma zona
+escolhida, os toques somam e tiram, sem Ctrl, D-177; o nó entre dois trechos escolhidos e a ponta de rua da 06.2 entram
+sozinhos, D-178; a equipe já vem a da zona, D-179) para um dia ou período (uma programação por alvo e dia, num lote
+cancelável) → o
 almoxarife **libera o material do dia** (sugestão do projeto: tubo pelo que falta assentar, peças dos nós pela 06.2 →
 BM vertical, limitada ao que há no almoxarifado), o que abre o check-in com todos os trechos (`checkin_alvos`) e acende
 "em execução hoje" com o pino da equipe até a NS do dia chegar → **devolução** no fim do dia (aplicado, sobra, perda
@@ -396,13 +402,33 @@ ordem, sem check-in retroativo; o que fica com a equipe é declarado e volta no 
 com documento, responsável e autorização; transferência entre equipes com as duas sessões abertas; inventário com
 recontagem se o saldo mudou; reservas vencidas liberadas em lote com motivo.
 
-**Pedir material (D-172 a D-175):** tela própria para almoxarifado, SUPERVISOR, EQUIPE e engenharia/administração, com tipo/tamanho, busca, texto/foto desconhecida, quantidade −/+, zona e observação opcional. Nome curto sem código, gerado da descrição e revisável em `config/materiais_pedido.json`. Quem pede não aprova; engenharia/administração aprova ou recusa (motivo obrigatório), identifica item avulso. Campo não vê NF. Solicitação nunca bloqueia NF nem estoque; vínculo opcional só informa “Chegou”. Pedido de compra saiu do fluxo; histórico preservado.
+**Pedir material (D-172, D-173):** o pedido de compra saiu (a nota fiscal diz o que foi comprado; as tabelas antigas
+ficam). Tela **Pedir material** (`compras_solicitar`: almoxarifado, supervisor, encarregado só para a frente dele,
+engenharia, administração): tipo, tamanho e nome curto sem código, tirados da descrição (`solicitacoes.catalogo`;
+ajuste em `config/materiais_pedido.json`), busca, "Não achei: escrever ou tirar foto", quantidade no − e no +, zona por
+toque. Engenharia e administração (`compras_aprovar`) aprovam num toque ou recusam com motivo, e identificam o item
+escrito ou fotografado antes de aprovar. **Meus pedidos** com cor e texto. A solicitação nunca trava nota nem estoque;
+ligar a nota a ela (`nf_confirmar`) só marca "Chegou".
 
-**Compras e notas:** fornecedor permanece; XML ou NF digitada com anexo; quem digitou não confere. Almoxarife marca cada linha. Reconhecida + marcada + entregue entra no estoque. Somente desconhecidas e “Corrigir” precisam da identificação pela engenharia (`nf_confirmar`). Entrega pode ocorrer antes: guarda quantidade na unidade da NF em `nf_entregas_linhas`, sem saldo até identificar material/fator; materialização única preserva autoria da entrega. Não criar aprovação global de nota. Recusa parcial/total com motivo permanece. Tubo da Caesb vira romaneio; frete/serviço fica fora. Quarentena antiga segue inspeção. A v22 libera entradas antigas já aceitas sem aprovação fictícia ou movimento novo e lista-as em `nf_liberadas_v22` e no relatório da migração. Material recebido nunca vira medição.
+**Compras e notas:** NF por XML (biblioteca padrão; DOCTYPE recusado; modelo 55; chave com dígito; repetida recusada;
+emitente cadastrado na hora pelo CNPJ do XML) ou digitada do PDF/imagem (anexo obrigatório; quem digitou não confere);
+o fornecedor é cadastrado junto (`fornecedores`). **A nota sobe só em Compras e notas (D-170);** em Estoque › Notas a
+receber, cada nota tem na lateral **Aceitar a entrega**, **Recusar a entrega** (o porquê é obrigatório; nada entra no
+estoque e a nota fecha) e **Aceite ou recusa parcial** (o que não chegou continua a receber). **Conferir é marcar
+(D-171):** cada linha mostra o material que o sistema reconheceu (código; nota anterior do fornecedor, com o fator; tubo
+da Caesb pela bitola; descrição, sem contar PE 100 e SDR 17 como medida), com uma caixinha e "Marcar todas"; o verde
+libera com todas marcadas. **Entrega antes da identificação (D-174):** a linha não reconhecida também é marcada (pela
+descrição) e aceita; fica em `nf_entregas_linhas`, na unidade da nota, sem saldo, e aparece **faltando a confirmação** em
+Compras e notas; quando a engenharia (`nf_confirmar`) diz o material e o fator, ela vira estoque uma vez só, com a data e
+o recebedor da entrega (`recebimento.materializar`). **Corrigir** devolve à confirmação a linha reconhecida errada que
+ainda não entrou no estoque. **Não existe aprovação da nota (D-175):** nota conferida e entrega aceita bastam; a migração
+v22 lista em `nf_liberadas_v22` o que a regra antiga prendia. Tubo da Caesb vira `ROMANEIO_CAESB`, sem quarentena (D-111);
+recusado, não entra no romaneio. Frete e serviço ficam fora do estoque; a nota só deles fecha no verde. A quarentena das
+entregas anteriores à v22 segue a inspeção. **Material recebido nunca vira lançamento de medição.**
 
-**Apontamento sem NS (D-180):** data + equipe sugerem os alvos de todos os check-ins da data, abertos e encerrados, sem repetir. Botão com nome completo e “já lançado hoje” abre o formulário existente. Busca manual permanece. Motivo sem NS por trecho, topografia e intervalos sem sobreposição continuam. Lote 100% é apenas proposta D-181.
-
-**Dados da obra (D-176 a D-179):** satélite e cores claras, reusando mosaico e cache existentes. Zona escolhida habilita seleção aditiva; obra inteira substitui. Equipe padrão pela frente; troca de contexto limpa equipe manual anterior. Estas regras substituem as partes conflitantes de D-104, D-110, D-171 e o pedido de 22/10 de mapa sem satélite.
+**Apontamento sem NS (D-180):** com a data e a equipe, aparecem como botões os trechos e nós de todos os check-ins dela
+na data (abertos ou devolvidos), com "já lançado hoje"; o toque abre o formulário de sempre (motivo sem NS, liberação da
+topografia, intervalo sem sobreposição), e a busca continua. Lançar vários a 100% de uma vez é proposta (D-181).
 
 ---
 
@@ -428,8 +454,8 @@ Ficha do trecho: caminho até a medição, verificação, fotos, esteira, histó
 supervisor, por zona, o mais perto primeiro. O pino diz "programado" (do check-in), não a posição real. Nada sem
 posição no projeto ganha coordenada (MV-11, VTF-12, VTF-16 na bandeja, D-03).
 
-**Dados da obra:** mapa próprio sobre o traçado do REV02 (sem plantas), tela cheia, o mapa não se move sozinho, zonas
-sempre com cor, nomes completos.
+**Dados da obra:** mapa próprio sobre o traçado do REV02, com o satélite do Mapa iluminado e véu claro (D-176), tela
+cheia, o mapa não se move sozinho, zonas sempre com cor, nomes completos.
 
 **Mapa técnico REV02** (aberto à parte): camadas Andamento, Planejado (7 dias), Material, Informado × verificado,
 Cadastro e Pendências, calculadas no servidor; modo Projeto restaura as cores de DE.

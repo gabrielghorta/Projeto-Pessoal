@@ -327,9 +327,10 @@ console.log(JSON.stringify(r));
 
     def test_dados_da_obra_compartilha_satelite_sem_adicionar_pbs(self):
         pln = ler("planejamento.js")
-        for necessario in ("htmlSatelite", "ligarSatelite", "carregarMosaicoCopia", "satDepois", "FUNDOS.clara"):
-            self.assertIn(necessario, pln)
+        for necessario in ("htmlSatelite", "ligarSatelite", "carregarMosaicoCopia", "satDepois", "FUNDOS[ILU.fundo]"):
+            self.assertIn(necessario, pln)                       # D-176: o mesmo fundo escolhido no Mapa iluminado
         self.assertNotIn("plnQuadros", pln)
+        self.assertNotIn("plnMulti", self.html + pln)            # D-177: sem o botão "Juntar trechos"
 
     def test_nota_sobe_em_compras_e_e_recebida_pelos_botoes_da_lateral(self):
         """D-170 (27/10/2026): a importação do XML só em Compras e notas; no Estoque, as notas com Aceitar a entrega,
@@ -350,7 +351,7 @@ console.log(JSON.stringify(r));
         com todas marcadas; ninguém escolhe material nem pedido ali. Em Compras e notas, as linhas faltando a confirmação."""
         app, css = ler("app.js"), ler("app.css")
         receber = app.split("function renderNotasReceber", 1)[1].split("\nfunction ", 1)[0]
-        for texto in ("data-confere", "data-marcar-todas", "data-contagem", "Pode aceitar a entrega pela descrição"):
+        for texto in ("data-confere", "data-marcar-todas", "data-contagem", "confira pela descrição", "Pode aceitar a entrega"):
             self.assertIn(texto, receber)
         for texto in ("<select", "opMat(", "data-c=pedido", "listaMateriais"):
             self.assertNotIn(texto, receber)                    # o almoxarife não busca nem escolhe material

@@ -1166,7 +1166,8 @@ def preparar_v22(conn):
                     SELECT m.nf_id,m.material_id,SUM(m.quantidade),? FROM movimentos m
                     JOIN notas_fiscais n ON n.id=m.nf_id
                     WHERE n.sem_pedido=1 AND n.aprovada_em IS NULL AND n.status<>'CANCELADA'
-                      AND m.tipo='ENTRADA_NF' AND m.status='ACEITO' AND """ + S.VALIDO.replace("id NOT", "m.id NOT") + """
+                      AND m.tipo='ENTRADA_NF' AND m.status='ACEITO'
+                      AND m.id NOT IN (SELECT movimento_id FROM estornos)
                     GROUP BY m.nf_id,m.material_id""", (S._agora(),))
 
 

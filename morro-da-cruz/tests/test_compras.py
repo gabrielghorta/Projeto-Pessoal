@@ -211,7 +211,7 @@ class TestNotaNoAlmoxarifado(BaseCompras):
         rid = C.receber(self.c, nf, D2, [{"nf_item_id": ni, "quantidade": 4}], "almox1")
         self.assertEqual(self.saldo(), (0, 4))                                                # quarentena
         C.inspecionar_entrega(self.c, rid, [], None, "almox1", D2)                           # "Aceitar tudo", sem laudo
-        self.assertEqual((self.saldo(), S.aguardando_aprovacao(self.c, MAT)), ((4, 0), 0))
+        self.assertEqual(self.saldo(), (4, 0))                                                # sem aprovação da nota (D-175)
         self.assertEqual(self.q("SELECT aprovada_por, aprovada_em FROM notas_fiscais"), [(None, None)])
         self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("ENCERRADA",)])
         self.assertEqual(self.q("SELECT COUNT(*) FROM medicao_lancamentos")[0][0], 0)        # estoque ≠ faturável
@@ -259,7 +259,7 @@ class TestRecebimentoNumToque(BaseCompras):
         r = C.receber_nota(self.c, nf, "almox1", D2)
         self.assertEqual((r["itens"], r["recusado"], r["encerrada"], r["aguarda_aprovacao"]), (2, 0, True, False))
         self.assertEqual(self.q("SELECT status, conferida_por FROM notas_fiscais WHERE id=?", nf), [("ENCERRADA", "almox1")])
-        self.assertEqual(S.aguardando_aprovacao(self.c, MAT), 0)                              # sem pedido: espera a aprovação
+        self.assertEqual(self.saldo(), (4, 0))                                                # sem aprovação da nota (D-175)
         self.assertEqual(self.q("SELECT tipo, status FROM movimentos WHERE nf_id=? AND material_id=?", nf, tubo),
                          [("ROMANEIO_CAESB", "ACEITO")])                                       # o tubo da Caesb: romaneio
         import relatorios
@@ -323,7 +323,6 @@ class TestRecebimentoNaLateral(BaseCompras):
         r = C.receber_nota(self.c, nf, "almox1", D2, recusa="material diferente do pedido")
         self.assertEqual((r["recusado"], r["encerrada"], r["aguarda_aprovacao"]), (35, True, False))
         self.assertEqual(self.saldo(), (0, 0))                                          # nada entrou no estoque
-        self.assertEqual(S.aguardando_aprovacao(self.c, MAT), 0)
         self.assertEqual(self.q("SELECT aceito, recusado, motivo_recusa FROM inspecoes ORDER BY recusado DESC"),
                          [(0, 30, "material diferente do pedido"), (0, 5, "material diferente do pedido")])
         self.assertEqual(self.q("SELECT quantidade, documento FROM movimentos WHERE nf_id=? AND tipo='ROMANEIO_CAESB'", nf),

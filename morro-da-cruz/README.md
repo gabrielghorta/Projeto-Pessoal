@@ -1,5 +1,3 @@
-> **Atualização v22 — 28/10/2026:** Pedir material com botões e foto, sem pedido de compra; recebimento por linha sem aprovação global da NF; satélite e seleção por zona em Dados da obra; sugestões de trechos por equipe/data no Apontamento sem NS. Migração preserva o histórico e lista notas antigas liberadas em `notas_liberadas_v22` no relatório de importação. Consulte [a operação de compras](docs/MODULO_C_COMPRAS.md) e [as decisões D-172 a D-181](docs/DECISOES_PENDENTES.md).
-
 # Sistema de Gestão e Mapa Iluminado — Morro da Cruz (Ankara Engenharia)
 
 Aplicação web **privada e local** da obra *Implantação de Redes de Distribuição no Morro da Cruz,

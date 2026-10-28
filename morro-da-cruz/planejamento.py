@@ -100,21 +100,22 @@ def resumo(conn, ini, fim, frente=None, equipe=None):
 
 
 def a_receber_por_material(conn):
-    """Quantidade identificada na nota que ainda não chegou, sem depender de solicitação."""
+    """O que está numa nota aberta e ainda não chegou, por material, na unidade do material (D-172: sem pedido de compra,
+    a nota é o que vem). A linha com material já gravado usa o dela; o reconhecimento (compras.sugerir_materiais), que
+    é a parte cara, só roda na nota que tem linha sem material. Linha à espera da engenharia não conta."""
     from recebimento import linhas
     total = {}
     for (nid,) in conn.execute("SELECT id FROM notas_fiscais WHERE status IN ('A_CONFERIR','CONFERIDA')"):
-        sug = {x['linha_id']: x for x in C.sugerir_materiais(conn, nid)}
-        for li in linhas(conn, nid):
-            x = sug[li['id']]
-            mid = x['material_id']
-            if mid and not x['fora_do_estoque']:
-                total[mid] = total.get(mid, 0) + max(0, li['quantidade'] - li['entregue']) * (x['fator'] or 1)
+        ls = linhas(conn, nid)
+        sug = ({x["linha_id"]: x for x in C.sugerir_materiais(conn, nid)}
+               if any(not li["material_id"] and not li["fora_do_estoque"] for li in ls) else {})
+        pendentes = {r[0] for r in conn.execute("""SELECT c.linha_id FROM nf_confirmacoes c JOIN nf_linhas l ON l.id=c.linha_id
+                                                   WHERE l.nf_id=? AND c.pendente=1""", (nid,))}
+        for li in ls:
+            x = sug.get(li["id"]) or li
+            if x["material_id"] and not x["fora_do_estoque"] and li["id"] not in pendentes:
+                total[x["material_id"]] = total.get(x["material_id"], 0) + max(0, li["quantidade"] - li["entregue"]) * (x["fator"] or 1)
     return {mid: round(q, 6) for mid, q in total.items()}
-
-
-def a_receber(conn, material_id):
-    return a_receber_por_material(conn).get(material_id, 0.0)
 
 
 def faltantes(conn, ini, fim, frente=None):

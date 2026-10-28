@@ -153,7 +153,8 @@ class TestNotaFiscalPeloHTTP(BaseReal):
         self.assertEqual(nf["sugestoes"][0]["material_id"], mat)
         self.ok(alm.post("/api/nf/receber", {"nf_id": nf["id"], "data": RL.hoje().isoformat()}))
         est = {m["id"]: m for m in self.ok(alm.get("/api/estoque"))}[mat]
-        self.assertEqual((est["aguardando_aprovacao"], est["disponivel"]), (0, 4))
+        self.assertEqual(est["disponivel"], 4)                                    # sem aprovação da nota (D-175)
+        self.assertNotIn("aguardando_aprovacao", est)
         self.assertEqual([tuple(r) for r in self.c.execute("SELECT aprovada_por,aprovada_em FROM notas_fiscais")], [(None, None), (None, None)])
 
 

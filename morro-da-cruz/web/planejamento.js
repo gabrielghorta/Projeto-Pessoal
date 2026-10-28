@@ -1,6 +1,11 @@
-/* Dados da obra (D-176 a D-179): satélite e cores claras compartilhados com o Mapa iluminado.
- * Obra inteira: um alvo por toque. Zona escolhida: soma ou retira sem Ctrl.
- * O servidor acrescenta os nós compartilhados e os terminais da 06.2 vigente. */
+/* Planejamento: o mapa do Dados da obra e o cronograma do MS Project.
+ * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02, o satélite com o mesmo fundo escolhido
+ * lá — escuro, claro ou sem satélite — e o visor de arrastar e aproximar), com as mesmas cores (D-176).
+ * Aqui se escolhem trechos: na obra inteira, cada toque escolhe um trecho ou nó; com uma zona escolhida, os toques somam
+ * e tiram, sem Ctrl (D-177). O servidor completa a seleção (/api/dados-obra/selecao): cada linha traz o trecho físico
+ * inteiro, e o nó entre dois trechos escolhidos e a ponta de rua da 06.2 entram sozinhos (D-178). A equipe já vem a da
+ * zona (D-179). Com a seleção, o painel ao lado programa a equipe (período e dias), libera o material do dia
+ * (check-in), reserva para um dia que ainda não chegou e recebe a devolução do fim do dia (check-out). */
 
 /* ---------------------------------------------------------------- estado */
 const PLAN = [   // de baixo para cima no desenho: o último fica por cima
@@ -12,12 +17,12 @@ const PLAN = [   // de baixo para cima no desenho: o último fica por cima
   { id: 'hoje', nome: 'Programado para o dia', cor: '#F7DC8B' },
   { id: 'campo', nome: 'Equipe trabalhando no dia (check-in)', cor: '#F6936F' },
 ];
-const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: null, multi: false, dia: null, est: null,
+const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: null, dia: null, est: null,
   sel: [], nos: [], resp: null, aba: null, pedido: 0, equipe: null, equipeFixa: false, crono: null, foco: null, ultPx: 0,
   extra: [], qtd: {}, noIdx: null, vis: Object.fromEntries(PLAN.map(s => [s.id, true])),
-  cam: { zonas: true, nomes: true }, fundo: 'clara',
+  cam: { zonas: true, nomes: true },
   prefixo: 'pln', svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln,
-  copia: (g, u) => copiaPln(g, u), copiaChave: () => [PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0, !!PLN.mosaico].join('|') };
+  copia: (g, u) => copiaPln(g, u), copiaChave: () => [PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0, !!PLN.mosaico, ILU.fundo].join('|') };
 const CAMADAS_PLN = { zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
 try {                                 // só as camadas que existem: as antigas (plantas, quadros) salvas no navegador caem fora
   const salvas = JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}');
@@ -46,6 +51,7 @@ async function carregarDadosObra() {
   try { g = await obterGeral(); } catch (e) { return avisoPln('Não consegui abrir o traçado do mapa: ' + e.message); }
   if (g.ausente) return avisoPln('O mapa do projeto (REV02) não está na pasta mapa/ do sistema.');
   if (!PLN.pronto) montarPln(g); else ajustarAspecto(PLN);
+  veuPln();                                            // o fundo pode ter mudado no Mapa iluminado
   if (!MATERIAIS.length && pode('almox')) MATERIAIS = await api('/api/estoque').catch(() => []);
   await recarregarPln();
   if (PLN.abrir) { const a = PLN.abrir; PLN.abrir = null; escolherEquipeDoDia(a.equipe, a.aba); }   // vindo do Estoque
@@ -77,8 +83,6 @@ function montarPln(g) {
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
   aplicarCamadasPln();
   ligarSatelite(PLN, g); carregarMosaicoCopia(g, PLN);
-  $('.sat-veu', satDe(PLN)).setAttribute('fill-opacity', FUNDOS.clara[1]);
-  $('#plnMulti').hidden = true;
   PLN.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   const salva = vistaSalvaPln();                       // a última vista da sessão: o mapa não volta sozinho para a obra inteira
   PLN.vb = salva ? salva.vb : null; PLN.zona = salva ? salva.zona : null; zonasPln(); ajustarAspecto(PLN);
@@ -87,6 +91,13 @@ function montarPln(g) {
   new ResizeObserver(() => TELA === 'mapa' && ajustarAspecto(PLN)).observe($('#plnMapa'));
 }
 
+// o satélite com o fundo do Mapa iluminado (escuro, claro ou sem satélite): os dois mapas ficam iguais
+function veuPln() {
+  const sat = satDe(PLN); if (!sat) return;
+  sat.style.display = ILU.fundo === 'sem' ? 'none' : '';
+  $('.sat-veu', sat).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]);
+  agendarCopia(PLN);
+}
 const VISTA_PLN = 'mc-pln-vista';
 function vistaSalvaPln() {
   try { const v = JSON.parse(sessionStorage.getItem(VISTA_PLN) || 'null'); return v && Array.isArray(v.vb) && v.vb.length === 4 && v.vb.every(Number.isFinite) ? v : null; }
@@ -147,10 +158,10 @@ function colorirPln() {
 }
 // a cópia leve do gesto (iluminado.js): as zonas e as linhas por situação do dia
 function copiaPln(g, u) {
-  if (PLN.mosaico) {
+  if (ILU.fundo !== 'sem' && PLN.mosaico) {
     g.save(); g.beginPath(); GERAL.zonas.forEach(z => poligonoCopia(g, z.p)); g.clip();
     g.drawImage(PLN.mosaico, 0, 0, GERAL.w, GERAL.h);
-    g.globalAlpha = FUNDOS.clara[1]; g.fillStyle = '#000'; g.fillRect(0, 0, GERAL.w, GERAL.h); g.restore();
+    g.globalAlpha = FUNDOS[ILU.fundo][1]; g.fillStyle = '#000'; g.fillRect(0, 0, GERAL.w, GERAL.h); g.restore();
   }
   if (PLN.cam.zonas) zonasCopia(g, u, () => 0.16);
   linhasCopia(g, u, PLAN.filter(s => PLN.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado, opacidade: s.opacidade, trechos: GERAL.trechos.filter(t => t.ps === s.id) })));
@@ -201,7 +212,8 @@ function alternarNo(nome, juntar = !!PLN.zona) {
   PLN.nos = ja ? PLN.nos.filter(n => PLN.noIdx.get(n) !== i) : [...PLN.nos, nome];
   atualizarSelecao();
 }
-function limparSelecao() { PLN.equipeFixa = false; PLN.equipe = null; PLN.sel = []; PLN.nos = []; PLN.resp = null; PLN.extra = []; if (!PLN.equipeFixa) PLN.equipe = null; atualizarSelecao(); }
+// limpar a seleção também solta a equipe escolhida à mão (D-179): a próxima seleção começa pela equipe da zona
+function limparSelecao() { PLN.equipeFixa = false; PLN.equipe = null; PLN.sel = []; PLN.nos = []; PLN.resp = null; PLN.extra = []; atualizarSelecao(); }
 let SEL_T = 0;
 function atualizarSelecao() {
   marcarSelPln();
@@ -284,10 +296,6 @@ $('#plnDia').addEventListener('change', ev => {
   if (!ev.target.value) { ev.target.value = PLN.dia; return; }
   PLN.dia = ev.target.value; PLN.extra = [];
   recarregarPln();
-});
-$('#plnMulti').addEventListener('click', ev => {
-  PLN.multi = !PLN.multi; ev.currentTarget.setAttribute('aria-pressed', String(PLN.multi));
-  toast(PLN.multi ? 'Juntar trechos ligado: cada toque soma ou tira um trecho da seleção.' : 'Juntar trechos desligado: o toque escolhe um trecho só.');
 });
 $('#plnMais').addEventListener('click', () => zoomEm(1 / 1.5, null, null, PLN));
 $('#plnMenos').addEventListener('click', () => zoomEm(1.5, null, null, PLN));

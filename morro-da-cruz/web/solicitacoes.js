@@ -2,6 +2,14 @@
 const SOL_UI = { dados: null, tipo: '', tamanho: '', busca: '', carrinho: [], frente: '', obs: '' };
 const SOL_UN = { UN: 'unidades', M: 'metros', 'PÇ': 'peças', KG: 'quilos', M2: 'metros quadrados', M3: 'metros cúbicos' };
 const solTexto = x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// o nome da frente no botão: "Zona 08", "Adutora", "Caixas hidráulicas" (o nome da equipe sem "EQUIPE" e sem a sigla)
+const solFrente = id => {
+  if (/^Zona\d\d$/.test(id || '')) return id.replace('Zona', 'Zona ');
+  const f = ((SOL_UI.dados || {}).frentes || []).find(x => x.id === id), nome = String(f ? f.nome : id || '').replace(/^EQUIPE\s+/i, '').replace(/^\S+\s+—\s+/, '');
+  return nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase();
+};
+// "1 unidade", "3 unidades", "1 metro cúbico"
+const solUn = (q, nome) => Math.abs(q - 1) > 1e-9 ? nome : String(nome || '').replace(/(ões|s)\b/g, (m, f) => f === 'ões' ? 'ão' : '');
 async function carregarSolicitacoes() {
   SOL_UI.dados = await api('/api/solicitacoes');
   if (USUARIO.restrito_a_equipe) SOL_UI.frente = USUARIO.equipe_id;
@@ -17,7 +25,8 @@ async function carregarSolicitacoes() {
     <h2>Quanto?</h2><div id="solCarrinho"></div><h2>Para onde?</h2><div id="solFrentes" class="sol-botoes"></div>
     <label>Observação (opcional)<textarea id="solObs" maxlength="600" rows="2">${esc(SOL_UI.obs)}</textarea></label>
     <button type="button" class="btn prim grande" id="solEnviar">Enviar solicitação</button><p id="solMensagem" role="status"></p></div>
-    <div class="painel"><h2>Meus pedidos</h2><div id="solMeus"></div>${pode('compras_aprovar') ? '<h2>Para a engenharia</h2><div id="solAprovar"></div>' : ''}</div></div>`;
+    <div class="painel"><h2>Meus pedidos</h2><div id="solMeus"></div>${pode('compras_aprovar') ? `<h2>Para a engenharia</h2><div id="solAprovar"></div>
+      <details class="nota-mais"><summary>Os outros pedidos da obra</summary><div id="solOutros"></div></details>` : ''}</div></div>`;
   renderSolCatalogo(); renderSolCarrinho(); renderSolFrentes(); renderSolPedidos();
   $('#solBusca').addEventListener('input', e => { SOL_UI.busca = e.target.value; renderSolCatalogo(); });
   $('#solObs').addEventListener('input', e => { SOL_UI.obs = e.target.value; });
@@ -34,12 +43,14 @@ function renderSolCatalogo() {
   const d = SOL_UI, cat = d.dados.catalogo;
   const botoes = (valores, campo, atual) => valores.map(v => `<button type="button" class="btn" data-sol-${campo}="${esc(v)}" aria-pressed="${atual === v}">${esc(v || 'Todos')}</button>`).join('');
   $('#solTipos').innerHTML = botoes(['', ...new Set(cat.map(m => m.tipo))], 'tipo', d.tipo);
-  const grupo = cat.filter(m => !d.tipo || m.tipo === d.tipo), tamanhos = [...new Set(grupo.map(m => m.tamanho))].sort((a,b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
-  $('#solTamanhos').innerHTML = d.tipo ? botoes(['', ...tamanhos], 'tamanho', d.tamanho) : '';
+  // o catálogo já vem na ordem dos tipos e, dentro deles, da bitola menor para a maior
+  const grupo = cat.filter(m => !d.tipo || m.tipo === d.tipo), tamanhos = [...new Set(grupo.map(m => m.tamanho).filter(Boolean))];
+  $('#solTamanhos').innerHTML = d.tipo && tamanhos.length > 1 ? botoes(['', ...tamanhos], 'tamanho', d.tamanho) : '';
   const palavras = solTexto(d.busca).split(/\s+/).filter(Boolean);
   const filtrados = grupo.filter(m => (!d.tamanho || m.tamanho === d.tamanho) && palavras.every(p => solTexto(m.nome + ' ' + m.descricao).includes(p)));
   $('#solMateriais').innerHTML = !d.tipo && !palavras.length ? '<p>Toque no tipo ou escreva na busca.</p>' : filtrados.length
-    ? filtrados.map(m => `<button type="button" class="btn sol-material" data-sol-material="${esc(m.id)}"><b>${esc(m.nome)}</b><small>${esc(m.unidade_nome)}${m.caesb ? ' · fornecido pela Caesb' : ''}</small></button>`).join('')
+    ? filtrados.map(m => { const no = SOL_UI.carrinho.find(x => x.material_id === m.id);
+      return `<button type="button" class="btn sol-material${no ? ' no-pedido' : ''}" data-sol-material="${esc(m.id)}"><b>${esc(m.nome)}</b><small>${no ? `no pedido: ${nf(no.quantidade, 3)} ${esc(solUn(no.quantidade, m.unidade_nome))}` : esc(m.unidade_nome)}${m.caesb ? ' · fornecido pela Caesb' : ''}</small></button>`; }).join('')
     : '<p>Não encontrou? Use o botão abaixo.</p>';
 }
 function renderSolCarrinho() {
@@ -50,14 +61,14 @@ function renderSolCarrinho() {
     <button type="button" class="btn" data-sol-tirar>Retirar</button></div>`).join('') : '<p>Nenhum material escolhido.</p>';
 }
 function renderSolFrentes() {
-  $('#solFrentes').innerHTML = SOL_UI.dados.frentes.filter(f => !USUARIO.restrito_a_equipe || f.id === USUARIO.equipe_id).map(f => `<button type="button" class="btn" data-sol-frente="${esc(f.id)}" aria-pressed="${SOL_UI.frente === f.id}">${esc(f.id.replace(/^Zona/, 'Zona '))}</button>`).join('');
+  $('#solFrentes').innerHTML = SOL_UI.dados.frentes.filter(f => !USUARIO.restrito_a_equipe || f.id === USUARIO.equipe_id).map(f => `<button type="button" class="btn" data-sol-frente="${esc(f.id)}" aria-pressed="${SOL_UI.frente === f.id}">${esc(solFrente(f.id))}</button>`).join('');
 }
-function solCard(s, decidir) {
+function solCard(s, decidir, quem = decidir) {
   const estados = { ABERTA: ['Aguardando', 'amarelo'], APROVADA: ['Aprovado', 'azul'], RECUSADA: ['Recusado', 'vermelho'], CHEGOU: ['Chegou', 'verde'], CANCELADA: ['Cancelado', ''] };
   const st = estados[s.situacao] || [s.situacao, ''];
-  return `<div class="registro sol-card" data-sol-id="${s.id}"><b>Solicitação ${s.id} · ${esc((s.frente_id || '').replace(/^Zona/, 'Zona '))}</b> <span class="chip ${st[1]}">${esc(st[0])}</span>
-    <p>${esc(dataBR(s.data))}${decidir ? ' · ' + esc(s.solicitante) : ''}</p>
-    ${[...s.itens, ...s.avulsos].map(m => `<div><b>${esc(m.nome)}</b> · ${nf(m.quantidade, 3)} ${esc(m.unidade_nome)}
+  return `<div class="registro sol-card" data-sol-id="${s.id}"><b>Solicitação ${s.id} · ${esc(solFrente(s.frente_id))}</b> <span class="chip ${st[1]}">${esc(st[0])}</span>
+    <p>${esc(dataBR(s.data))}${quem ? ' · ' + esc(s.solicitante) : ''}</p>
+    ${[...s.itens, ...s.avulsos].map(m => `<div><b>${esc(m.nome)}</b> · ${nf(m.quantidade, 3)} ${esc(solUn(m.quantidade, m.unidade_nome))}
       ${m.documento_id ? `<button type="button" class="btn" data-sol-foto="${m.id}">Ver foto</button><div data-sol-imagem="${m.id}"></div>` : ''}</div>`).join('')}
     ${s.motivo ? `<p>${esc(s.motivo)}</p>` : ''}${s.decisao_motivo ? `<p>Motivo: ${esc(s.decisao_motivo)}</p>` : ''}
     ${decidir ? s.avulsos.filter(x => !x.material_id).map(x => `<fieldset data-sol-avulso="${x.id}"><legend>${esc(x.descricao)}</legend>
@@ -68,9 +79,11 @@ function renderSolPedidos() {
   const ss = SOL_UI.dados.solicitacoes, meus = ss.filter(s => s.solicitante === USUARIO.login);
   $('#solMeus').innerHTML = meus.map(s => solCard(s, false)).join('') || '<p>Você ainda não fez solicitações.</p>';
   const box = $('#solAprovar'); if (box) box.innerHTML = ss.filter(s => s.status === 'ABERTA' && s.solicitante !== USUARIO.login).map(s => solCard(s, true)).join('') || '<p>Nenhuma solicitação aguardando sua decisão.</p>';
+  // quem aprova acompanha os já decididos dos outros (aprovado, recusado, chegou)
+  const outros = $('#solOutros'); if (outros) outros.innerHTML = ss.filter(s => s.status !== 'ABERTA' && s.solicitante !== USUARIO.login).slice(0, 30).map(s => solCard(s, false, true)).join('') || '<p>Nenhum.</p>';
 }
 $('#solicitarConteudo').addEventListener('change', e => {
-  if (e.target.matches('[data-sol-qtd]')) SOL_UI.carrinho[+e.target.closest('[data-sol-item]').dataset.solItem].quantidade = +e.target.value;
+  if (e.target.matches('[data-sol-qtd]')) { SOL_UI.carrinho[+e.target.closest('[data-sol-item]').dataset.solItem].quantidade = +e.target.value; renderSolCatalogo(); }
 });
 $('#solicitarConteudo').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -79,13 +92,15 @@ $('#solicitarConteudo').addEventListener('click', async e => {
   if (b.dataset.solMaterial) {
     const m = SOL_UI.dados.catalogo.find(x => x.id === b.dataset.solMaterial), ja = SOL_UI.carrinho.find(x => x.material_id === m.id);
     if (ja) ja.quantidade++; else SOL_UI.carrinho.push({ material_id: m.id, nome: m.nome, quantidade: 1, unidade_nome: m.unidade_nome });
-    return renderSolCarrinho();
+    const q = (ja || SOL_UI.carrinho[SOL_UI.carrinho.length - 1]).quantidade;
+    toast(`${m.nome}: ${nf(q, 3)} ${solUn(q, m.unidade_nome)} no pedido. Acerte a quantidade em "Quanto?".`, 'ok');
+    renderSolCatalogo(); return renderSolCarrinho();
   }
   const it = b.closest('[data-sol-item]');
   if (it) { const i = +it.dataset.solItem, m = SOL_UI.carrinho[i];
     if (b.hasAttribute('data-sol-tirar')) SOL_UI.carrinho.splice(i, 1);
-    else m.quantidade = Math.max(0.001, Number(m.quantidade) + (b.hasAttribute('data-sol-mais') ? 1 : -1));
-    return renderSolCarrinho(); }
+    else { const q = Number(m.quantidade) || 0; m.quantidade = b.hasAttribute('data-sol-mais') ? q + 1 : q > 1 ? q - 1 : q; }   // o − para em 1
+    renderSolCatalogo(); return renderSolCarrinho(); }
   if (b.dataset.solFrente) { SOL_UI.frente = b.dataset.solFrente; return renderSolFrentes(); }
   if (b.id === 'solNaoAchei') { $('#solAvulso').hidden = !$('#solAvulso').hidden; return; }
   if (b.id === 'solEnviar') {

@@ -1,5 +1,3 @@
-> **Atualização 28/10/2026 (D-180):** em Lançamento do dia › Apontamento sem NS, data e equipe consultam `/api/campo/alvos-do-dia`. Todos os `checkin_alvos` dos check-ins daquele dia/equipe entram, inclusive encerrados, sem duplicação. Botões mostram nome completo e “já lançado hoje” quando há apontamento efetivo do alvo na data; tocam no mesmo formulário da busca. Alvo retirado da revisão continua visível, desabilitado. Sem check-in, há uma mensagem e a busca segue livre. Motivo sem NS, liberação topográfica e intervalos sem sobreposição continuam exigidos pelo servidor. Lote 100%: proposta D-181, ainda não implementada. Testes: `TestAlvosDoDia` em `tests/test_fluxo_v22.py`.
-
 # Módulo B — campo, qualidade e cadastro (complementos)
 
 CT 10.239/2026 · 17/10/2026 · esquema v10 · plano: `docs/PLANO_ENTREGA_COMPLETA.md` §B
@@ -170,3 +168,13 @@ páginas; cada perfil vê só as que pode usar:
   avançar do navegador;
 - cada aba lembra a última página na sessão (`sessionStorage`, chave `mc-pagina-<tela>`);
 - link antigo sem página, ou com uma página que o perfil não usa, abre na primeira que ele usa.
+
+## Apontamento sem NS: os trechos do dia da equipe (28/10/2026, D-180)
+
+Em **Lançamento do dia › Apontamento sem NS**, depois da data e da equipe, aparecem como botões os trechos e nós em que a equipe pegou material naquele dia: todos os check-ins dela na data, abertos ou já devolvidos, sem repetir (`servicos.alvos_da_equipe_no_dia`, rota `/api/campo/alvos-do-dia`, permissão `lancar_sem_ns`).
+- Cada botão tem o nome completo ("Zona 03 · PB06 · TR014") e o selo **já lançado hoje** quando o trecho ou nó já tem apontamento valendo nessa data, de qualquer equipe.
+- O toque abre o trecho no mesmo formulário da busca, com as mesmas regras: motivo sem NS, liberação da topografia e intervalos sem sobreposição.
+- O trecho retirado da revisão vigente aparece, mas desabilitado.
+- Sem check-in na data, a tela avisa; a busca continua valendo para qualquer trecho ou nó.
+
+Lançar vários trechos a 100% de uma vez ficou como proposta (D-181). Testes: `TestAlvosDoDia` em `tests/test_fluxo_v22.py`.

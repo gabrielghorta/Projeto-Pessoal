@@ -6,7 +6,7 @@
     "equipes": "Cadastrar funcionários e máquinas das equipes",
     "almox": "Movimentos de almoxarifado, reservas, check-in/check-out, estorno e retificação de fechamento",
     "receber": "Recebimento e inspeção de notas fiscais (aceite e recusa), devolução ao fornecedor",
-    "compras_solicitar": "Pedir material",
+    "compras_solicitar": "Pedir material (solicitação de material)",
     "compras_aprovar": "Aprovar ou recusar solicitação de material",
     "inventario_contar": "Registrar contagem de inventário",
     "inventario_ajustar": "Aprovar ajuste de inventário",
@@ -26,7 +26,7 @@
     "ns_dia": "Enviar e anular a NS do dia (a engenharia envia em nome da equipe)",
     "apropriacao": "Apropriação direta e cadastro de item a aprovar na base de custo",
     "fornecedores": "Cadastrar fornecedores",
-    "nf_confirmar": "Confirmar identificação de linhas da nota"
+    "nf_confirmar": "Dizer qual material é a linha da nota que o sistema não reconheceu (D-174)"
   },
   "telas": {
     "iluminado": "Mapa iluminado",
@@ -48,46 +48,24 @@
     "solicitar": "Planejamento · Pedir material"
   },
   "perfis": {
-    "ADMINISTRACAO": {
-      "nome": "Administração",
-      "telas": ["*"],
-      "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar", "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos", "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia", "fornecedores", "nf_confirmar"]
-    },
-    "ENGENHARIA": {
-      "nome": "Engenharia",
-      "telas": ["*"],
-      "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar", "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos", "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia", "fornecedores", "nf_confirmar"]
-    },
-    "ALMOXARIFADO": {
-      "nome": "Almoxarifado",
-      "telas": ["iluminado", "campo", "diario", "interferencias", "mapa", "almox", "compras", "solicitar"],
-      "permissoes": ["almox", "receber", "inventario_contar", "compras_solicitar", "campo"]
-    },
-    "SUPERVISOR": {
-      "nome": "Supervisor de campo",
-      "telas": ["iluminado", "campo", "notas", "diario", "interferencias", "solicitar"],
-      "permissoes": ["campo", "verificar", "compras_solicitar"]
-    },
-    "EQUIPE": {
-      "nome": "Equipe de campo (encarregado)",
-      "telas": ["iluminado", "campo", "diario", "interferencias", "solicitar"],
-      "permissoes": ["campo", "compras_solicitar"],
-      "restrito_a_equipe": true
-    },
-    "RH": {
-      "nome": "RH (consulta das notas de serviço)",
-      "telas": ["iluminado", "notas"],
-      "permissoes": []
-    },
-    "TOPOGRAFIA": {
-      "nome": "Topografia (consulta)",
-      "telas": ["iluminado", "topografia"],
-      "permissoes": []
-    },
-    "CADASTRO": {
-      "nome": "Cadastro",
-      "telas": ["iluminado", "cadastro_campo"],
-      "permissoes": ["cadastro"]
-    }
+    "ADMINISTRACAO": {"nome": "Administração", "telas": ["*"],
+                      "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar",
+                                     "fornecedores", "nf_confirmar", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar",
+                                     "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos",
+                                     "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia"]},
+    "ENGENHARIA": {"nome": "Engenharia", "telas": ["*"],
+                   "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar",
+                                  "fornecedores", "nf_confirmar", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar",
+                                  "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos",
+                                  "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia"]},
+    "ALMOXARIFADO": {"nome": "Almoxarifado", "telas": ["iluminado", "campo", "diario", "interferencias", "mapa", "almox", "solicitar", "compras"],
+                     "permissoes": ["almox", "receber", "inventario_contar", "compras_solicitar", "campo"]},
+    "SUPERVISOR": {"nome": "Supervisor de campo", "telas": ["iluminado", "campo", "notas", "diario", "interferencias", "solicitar"],
+                   "permissoes": ["campo", "verificar", "compras_solicitar"]},
+    "EQUIPE": {"nome": "Equipe de campo (encarregado)", "telas": ["iluminado", "campo", "diario", "interferencias", "solicitar"],
+               "permissoes": ["campo", "compras_solicitar"], "restrito_a_equipe": true},
+    "RH": {"nome": "RH (consulta das notas de serviço)", "telas": ["iluminado", "notas"], "permissoes": []},
+    "TOPOGRAFIA": {"nome": "Topografia (consulta)", "telas": ["iluminado", "topografia"], "permissoes": []},
+    "CADASTRO": {"nome": "Cadastro", "telas": ["iluminado", "cadastro_campo"], "permissoes": ["cadastro"]}
   }
 }

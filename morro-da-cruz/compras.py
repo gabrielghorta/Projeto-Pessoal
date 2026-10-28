@@ -884,11 +884,16 @@ def liberar_reservas_vencidas(conn, ids, motivo, por, hoje):
 
 # ------------------------------------------------------------------ consultas para a tela
 def painel(conn):
-    nfs = _rows(conn.execute("SELECT * FROM notas_fiscais ORDER BY id DESC LIMIT 200"))
+    from recebimento import linhas as linhas_entrega
+    nfs = _rows(conn.execute("""SELECT n.*, sn.solicitacao_id FROM notas_fiscais n
+                                LEFT JOIN solicitacao_notas sn ON sn.nf_id=n.id ORDER BY n.id DESC LIMIT 200"""))
     for n in nfs:
-        n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
-        if n["status"] in ("A_CONFERIR", "CONFERIDA") and n["origem"] != "DIRETA":      # as linhas "faltando a confirmação" (D-171)
+        if n["status"] in ("A_CONFERIR", "CONFERIDA") and n["origem"] != "DIRETA":
+            # as linhas "faltando a confirmação" (D-171) e o que já chegou de cada linha, na unidade da nota (D-174)
             n["sugestoes"] = sugerir_materiais(conn, n["id"])
+            n["linhas"] = linhas_entrega(conn, n["id"])
+        else:
+            n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
         n["itens"] = _rows(conn.execute(
             """SELECT ni.*, (SELECT COALESCE(SUM(quantidade),0) FROM recebimento_itens WHERE nf_item_id=ni.id) recebido,
                       (SELECT COALESCE(SUM(i.aceito),0) FROM inspecoes i JOIN recebimento_itens ri ON ri.id=i.recebimento_item_id
@@ -901,8 +906,10 @@ def painel(conn):
                AND """ + _SEM_ROMANEIO + " ORDER BY ri.id", (n["id"],)))
     return {
         "fornecedores": _rows(conn.execute("SELECT * FROM fornecedores ORDER BY nome")),
-        "solicitacoes": [dict(s_, itens=_rows(conn.execute("SELECT * FROM solicitacao_itens WHERE solicitacao_id=?", (s_["id"],))))
-                         for s_ in _rows(conn.execute("SELECT * FROM solicitacoes_compra ORDER BY id DESC LIMIT 200"))],
+        # as aprovadas, para ligar a nota a uma delas (D-172: só marca "Chegou")
+        "solicitacoes": _rows(conn.execute("""SELECT s.id, s.data, s.solicitante, d.frente_id FROM solicitacoes_compra s
+                                              LEFT JOIN solicitacao_detalhes d ON d.solicitacao_id=s.id
+                                              WHERE s.status='APROVADA' ORDER BY s.id DESC LIMIT 200""")),
         "notas": nfs,
     }
 
@@ -919,12 +926,13 @@ def a_inspecionar(conn):
 
 
 def notas_a_receber(conn):
-    """Notas com entrega ou identificação pendente, incluindo a quarentena anterior à v22."""
+    """O que o almoxarife tem a fazer com as notas (tela Estoque e movimentos): cada linha com o material reconhecido e o
+    que já chegou (D-171, D-174) e, das entregas anteriores à v22, a quarentena por entrega."""
+    from recebimento import linhas as linhas_entrega
     out = []
-    for n in _rows(conn.execute("""SELECT * FROM notas_fiscais WHERE origem<>'DIRETA' AND status IN ('A_CONFERIR','CONFERIDA') ORDER BY id DESC LIMIT 100""")):
-        n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
+    for n in _rows(conn.execute("""SELECT * FROM notas_fiscais WHERE origem<>'DIRETA' AND status IN ('A_CONFERIR','CONFERIDA')
+                                     ORDER BY id DESC LIMIT 100""")):
         n["sugestoes"] = sugerir_materiais(conn, n["id"])
-        from recebimento import linhas as linhas_entrega
         n["linhas"] = linhas_entrega(conn, n["id"])
         n["itens"] = _rows(conn.execute(
             """SELECT ni.*, l.romaneio_caesb, l.descricao linha_descricao, m.descricao, m.unidade,

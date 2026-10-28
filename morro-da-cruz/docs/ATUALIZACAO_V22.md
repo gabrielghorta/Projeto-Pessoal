@@ -1,42 +1,47 @@
-# Instalar a atualização v22
+# Atualização v22 (28/10/2026): pedir material, entrega por linha, mapa e apontamento
 
-Ramo de trabalho: `codex/solicitacoes-recebimento-mapa`. Base: `claude/powerbi-modifications-wqxekj`, já com o PR #14 incorporado. Estas instruções são para depois da revisão e do merge do novo PR.
+Decisões D-172 a D-181 (`docs/DECISOES_PENDENTES.md`, seção 16).
 
-## PythonAnywhere
+## Instalar no PythonAnywhere
 
-No console Bash, atualize o código:
+Depois do merge do PR no ramo do site (`claude/powerbi-modifications-wqxekj`):
 
-```bash
-cd ~/Projeto-Pessoal
-git pull --ff-only origin claude/powerbi-modifications-wqxekj
-```
+1. No console Bash do PythonAnywhere, rode o instalador de sempre:
 
-Na aba **Web**, clique em **Reload**. O primeiro acesso faz a migração v22 com o backup verificado que já faz parte da inicialização do site. Não há dependência de produção nova. Não rode importação manual com o site atendendo.
+   ```bash
+   bash ~/Projeto-Pessoal/morro-da-cruz/instalar_pythonanywhere.sh
+   ```
 
-## Notas liberadas pela regra nova
+   Ele baixa o código novo. Como o banco é da versão 21, ele avisa que o site migra sozinho ao recarregar.
+2. Na aba **Web**, clique em **Reload**. No primeiro acesso, o site faz o backup verificado e migra o banco para a v22, sem apagar nada.
+3. Para não ver a tela antiga, recarregue a página no navegador com Ctrl + Shift + R.
 
-O relatório JSON da migração inclui `notas_liberadas_v22`. A consulta abaixo lista a auditoria do banco padrão, sem alterá-lo. Use o caminho configurado no seu site se ele for diferente de `dados_demo/obra.db`.
+Não há biblioteca nova.
+
+## Notas que a regra nova liberou
+
+Antes da v22, o material aceito de nota sem pedido e sem aprovação ficava no almoxarifado, fora do saldo das equipes (era o caso da NF 18734). A v22 tirou essa aprovação: esse material passa a contar no saldo. A migração não cria movimento nem aprovador. Ela só guarda a lista em `nf_liberadas_v22`: nota, material e quantidade.
+
+Para ver a lista, rode no console, depois do Reload:
 
 ```bash
 cd ~/Projeto-Pessoal/morro-da-cruz
-python3.13 - <<'PY'
-import json, sqlite3
-with sqlite3.connect('file:dados_demo/obra.db?mode=ro', uri=True) as c:
-    c.row_factory = sqlite3.Row
-    notas = [dict(r) for r in c.execute('''
-        SELECT n.numero, n.serie, l.material_id, l.quantidade, l.registrada_em
-        FROM nf_liberadas_v22 l JOIN notas_fiscais n ON n.id=l.nf_id
-        ORDER BY n.id, l.material_id
-    ''')]
-print(json.dumps(notas, ensure_ascii=False, indent=2))
+python3 - <<'PY'
+import sqlite3
+c = sqlite3.connect('file:dados_demo/obra.db?mode=ro', uri=True)
+for r in c.execute('''SELECT n.numero, l.material_id, l.quantidade FROM nf_liberadas_v22 l
+                      JOIN notas_fiscais n ON n.id = l.nf_id ORDER BY n.id, l.material_id'''):
+    print(*r)
 PY
 ```
 
-Anexe essa lista ao registro da implantação. A NF 18734 utilizada na validação é sintética; não foi alterada nenhuma nota do site durante o desenvolvimento.
+## O que muda para cada pessoa
 
-## Uso após atualizar
-
-- Almoxarife: pode solicitar material e receber linhas desconhecidas pela descrição. A parte reconhecida fica disponível; a engenharia resolve a identificação restante.
-- Encarregado e supervisor: usam **Pedir material**, sem acesso a notas fiscais.
-- Engenharia/administração: aprovam solicitações de outra pessoa e identificam somente exceções da nota. Em **Dados da obra**, escolhem a zona para somar trechos com toques. Em **Apontamento sem NS**, escolhem data/equipe e tocam nos alvos sugeridos.
-- Lançamento de vários alvos a 100% ficou como proposta D-181; cada botão abre o formulário individual, mantendo todas as validações atuais.
+- **Encarregado e supervisor:** menu novo **Pedir material**. Tocam no tipo, no tamanho e no material, acertam a quantidade no − e no +, e tocam na zona. O que não acharem, escrevem ou fotografam. Acompanham em **Meus pedidos**. O encarregado pede só para a zona da equipe dele.
+- **Almoxarife:** também pede material. Em **Estoque › Notas a receber**, marca as linhas e aceita a entrega mesmo com linha que o sistema não reconheceu. A linha reconhecida entra no estoque na hora. A desconhecida fica registrada e entra quando a engenharia disser o que é.
+- **Engenharia e administração:**
+  - Em **Pedir material**, aprovam com um toque ou recusam com o motivo. Antes de aprovar, dizem qual material é o item escrito ou fotografado.
+  - Em **Compras e notas**, cadastram o fornecedor junto da nota. Confirmam só as linhas desconhecidas e as que alguém mandou corrigir. Podem ligar a nota a uma solicitação aprovada; isso só marca "Chegou" e não trava nada.
+  - Em **Dados da obra**, o mapa tem satélite. Na obra inteira, cada toque escolhe um trecho ou nó. Com uma zona escolhida, os toques somam e tiram, sem Ctrl. O nó de fim de rua entra sozinho. A equipe já vem a da zona.
+  - Em **Lançamento do dia › Apontamento sem NS**, depois da data e da equipe, aparecem os trechos e nós em que a equipe pegou material naquele dia. Um toque abre o trecho no formulário.
+- **Pedido de compra:** saiu das telas. As tabelas antigas continuam no banco.

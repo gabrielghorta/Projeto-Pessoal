@@ -25,7 +25,8 @@ class TestEntregaAntesDaIdentificacao(BaseCompras):
         self.assertEqual([(n['nome'], n['automatico']) for n in r['nos']], [('Zona01_PB01_Rede_DF-33', True)])
         self.assertNotIn('Zona01_PB01_Rede_NÓ2.7', [n['nome'] for n in r['nos']])
         self.c.execute("UPDATE atividades SET vigente=0 WHERE nomenclatura='Zona01_PB01_Rede_DF-33'")
-        self.assertEqual(DO.selecao(self.c, ['Zona01_PB01_Rede_TR002'])['nos'], [])
+        r = DO.selecao(self.c, ['Zona01_PB01_Rede_TR002'])
+        self.assertEqual((r['nos'], r['avisos']), ([], []))     # ponta de rua sem peça na 06.2: nem nó nem aviso
 
     def test_mista_entrega_agora_identifica_depois_sem_aprovacao_da_nota(self):
         nf = self.importar(18734, [(MAT, 'Peça conhecida', 'UN', 4, 12), ('X9', 'Peça desconhecida', 'CX', 2, 10)])
@@ -68,6 +69,26 @@ class TestEntregaAntesDaIdentificacao(BaseCompras):
         self.assertEqual((self.saldo(), RC.linhas(self.c, nf)[0]['entregue']), ((18, 0), 10))
         self.assertEqual(self.q('SELECT status FROM notas_fiscais'), [('ENCERRADA',)])
 
+    def test_recusa_inteira_sem_linha_reconhecida_encerra_com_a_recusa(self):
+        nf = self.importar(8005, [('X9', 'Peça desconhecida', 'UN', 3, 10), ('FRT', 'FRETE', 'SV', 1, 50)])
+        r = C.receber_nota(self.c, nf, 'almox1', D2, recusa='veio errado')
+        self.assertEqual((r['encerrada'], r['recusado'], r['aguardando_identificacao']), (True, 3, 0))
+        self.assertEqual(self.q('SELECT status FROM notas_fiscais'), [('ENCERRADA',)])
+        self.assertEqual(self.q('SELECT documento FROM recebimentos'), [('recusa: veio errado',)])
+        self.assertEqual((self.q('SELECT COUNT(*) FROM movimentos'), self.q('SELECT COUNT(*) FROM nf_confirmacoes')), ([(0,)], [(0,)]))
+
+    def test_a_receber_conta_a_nota_aberta_e_nao_a_linha_a_confirmar(self):
+        import planejamento as P
+        nf = self.importar(8006, [(MAT, 'Peça', 'UN', 5, 12), ('X9', 'Peça desconhecida', 'UN', 7, 10)])
+        self.assertEqual(P.a_receber_por_material(self.c), {MAT: 5})
+        l1, l2 = [r[0] for r in self.linhas(nf)]
+        C.receber_nota(self.c, nf, 'almox1', D2, problema={'observacao': 'chegaram 2', 'linhas': {str(l1): {'aceito': 2, 'recusado': 0}}})
+        self.assertEqual(P.a_receber_por_material(self.c), {MAT: 3})
+        C.confirmar_linhas(self.c, nf, [{'linha_id': l2, 'material_id': MAT}], 'eng1')
+        self.assertEqual(P.a_receber_por_material(self.c), {MAT: 10})
+        RC.corrigir(self.c, nf, l2, 'almox1')
+        self.assertEqual(P.a_receber_por_material(self.c), {MAT: 3})
+
     def test_identificada_como_servico_apos_entrega_nao_vira_estoque(self):
         nf = self.importar(8003, [('X9', 'Descrição desconhecida', 'UN', 1, 10)])
         lid = self.linhas(nf)[0][0]
@@ -95,6 +116,42 @@ class TestEntregaAntesDaIdentificacao(BaseCompras):
         self.assertEqual((self.saldo(), S.versao_banco(self.c)), ((4, 0), 22))
         self.assertEqual(self.q('SELECT * FROM movimentos'), antes)
         self.assertEqual(self.q('PRAGMA foreign_key_check'), [])
+
+
+class TestCatalogoDoPedido(BaseCompras):
+    """D-173: tipo, tamanho e nome curto, sem código, tirados da descrição dos materiais da obra (descrições da 06.1)."""
+    MATERIAIS = [
+        ('T-RED', 'REDUÇÃO CONCÊNTRICA DE POLIETILENO DE ALTA DENSIDADE (PEAD) INJETADO, PONTA LONGA, PARA PN-10 (10 KGF/CM²), DN-110X63 MM, SDR-17, PE-100, PARA ÁGUA OU ESGOTO, CONFORME NBR-15593', 'UN'),
+        ('T-SELA', 'TÊ DE SELA TOPLOAD DE POLIETILENO DE ALTA DENSIDADE ELETROFUSÃO INJETADO COM SAÍDA PONTA - PARA TUBO COM DIÂMETRO EXTERNO DE 110MM (CLASSE DE PRESSÃO: 16 KGF/CM2 / DIÂMETRO EXTERNO DA SAÍDA: 63MM / TIPO DE RESINA: PE100)', 'UN'),
+        ('T-SERV', 'TE DE SERVICO INTEGRADO, EM POLIPROPILENO (PP), PARA TUBOS EM PEAD, 63 X 20 MM - LIGACAO PREDIAL DE AGUA', 'UN'),
+        ('T-BORB', 'VÁLVULA BORBOLETA FLANGEADA DE FERRO FUNDIDO DÚCTIL COM CORPO CURTO, MECANISMO DE REDUÇÃO TIPO C E ACIONAMENTO COM CABEÇOTE (CLASSE DE PRESSÃO: 10 KGF/CM² / DIÂMETRO DA SEÇÃO: 200 MM)', 'UN'),
+        ('T-TFF', 'TUBO DE FERRO FUNDIDO DÚCTIL COM FLANGE E PONTA (CLASSE DE PRESSÃO: 10 KGF/CM² / COMPRIMENTO: 1,00 M / DIÂMETRO: 200 MM)', 'UN'),
+        ('T-PAR90', 'ACESSÓRIOS PARA FLANGE - PARAFUSO SEXTAVADO DE AÇO GALVANIZADO À FOGO, COM PORCA E DUAS ARRUELAS, PARA JUNTA COM FLANGES, CONFORME NBR 7675. DIÂMETRO DO PARAFUSO: 20 MM / COMPRIMENTO: 90 MM.', 'UN'),
+        ('T-PAR100', 'ACESSÓRIOS PARA FLANGE - PARAFUSO SEXTAVADO DE AÇO GALVANIZADO À FOGO, COM PORCA E DUAS ARRUELAS, PARA JUNTA COM FLANGES, CONFORME NBR 7675. DIÂMETRO DO PARAFUSO: 20 MM / COMPRIMENTO: 100 MM.', 'UN'),
+        ('T-LUVA90', 'LUVA DE POLIETILENO DE ALTA DENSIDADE ELETROFUSÃO INJETADA (CLASSE DE PRESSÃO: 10 KGF/CM² / DIÂMETRO EXTERNO: 90 MM / TIPO DE RESINA: PE100)', 'UN'),
+        ('T-LUVA110', 'LUVA DE POLIETILENO DE ALTA DENSIDADE ELETROFUSÃO (CLASSE DE PRESSÃO: 10/16 KGF/CM² / DIÂMETRO EXTERNO: 110 MM / TIPO DE RESINA: PE100 )', 'UN'),
+        ('T-TAXA', 'TAXA PARA DISPOSIÇÃO FINAL DE RESÍDUOS DA CONSTRUÇÃO CIVIL SEGREGADOS, CONFORME RESOLUÇÃO ADASA N° 45/2024, A PARTIR DE 01/01/2025.', 'T'),
+        ('T-ABRIGO', 'ABRIGO/MURETA PRÉ-MOLDADA DE CONCRETO ARMADO FCK = 25 MPA PADRÃO CAESB COM CAIXA DE POLICARBONATO PARA DOIS HIDRÔMETROS INSTALADA. PREVISÃO DE TUBOS DE PVC COM DIÂMETRO DE 50 MM', 'UN')]
+
+    def test_nomes_curtos_tipos_e_tamanhos(self):
+        self.c.executemany("INSERT INTO materiais(id, descricao, unidade, propriedade) VALUES (?,?,?,'ANKARA')", self.MATERIAIS)
+        cat = {m['id']: m for m in SOL.catalogo(self.c)}
+        self.assertEqual({k: (cat[k]['tipo'], cat[k]['tamanho'], cat[k]['nome']) for k in ('T-RED', 'T-SELA', 'T-SERV', 'T-BORB', 'T-TFF', 'T-ABRIGO')}, {
+            'T-RED': ('Redução', '110×63 mm', 'Redução PEAD 110×63 mm'),
+            'T-SELA': ('Tê', '110×63 mm', 'Tê de sela eletrofusão 110×63 mm'),
+            'T-SERV': ('Ligação de água', '63×20 mm', 'Tê de serviço integrado 63×20 mm'),          # não é tê de rede
+            'T-BORB': ('Válvula', '200 mm', 'Válvula borboleta flangeada 200 mm'),             # "mecanismo de redução"
+            'T-TFF': ('Tubo', '200 mm', 'Tubo ferro flange e ponta 200 mm'),                   # "com flange" não é flange
+            'T-ABRIGO': ('Ligação de água', '', 'Abrigo/mureta pré-moldada')})                 # 50 mm é do tubo que passa
+        self.assertEqual((cat['T-PAR90']['nome'], cat['T-PAR100']['nome']),                     # o comprimento separa os dois
+                         ('Parafuso sextavado 20 mm · 90 mm de comprimento', 'Parafuso sextavado 20 mm · 100 mm de comprimento'))
+        self.assertNotIn('T-TAXA', cat)                                                          # taxa não se pede
+        self.assertFalse([m for m in cat.values() if m['id'] in m['nome']])                       # sem código no nome
+        ordem = list(cat)
+        self.assertLess(ordem.index('T-LUVA90'), ordem.index('T-LUVA110'))                       # da bitola menor para a maior
+        tipos = list(dict.fromkeys(m['tipo'] for m in cat.values()))
+        self.assertEqual(tipos, sorted(tipos, key=['Ligação de água', 'Tubo', 'Luva', 'Tê', 'Curva', 'Redução', 'Flange', 'Toco',
+                                                   'Válvula', 'Tampa', 'Obra', 'Outros'].index))
 
 
 class TestSolicitacoesHTTP(BaseHTTP):
@@ -126,7 +183,9 @@ class TestSolicitacoesHTTP(BaseHTTP):
         self.assertEqual(eng.post('/api/solicitacao/decidir', {**corpo, 'avulsos': [{'id': aid, 'material_id': MAT}]})[0], 200)
         import nfe_teste as NT
         nf = C.importar_nfe_xml(self.c, NT.b64(NT.xml(8004, [(MAT, 'Peça', 'UN', 2, 10)])), 'n.xml', 'almox1', cadastrar=True)['nf_id']
+        self.assertEqual([x['id'] for x in eng.get('/api/compras')[1]['solicitacoes']], [s['id']])   # só as aprovadas
         self.assertEqual(eng.post('/api/solicitacao/vincular', {'nf_id': nf, 'solicitacao_id': s['id']})[0], 200)
+        self.assertEqual({n['id']: n['solicitacao_id'] for n in eng.get('/api/compras')[1]['notas']}[nf], s['id'])
         C.receber_nota(self.c, nf, 'almox1', D2)
         self.assertEqual(almox.get('/api/solicitacoes')[1]['solicitacoes'][0]['situacao'], 'CHEGOU')
         st, s2 = almox.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'descricao': 'Outra peça', 'quantidade': 1}]})

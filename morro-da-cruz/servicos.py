@@ -9,6 +9,7 @@ Travas desta versão (etapas 0 e 1 — regras financeiras ainda não aprovadas):
   * medição fechada fica congelada: revisão posterior do BM não altera o valor dela.
 """
 import base64
+import datetime
 import hashlib
 import json
 import struct
@@ -353,11 +354,6 @@ def saldo_almox(conn, material_id):
     return r["saldo"], r["quarentena"]
 
 
-def aguardando_aprovacao(conn, material_id):
-    """Compatibilidade das consultas antigas: não existe mais aprovação global de nota."""
-    return 0
-
-
 def reservado(conn, material_id, equipe_id=None, data=None):
     sql, args = "SELECT COALESCE(SUM(quantidade),0) FROM reservas WHERE material_id=? AND status='ATIVA'", [material_id]
     if equipe_id:
@@ -409,7 +405,6 @@ def estoque(conn):
             f"""SELECT {CUSTODIA_SQL}
                 FROM movimentos WHERE material_id=? AND checkin_id IS NOT NULL AND {VALIDO}""", (m["id"],)).fetchone()[0]
         out.append({**m, "saldo_almox": round(saldo, 3), "quarentena": round(quar, 3), "reservado": round(res, 3),
-                    "aguardando_aprovacao": round(aguardando_aprovacao(conn, m["id"]), 3),
                     "disponivel": round(saldo - res, 3), "custodia": round(cust, 3),
                     "baixa_teorica_legada": round(_soma(conn, m["id"], "BAIXA_TEORICA"), 3)})
     return out
@@ -793,8 +788,8 @@ def alvos_do_checkin(conn, checkin_id):
 
 
 def alvos_da_equipe_no_dia(conn, equipe_id, data):
-    """Sugestões do apontamento: todos os check-ins do dia, inclusive os devolvidos (D-180)."""
-    import datetime
+    """Sugestões do apontamento sem NS (D-180): os trechos e nós de todos os check-ins da equipe na data, inclusive os
+    já devolvidos, sem repetir; "já lançado hoje" quando o alvo tem apontamento efetivo na data, de qualquer equipe."""
     try:
         if datetime.date.fromisoformat(data).isoformat() != data:
             raise ValueError
@@ -802,9 +797,8 @@ def alvos_da_equipe_no_dia(conn, equipe_id, data):
         raise RegraViolada("Escolha uma data válida.") from None
     if not _one(conn, "SELECT id FROM equipes WHERE id=?", equipe_id):
         raise RegraViolada("Escolha a equipe.")
-    feitos = set(conn.execute("""SELECT alvo_tipo,alvo_id FROM apontamentos
-        WHERE data=? AND anulado_por IS NULL""", (data,)))
-    feitos = {tuple(x) for x in feitos}
+    feitos = {tuple(x) for x in conn.execute(
+        "SELECT alvo_tipo, alvo_id FROM apontamentos WHERE data=? AND anulado_por IS NULL", (data,))}
     unicos = {}
     checks = _rows(conn.execute("SELECT id FROM checkins WHERE equipe_id=? AND data=? ORDER BY id", (equipe_id, data)))
     for ck in checks:
