@@ -1,3 +1,5 @@
+> **Atualização 28/10/2026 (D-180):** em Lançamento do dia › Apontamento sem NS, data e equipe consultam `/api/campo/alvos-do-dia`. Todos os `checkin_alvos` dos check-ins daquele dia/equipe entram, inclusive encerrados, sem duplicação. Botões mostram nome completo e “já lançado hoje” quando há apontamento efetivo do alvo na data; tocam no mesmo formulário da busca. Alvo retirado da revisão continua visível, desabilitado. Sem check-in, há uma mensagem e a busca segue livre. Motivo sem NS, liberação topográfica e intervalos sem sobreposição continuam exigidos pelo servidor. Lote 100%: proposta D-181, ainda não implementada. Testes: `TestAlvosDoDia` em `tests/test_fluxo_v22.py`.
+
 # Módulo B — campo, qualidade e cadastro (complementos)
 
 CT 10.239/2026 · 17/10/2026 · esquema v10 · plano: `docs/PLANO_ENTREGA_COMPLETA.md` §B

@@ -76,7 +76,12 @@ def _selecao(conn, linhas, nos=()):
         for no in {f["no_ini"], f["no_fim"]} - {None, ""}:
             pontas.setdefault(no, []).append(f)
     avisos, nos_out, vistos = [], [], set()
-    ligam = {no: fs for no, fs in pontas.items() if len(fs) > 1}
+    # Só a ponta real da rede entra com um trecho. Uma ponta da seleção pode continuar em outro trecho.
+    grau = {}
+    for f in TP.trechos_fisicos(conn):
+        for no in {f['no_ini'], f['no_fim']} - {None, ''}:
+            grau.setdefault(no, set()).add(f['id'])
+    ligam = {no: fs for no, fs in pontas.items() if len(fs) > 1 or len(grau.get(no, ())) == 1}
     if ligam:
         ph = ",".join("?" * len(ligam))
         ativs = {r["nomenclatura"]: r for r in _rows(conn.execute(

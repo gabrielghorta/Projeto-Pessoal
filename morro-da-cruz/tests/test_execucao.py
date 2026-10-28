@@ -59,7 +59,7 @@ class TestNotasDaObra(BaseDia):
         enc = self.cli("enc3")
         sessao = self.ok(enc.get("/api/sessao"))["usuario"]
         self.assertNotIn("notas", sessao["telas"])
-        self.assertEqual(sessao["permissoes"], ["campo"])
+        self.assertEqual(sessao["permissoes"], ["campo", "compras_solicitar"])
         self.assertEqual(paginas_abertas(sessao["permissoes"])["campo"]["usa"], ["fotos", "clima"])   # o Lançamento do dia
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
         self.assertEqual(self.enviar("enc3", pdf_dia(g))[0], 403)

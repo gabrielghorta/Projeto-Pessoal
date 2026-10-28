@@ -74,10 +74,10 @@ class TestPlanejamentoPeloHTTP(BaseHTTP):
         self.assertEqual(enc.post("/api/dados-obra/programar", corpo)[0], 403)
         st, r = eng.post("/api/dados-obra/programar", corpo)
         self.assertEqual(st, 200, r)
-        self.assertEqual(self.q("SELECT criada_por FROM programacoes"), [("eng1",)])
+        self.assertEqual(self.q("SELECT criada_por FROM programacoes"), [("eng1",), ("eng1",)])
         self.assertEqual(eng.post("/api/programacao", corpo)[0], 404)              # a tela Programação das equipes saiu
         st, est = eng.get(f"/api/dados-obra/estado?data={D2}")
-        self.assertEqual(list(est["programado"]), [TR])
+        self.assertEqual(set(est["programado"]), {TR, "Zona01_PB01_Rede_NÓ1.8"})
         st, z1 = eng.get("/api/resumo?frente=Zona01")
         self.assertEqual(z1["trechos"], self.q("SELECT COUNT(*) FROM trechos WHERE vigente=1 AND frente_id='Zona01'")[0][0])
         self.assertLess(z1["trechos"], eng.get("/api/resumo")[1]["trechos"])

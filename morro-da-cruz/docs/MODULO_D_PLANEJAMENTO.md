@@ -1,3 +1,5 @@
+> **Atualização 28/10/2026 (D-176 a D-179):** Dados da obra reutiliza o satélite em WebP e as cores claras do Mapa iluminado. Obra inteira: um alvo por toque. Zona escolhida: os toques somam ou retiram, sem Ctrl. O nó terminal real da rede entra sozinho quando está ativo na 06.2; nós entre trechos selecionados continuam entrando. A equipe padrão vem da frente selecionada; trocar de zona/contexto limpa a escolha manual anterior. As descrições antigas de mapa sem satélite e seleção por Ctrl abaixo são históricas.
+
 # Módulo D — planejamento e mapa
 
 CT 10.239/2026 · 17/10/2026 · esquema v12 · plano: `docs/PLANO_ENTREGA_COMPLETA.md` §D

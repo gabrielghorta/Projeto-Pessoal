@@ -99,13 +99,22 @@ def resumo(conn, ini, fim, frente=None, equipe=None):
     return {"contagem": cont, "realizadas_no_passado": sum(1 for p in passadas if p["status"] == "REALIZADA"), "programadas_no_passado": len(passadas)}
 
 
+def a_receber_por_material(conn):
+    """Quantidade identificada na nota que ainda não chegou, sem depender de solicitação."""
+    from recebimento import linhas
+    total = {}
+    for (nid,) in conn.execute("SELECT id FROM notas_fiscais WHERE status IN ('A_CONFERIR','CONFERIDA')"):
+        sug = {x['linha_id']: x for x in C.sugerir_materiais(conn, nid)}
+        for li in linhas(conn, nid):
+            x = sug[li['id']]
+            mid = x['material_id']
+            if mid and not x['fora_do_estoque']:
+                total[mid] = total.get(mid, 0) + max(0, li['quantidade'] - li['entregue']) * (x['fator'] or 1)
+    return {mid: round(q, 6) for mid, q in total.items()}
+
+
 def a_receber(conn, material_id):
-    """Pendente de entrega em pedidos emitidos (compras)."""
-    total = 0.0
-    for (pid,) in conn.execute("""SELECT DISTINCT p.id FROM pedidos_compra p JOIN pedido_itens i ON i.pedido_id=p.id
-                                  WHERE p.status='EMITIDO' AND i.material_id=?""", (material_id,)):
-        total += sum(i["pendente_entrega"] for i in C.situacao_pedido(conn, pid)["itens"] if i["material_id"] == material_id)
-    return round(total, 6)
+    return a_receber_por_material(conn).get(material_id, 0.0)
 
 
 def faltantes(conn, ini, fim, frente=None):
@@ -120,12 +129,13 @@ def faltantes(conn, ini, fim, frente=None):
             a["previsto"] += m["quantidade"]
             a["pares"].add((p["equipe_id"], p["data"]))
     out = []
+    recebiveis = a_receber_por_material(conn) if agg else {}
     for mid, a in sorted(agg.items()):
         res = sum(S.reservado(conn, mid, eq, d) for eq, d in a["pares"])
         disp = S.disponivel(conn, mid)
         mat = _one(conn, "SELECT descricao, unidade, propriedade FROM materiais WHERE id=?", mid)
         out.append({"material_id": mid, **mat, "previsto": round(a["previsto"], 6), "reservado": round(res, 6),
-                    "disponivel": round(disp, 6), "a_receber": a_receber(conn, mid),
+                    "disponivel": round(disp, 6), "a_receber": recebiveis.get(mid, 0.0),
                     "faltante": round(max(a["previsto"] - res - max(disp, 0), 0), 6)})
     return out
 

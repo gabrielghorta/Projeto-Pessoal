@@ -154,7 +154,7 @@ class TestPaginaECodigo(unittest.TestCase):
     def test_nomes_globais_sem_repeticao_entre_os_scripts(self):
         """Os scripts da página dividem o mesmo escopo global: um const/let repetido derruba o script que vem depois."""
         vistos = {}
-        for arq in ("app.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js"):
+        for arq in ("app.js", "solicitacoes.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js"):
             for m in re.finditer(r"^(?:async\s+)?(?:function\s+|const\s+|let\s+)(\w+)", ler(arq), re.M):
                 self.assertNotIn(m.group(1), vistos, f"{m.group(1)} declarado em {vistos.get(m.group(1))} e em {arq}")
                 vistos[m.group(1)] = arq
@@ -227,8 +227,9 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertIn("⌖", html)
         self.assertIn("sessionStorage.setItem(VISTA_PLN", pln)
         self.assertNotIn("0.08", re.search(r"function aplicarCamadas\(\).*?\n\}", ilu, re.S).group(0))
-        for js, ctx in ((ilu, "ILU"), (pln, "PLN")):
-            self.assertIn(f"if (outra && outra !== {ctx}.zona)", js)
+        self.assertIn("if (outra && outra !== ILU.zona)", ilu)
+        self.assertIn("const juntar = !!PLN.zona", pln)
+        self.assertIn("if (zona) return focarZonaPln(zona.dataset.zona)", pln)
         self.assertRegex(css, r"\.ilu-ferr \{ pointer-events: none; \}")
         self.assertIn(".rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }", css)
         self.assertIn("::-webkit-scrollbar { display: none; }", css)
@@ -289,7 +290,7 @@ class TestPaginaECodigo(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("sem Node")
-        for arq in ("app.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
+        for arq in ("app.js", "solicitacoes.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
             r = subprocess.run([node, "--check", os.path.join(WEB, arq)], capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 0, f"{arq}: {r.stderr[-400:]}")
 
@@ -324,11 +325,11 @@ console.log(JSON.stringify(r));
         # perto de C; no cruzamento, o mais perto (A); fora do mapa nada; D intocável → B
         self.assertEqual(eval(saida.stdout.strip()), [0, 3, 3, -1, 2, 0, -1, 1])
 
-    def test_dados_da_obra_sem_plantas_baixas(self):
-        """Pedido do responsável (22/10/2026): no Dados da obra, só as zonas; nem fotos das PBs nem a divisão delas."""
+    def test_dados_da_obra_compartilha_satelite_sem_adicionar_pbs(self):
         pln = ler("planejamento.js")
-        for proibido in ("htmlSatelite", "ligarSatelite", "detalheSatelite", "/mapa/pb/", "/mapa/geral", "plnQuadros", "g.quadros"):
-            self.assertNotIn(proibido, pln)
+        for necessario in ("htmlSatelite", "ligarSatelite", "carregarMosaicoCopia", "satDepois", "FUNDOS.clara"):
+            self.assertIn(necessario, pln)
+        self.assertNotIn("plnQuadros", pln)
 
     def test_nota_sobe_em_compras_e_e_recebida_pelos_botoes_da_lateral(self):
         """D-170 (27/10/2026): a importação do XML só em Compras e notas; no Estoque, as notas com Aceitar a entrega,
@@ -349,7 +350,7 @@ console.log(JSON.stringify(r));
         com todas marcadas; ninguém escolhe material nem pedido ali. Em Compras e notas, as linhas faltando a confirmação."""
         app, css = ler("app.js"), ler("app.css")
         receber = app.split("function renderNotasReceber", 1)[1].split("\nfunction ", 1)[0]
-        for texto in ("data-confere", "data-marcar-todas", "data-contagem", "falta confirmar o que é, em Compras e notas"):
+        for texto in ("data-confere", "data-marcar-todas", "data-contagem", "Pode aceitar a entrega pela descrição"):
             self.assertIn(texto, receber)
         for texto in ("<select", "opMat(", "data-c=pedido", "listaMateriais"):
             self.assertNotIn(texto, receber)                    # o almoxarife não busca nem escolhe material
@@ -364,7 +365,7 @@ console.log(JSON.stringify(r));
     def test_ids_unicos_e_scripts_carregados(self):
         todos = re.findall(r'id="([^"]+)"', self.html)
         self.assertEqual(len(todos), len(set(todos)))
-        self.assertIn('<script src="/app.js"></script>\n<script src="/iluminado.js"></script>\n<script src="/planejamento.js"></script>\n'
+        self.assertIn('<script src="/app.js"></script>\n<script src="/solicitacoes.js"></script>\n<script src="/iluminado.js"></script>\n<script src="/planejamento.js"></script>\n'
                       '<script src="/notas.js"></script>\n<script src="/apropriacao.js"></script>', self.html)
 
 

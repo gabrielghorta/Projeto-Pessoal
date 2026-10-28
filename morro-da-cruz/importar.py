@@ -43,7 +43,8 @@ OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontam
                 "nf_linhas", "recebimentos", "recebimento_itens", "inspecoes", "devolucoes_fornecedor", "transferencias",
                 "inventarios", "inventario_itens", "programacoes", "programacao_materiais", "conferencias_medicao",
                 "notas_servico", "ns_segmentos", "apropriacoes", "apropriacao_documentos", "itens_novos_base",
-                "codigos_oficiais", "checkin_alvos"]
+                "codigos_oficiais", "checkin_alvos", "solicitacao_detalhes", "solicitacao_avulsos", "solicitacao_notas",
+                "nf_entregas_linhas", "nf_confirmacoes"]
 
 
 class ImportacaoReprovada(RuntimeError):
@@ -136,6 +137,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v20(conn)
         if 0 < versao < 21:
             I.preparar_v21(conn)
+        if 0 < versao < 22:
+            I.preparar_v22(conn)
         S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar
@@ -172,6 +175,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             "alteracoes_registradas": n_alt,
             "decisoes_novas": imp_obj.decisoes_novas,
             "medicoes_congeladas_na_migracao": congeladas,
+            "notas_liberadas_v22": [dict(r) for r in conn.execute("""SELECT n.numero,n.serie,l.*
+                FROM nf_liberadas_v22 l JOIN notas_fiscais n ON n.id=l.nf_id ORDER BY n.id,l.material_id""")],
             "fotos_revalidadas": fotos_revalidadas,
             "registros_operacionais_preservados": depois,
             "migracao_v1": migracao,
