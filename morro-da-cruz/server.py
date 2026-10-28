@@ -27,6 +27,8 @@ import apropriacao as AP
 import caminhos
 import backup
 import compras as C
+import solicitacoes as SOL
+import recebimento as REC
 import cronograma as CR
 import dados_obra as DO
 import diario as DI
@@ -753,38 +755,26 @@ def r_reservas_vencidas(q, c):
 
 
 ROTAS_COMPRAS = {
-    "/api/fornecedor": ("compras_pedir", ("por",), _c(lambda b, c: C.cadastrar_fornecedor(c, b.get("cnpj"), b.get("nome"), b["por"], b.get("contato")))),
-    "/api/solicitacao": ("compras_solicitar", ("solicitante",), _c(lambda b, c: C.abrir_solicitacao(
-        c, b.get("data"), b.get("itens") or [], b.get("motivo"), b["solicitante"], b.get("alvo_tipo"), b.get("alvo_id")))),
-    "/api/solicitacao/decidir": ("compras_aprovar", ("por",), lambda b, c: (C.decidir_solicitacao(
-        c, int(b["solicitacao_id"]), bool(b.get("aprovar")), b.get("motivo"), b["por"]), {"ok": True})[1]),
-    "/api/solicitacao/cancelar": ("compras_solicitar", ("por",), lambda b, c: (C.cancelar_solicitacao(
-        c, int(b["solicitacao_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
-    "/api/pedido": ("compras_pedir", ("por",), _c(lambda b, c: C.emitir_pedido(
-        c, b.get("numero"), b.get("data"), int(b["fornecedor_id"]), int(b["solicitacao_id"]), b.get("itens") or [], b["por"],
-        b.get("prazo"), bool(b.get("faturamento_etapas"))))),
-    "/api/pedido/cancelar": ("compras_pedir", ("por",), lambda b, c: (C.cancelar_pedido(c, int(b["pedido_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
-    "/api/pedido/encerrar": ("compras_pedir", ("por",), lambda b, c: (C.encerrar_pedido(c, int(b["pedido_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
+    "/api/fornecedor": ("fornecedores", ("por",), _c(lambda b, c: C.cadastrar_fornecedor(c, b.get("cnpj"), b.get("nome"), b["por"], b.get("contato")))),
+    "/api/solicitacao/decidir": ("compras_aprovar", ("por",), lambda b, c: SOL.decidir(c, b, b["por"])),
+    "/api/solicitacao/vincular": ("nf_confirmar", ("por",), lambda b, c: SOL.vincular(c, b, b["por"])),
+    "/api/nf/corrigir-linha": ("receber", ("por",), lambda b, c: REC.corrigir(c, int(b["nf_id"]), int(b["linha_id"]), b["por"])),
     "/api/nf/importar-xml": ("receber", ("por",), lambda b, c: C.importar_nfe_xml(c, b.get("conteudo_b64"), b.get("nome"), b["por"],
                                                                                  bool(b.get("cadastrar_fornecedor")))),
-    "/api/nf/aprovar": ("compras_aprovar", ("por",), lambda b, c: (C.aprovar_nf_sem_pedido(c, int(b["nf_id"]), b["por"]), {"ok": True})[1]),
     "/api/nf/digitar": ("receber", ("por",), _c(lambda b, c: C.registrar_nf_digitada(
         c, b.get("numero"), int(b.get("fornecedor_id") or 0), b.get("data_emissao"), b.get("linhas") or [], b["por"],
         b.get("documento_b64"), b.get("documento_tipo"), b.get("documento_nome"), b.get("serie"), b.get("chave"), b.get("valor_total")))),
-    "/api/nf/conferir": ("receber", ("por",), lambda b, c: dict(C.conferir_nf(c, int(b["nf_id"]), int(b.get("pedido_id") or 0),
-                                                                               b.get("linhas") or [], b["por"],
-                                                                               bool(b.get("so_fora_do_estoque"))), ok=True)),
     # a nota que ficou "a receber" sem nada a receber (conferida sem material, antes da D-169) volta a "a conferir"
     "/api/nf/refazer-conferencia": ("receber", ("por",), lambda b, c: C.refazer_conferencia(c, int(b["nf_id"]), b["por"])),
     # Compras e notas: o que é cada linha que o sistema não reconheceu (D-171); a nota continua a receber no Estoque
-    "/api/nf/confirmar-linhas": ("receber", ("por",), lambda b, c: C.confirmar_linhas(c, int(b["nf_id"]), b.get("linhas") or [], b["por"])),
+    "/api/nf/confirmar-linhas": ("nf_confirmar", ("por",), lambda b, c: C.confirmar_linhas(c, int(b["nf_id"]), b.get("linhas") or [], b["por"])),
     "/api/nf/cancelar": ("receber", ("por",), lambda b, c: (C.cancelar_nf(c, int(b["nf_id"]), b.get("motivo"), b["por"]), {"ok": True})[1]),
     "/api/recebimento": ("receber", ("por",), _c(lambda b, c: C.receber(c, int(b["nf_id"]), b.get("data"), b.get("itens") or [], b["por"],
                                                                        b.get("documento")))),
     # recebimento no Estoque (D-135, D-170): aceitar a entrega; "recusa" (o porquê) recusa tudo; "problema", o aceite ou a
     # recusa parcial de cada linha
     "/api/nf/receber": ("receber", ("por",), lambda b, c: C.receber_nota(
-        c, int(b["nf_id"]), b["por"], b.get("data") or relogio.hoje().isoformat(), int(b.get("pedido_id") or 0) or None, b.get("problema"),
+        c, int(b["nf_id"]), b["por"], b.get("data") or relogio.hoje().isoformat(), None, b.get("problema"),
         b.get("recusa"))),
     "/api/inspecao": ("receber", ("por",), _c(lambda b, c: C.inspecionar(
         c, int(b["recebimento_item_id"]), b.get("aceito"), b.get("recusado"), b.get("laudo"), b["por"], b.get("data"),
@@ -860,8 +850,12 @@ GET = {"/api/resumo": r_resumo, "/api/buscar": r_buscar, "/api/detalhe": r_detal
        "/api/base-custo/busca": r_base_custo_busca, "/api/base-custo/itens": r_base_custo_itens,
        "/api/medicao/restricoes": r_medicao_restricoes, "/api/medicao/pacote": r_medicao_pacote}
 GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios"),
+            "/api/campo/alvos-do-dia": (lambda q, c: S.alvos_da_equipe_no_dia(c, q.get("equipe_id"), q.get("data")), "lancar_sem_ns"),
             "/api/ns/fora-de-ordem": (lambda q, c: S.fora_de_ordem(c), "notas_servico")}      # o legado: só a engenharia
-GET_USUARIO = {"/api/auditoria": r_auditoria, "/api/diario": r_diario,
+GET_USUARIO = {"/api/solicitacoes": lambda q, c, u: {"solicitacoes": SOL.listar(c, u), "catalogo": SOL.catalogo(c),
+                    "frentes": S._rows(c.execute("SELECT id,nome FROM equipes ORDER BY id"))},
+               "/api/solicitacao/foto": lambda q, c, u: SOL.foto(c, int(q.get("id") or 0), u),
+               "/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
                "/api/ns": r_ns, "/api/ns/detalhe": r_ns_detalhe, "/api/ns/dia": r_ns_dia, "/api/apropriacoes": r_apropriacoes}
 POST = {"/api/funcionario": p_funcionario, "/api/maquina": p_maquina, "/api/movimento": p_movimento,
@@ -882,10 +876,11 @@ POST.update(ROTAS_DRIVE)
 POST.update({"/api/medicao/conferir": p_medicao_conferir, "/api/medicao/folha": p_medicao_folha})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_PLANEJAMENTO.items()})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_APROPRIACAO.items()})
-POST_USUARIO = {"/api/usuarios": p_usuarios, "/api/senha": p_senha, "/api/clima": p_clima, **ROTAS_NS,
+POST_USUARIO = {"/api/solicitacao": lambda b, c, u: SOL.abrir(c, b, u),
+                "/api/usuarios": p_usuarios, "/api/senha": p_senha, "/api/clima": p_clima, **ROTAS_NS,
                 **{rota: fn for rota, (_, fn) in ROTAS_NS_DIA.items()}}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
-PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
+PERMISSAO = {"/api/solicitacao": "compras_solicitar", "/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
              "/api/nf/aceitar": "receber", "/api/checkout": "almox", "/api/clima": "campo",
              "/api/apontamento": "campo", "/api/foto": "campo", "/api/ok-fiscal": "ok_interno", "/api/recomposicao": "ok_interno",
              "/api/cadastro": "cadastro", "/api/medicao": "medicao", "/api/medicao/fechar": "medicao", "/api/estorno": "almox",
@@ -896,7 +891,7 @@ PERMISSAO = {"/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/mov
              "/api/liberacao": "topografia", "/api/escavacao": "campo", "/api/etapa-complementar/anular": "retificar_campo",
              "/api/ocorrencia": "campo", "/api/ocorrencia/resolver": "verificar", "/api/cadastro-campo": "cadastro_campo"}
 # campos de autoria: o servidor grava o usuário da sessão, nunca o nome digitado no navegador
-AUTOR = {"/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "/api/retificar": ("responsavel",),
+AUTOR = {"/api/solicitacao": ("solicitante",), "/api/movimento": ("responsavel",), "/api/estorno": ("responsavel",), "/api/retificar": ("responsavel",),
          "/api/reserva": ("responsavel",), "/api/apontamento": ("informado_por",), "/api/solda": ("informado_por",),
          "/api/intervalo/verificar": ("verificado_por",), "/api/trecho/verificar": ("verificado_por",), "/api/solda/verificar": ("verificado_por",),
          "/api/legado/conciliar": ("responsavel",), "/api/intervalos/retificar": ("responsavel",),
@@ -925,7 +920,9 @@ assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral", "/api/caminho"}
 _CAMPO = ("campo", "diario", "interferencias")
 _ALMOX = ("almox", "equipes", "mapa")                   # Equipes e o Dados da obra (liberar e devolver) também montam o almoxarifado
-TELA_GET = {"/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX + ("compras",),
+TELA_GET = {"/api/solicitacoes": ("solicitar",), "/api/solicitacao/foto": ("solicitar",),
+            "/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX + ("compras",),
+            "/api/campo/alvos-do-dia": ("campo",),
             "/api/compat-caesb": _ALMOX, "/api/nfs": _ALMOX, "/api/movimentos": _ALMOX, "/api/reservas": _ALMOX,
             "/api/consumo": _ALMOX, "/api/histograma": ("equipes",) + _CAMPO,
             "/api/compras": ("compras",), "/api/inventarios": ("compras",), "/api/reservas-vencidas": ("compras",),

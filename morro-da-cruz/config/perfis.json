@@ -6,9 +6,8 @@
     "equipes": "Cadastrar funcionários e máquinas das equipes",
     "almox": "Movimentos de almoxarifado, reservas, check-in/check-out, estorno e retificação de fechamento",
     "receber": "Recebimento e inspeção de notas fiscais (aceite e recusa), devolução ao fornecedor",
-    "compras_solicitar": "Abrir solicitação de compra",
-    "compras_aprovar": "Aprovar ou recusar solicitação de compra",
-    "compras_pedir": "Emitir pedido de compra e cadastrar fornecedores",
+    "compras_solicitar": "Pedir material",
+    "compras_aprovar": "Aprovar ou recusar solicitação de material",
     "inventario_contar": "Registrar contagem de inventário",
     "inventario_ajustar": "Aprovar ajuste de inventário",
     "campo": "Clima, apontamento, escavação, soldas (registro), fotos, interferências e ocorrências de campo",
@@ -25,7 +24,9 @@
     "notas_servico": "Enviar e registrar notas de serviço e croquis (topografia, cadastro e serviço de obra)",
     "lancar_sem_ns": "Lançar à mão o avanço de um trecho sem nota de serviço (exceção, com motivo)",
     "ns_dia": "Enviar e anular a NS do dia (a engenharia envia em nome da equipe)",
-    "apropriacao": "Apropriação direta e cadastro de item a aprovar na base de custo"
+    "apropriacao": "Apropriação direta e cadastro de item a aprovar na base de custo",
+    "fornecedores": "Cadastrar fornecedores",
+    "nf_confirmar": "Confirmar identificação de linhas da nota"
   },
   "telas": {
     "iluminado": "Mapa iluminado",
@@ -43,27 +44,50 @@
     "relatorios": "Administrativo · Relatórios",
     "admin": "Administrativo · Usuários e histórico",
     "lev": "Administrativo · LEV (cronograma, BM, BM Vertical, redes e conexões)",
-    "medicao": "Administrativo · Medição"
+    "medicao": "Administrativo · Medição",
+    "solicitar": "Planejamento · Pedir material"
   },
   "perfis": {
-    "ADMINISTRACAO": {"nome": "Administração", "telas": ["*"],
-                      "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar",
-                                     "compras_pedir", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar",
-                                     "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos",
-                                     "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia"]},
-    "ENGENHARIA": {"nome": "Engenharia", "telas": ["*"],
-                   "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar",
-                                  "compras_pedir", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar",
-                                  "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos",
-                                  "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia"]},
-    "ALMOXARIFADO": {"nome": "Almoxarifado", "telas": ["iluminado", "campo", "diario", "interferencias", "mapa", "almox", "compras"],
-                     "permissoes": ["almox", "receber", "inventario_contar", "compras_solicitar", "campo"]},
-    "SUPERVISOR": {"nome": "Supervisor de campo", "telas": ["iluminado", "campo", "notas", "diario", "interferencias"],
-                   "permissoes": ["campo", "verificar"]},
-    "EQUIPE": {"nome": "Equipe de campo (encarregado)", "telas": ["iluminado", "campo", "diario", "interferencias"],
-               "permissoes": ["campo"], "restrito_a_equipe": true},
-    "RH": {"nome": "RH (consulta das notas de serviço)", "telas": ["iluminado", "notas"], "permissoes": []},
-    "TOPOGRAFIA": {"nome": "Topografia (consulta)", "telas": ["iluminado", "topografia"], "permissoes": []},
-    "CADASTRO": {"nome": "Cadastro", "telas": ["iluminado", "cadastro_campo"], "permissoes": ["cadastro"]}
+    "ADMINISTRACAO": {
+      "nome": "Administração",
+      "telas": ["*"],
+      "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar", "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos", "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia", "fornecedores", "nf_confirmar"]
+    },
+    "ENGENHARIA": {
+      "nome": "Engenharia",
+      "telas": ["*"],
+      "permissoes": ["usuarios", "auditoria", "equipes", "almox", "receber", "compras_solicitar", "compras_aprovar", "inventario_contar", "inventario_ajustar", "campo", "topografia", "cadastro_campo", "verificar", "retificar_campo", "ok_interno", "cadastro", "conferir_cadastro", "planejar", "medicao", "documentos", "notas_servico", "lancar_sem_ns", "apropriacao", "ns_dia", "fornecedores", "nf_confirmar"]
+    },
+    "ALMOXARIFADO": {
+      "nome": "Almoxarifado",
+      "telas": ["iluminado", "campo", "diario", "interferencias", "mapa", "almox", "compras", "solicitar"],
+      "permissoes": ["almox", "receber", "inventario_contar", "compras_solicitar", "campo"]
+    },
+    "SUPERVISOR": {
+      "nome": "Supervisor de campo",
+      "telas": ["iluminado", "campo", "notas", "diario", "interferencias", "solicitar"],
+      "permissoes": ["campo", "verificar", "compras_solicitar"]
+    },
+    "EQUIPE": {
+      "nome": "Equipe de campo (encarregado)",
+      "telas": ["iluminado", "campo", "diario", "interferencias", "solicitar"],
+      "permissoes": ["campo", "compras_solicitar"],
+      "restrito_a_equipe": true
+    },
+    "RH": {
+      "nome": "RH (consulta das notas de serviço)",
+      "telas": ["iluminado", "notas"],
+      "permissoes": []
+    },
+    "TOPOGRAFIA": {
+      "nome": "Topografia (consulta)",
+      "telas": ["iluminado", "topografia"],
+      "permissoes": []
+    },
+    "CADASTRO": {
+      "nome": "Cadastro",
+      "telas": ["iluminado", "cadastro_campo"],
+      "permissoes": ["cadastro"]
+    }
   }
 }

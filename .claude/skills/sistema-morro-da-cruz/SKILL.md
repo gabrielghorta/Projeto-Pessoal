@@ -5,7 +5,7 @@ description: Lógica completa do sistema web de gestão da obra Morro da Cruz (A
 
 # Sistema Morro da Cruz — a obra, o contrato Caesb × Ankara e o web app
 
-Estado de 26/10/2026, esquema do banco **v21**, ramo do site `claude/powerbi-modifications-wqxekj` (repositório
+Estado de 28/10/2026, esquema do banco **v22**, ramo do site `claude/powerbi-modifications-wqxekj` (repositório
 `gabrielghorta/Projeto-Pessoal`, pasta `morro-da-cruz/`). Último PR desta fase: medição no modelo oficial do BM.
 
 ## 0. Como usar este arquivo
@@ -383,8 +383,7 @@ estorno com motivo. Item que não está no BM: cadastro de item novo (a aprovar)
 
 ## 10. Planejamento e almoxarifado
 
-**Dados da obra = o dia da equipe (D-104):** programar equipe + trechos (Ctrl+clique ou "Juntar trechos"; o nó entre
-dois trechos entra sozinho) para um dia ou período (uma programação por alvo e dia, num lote cancelável) → o
+**Dados da obra = o dia da equipe (D-104):** programar equipe + trechos (na obra inteira, um por toque; com zona escolhida, soma/retira sem Ctrl; nós compartilhados e terminais reais da 06.2 entram sozinhos) para um dia ou período (uma programação por alvo e dia, num lote cancelável) → o
 almoxarife **libera o material do dia** (sugestão do projeto: tubo pelo que falta assentar, peças dos nós pela 06.2 →
 BM vertical, limitada ao que há no almoxarifado), o que abre o check-in com todos os trechos (`checkin_alvos`) e acende
 "em execução hoje" com o pino da equipe até a NS do dia chegar → **devolução** no fim do dia (aplicado, sobra, perda
@@ -397,26 +396,13 @@ ordem, sem check-in retroativo; o que fica com a equipe é declarado e volta no 
 com documento, responsável e autorização; transferência entre equipes com as duas sessões abertas; inventário com
 recontagem se o saldo mudou; reservas vencidas liberadas em lote com motivo.
 
-**Compras e notas:** solicitação (quem solicita não aprova; material da Caesb não se compra) → pedido (não mexe em
-saldo) → NF por XML (biblioteca padrão; DOCTYPE recusado; modelo 55; chave com dígito; repetida recusada; emitente
-cadastrado na hora pelo CNPJ do XML) ou digitada do PDF/imagem (anexo obrigatório; quem digitou não confere) →
-**conferência** (cada linha para um material, com fator de conversão declarado para unidade diferente; frete e serviço
-fora do estoque; material sugerido por código, de-para anterior ou descrição) → entrega em **quarentena** → inspeção
-(aceito + recusado = entregue; recusa com motivo e laudo) → estoque. **Nota sem pedido:** o aceito espera a aprovação
-de Engenharia/Administração, outra pessoa (D-110). **NF da Caesb:** a linha de tubo da Caesb vira `ROMANEIO_CAESB`, sem
-quarentena (D-111). **A nota sobe só em Compras e notas (D-170);** em Estoque › Notas a receber, cada nota tem na
-lateral **Aceitar a entrega** (recebe e aceita numa transação, D-135), **Recusar a entrega** (o
-porquê é obrigatório; nada entra no estoque e a nota fecha) e **Aceite ou recusa parcial** (aceito e recusado por linha
-e o porquê; o que não chegou continua a receber). Tubo da Caesb recusado não entra no romaneio nem volta ao fornecedor.
-Conferência sem nenhuma linha para o estoque é recusada, salvo nota só de frete ou serviço, que fecha (D-169); a nota
-que ficou presa assim tem "Refazer a conferência". **Conferir é marcar (D-171):** cada linha mostra o material que o
-sistema reconheceu (código; nota anterior do fornecedor, com o fator; tubo da Caesb pela bitola; descrição, sem contar
-PE 100 e SDR 17 como medida), com uma caixinha e "Marcar todas"; o verde só libera com todas marcadas, e o pedido é
-achado sozinho (um só pedido emitido do fornecedor com todos os materiais, senão sem pedido). O almoxarife não escolhe
-material nem pedido. A linha não reconhecida (ou de unidade diferente sem fator) fica **faltando a confirmação** em
-Compras e notas, confirmada por quem tem `receber` (na prática, a engenharia) com os candidatos mais parecidos
-(`compras.confirmar_linhas`); até lá a entrega pode ser recusada, não aceita. **Material recebido nunca vira lançamento
-de medição.**
+**Pedir material (D-172 a D-175):** tela própria para almoxarifado, SUPERVISOR, EQUIPE e engenharia/administração, com tipo/tamanho, busca, texto/foto desconhecida, quantidade −/+, zona e observação opcional. Nome curto sem código, gerado da descrição e revisável em `config/materiais_pedido.json`. Quem pede não aprova; engenharia/administração aprova ou recusa (motivo obrigatório), identifica item avulso. Campo não vê NF. Solicitação nunca bloqueia NF nem estoque; vínculo opcional só informa “Chegou”. Pedido de compra saiu do fluxo; histórico preservado.
+
+**Compras e notas:** fornecedor permanece; XML ou NF digitada com anexo; quem digitou não confere. Almoxarife marca cada linha. Reconhecida + marcada + entregue entra no estoque. Somente desconhecidas e “Corrigir” precisam da identificação pela engenharia (`nf_confirmar`). Entrega pode ocorrer antes: guarda quantidade na unidade da NF em `nf_entregas_linhas`, sem saldo até identificar material/fator; materialização única preserva autoria da entrega. Não criar aprovação global de nota. Recusa parcial/total com motivo permanece. Tubo da Caesb vira romaneio; frete/serviço fica fora. Quarentena antiga segue inspeção. A v22 libera entradas antigas já aceitas sem aprovação fictícia ou movimento novo e lista-as em `nf_liberadas_v22` e no relatório da migração. Material recebido nunca vira medição.
+
+**Apontamento sem NS (D-180):** data + equipe sugerem os alvos de todos os check-ins da data, abertos e encerrados, sem repetir. Botão com nome completo e “já lançado hoje” abre o formulário existente. Busca manual permanece. Motivo sem NS por trecho, topografia e intervalos sem sobreposição continuam. Lote 100% é apenas proposta D-181.
+
+**Dados da obra (D-176 a D-179):** satélite e cores claras, reusando mosaico e cache existentes. Zona escolhida habilita seleção aditiva; obra inteira substitui. Equipe padrão pela frente; troca de contexto limpa equipe manual anterior. Estas regras substituem as partes conflitantes de D-104, D-110, D-171 e o pedido de 22/10 de mapa sem satélite.
 
 ---
 

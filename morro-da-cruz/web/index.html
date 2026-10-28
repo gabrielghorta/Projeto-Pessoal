@@ -41,6 +41,7 @@
         <button type="button" class="rail-item sub" data-tela="mapa" title="Dados da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg><span class="rail-rot">Dados da obra</span></button>
         <button type="button" class="rail-item sub" data-tela="cronograma" title="Cronograma da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4v16h18M7 7h6M9 11h8M12 15h7"/></svg><span class="rail-rot">Cronograma da obra</span></button>
         <button type="button" class="rail-item sub" data-tela="almox" title="Estoque e movimentos"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h2M8 16.5h2"/></svg><span class="rail-rot">Estoque e movimentos</span></button>
+        <button type="button" class="rail-item sub" data-tela="solicitar" title="Pedir material"><span class="rail-rot">Pedir material</span></button>
         <button type="button" class="rail-item sub" data-tela="compras" title="Compras e notas"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4"/></svg><span class="rail-rot">Compras e notas</span></button>
       </div>
       <button type="button" class="rail-item rail-grupo" data-grupo="grupo-campo" title="Execução"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Execução</span></button>
@@ -135,6 +136,7 @@
             <label>Data<input type="date" name="data" required></label>
             <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
           </div>
+          <div id="apSugestoes" aria-live="polite"></div>
           <div class="linha">
             <label>Clima — manhã<select name="MANHA" class="selClima" required></select></label>
             <label>Clima — tarde<select name="TARDE" class="selClima" required></select></label>
@@ -530,43 +532,23 @@
   </section>
 
   <!-- ======================================================= PLANEJAMENTO: COMPRAS -->
+  <section class="aba" id="aba-solicitar">
+    <header class="cab-tela"><h1>Pedir material</h1><p>Escolha o que precisa e para onde vai.</p></header>
+    <div id="solicitarConteudo"></div>
+  </section>
   <section class="aba" id="aba-compras">
-    <header class="cab-tela"><h1>Compras e notas</h1><p>Da solicitação ao pedido, à nota fiscal e ao recebimento conferido.</p></header>
-    <p class="aviso info" style="margin-top:0">Pedido não é estoque. Nota importada ou digitada não movimenta nada antes da <b>conferência</b>. Material entregue fica em <b>quarentena</b> até a inspeção; o aceito vira estoque, <b>nunca</b> lançamento de medição.</p>
+    <header class="cab-tela"><h1>Compras e notas</h1><p>Cadastre a nota. O almoxarife confere e recebe a entrega.</p></header>
+    <p class="aviso info">Material reconhecido e aceito entra no estoque. O que falta identificar pode ser recebido e fica aguardando a engenharia. Solicitação é opcional. <button type="button" class="btn" onclick="abrirAba('solicitar')">Pedir material</button></p>
     <div class="grade">
       <div class="painel">
-        <h3>1. Solicitação de compra</h3>
-        <form id="fSolic" data-perm="compras_solicitar">
-          <div class="editor-itens" data-itens="solic"></div>
-          <button type="button" class="btn" data-mais-item="solic">+ item</button>
-          <label>Motivo / destino<input name="motivo" required placeholder="ex.: Zona01 — conexões do PB01"></label>
-          <div class="acoes"><button class="btn prim">Abrir solicitação</button></div>
-        </form>
-        <div id="solicLista" style="margin-top:10px"></div>
-      </div>
-      <div class="painel">
-        <h3>2. Pedido de compra</h3>
-        <form id="fPedido" data-perm="compras_pedir">
-          <div class="linha"><label>Nº do pedido<input name="numero" required></label><label>Data<input type="date" name="data" required></label></div>
-          <div class="linha"><label>Fornecedor<select name="fornecedor_id" id="selForn" required></select></label><label>Solicitação aprovada<select name="solicitacao_id" id="selSolicAprov" required></select></label></div>
-          <div id="pedidoItens"></div>
-          <label class="check"><input type="checkbox" name="faturamento_etapas"> Registrar intenção de faturamento por etapas (regime não aplicado até aprovar a matriz)</label>
-          <div class="acoes"><button class="btn prim">Emitir pedido</button></div>
-        </form>
+        <h3>Nota fiscal</h3>
         <details style="margin-top:8px"><summary>Cadastrar fornecedor</summary>
-          <form id="fForn" class="form" data-perm="compras_pedir">
+          <form id="fForn" class="form" data-perm="fornecedores">
             <div class="linha"><label>CNPJ<input name="cnpj" required></label><label>Razão social<input name="nome" required></label></div>
             <label>Contato<input name="contato"></label>
             <div class="acoes"><button class="btn">Cadastrar</button></div>
           </form>
         </details>
-      </div>
-      <div class="painel" style="grid-column:1/-1">
-        <h3>Pedidos — situação por item</h3>
-        <div class="tabela" id="pedidosLista"></div>
-      </div>
-      <div class="painel">
-        <h3>3. Nota fiscal</h3>
         <p class="vazio" style="margin:0 0 8px">A nota sobe aqui. Quando o material chegar, o aceite ou a recusa da entrega é em <b>Estoque e movimentos › Notas a receber</b>.</p>
         <form id="fXml" data-perm="receber">
           <label>XML da NF-e (um ou vários)<input type="file" name="arquivos" accept=".xml,text/xml,application/xml" multiple required></label>
@@ -959,6 +941,7 @@
 </div>
 <div id="toast" role="status"></div>
 <script src="/app.js"></script>
+<script src="/solicitacoes.js"></script>
 <script src="/iluminado.js"></script>
 <script src="/planejamento.js"></script>
 <script src="/notas.js"></script>

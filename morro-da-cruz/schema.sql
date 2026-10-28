@@ -778,6 +778,57 @@ CREATE TABLE IF NOT EXISTS solicitacao_itens (
   material_id TEXT NOT NULL REFERENCES materiais(id),
   quantidade REAL NOT NULL CHECK (quantidade > 0)
 );
+-- Solicitação de material: destino por frente, itens descritos/fotografados e vínculo informativo com notas.
+CREATE TABLE IF NOT EXISTS solicitacao_detalhes (
+  solicitacao_id INTEGER PRIMARY KEY REFERENCES solicitacoes_compra(id),
+  frente_id TEXT NOT NULL REFERENCES equipes(id)
+);
+CREATE TABLE IF NOT EXISTS solicitacao_avulsos (
+  id INTEGER PRIMARY KEY,
+  solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes_compra(id),
+  descricao TEXT NOT NULL,
+  quantidade REAL NOT NULL CHECK (quantidade > 0),
+  unidade TEXT NOT NULL,
+  documento_id INTEGER REFERENCES documentos(id),
+  material_id TEXT REFERENCES materiais(id)
+);
+CREATE TABLE IF NOT EXISTS solicitacao_notas (
+  nf_id INTEGER PRIMARY KEY REFERENCES notas_fiscais(id),
+  solicitacao_id INTEGER NOT NULL REFERENCES solicitacoes_compra(id),
+  vinculada_por TEXT NOT NULL,
+  vinculada_em TEXT NOT NULL
+);
+-- Entrega na unidade da nota, mesmo antes de identificar o material. A conversão ocorre uma única vez.
+CREATE TABLE IF NOT EXISTS nf_entregas_linhas (
+  id INTEGER PRIMARY KEY,
+  recebimento_id INTEGER NOT NULL REFERENCES recebimentos(id),
+  linha_id INTEGER NOT NULL REFERENCES nf_linhas(id),
+  aceito REAL NOT NULL CHECK (aceito >= 0),
+  recusado REAL NOT NULL CHECK (recusado >= 0),
+  motivo TEXT,
+  recebimento_item_id INTEGER UNIQUE REFERENCES recebimento_itens(id),
+  resolvida_em TEXT,
+  UNIQUE(recebimento_id, linha_id),
+  CHECK (aceito + recusado > 0)
+);
+-- Exceções à identificação automática, confirmadas somente pela engenharia/administração.
+CREATE TABLE IF NOT EXISTS nf_confirmacoes (
+  linha_id INTEGER PRIMARY KEY REFERENCES nf_linhas(id),
+  pendente INTEGER NOT NULL DEFAULT 1 CHECK (pendente IN (0,1)),
+  solicitada_por TEXT NOT NULL,
+  solicitada_em TEXT NOT NULL,
+  confirmada_por TEXT,
+  confirmada_em TEXT
+);
+-- Retrato das quantidades liberadas pela mudança de regra, sem simular aprovação humana ou novo movimento.
+CREATE TABLE IF NOT EXISTS nf_liberadas_v22 (
+  nf_id INTEGER NOT NULL REFERENCES notas_fiscais(id),
+  material_id TEXT NOT NULL REFERENCES materiais(id),
+  quantidade REAL NOT NULL,
+  registrada_em TEXT NOT NULL,
+  regra TEXT NOT NULL DEFAULT 'D-175',
+  PRIMARY KEY(nf_id, material_id)
+);
 CREATE TABLE IF NOT EXISTS pedidos_compra (
   id INTEGER PRIMARY KEY,
   numero TEXT NOT NULL UNIQUE,

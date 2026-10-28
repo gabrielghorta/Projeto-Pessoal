@@ -1,0 +1,28 @@
+name: Morro da Cruz — testes do PR
+
+on:
+  pull_request:
+    branches: [claude/powerbi-modifications-wqxekj]
+    paths: ["morro-da-cruz/**", ".github/workflows/morro-da-cruz-testes.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: morro-da-cruz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Leitura independente dos PDFs das notas de serviço
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - run: python -m pip install -r requirements.txt
+      - name: Suíte completa, incluindo as planilhas da obra
+        run: python -m unittest discover -s tests

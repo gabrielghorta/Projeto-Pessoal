@@ -1159,6 +1159,17 @@ def preparar_v21(conn):
     oficial do BM. Tabela nova e vazia: o pacote sugere as fotos até a engenharia escolher."""
     S.aplicar_esquema(conn)
 
+def preparar_v22(conn):
+    """Só acrescenta tabelas. Guarda as notas antes de retirar o bloqueio do saldo, sem inventar aprovação."""
+    S.aplicar_esquema(conn)
+    conn.execute("""INSERT OR IGNORE INTO nf_liberadas_v22(nf_id,material_id,quantidade,registrada_em)
+                    SELECT m.nf_id,m.material_id,SUM(m.quantidade),? FROM movimentos m
+                    JOIN notas_fiscais n ON n.id=m.nf_id
+                    WHERE n.sem_pedido=1 AND n.aprovada_em IS NULL AND n.status<>'CANCELADA'
+                      AND m.tipo='ENTRADA_NF' AND m.status='ACEITO' AND """ + S.VALIDO.replace("id NOT", "m.id NOT") + """
+                    GROUP BY m.nf_id,m.material_id""", (S._agora(),))
+
+
 def congelar_fechadas(conn):
     """Medições já FECHADAS antes do congelamento: grava os valores do cadastro presente no banco ANTES
     desta importação, para que a nova revisão do BM não as recalcule."""

@@ -629,3 +629,25 @@ label.nota-confere:has(input:checked) { border-color: var(--verde); background: 
   color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; }
 .folha-mc textarea { width: 100%; box-sizing: border-box; margin: 6px 0; }
 
+
+/* Solicitação por toque, sem códigos e sem rolagem lateral no celular. */
+.sol-grade { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:16px; }
+.sol-grade > * { min-width:0; }
+.sol-botoes { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.sol-botoes .btn { min-height:48px; min-width:64px; }
+.sol-botoes [aria-pressed=true] { background:#244b66; border-color:#9FD1F5; color:white; }
+.sol-materiais { display:grid; gap:8px; max-height:380px; overflow:auto; margin:12px 0; }
+.sol-material { display:flex; flex-direction:column; align-items:flex-start; white-space:normal; text-align:left; padding:12px; }
+.sol-especificacao { font-size:11px; opacity:.7; overflow-wrap:anywhere; }
+.sol-item { padding:12px 0; border-bottom:1px solid #444; }
+.sol-quantidade { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0; }
+.sol-quantidade input { width:100px; font-size:22px; text-align:center; }
+.sol-quantidade .btn { min-width:48px; min-height:48px; font-size:24px; }
+.sol-pedir > label { display:block; margin:12px 0; }
+.sol-card { overflow-wrap:anywhere; margin-bottom:12px; }
+.sol-card select { width:100%; min-width:0; }
+.sol-card fieldset { min-width:0; margin:10px 0; }
+.sol-foto { max-width:100%; max-height:320px; object-fit:contain; }
+@media(max-width:800px) { .sol-grade { grid-template-columns:minmax(0,1fr); } }
+.ap-alvos { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:8px; }
+.ap-alvos .btn { min-height:52px; white-space:normal; text-align:left; display:flex; flex-direction:column; gap:6px; }
