@@ -59,7 +59,7 @@ class TestNotasDaObra(BaseDia):
         enc = self.cli("enc3")
         sessao = self.ok(enc.get("/api/sessao"))["usuario"]
         self.assertNotIn("notas", sessao["telas"])
-        self.assertEqual(sessao["permissoes"], ["campo"])
+        self.assertEqual(sessao["permissoes"], ["campo", "compras_solicitar"])
         self.assertEqual(paginas_abertas(sessao["permissoes"])["campo"]["usa"], ["fotos", "clima"])   # o Lançamento do dia
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
         self.assertEqual(self.enviar("enc3", pdf_dia(g))[0], 403)
@@ -79,7 +79,7 @@ class TestNotasDaObra(BaseDia):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
         r = self.ok(self.enviar("eng1", pdf_dia(g), equipe="Zona04"))
         self.assertEqual(r["equipe_id"], "Zona04")
-        for login, telas in (("sup1", ["campo", "diario", "iluminado", "interferencias", "notas"]), ("rh1", ["iluminado", "notas"])):
+        for login, telas in (("sup1", ["campo", "diario", "iluminado", "interferencias", "notas", "solicitar"]), ("rh1", ["iluminado", "notas"])):
             u = self.ok(self.cli(login).get("/api/sessao"))["usuario"]
             self.assertEqual(u["telas"], telas, login)
             self.assertNotIn("ns_dia", u["permissoes"])

@@ -201,11 +201,12 @@ function detalheSatelite(ctx, g, px) {
   });
 }
 // o mosaico pela metade, para a cópia leve do gesto (decodificado e reduzido fora do desenho)
-function carregarMosaicoCopia(g) {
+function carregarMosaicoCopia(g, ctx = ILU) {
+  if (ILU.mosaico) { ctx.mosaico = ILU.mosaico; agendarCopia(ctx); return; }
   const im = new Image(); im.src = `/mapa/geral.webp?v=${g.versao}`;
   im.decode().then(() => createImageBitmap(im, { resizeWidth: Math.max(1, Math.round(im.naturalWidth / 2)),
     resizeHeight: Math.max(1, Math.round(im.naturalHeight / 2)), resizeQuality: 'medium' }))
-    .then(b => { ILU.mosaico = b; agendarCopia(ILU); }).catch(() => null);      // sem mosaico (sem Pillow): cópia sem satélite
+    .then(b => { ILU.mosaico = b; ctx.mosaico = b; agendarCopia(ctx); agendarCopia(ILU); }).catch(() => null);      // sem mosaico (sem Pillow): cópia sem satélite
 }
 // a cópia leve do Mapa iluminado: o mosaico com o véu, cortado nas zonas, as zonas e as linhas por situação
 function copiaIlu(g, u) {

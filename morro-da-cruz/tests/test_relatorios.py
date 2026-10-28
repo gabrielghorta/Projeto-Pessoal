@@ -45,7 +45,7 @@ class TestCicloDoMaterial(BaseCompras):
         S.checkout(self.c, ck, [{"material_id": MAT, "aplicado": 12, "sobra": 3, "perda": 1, "motivo": "luva caiu na vala",
                                  "fica_com_equipe": 4}])
         m = {x["material_id"]: x for x in RL.materiais(self.c)}[MAT]
-        esperado = {"comprado": 100, "a_receber": 55, "quarentena": 0, "recebido": 45, "saldo_almox": 28, "reservado": 3,
+        esperado = {"comprado": 100, "a_receber": 40, "quarentena": 0, "recebido": 45, "saldo_almox": 28, "reservado": 3,
                     "com_equipes": 4, "aplicado": 12, "perda": 1}
         self.assertEqual({k: m[k] for k in esperado}, esperado)
         self.assertIsNone(m["medido"])                                                # nada de zero inventado

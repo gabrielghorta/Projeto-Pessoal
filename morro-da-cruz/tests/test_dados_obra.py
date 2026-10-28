@@ -58,7 +58,7 @@ class TestSelecao(BaseDadosObra):
         manual = DO.selecao(self.c, [TR2], [DF33])["nos"]
         self.assertEqual([(n["nome"], n["automatico"]) for n in manual], [(DF33, False)])
         r = DO.selecao(self.c, [TR, TR2])                                                      # o NÓ2.7 não está na 06.2
-        self.assertEqual(r["nos"], [])
+        self.assertEqual([n["nome"] for n in r["nos"]], ["Zona01_PB01_Rede_NÓ1.8"])
         self.assertIn("NÓ2.7 liga TR001 e TR002", r["avisos"][0])
 
     def test_assentado_e_material_com_a_equipe_reduzem_a_sugestao(self):
@@ -86,9 +86,9 @@ class TestSelecao(BaseDadosObra):
             r = DO.selecao(self.c, [TR])
             self.assertEqual([f["membros"] for f in r["fisicos"]], [[TR, TR2]])
             self.assertEqual([t["ponto"] for t in r["linhas"]], [TR, TR2])
-            self.assertEqual(r["nos"], [])                           # o NÓ2.7 é cruzamento, não ponta do trecho físico
+            self.assertEqual([n["nome"] for n in r["nos"]], ["Zona01_PB01_Rede_NÓ1.8"])  # terminal; NÓ2.7 é cruzamento
             x = DO.programar(self.c, [TR], [], "Zona01", "ASSENTAMENTO", SEG, "eng1")
-            self.assertEqual((x["criadas"], x["alvos"]), (2, 2))
+            self.assertEqual((x["criadas"], x["alvos"]), (3, 3))
         finally:
             TP.CONFIG, TP.CONFIG_PROGRAMA = antigo
             TP._CACHE.clear()
@@ -154,7 +154,7 @@ class TestLiberacaoEDevolucao(BaseDadosObra):
         campo = P.em_campo(self.c, D)
         self.assertEqual({n: c["equipe"] for n, c in campo.items()}, {TR2: "Zona01", TR3: "Zona01", DF33: "Zona01"})
         y = DO.liberar(self.c, D, "Zona01", [TR], [], [{"material_id": TUBO, "quantidade": 10}], "almox1")
-        self.assertEqual((y["novo"], y["checkin_id"], y["programacoes_realizadas"]), (False, ck, 1))
+        self.assertEqual((y["novo"], y["checkin_id"], y["programacoes_realizadas"]), (False, ck, 2))
         self.assertEqual(S.custodia_equipe(self.c, "Zona01", TUBO), 60)
         self.assertIn(TR, P.em_campo(self.c, D))
         est = DO.estado(self.c, D)
@@ -164,8 +164,8 @@ class TestLiberacaoEDevolucao(BaseDadosObra):
         # o check-in cobre todos os trechos do dia (v20); o pino da equipe vai em cada um
         self.assertEqual(self.q("SELECT a.alvo_id, a.origem FROM checkin_alvos a WHERE checkin_id=? ORDER BY rowid", ck),
                          [("TR-00002", "PROGRAMACAO"), ("TR-00099", "PROGRAMACAO"), (self.q("SELECT id FROM atividades WHERE nomenclatura=?", DF33)[0][0], "PROGRAMACAO"),
-                          ("TR-00001", "PROGRAMACAO")])
-        self.assertEqual(sorted(p["alvo_id"] for p in S.estado_mapa(self.c, data=D)["pins"]), sorted([TR, TR2, TR3, DF33]))
+                          ("TR-00001", "PROGRAMACAO"), ("AT-0001", "PROGRAMACAO")])
+        self.assertEqual(sorted(p["alvo_id"] for p in S.estado_mapa(self.c, data=D)["pins"]), sorted([TR, TR2, TR3, DF33, "Zona01_PB01_Rede_NÓ1.8"]))
         S.checkout(self.c, ck, [{"material_id": TUBO, "aplicado": 45, "sobra": 15}])     # devolução do fim do dia
         self.assertEqual((S.saldo_almox(self.c, TUBO)[0], S.custodia_equipe(self.c, "Zona01", TUBO)), (155, 0))
         self.assertEqual(P.em_campo(self.c, D), {})
@@ -175,8 +175,8 @@ class TestLiberacaoEDevolucao(BaseDadosObra):
         DO.programar(self.c, [TR2], [], "Zona01", "ASSENTAMENTO", D, "eng1")
         ck = DO.liberar(self.c, D, "Zona01", [TR2, TR], [], [], "almox1")["checkin_id"]    # TR001 não estava programado
         self.assertEqual(self.q("SELECT alvo_id, origem FROM checkin_alvos WHERE checkin_id=? ORDER BY rowid", ck),
-                         [("TR-00002", "PROGRAMACAO"), ("TR-00001", "CHECKIN")])
-        self.assertEqual(set(P.em_campo(self.c, D)), {TR, TR2})
+                         [("TR-00002", "PROGRAMACAO"), ("TR-00001", "CHECKIN"), ("AT-0001", "CHECKIN")])
+        self.assertEqual(set(P.em_campo(self.c, D)), {TR, TR2, "Zona01_PB01_Rede_NÓ1.8"})
 
     def test_recusas_da_liberacao(self):
         with self.assertRaisesRegex(S.RegraViolada, "data futura"):

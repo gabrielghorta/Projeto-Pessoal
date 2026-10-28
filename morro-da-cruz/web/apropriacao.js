@@ -17,6 +17,7 @@ const aprNome = it => `${esc(it.item_bm || it.item)} · ${esc(it.resumida || it.
 /* ---------------------------------------------------------------- Lançamento do dia: as páginas do lançamento solto */
 // apropriação direta, apontamento sem NS, fotos e soldas, clima do dia (PAGINAS.campo em app.js); a NS do dia é em Notas de serviço
 function carregarLancamentoDia() {
+  if (PAGINA.campo === 'apontamento') return carregarAlvosDoDia();
   if (PAGINA.campo === 'apropriacao') return carregarApropriacao();
   if (PAGINA.campo === 'clima') return carregarClimaDia();
 }

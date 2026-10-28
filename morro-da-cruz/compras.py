@@ -1,21 +1,10 @@
-"""Compras, recebimento e almoxarifado (módulo C).
+"""Notas fiscais, inspeção e estoque. D-172 a D-175: solicitação independente e sem pedido de compra.
 
-Fluxo: fornecedor → solicitação (aprovada por outra pessoa) → pedido → nota fiscal (XML da NF-e ou dados digitados
-do PDF/imagem) → CONFERÊNCIA (de-para de cada linha para um material, com fator de conversão de unidade) → entregas
-parciais em QUARENTENA → inspeção item a item ou da entrega inteira (aceito entra no estoque; recusado volta na entrega)
-→ devolução ao fornecedor do que já foi aceito.
-
-Também a nota que chega SEM pedido (o almoxarife importa o XML e confere): cada linha vem com o material sugerido
-(sugerir_materiais); a nota fica marcada "sem pedido" e o aceito só fica disponível para as equipes depois da aprovação de
-Engenharia ou Administração, por outra pessoa (aprovar_nf_sem_pedido). Linha de tubo da Caesb (remessa) não é compra:
-vira romaneio Caesb na entrega, sem pedido nem quarentena, e entra na compatibilização dos tubos.
-
-Garantias:
-* pedido nunca vira estoque; NF importada ou digitada não gera movimento antes da conferência;
-* material entregue fica em quarentena até a inspeção; material aceito vira estoque, nunca lançamento de medição;
-* não se fatura nem se recebe além do pedido/da nota; nada é apagado (cancelamentos e estornos com motivo);
-* quem digita uma NF não a confere; quem solicita não aprova; quem conta o inventário não aprova o ajuste.
-Também: transferência entre equipes em campo, inventário do almoxarifado e liberação de reservas vencidas.
+A entrega e a identificação por linha estão em recebimento.py; solicitar/decidir em solicitacoes.py.
+Funções antigas de pedido/conferência permanecem para compatibilidade do histórico, sem rotas de criação.
+Nota reconhecida e conferida pelo almoxarife não precisa de aprovação global. Desconhecida/corrigida
+pode chegar antes de ser identificada pela engenharia; só entra no saldo depois da identificação.
+Material recebido não é lançamento de medição. Quem digita não confere; quem pede não aprova.
 """
 import base64
 import hashlib
@@ -382,7 +371,7 @@ def sugerir_materiais(conn, nf_id):
     hist_cod, hist_desc = {}, {}                       # (material, fator) da linha igual numa nota anterior
     for cod, desc, mid, fat in conn.execute(
             """SELECT l.codigo, l.descricao, l.material_id, l.fator FROM nf_linhas l JOIN notas_fiscais n ON n.id=l.nf_id
-               WHERE n.fornecedor_id=? AND n.id<>? AND n.status<>'CANCELADA' AND l.material_id IS NOT NULL ORDER BY l.id""",
+               WHERE n.fornecedor_id=? AND n.id<>? AND n.status<>'CANCELADA' AND l.material_id IS NOT NULL AND l.id NOT IN (SELECT linha_id FROM nf_confirmacoes WHERE pendente=1) ORDER BY l.id""",
             (nf["fornecedor_id"], nf_id)):
         if cod:
             hist_cod[cod] = (mid, fat)
@@ -407,8 +396,13 @@ def sugerir_materiais(conn, nf_id):
                            reverse=True)
             if notas and (len(notas) == 1 or notas[0][0] > notas[1][0]):
                 mid, motivo = notas[0][1], "pela descrição"
+        pendente = _one(conn, "SELECT 1 FROM nf_confirmacoes WHERE linha_id=? AND pendente=1", li["id"])
+        if pendente:
+            mid, motivo, fator = None, "aguardando confirmação da engenharia", None
         m = mats.get(mid)
         fora = bool(li["fora_do_estoque"]) if motivo == "confirmado em Compras e notas" else (not mid and _frete_ou_servico(li))
+        if pendente:
+            fora = False
         mesma = m and R.normalizar_unidade(li["unidade"]) == R.normalizar_unidade(m["unidade"])
         candidatos = []
         if m and not mesma and not fator:              # unidade diferente sem fator: quem confirma diz o fator
@@ -434,40 +428,8 @@ def sugerir_materiais(conn, nf_id):
 
 
 def confirmar_linhas(conn, nf_id, linhas, por):
-    """Compras e notas, "faltando a confirmação" (D-171): quem tem a permissão de receber (na prática, a engenharia)
-    diz o que é cada linha que o sistema não reconheceu, marcando um dos candidatos ou outro material, ou que é frete ou
-    serviço. A nota continua a conferir: o almoxarife a recebe no Estoque. A próxima nota deste fornecedor com a
-    mesma linha já vem reconhecida."""
-    nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
-    if not nf or nf["status"] != "A_CONFERIR":
-        raise RegraViolada("Só a nota que ainda não foi recebida tem linhas a confirmar.")
-    feitas = 0
-    with transacao(conn):
-        for c in linhas or []:
-            li = _one(conn, "SELECT * FROM nf_linhas WHERE id=? AND nf_id=?", int(c.get("linha_id") or 0), nf_id)
-            if not li:
-                raise RegraViolada("Linha fora desta nota.")
-            if c.get("fora_do_estoque"):
-                conn.execute("UPDATE nf_linhas SET material_id=NULL, fator=NULL, fora_do_estoque=1 WHERE id=?", (li["id"],))
-                feitas += 1
-                continue
-            m = _one(conn, "SELECT * FROM materiais WHERE id=?", c.get("material_id"))
-            if not m:
-                raise RegraViolada(f"Linha {li['n_item']}: escolha o material.")
-            if R.normalizar_unidade(li["unidade"]) == R.normalizar_unidade(m["unidade"]):
-                fator = 1.0
-            else:
-                try:
-                    fator = float(c.get("fator") or 0)
-                except (TypeError, ValueError):
-                    fator = 0
-                if fator <= 0:
-                    raise RegraViolada(f"Linha {li['n_item']}: a nota está em {li['unidade']} e o material em {m['unidade']}: "
-                                       f"diga quantos {m['unidade']} vem em cada {li['unidade']}.")
-            conn.execute("UPDATE nf_linhas SET material_id=?, fator=?, fora_do_estoque=0 WHERE id=?", (m["id"], fator, li["id"]))
-            feitas += 1
-    faltam = sum(1 for s in sugerir_materiais(conn, nf_id) if not s["material_id"] and not s["fora_do_estoque"])
-    return {"confirmadas": feitas, "faltam": faltam, "por": por}
+    from recebimento import confirmar
+    return confirmar(conn, nf_id, linhas, por)
 
 
 _NAO_MATERIAL = {"frete", "fretes", "servico", "servicos", "taxa", "taxas", "seguro", "despesa", "despesas"}
@@ -505,7 +467,7 @@ def conferir_nf(conn, nf_id, pedido_id, linhas_conf, por, so_fora_do_estoque=Fal
     """De-para de cada linha da NF: material + fator de conversão (quantidade no material = quantidade da NF × fator)
     + item do pedido, ou 'fora do estoque' (frete, serviço). Unidade diferente exige fator declarado; mesma unidade,
     fator 1. Com pedido: não fatura além do pedido (o item do pedido com o mesmo material é achado sozinho, se for um só).
-    Sem pedido: a nota fica marcada e o aceito só fica disponível depois da aprovação (aprovar_nf_sem_pedido). Linha de
+    Compatibilidade histórica: sem pedido fica marcado, mas não bloqueia o saldo na v22. Linha de
     tubo da Caesb (remessa) não é compra: vira romaneio Caesb na entrega. Só depois da conferência a nota aceita entregas.
     Nenhuma linha para o estoque (D-169): recusada, porque a nota ficava "a receber" sem nada a receber; com
     so_fora_do_estoque (a pessoa confirmou que a nota é só de frete ou serviço) ela é encerrada na hora."""
@@ -600,21 +562,6 @@ def refazer_conferencia(conn, nf_id, por):
     return {"ok": True, "por": por}
 
 
-def aprovar_nf_sem_pedido(conn, nf_id, por):
-    """Engenharia ou Administração aprova a nota que chegou sem pedido; só então o material aceito dela fica disponível
-    para as equipes. Quem importou ou digitou a nota não a aprova."""
-    nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
-    if not nf or nf["status"] == "CANCELADA":
-        raise RegraViolada("Nota não encontrada ou cancelada.")
-    if not nf["sem_pedido"]:
-        raise RegraViolada("Só a nota conferida sem pedido precisa de aprovação.")
-    if nf["aprovada_em"]:
-        raise RegraViolada(f"Nota já aprovada por {nf['aprovada_por']}.")
-    if str(nf["registrada_por"]).lower() == str(por).lower():
-        raise RegraViolada("Quem importou ou digitou a nota não a aprova: outra pessoa da Engenharia ou da Administração.")
-    conn.execute("UPDATE notas_fiscais SET aprovada_por=?, aprovada_em=? WHERE id=?", (por, _agora(), nf_id))
-
-
 def cancelar_nf(conn, nf_id, motivo, por):
     nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
     if not nf or nf["status"] not in ("A_CONFERIR", "CONFERIDA"):
@@ -698,6 +645,9 @@ _SEM_ROMANEIO = "COALESCE(ni.linha_id, 0) NOT IN (SELECT id FROM nf_linhas WHERE
 
 
 def _encerrar_se_completa(conn, nf_id):
+    if _one(conn, "SELECT 1 FROM nf_entregas_linhas e JOIN nf_linhas l ON l.id=e.linha_id WHERE l.nf_id=?", nf_id):
+        from recebimento import encerrar
+        return encerrar(conn, nf_id)
     pend = conn.execute(
         """SELECT COUNT(*) FROM nf_itens ni WHERE ni.nf_id=? AND (ni.quantidade - COALESCE((SELECT SUM(quantidade)
              FROM recebimento_itens WHERE nf_item_id=ni.id),0)) > 1e-6""", (nf_id,)).fetchone()[0]
@@ -770,115 +720,8 @@ def inspecionar_entrega(conn, recebimento_id, itens, laudo, por, data, motivo_re
 
 
 def receber_nota(conn, nf_id, por, data, pedido_id=None, problema=None, recusa=None):
-    """O recebimento na tela Estoque (D-135, D-170): aceitar a entrega, recusar a entrega ou aceite/recusa parcial.
-    Confere as linhas pelo material reconhecido (se ainda está a conferir), registra a entrega e a inspeção, numa
-    transação. Conferir é marcar (D-171): o almoxarife não escolhe material nem pedido. Linha ainda não reconhecida trava
-    o aceite (falta a confirmação em Compras e notas), mas não a recusa; o pedido é achado sozinho (_pedido_automatico).
-    A nota só de frete ou serviço é encerrada pelo aceite.
-    - Sem problema nem recusa: tudo o que falta chegar é entregue e aceito.
-    - recusa (o porquê, obrigatório): tudo o que falta chegar é entregue e recusado; nada entra no estoque e a nota fecha.
-    - problema {"observacao", "linhas": {nf_linha_id: {"aceito", "recusado"}}}, nas unidades da nota (ou, como antes,
-      {"chegou", "avariado"}): o aceito entra; o recusado não, com a observação como motivo e laudo; o que nem foi aceito
-      nem recusado não chegou e continua a receber na nota.
-    O tubo da Caesb recusado não entra no romaneio. A nota sem pedido continua precisando da aprovação de outra pessoa
-    (aprovar_nf_sem_pedido)."""
-    nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
-    if not nf or nf["status"] not in ("A_CONFERIR", "CONFERIDA"):
-        raise RegraViolada("Só nota a conferir ou conferida, com algo a receber, é recebida aqui.")
-    if recusa is not None:
-        obs = str(recusa or "").strip()
-        if not obs:
-            raise RegraViolada("Diga por que a entrega foi recusada.")
-    else:
-        obs = str((problema or {}).get("observacao") or "").strip()
-        if problema is not None and not obs:
-            raise RegraViolada("Diga o porquê: o que foi recusado ou o que não chegou.")
-    pedido_lin = (problema or {}).get("linhas") or {}
-    with transacao(conn):
-        if nf["status"] == "A_CONFERIR":
-            sug = sugerir_materiais(conn, nf_id)
-            sem = [s for s in sug if not s["material_id"] and not s["fora_do_estoque"]]
-            if sem and recusa is None:
-                desc = {r["id"]: f"linha {r['n_item']} ({str(r['descricao'])[:40]})" for r in conn.execute(
-                    "SELECT id, n_item, descricao FROM nf_linhas WHERE nf_id=?", (nf_id,))}
-                raise RegraViolada("Falta confirmar o material de: " + "; ".join(desc[s["linha_id"]] for s in sem)
-                                   + ". Isso é feito em Compras e notas (linhas faltando a confirmação); depois a nota é recebida aqui.")
-            if not any(s["material_id"] for s in sug):
-                if recusa is not None:
-                    # recusada sem nenhum material reconhecido: nada entrou e nada há a registrar por material
-                    cancelar_nf(conn, nf_id, f"Entrega recusada: {obs}", por)
-                else:                                  # só frete ou serviço: o aceite encerra a nota, sem nada a receber
-                    conferir_nf(conn, nf_id, None, [{"linha_id": s["linha_id"], "fora_do_estoque": True} for s in sug], por,
-                                so_fora_do_estoque=True)
-                return {"recebimento_id": None, "itens": 0, "recusado": 0, "encerrada": True, "cancelada": recusa is not None,
-                        "aguarda_aprovacao": False}
-            # na recusa, a linha não reconhecida fica fora do estoque: ela é recusada junto, sem entrar
-            conf = [{"linha_id": s["linha_id"], "material_id": s["material_id"], "fator": s["fator"]} if s["material_id"]
-                    else {"linha_id": s["linha_id"], "fora_do_estoque": True} for s in sug]
-            auto = None if pedido_id else _pedido_automatico(conn, nf, sug)
-            try:
-                conferir_nf(conn, nf_id, pedido_id or auto, conf, por)
-            except RegraViolada:
-                if not auto:
-                    raise
-                conferir_nf(conn, nf_id, None, conf, por)   # o pedido achado não serve: sem pedido (aprovação da engenharia)
-        itens, avariado = [], {}
-        for ni in _rows(conn.execute("""SELECT ni.*, l.romaneio_caesb, l.fator, l.n_item FROM nf_itens ni
-                                        LEFT JOIN nf_linhas l ON l.id=ni.linha_id WHERE ni.nf_id=? ORDER BY ni.id""", (nf_id,))):
-            resta = ni["quantidade"] - _recebido(conn, ni["id"])
-            if resta <= TOL:
-                continue
-            fator = float(ni["fator"] or 1)
-            p = pedido_lin.get(str(ni["linha_id"])) or pedido_lin.get(ni["linha_id"]) or {}
-            try:
-                if recusa is not None:                 # recusa total: chegou tudo e tudo foi recusado
-                    chegou = avar = resta
-                elif "aceito" in p or "recusado" in p:   # aceite/recusa parcial
-                    avar = float(p.get("recusado") or 0) * fator
-                    chegou = float(p.get("aceito") or 0) * fator + avar
-                else:
-                    chegou = float(p["chegou"]) * fator if p.get("chegou") not in (None, "") else resta
-                    avar = float(p.get("avariado") or 0) * fator
-            except (TypeError, ValueError):
-                raise RegraViolada(f"Linha {ni['n_item']}: quantidade inválida.")
-            if chegou < -TOL or avar < -TOL or chegou > resta + TOL or avar > chegou + TOL:
-                raise RegraViolada(f"Linha {ni['n_item']}: o aceito e o recusado ficam entre 0 e o que falta receber (juntos, "
-                                   f"no máximo {resta / fator:g}), e o recusado não passa do que chegou.")
-            if chegou > TOL:
-                item = {"nf_item_id": ni["id"], "quantidade": round(min(chegou, resta), 6)}
-                if ni["romaneio_caesb"]:               # tubo da Caesb: o recusado fica registrado na própria entrega
-                    item["avariado"] = round(avar, 6)
-                else:
-                    avariado[ni["id"]] = round(avar, 6)
-                itens.append(item)
-        if not itens:
-            raise RegraViolada("Nada a receber: informe o que foi aceito ou recusado em ao menos uma linha.")
-        rid = receber(conn, nf_id, data, itens, por, documento=f"{'recusa' if recusa is not None else 'obs.'}: {obs}" if obs else None,
-                      motivo=obs)
-        recusado_caesb = sum(i.get("avariado", 0) for i in itens)
-        insp = [{"recebimento_item_id": r["id"], "aceito": round(r["quantidade"] - avariado.get(r["nf_item_id"], 0), 6),
-                 "recusado": avariado.get(r["nf_item_id"], 0)}
-                for r in _rows(conn.execute("""SELECT ri.id, ri.nf_item_id, ri.quantidade FROM recebimento_itens ri
-                                               JOIN nf_itens ni ON ni.id=ri.nf_item_id WHERE ri.recebimento_id=? AND """
-                                            + _SEM_ROMANEIO, (rid,)))]
-        if insp:
-            inspecionar_entrega(conn, rid, insp, obs or None, por, data, obs or None)
-        final = _one(conn, "SELECT status, sem_pedido, aprovada_em FROM notas_fiscais WHERE id=?", nf_id)
-    recusado = round(sum(i["recusado"] for i in insp) + recusado_caesb, 6)
-    return {"recebimento_id": rid, "itens": len(itens), "recusado": recusado, "encerrada": final["status"] == "ENCERRADA",
-            "aguarda_aprovacao": bool(final["sem_pedido"] and not final["aprovada_em"] and _tem_aceito(conn, nf_id))}
-
-
-def _pedido_automatico(conn, nf, sug):
-    """O pedido emitido deste fornecedor com todos os materiais comprados da nota, se houver só um: o almoxarife não
-    escolhe pedido (D-171). Nenhum ou mais de um: a nota entra sem pedido e espera a aprovação da engenharia."""
-    comprados = {s["material_id"] for s in sug if s["material_id"] and not s["caesb"]}
-    if not comprados:
-        return None
-    serve = [pid for (pid,) in conn.execute("SELECT id FROM pedidos_compra WHERE fornecedor_id=? AND status='EMITIDO' ORDER BY id",
-                                            (nf["fornecedor_id"],))
-             if comprados <= {r[0] for r in conn.execute("SELECT material_id FROM pedido_itens WHERE pedido_id=?", (pid,))}]
-    return serve[0] if len(serve) == 1 else None
+    from recebimento import receber as receber_linhas
+    return receber_linhas(conn, nf_id, por, data, problema, recusa)
 
 
 def _tem_aceito(conn, nf_id):
@@ -1041,11 +884,16 @@ def liberar_reservas_vencidas(conn, ids, motivo, por, hoje):
 
 # ------------------------------------------------------------------ consultas para a tela
 def painel(conn):
-    nfs = _rows(conn.execute("SELECT * FROM notas_fiscais ORDER BY id DESC LIMIT 200"))
+    from recebimento import linhas as linhas_entrega
+    nfs = _rows(conn.execute("""SELECT n.*, sn.solicitacao_id FROM notas_fiscais n
+                                LEFT JOIN solicitacao_notas sn ON sn.nf_id=n.id ORDER BY n.id DESC LIMIT 200"""))
     for n in nfs:
-        n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
-        if n["status"] == "A_CONFERIR" and n["origem"] != "DIRETA":      # as linhas "faltando a confirmação" (D-171)
+        if n["status"] in ("A_CONFERIR", "CONFERIDA") and n["origem"] != "DIRETA":
+            # as linhas "faltando a confirmação" (D-171) e o que já chegou de cada linha, na unidade da nota (D-174)
             n["sugestoes"] = sugerir_materiais(conn, n["id"])
+            n["linhas"] = linhas_entrega(conn, n["id"])
+        else:
+            n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
         n["itens"] = _rows(conn.execute(
             """SELECT ni.*, (SELECT COALESCE(SUM(quantidade),0) FROM recebimento_itens WHERE nf_item_id=ni.id) recebido,
                       (SELECT COALESCE(SUM(i.aceito),0) FROM inspecoes i JOIN recebimento_itens ri ON ri.id=i.recebimento_item_id
@@ -1058,9 +906,10 @@ def painel(conn):
                AND """ + _SEM_ROMANEIO + " ORDER BY ri.id", (n["id"],)))
     return {
         "fornecedores": _rows(conn.execute("SELECT * FROM fornecedores ORDER BY nome")),
-        "solicitacoes": [dict(s_, itens=_rows(conn.execute("SELECT * FROM solicitacao_itens WHERE solicitacao_id=?", (s_["id"],))))
-                         for s_ in _rows(conn.execute("SELECT * FROM solicitacoes_compra ORDER BY id DESC LIMIT 200"))],
-        "pedidos": [situacao_pedido(conn, r[0]) for r in conn.execute("SELECT id FROM pedidos_compra ORDER BY id DESC LIMIT 200")],
+        # as aprovadas, para ligar a nota a uma delas (D-172: só marca "Chegou")
+        "solicitacoes": _rows(conn.execute("""SELECT s.id, s.data, s.solicitante, d.frente_id FROM solicitacoes_compra s
+                                              LEFT JOIN solicitacao_detalhes d ON d.solicitacao_id=s.id
+                                              WHERE s.status='APROVADA' ORDER BY s.id DESC LIMIT 200""")),
         "notas": nfs,
     }
 
@@ -1077,19 +926,14 @@ def a_inspecionar(conn):
 
 
 def notas_a_receber(conn):
-    """O que o almoxarife tem a fazer com as notas (tela Estoque e movimentos): a conferir (com o material sugerido em cada
-    linha e os pedidos emitidos do emitente), a receber (o que falta chegar), em quarentena (por entrega) e, da nota sem
-    pedido, a aprovação que falta."""
+    """O que o almoxarife tem a fazer com as notas (tela Estoque e movimentos): cada linha com o material reconhecido e o
+    que já chegou (D-171, D-174) e, das entregas anteriores à v22, a quarentena por entrega."""
+    from recebimento import linhas as linhas_entrega
     out = []
-    for n in _rows(conn.execute("""SELECT * FROM notas_fiscais WHERE origem<>'DIRETA' AND (status IN ('A_CONFERIR','CONFERIDA')
-                                     OR (sem_pedido=1 AND aprovada_em IS NULL AND status<>'CANCELADA')) ORDER BY id DESC LIMIT 100""")):
-        if n["status"] == "ENCERRADA" and not _tem_aceito(conn, n["id"]):
-            continue                                   # sem pedido e toda recusada: não há o que aprovar
-        n["linhas"] = _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (n["id"],)))
-        if n["status"] == "A_CONFERIR":
-            n["sugestoes"] = sugerir_materiais(conn, n["id"])
-            n["pedidos"] = [{"id": p["id"], "numero": p["numero"]} for p in _rows(conn.execute(
-                "SELECT id, numero FROM pedidos_compra WHERE fornecedor_id=? AND status='EMITIDO' ORDER BY id", (n["fornecedor_id"],)))]
+    for n in _rows(conn.execute("""SELECT * FROM notas_fiscais WHERE origem<>'DIRETA' AND status IN ('A_CONFERIR','CONFERIDA')
+                                     ORDER BY id DESC LIMIT 100""")):
+        n["sugestoes"] = sugerir_materiais(conn, n["id"])
+        n["linhas"] = linhas_entrega(conn, n["id"])
         n["itens"] = _rows(conn.execute(
             """SELECT ni.*, l.romaneio_caesb, l.descricao linha_descricao, m.descricao, m.unidade,
                       (SELECT COALESCE(SUM(quantidade),0) FROM recebimento_itens WHERE nf_item_id=ni.id) recebido

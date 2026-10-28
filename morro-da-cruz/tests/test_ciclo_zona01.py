@@ -177,18 +177,16 @@ class CicloZona01(unittest.TestCase):
     # ---------------------------------------------------------------- 2. solicitar e comprar
     def test_02_solicitar_e_comprar(self):
         sid = self.ok("eng1", "/api/solicitacao", {"data": D0, "itens": [{"material_id": self.luva, "quantidade": 20}],
-                                                   "motivo": "Zona01 TR001 — programação de 16/10"})["id"]
+                                                   "frente_id": "Zona01", "observacao": "Zona01 TR001 — programação de 16/10"})["id"]
         erro = self.recusa("eng1", "/api/solicitacao/decidir", {"solicitacao_id": sid, "aprovar": True})
         self.ok("eng2", "/api/solicitacao/decidir", {"solicitacao_id": sid, "aprovar": True})
         self.recusa("almox1", "/api/fornecedor", {"cnpj": NT.CNPJ_FORNECEDOR, "nome": "Fornecedor de Teste Ltda"}, 403)
         fid = self.ok("adm", "/api/fornecedor", {"cnpj": NT.CNPJ_FORNECEDOR, "nome": "Fornecedor de Teste Ltda"})["id"]
-        pid = self.ok("adm", "/api/pedido", {"numero": "PC-Z01-001", "data": D0, "fornecedor_id": fid, "solicitacao_id": sid,
-                                             "itens": [{"material_id": self.luva, "quantidade": 20, "valor_unitario": 12.5}]})["id"]
-        type(self).pedido_id = pid
-        self.assertEqual(self.q("SELECT COUNT(*) FROM movimentos")[0][0], 0)                   # pedido não é estoque
+        type(self).solicitacao_id = sid
+        self.assertEqual(self.q("SELECT COUNT(*) FROM movimentos")[0][0], 0)
         m = self.material(self.luva)
-        self.assertEqual((m["solicitado"], m["comprado"], m["recebido"], m["a_receber"]), (20, 20, 0, 20))
-        self.ev["2_comprar"] = {"autoaprovacao_recusada": erro, "pedido": "PC-Z01-001", "comprado": 20, "estoque_luva": m["saldo_almox"]}
+        self.assertEqual((m["solicitado"], m["comprado"], m["recebido"], m["a_receber"]), (20, 0, 0, 0))
+        self.ev["2_comprar"] = {"autoaprovacao_recusada": erro, "solicitacao": sid, "estoque_luva": m["saldo_almox"]}
 
     # ---------------------------------------------------------------- 3. receber parcialmente e conferir
     def test_03_receber_parcial_e_conferir(self):
@@ -197,21 +195,16 @@ class CicloZona01(unittest.TestCase):
         self.assertEqual(self.q("SELECT status FROM notas_fiscais WHERE id=?", nf), [("A_CONFERIR",)])
         self.assertEqual(self.q("SELECT COUNT(*) FROM movimentos")[0][0], 0)                   # NF importada não movimenta
         lid = self.q("SELECT id FROM nf_linhas WHERE nf_id=?", nf)[0][0]
-        pi = self.q("SELECT id FROM pedido_itens WHERE pedido_id=?", self.pedido_id)[0][0]
-        self.ok("almox2", "/api/nf/conferir", {"nf_id": nf, "pedido_id": self.pedido_id,
-                                               "linhas": [{"linha_id": lid, "material_id": self.luva, "fator": 1, "pedido_item_id": pi}]})
-        ni = self.q("SELECT id FROM nf_itens WHERE nf_id=?", nf)[0][0]
-        self.ok("almox1", "/api/recebimento", {"nf_id": nf, "data": D1, "itens": [{"nf_item_id": ni, "quantidade": 12}], "documento": "canhoto 1"})
-        self.assertEqual(self.material(self.luva)["quarentena"], 12)                           # quarentena, não estoque
-        ri = self.q("SELECT id FROM recebimento_itens")[0][0]
-        self.ok("almox1", "/api/inspecao", {"recebimento_item_id": ri, "aceito": 10, "recusado": 2, "laudo": "LAUDO-Z01-1",
-                                             "data": D1, "motivo_recusa": "2 luvas com ovalização"})
+        self.ok("eng2", "/api/nf/confirmar-linhas", {"nf_id": nf, "linhas": [{"linha_id": lid, "material_id": self.luva}]})
+        self.ok("almox1", "/api/nf/receber", {"nf_id": nf, "data": D1, "problema": {"observacao": "2 luvas com ovalização; faltam 8",
+            "linhas": {str(lid): {"aceito": 10, "recusado": 2}}}})
+        self.ok("eng2", "/api/solicitacao/vincular", {"nf_id": nf, "solicitacao_id": self.solicitacao_id})
         self.ok("almox1", "/api/movimento", {"data": D1, "material_id": self.tubo, "quantidade": 120, "tipo": "ROMANEIO_CAESB",
                                              "documento": "ROM-CAESB-123"})
         self.ok("almox1", "/api/movimento", {"data": D1, "material_id": self.tubo, "quantidade": 120, "tipo": "ROMANEIO_CAESB",
                                              "documento": "ROM-CAESB-123 (lançado de novo por engano)"})
         m = self.material(self.luva)
-        self.assertEqual((m["recebido"], m["saldo_almox"], m["quarentena"], m["a_receber"]), (10, 10, 0, 10))
+        self.assertEqual((m["recebido"], m["saldo_almox"], m["quarentena"], m["a_receber"]), (10, 10, 0, 8))
         self.assertEqual(self.q("SELECT COUNT(*) FROM medicao_lancamentos")[0][0], 0)          # recebido ≠ faturável
         self.assertTrue(os.listdir(os.path.join(self.dados, "documentos")))                    # XML guardado com hash
         self.ev["3_receber"] = {"nf": 9001, "entregue": 12, "aceito": 10, "recusado": 2, "a_receber": m["a_receber"],

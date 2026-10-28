@@ -31,13 +31,18 @@ def materiais(conn):
         return {r[0]: r[1] for r in conn.execute(sql, args)}
     solicitado = soma("""SELECT i.material_id, SUM(i.quantidade) FROM solicitacao_itens i JOIN solicitacoes_compra s
                          ON s.id=i.solicitacao_id WHERE s.status='APROVADA' GROUP BY 1""")
-    comprado = soma("""SELECT i.material_id, SUM(i.quantidade) FROM pedido_itens i JOIN pedidos_compra p ON p.id=i.pedido_id
-                       WHERE p.status<>'CANCELADO' GROUP BY 1""")
+    comprado = soma("""SELECT i.material_id,SUM(i.quantidade) FROM nf_itens i
+        JOIN notas_fiscais n ON n.id=i.nf_id JOIN materiais m ON m.id=i.material_id
+        WHERE n.status<>'CANCELADA' AND m.propriedade<>'CAESB' GROUP BY i.material_id""")
+    for mid, q in conn.execute("""SELECT a.material_id,SUM(a.quantidade) FROM solicitacao_avulsos a
+        JOIN solicitacoes_compra s ON s.id=a.solicitacao_id WHERE s.status='APROVADA' AND a.material_id IS NOT NULL GROUP BY a.material_id"""):
+        solicitado[mid] = solicitado.get(mid, 0) + q
     mov = defaultdict(lambda: defaultdict(float))
     for r in conn.execute(f"""SELECT material_id, tipo, COALESCE(status,'ACEITO') st, SUM(quantidade) q FROM movimentos
                               WHERE {S.VALIDO} GROUP BY 1, 2, 3"""):
         mov[r[0]][(r[1], r[2])] += r[3]
     reservado = soma("SELECT material_id, SUM(quantidade) FROM reservas WHERE status='ATIVA' GROUP BY 1")
+    recebiveis = P.a_receber_por_material(conn)
     out = []
     for m in _rows(conn.execute("SELECT * FROM materiais ORDER BY propriedade, id")):
         mv = mov[m["id"]]
@@ -47,7 +52,7 @@ def materiais(conn):
         saldo, quar = S.saldo_almox(conn, m["id"])
         linha = {"material_id": m["id"], "descricao": m["descricao"], "unidade": m["unidade"], "propriedade": m["propriedade"],
                  "previsto": m["qtd_projeto"], "solicitado": solicitado.get(m["id"], 0.0), "comprado": comprado.get(m["id"], 0.0),
-                 "a_receber": P.a_receber(conn, m["id"]) if m["id"] in comprado else 0.0, "quarentena": quar,
+                 "a_receber": recebiveis.get(m["id"], 0.0), "quarentena": quar,
                  "recebido": recebido, "saldo_almox": saldo, "reservado": reservado.get(m["id"], 0.0),
                  "com_equipes": com_equipes, "aplicado": t("APLICADO"), "perda": t("PERDA"),
                  "emprestado": t("EMPRESTIMO_OUTRA_OBRA"), "medido": None,

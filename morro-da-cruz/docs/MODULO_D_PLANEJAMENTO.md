@@ -116,3 +116,13 @@ O mapa do Dados da obra (D-108):
 - zonas sempre com a cor delas, e o primeiro toque em outra zona troca o foco;
 - nomes completos ("Zona 03 · PB06 · TR014");
 - busca pelo código inteiro (D-120).
+
+## Satélite, seleção por zona, ponta de rua e equipe da zona (28/10/2026, D-176 a D-179)
+
+Substitui o pedido de 22/10 de mapa sem satélite e a seleção com Ctrl (ou "Juntar trechos").
+- **Satélite (D-176):** o mapa do Dados da obra usa as mesmas fotos do Mapa iluminado (o mosaico `/mapa/geral.webp` e as PBs em resolução cheia quando se aproxima), com o véu claro, e as cores das situações ficaram mais claras para aparecer por cima. Não baixa nada além do que o Mapa iluminado já usa.
+- **Seleção (D-177):** com a obra inteira, mesmo aproximada, cada toque escolhe um trecho ou um nó e troca a seleção. Com uma zona escolhida (toque na zona), os toques somam ou tiram trechos e nós, sem Ctrl. Trocar de zona ou voltar à obra inteira (⌖) limpa a seleção.
+- **Ponta de rua (D-178):** o nó em que só um trecho chega, em toda a rede vigente (`topologia.trechos_fisicos`), entra sozinho com o trecho, se for nó da 06.2 vigente. Ponta de rua sem peça na 06.2 não gera aviso. O nó que liga dois trechos escolhidos continua entrando; a ponta da seleção que continua noutro trecho não entra.
+- **Equipe da zona (D-179):** a equipe já vem a da frente dos trechos escolhidos (Zona 08 → EQUIPE ZONA 08; o nome completo do trecho diz a frente). A escolha feita à mão vale enquanto a seleção continua na mesma frente; trocar de frente ou limpar a seleção volta para a equipe da zona.
+
+Testes: `test_no_terminal_da_062_entra_sozinho_mas_juncao_nao` (`tests/test_fluxo_v22.py`) e `TestMapaNoNavegador`.

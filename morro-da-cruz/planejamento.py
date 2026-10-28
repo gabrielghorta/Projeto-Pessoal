@@ -99,13 +99,23 @@ def resumo(conn, ini, fim, frente=None, equipe=None):
     return {"contagem": cont, "realizadas_no_passado": sum(1 for p in passadas if p["status"] == "REALIZADA"), "programadas_no_passado": len(passadas)}
 
 
-def a_receber(conn, material_id):
-    """Pendente de entrega em pedidos emitidos (compras)."""
-    total = 0.0
-    for (pid,) in conn.execute("""SELECT DISTINCT p.id FROM pedidos_compra p JOIN pedido_itens i ON i.pedido_id=p.id
-                                  WHERE p.status='EMITIDO' AND i.material_id=?""", (material_id,)):
-        total += sum(i["pendente_entrega"] for i in C.situacao_pedido(conn, pid)["itens"] if i["material_id"] == material_id)
-    return round(total, 6)
+def a_receber_por_material(conn):
+    """O que está numa nota aberta e ainda não chegou, por material, na unidade do material (D-172: sem pedido de compra,
+    a nota é o que vem). A linha com material já gravado usa o dela; o reconhecimento (compras.sugerir_materiais), que
+    é a parte cara, só roda na nota que tem linha sem material. Linha à espera da engenharia não conta."""
+    from recebimento import linhas
+    total = {}
+    for (nid,) in conn.execute("SELECT id FROM notas_fiscais WHERE status IN ('A_CONFERIR','CONFERIDA')"):
+        ls = linhas(conn, nid)
+        sug = ({x["linha_id"]: x for x in C.sugerir_materiais(conn, nid)}
+               if any(not li["material_id"] and not li["fora_do_estoque"] for li in ls) else {})
+        pendentes = {r[0] for r in conn.execute("""SELECT c.linha_id FROM nf_confirmacoes c JOIN nf_linhas l ON l.id=c.linha_id
+                                                   WHERE l.nf_id=? AND c.pendente=1""", (nid,))}
+        for li in ls:
+            x = sug.get(li["id"]) or li
+            if x["material_id"] and not x["fora_do_estoque"] and li["id"] not in pendentes:
+                total[x["material_id"]] = total.get(x["material_id"], 0) + max(0, li["quantidade"] - li["entregue"]) * (x["fator"] or 1)
+    return {mid: round(q, 6) for mid, q in total.items()}
 
 
 def faltantes(conn, ini, fim, frente=None):
@@ -120,12 +130,13 @@ def faltantes(conn, ini, fim, frente=None):
             a["previsto"] += m["quantidade"]
             a["pares"].add((p["equipe_id"], p["data"]))
     out = []
+    recebiveis = a_receber_por_material(conn) if agg else {}
     for mid, a in sorted(agg.items()):
         res = sum(S.reservado(conn, mid, eq, d) for eq, d in a["pares"])
         disp = S.disponivel(conn, mid)
         mat = _one(conn, "SELECT descricao, unidade, propriedade FROM materiais WHERE id=?", mid)
         out.append({"material_id": mid, **mat, "previsto": round(a["previsto"], 6), "reservado": round(res, 6),
-                    "disponivel": round(disp, 6), "a_receber": a_receber(conn, mid),
+                    "disponivel": round(disp, 6), "a_receber": recebiveis.get(mid, 0.0),
                     "faltante": round(max(a["previsto"] - res - max(disp, 0), 0), 6)})
     return out
 

@@ -1,28 +1,28 @@
 /* Planejamento: o mapa do Dados da obra e o cronograma do MS Project.
- * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02 e o visor de arrastar e aproximar), sem as
- * plantas baixas: nem fotos de satélite nem divisão das PBs, só as zonas, os nomes, os trechos, os nós e os pinos
- * (pedido do responsável em 22/10/2026; também deixa a aba leve, sem baixar imagem nenhuma).
- * Aqui se escolhem trechos: o toque escolhe um; Ctrl + clique (ou o botão "Juntar trechos", no celular) junta vários.
- * O servidor completa a seleção (/api/dados-obra/selecao): cada linha traz o trecho físico inteiro e o nó entre dois
- * trechos escolhidos entra sozinho. Com a seleção, o painel ao lado programa a equipe (período e dias), libera o material
- * do dia (check-in), reserva para um dia que ainda não chegou e recebe a devolução do fim do dia (check-out). */
+ * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02, o satélite com o mesmo fundo escolhido
+ * lá — escuro, claro ou sem satélite — e o visor de arrastar e aproximar), com as mesmas cores (D-176).
+ * Aqui se escolhem trechos: na obra inteira, cada toque escolhe um trecho ou nó; com uma zona escolhida, os toques somam
+ * e tiram, sem Ctrl (D-177). O servidor completa a seleção (/api/dados-obra/selecao): cada linha traz o trecho físico
+ * inteiro, e o nó entre dois trechos escolhidos e a ponta de rua da 06.2 entram sozinhos (D-178). A equipe já vem a da
+ * zona (D-179). Com a seleção, o painel ao lado programa a equipe (período e dias), libera o material do dia
+ * (check-in), reserva para um dia que ainda não chegou e recebe a devolução do fim do dia (check-out). */
 
 /* ---------------------------------------------------------------- estado */
 const PLAN = [   // de baixo para cima no desenho: o último fica por cima
-  { id: 'livre', nome: 'Sem programação', cor: '#8C8C8C', tracejado: '5 4' },
-  { id: 'liberado', nome: 'Liberado pela topografia', cor: '#6CB8F0' },
+  { id: 'livre', nome: 'Sem programação', cor: '#B4B4B4', tracejado: '5 4' },
+  { id: 'liberado', nome: 'Liberado pela topografia', cor: '#9FD1F5' },
   { id: 'feito', nome: 'Concluído (reaterrado)', cor: '#F2F2F2', opacidade: 0.7 },
-  { id: 'execucao', nome: 'Começado, sem equipe no dia', cor: '#F15922', tracejado: '9 6' },
-  { id: 'programado', nome: 'Programado para os próximos dias', cor: '#FFD23F', tracejado: '9 6' },
-  { id: 'hoje', nome: 'Programado para o dia', cor: '#FFD23F' },
-  { id: 'campo', nome: 'Equipe trabalhando no dia (check-in)', cor: '#F15922' },
+  { id: 'execucao', nome: 'Começado, sem equipe no dia', cor: '#F6936F', tracejado: '9 6' },
+  { id: 'programado', nome: 'Programado para os próximos dias', cor: '#F7DC8B', tracejado: '9 6' },
+  { id: 'hoje', nome: 'Programado para o dia', cor: '#F7DC8B' },
+  { id: 'campo', nome: 'Equipe trabalhando no dia (check-in)', cor: '#F6936F' },
 ];
-const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: null, multi: false, dia: null, est: null,
+const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: null, dia: null, est: null,
   sel: [], nos: [], resp: null, aba: null, pedido: 0, equipe: null, equipeFixa: false, crono: null, foco: null, ultPx: 0,
   extra: [], qtd: {}, noIdx: null, vis: Object.fromEntries(PLAN.map(s => [s.id, true])),
   cam: { zonas: true, nomes: true },
   prefixo: 'pln', svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln,
-  copia: (g, u) => copiaPln(g, u), copiaChave: () => [PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0].join('|') };
+  copia: (g, u) => copiaPln(g, u), copiaChave: () => [PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0, !!PLN.mosaico, ILU.fundo].join('|') };
 const CAMADAS_PLN = { zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
 try {                                 // só as camadas que existem: as antigas (plantas, quadros) salvas no navegador caem fora
   const salvas = JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}');
@@ -41,7 +41,7 @@ function planSitu(nome, mapa) {
   return s === 'liberado' ? 'liberado' : 'livre';
 }
 // equipe da frente do trecho (Zona01 … Zona11, ADUTORA)
-const equipeDoTrecho = t => t ? (t.tp === 'Adutora' ? 'ADUTORA' : t.z) : null;
+const equipeDoTrecho = t => t ? (t.tp === 'Adutora' ? 'ADUTORA' : (/^(Zona\d{2}|ADUTORA|CH)_/.exec(t.n || '') || [])[1] || t.z) : null;
 
 /* ---------------------------------------------------------------- abrir a tela */
 async function carregarDadosObra() {
@@ -51,6 +51,7 @@ async function carregarDadosObra() {
   try { g = await obterGeral(); } catch (e) { return avisoPln('Não consegui abrir o traçado do mapa: ' + e.message); }
   if (g.ausente) return avisoPln('O mapa do projeto (REV02) não está na pasta mapa/ do sistema.');
   if (!PLN.pronto) montarPln(g); else ajustarAspecto(PLN);
+  veuPln();                                            // o fundo pode ter mudado no Mapa iluminado
   if (!MATERIAIS.length && pode('almox')) MATERIAIS = await api('/api/estoque').catch(() => []);
   await recarregarPln();
   if (PLN.abrir) { const a = PLN.abrir; PLN.abrir = null; escolherEquipeDoDia(a.equipe, a.aba); }   // vindo do Estoque
@@ -78,9 +79,10 @@ function montarPln(g) {
     + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
   PLN.noIdx = new Map();
   g.els.forEach((e, i) => e.n.forEach(n => PLN.noIdx.set(n, i)));
-  svg.innerHTML = `<g id="plnZonas">${zonas}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnNos" class="longe"></g>
+  svg.innerHTML = `${htmlSatelite(g, 'pln')}<g id="plnZonas">${zonas}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnNos" class="longe"></g>
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
   aplicarCamadasPln();
+  ligarSatelite(PLN, g); carregarMosaicoCopia(g, PLN);
   PLN.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   const salva = vistaSalvaPln();                       // a última vista da sessão: o mapa não volta sozinho para a obra inteira
   PLN.vb = salva ? salva.vb : null; PLN.zona = salva ? salva.zona : null; zonasPln(); ajustarAspecto(PLN);
@@ -89,12 +91,20 @@ function montarPln(g) {
   new ResizeObserver(() => TELA === 'mapa' && ajustarAspecto(PLN)).observe($('#plnMapa'));
 }
 
+// o satélite com o fundo do Mapa iluminado (escuro, claro ou sem satélite): os dois mapas ficam iguais
+function veuPln() {
+  const sat = satDe(PLN); if (!sat) return;
+  sat.style.display = ILU.fundo === 'sem' ? 'none' : '';
+  $('.sat-veu', sat).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]);
+  agendarCopia(PLN);
+}
 const VISTA_PLN = 'mc-pln-vista';
 function vistaSalvaPln() {
   try { const v = JSON.parse(sessionStorage.getItem(VISTA_PLN) || 'null'); return v && Array.isArray(v.vb) && v.vb.length === 4 && v.vb.every(Number.isFinite) ? v : null; }
   catch (_) { return null; }
 }
 function desenharPln(px, zoom) {
+  satDepois(PLN, GERAL, px);
   try { sessionStorage.setItem(VISTA_PLN, JSON.stringify({ vb: PLN.vb, zona: PLN.zona })); } catch (_) { /* sem storage */ }
   espessura($('#plnLinhas'), Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)));
   if (escalaMudou(PLN, px)) {                          // arrastar não muda a escala: só o zoom mexe em textos, pinos e nós
@@ -148,6 +158,11 @@ function colorirPln() {
 }
 // a cópia leve do gesto (iluminado.js): as zonas e as linhas por situação do dia
 function copiaPln(g, u) {
+  if (ILU.fundo !== 'sem' && PLN.mosaico) {
+    g.save(); g.beginPath(); GERAL.zonas.forEach(z => poligonoCopia(g, z.p)); g.clip();
+    g.drawImage(PLN.mosaico, 0, 0, GERAL.w, GERAL.h);
+    g.globalAlpha = FUNDOS[ILU.fundo][1]; g.fillStyle = '#000'; g.fillRect(0, 0, GERAL.w, GERAL.h); g.restore();
+  }
   if (PLN.cam.zonas) zonasCopia(g, u, () => 0.16);
   linhasCopia(g, u, PLAN.filter(s => PLN.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado, opacidade: s.opacidade, trechos: GERAL.trechos.filter(t => t.ps === s.id) })));
 }
@@ -171,6 +186,8 @@ function membrosDe(nome) {
   return f ? f.membros : [nome];
 }
 function escolherTrecho(nome, juntar) {
+  const ix = indexar(GERAL), anterior = equipeDoTrecho(ix.trecho.get(PLN.sel[0])), nova = equipeDoTrecho(ix.trecho.get(nome));
+  if (!juntar && anterior !== nova) { PLN.equipeFixa = false; PLN.equipe = null; }
   const ja = PLN.sel.includes(nome) || !!(PLN.resp && PLN.resp.fisicos.some(f => f.membros.includes(nome)));
   if (juntar) {
     if (ja) { const tirar = new Set(membrosDe(nome)); PLN.sel = PLN.sel.filter(n => !tirar.has(n)); }
@@ -182,7 +199,12 @@ function escolherTrecho(nome, juntar) {
   if (!PLN.equipeFixa) PLN.equipe = null;
   atualizarSelecao();
 }
-function alternarNo(nome) {
+function alternarNo(nome, juntar = !!PLN.zona) {
+  if (!juntar) {
+    const ja = PLN.nos.length === 1 && PLN.nos[0] === nome && !PLN.sel.length;
+    PLN.sel = []; PLN.nos = ja ? [] : [nome]; PLN.resp = null; PLN.equipeFixa = false; PLN.equipe = null;
+    return atualizarSelecao();
+  }
   const i = PLN.noIdx.get(nome), r = PLN.resp;
   const auto = r && r.nos.find(n => n.automatico && PLN.noIdx.get(n.nome) === i);
   if (auto) return toast(`${auto.numero} já entra sozinho: liga ${auto.liga.join(' e ')}.`);
@@ -190,7 +212,8 @@ function alternarNo(nome) {
   PLN.nos = ja ? PLN.nos.filter(n => PLN.noIdx.get(n) !== i) : [...PLN.nos, nome];
   atualizarSelecao();
 }
-function limparSelecao() { PLN.sel = []; PLN.nos = []; PLN.resp = null; PLN.extra = []; if (!PLN.equipeFixa) PLN.equipe = null; atualizarSelecao(); }
+// limpar a seleção também solta a equipe escolhida à mão (D-179): a próxima seleção começa pela equipe da zona
+function limparSelecao() { PLN.equipeFixa = false; PLN.equipe = null; PLN.sel = []; PLN.nos = []; PLN.resp = null; PLN.extra = []; atualizarSelecao(); }
 let SEL_T = 0;
 function atualizarSelecao() {
   marcarSelPln();
@@ -199,12 +222,10 @@ function atualizarSelecao() {
   SEL_T = setTimeout(buscarSelecao, 120);
 }
 function equipePadrao() {
-  const e = PLN.est || {}, ix = indexar(GERAL);
-  for (const n of PLN.sel) {                                       // a equipe programada para o dia nesses trechos…
-    const p = ((e.programado || {})[n] || []).find(x => x.hoje); if (p) return p.equipe;
-    const c = (e.em_campo || {})[n]; if (c) return c.equipe;
-  }
-  const eq = equipeDoTrecho(ix.trecho.get(PLN.sel[0]));            // …senão a da frente do primeiro trecho
+  const ix = indexar(GERAL);
+  const frentes = new Set(PLN.sel.map(n => equipeDoTrecho(ix.trecho.get(n))).filter(Boolean));
+  if (!frentes.size) PLN.nos.forEach(n => { const m = /^(Zona\d{2}|ADUTORA|CH)_/.exec(n); if (m) frentes.add(m[1]); });
+  const eq = frentes.size === 1 ? [...frentes][0] : !frentes.size ? (PLN.zona === ZONA_ADUTORA ? 'ADUTORA' : PLN.zona) : null;
   return ((RESUMO && RESUMO.equipes) || []).some(x => x.id === eq) ? eq : null;
 }
 async function buscarSelecao() {
@@ -225,24 +246,20 @@ function cliquePln(alvo, ev, i) {
   fecharPopPln();
   const perto = s => alvo.closest && alvo.closest(s);
   const no = perto('.pln-no'), pin = perto('.ilu-pin'), zona = perto('.ilu-zf');
-  const juntar = PLN.multi || !!(ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey));
+  const juntar = !!PLN.zona;
   const noPerto = no && !$('#plnNos').classList.contains('longe');
-  // com uma zona em foco, o primeiro toque em outra zona (no polígono, num trecho ou num nó dela) troca o foco;
-  // juntando trechos, vale o trecho
-  const outra = PLN.zona && !juntar && (noPerto ? (/^(Zona\d\d|ADUTORA)_/.exec(no.dataset.n) || [])[1]
-    : i >= 0 ? zonaDoTrecho(GERAL.trechos[i]) : zona && zona.dataset.zona);
-  if (outra && outra !== PLN.zona) return focarZonaPln(outra);
   if (noPerto) return alternarNo(no.dataset.n);
-  if (pin) { PLN.sel = [pin.dataset.alvo].filter(n => indexar(GERAL).trecho.has(n)); return atualizarSelecao(); }
+  if (pin && indexar(GERAL).trecho.has(pin.dataset.alvo)) return escolherTrecho(pin.dataset.alvo, juntar);
   if (i >= 0) return escolherTrecho(GERAL.trechos[i].n, juntar);
-  if (zona && !juntar) return focarZonaPln(zona.dataset.zona);
+  if (zona) return focarZonaPln(zona.dataset.zona);
 }
 function focarZonaPln(z) {
+  if (PLN.zona !== z) limparSelecao();
   PLN.zona = z; zonasPln();
   const ts = GERAL.trechos.filter(t => zonaDoTrecho(t) === z), poli = GERAL.zonas.find(x => x.id === z);
   irPara(limites([...(poli ? [poli.p] : []), ...ts.flatMap(t => t.p)], 0.06), true, PLN);
 }
-function verTudoPln() { PLN.zona = null; zonasPln(); irPara(PLN.base, true, PLN); }
+function verTudoPln() { limparSelecao(); PLN.zona = null; zonasPln(); irPara(PLN.base, true, PLN); }
 const zonasPln = () => $$('#plnZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', PLN.zona && p.dataset.zona === PLN.zona ? 0.26 : 0.16));
 function focarNomes(nomes) {
   const ix = indexar(GERAL), ps = [];
@@ -269,7 +286,7 @@ function piscarTrecho(nome) {
 }
 ligarBusca($('#plnBusca'), async r => {
   $('#plnBusca').value = '';
-  if (r.tipo === 'TRECHO') { focarNomes([r.rotulo]); toast(`Achado: ${nomeCompleto(r.rotulo)} · ${r.extra || ''}`); await piscarTrecho(r.rotulo); return escolherTrecho(r.rotulo, PLN.multi || PLN.sel.length > 0); }
+  if (r.tipo === 'TRECHO') { focarNomes([r.rotulo]); toast(`Achado: ${nomeCompleto(r.rotulo)} · ${r.extra || ''}`); await piscarTrecho(r.rotulo); return escolherTrecho(r.rotulo, !!PLN.zona); }
   focarNomes([r.rotulo]);
   if (PLN.sel.length) alternarNo(r.rotulo); else toast('Escolha os trechos no mapa: o nó entre dois trechos escolhidos entra sozinho.');
 });
@@ -279,10 +296,6 @@ $('#plnDia').addEventListener('change', ev => {
   if (!ev.target.value) { ev.target.value = PLN.dia; return; }
   PLN.dia = ev.target.value; PLN.extra = [];
   recarregarPln();
-});
-$('#plnMulti').addEventListener('click', ev => {
-  PLN.multi = !PLN.multi; ev.currentTarget.setAttribute('aria-pressed', String(PLN.multi));
-  toast(PLN.multi ? 'Juntar trechos ligado: cada toque soma ou tira um trecho da seleção.' : 'Juntar trechos desligado: o toque escolhe um trecho só.');
 });
 $('#plnMais').addEventListener('click', () => zoomEm(1 / 1.5, null, null, PLN));
 $('#plnMenos').addEventListener('click', () => zoomEm(1.5, null, null, PLN));
@@ -373,7 +386,7 @@ function renderPainel() {
 }
 function cabecalhoDia() {
   return `<div class="pln-cab"><h2>${esc(dataBR(PLN.dia))}${PLN.dia === hoje() ? ' · hoje' : ''}</h2></div>
-    <p class="vazio" style="margin:0 0 10px">Toque num trecho para escolher. <b>Ctrl + clique</b> (no celular, o botão <b>Juntar trechos</b>) junta vários; o nó entre dois trechos escolhidos entra sozinho.</p>`;
+    <p class="vazio" style="margin:0 0 10px">Toque num trecho para escolher. <b>Escolha uma zona</b> para juntar trechos com toques. Nós entre trechos e pontas de rua entram sozinhos.</p>`;
 }
 function cabecalhoSel(r) {
   const t = r.totais, um = r.fisicos.length === 1;

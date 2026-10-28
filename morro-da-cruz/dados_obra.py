@@ -56,8 +56,8 @@ def _data(v, rotulo):
 
 # ------------------------------------------------------------------ seleção
 def _selecao(conn, linhas, nos=()):
-    """Linhas tocadas → trechos físicos inteiros, as linhas deles e os nós (os que ligam dois trechos escolhidos e os
-    tocados). Recusa linha inexistente ou retirada da revisão vigente."""
+    """Linhas tocadas → trechos físicos inteiros, as linhas deles e os nós: os que ligam dois trechos escolhidos, a ponta
+    de rua (nó de um trecho só em toda a rede, D-178) e os tocados. Recusa linha inexistente ou retirada da revisão vigente."""
     refs = list(dict.fromkeys(_lista(linhas)))
     if len(refs) > LIMITE_LINHAS:
         raise RegraViolada(f"Seleção grande demais ({len(refs)} linhas; até {LIMITE_LINHAS}).")
@@ -76,7 +76,12 @@ def _selecao(conn, linhas, nos=()):
         for no in {f["no_ini"], f["no_fim"]} - {None, ""}:
             pontas.setdefault(no, []).append(f)
     avisos, nos_out, vistos = [], [], set()
-    ligam = {no: fs for no, fs in pontas.items() if len(fs) > 1}
+    # a ponta da seleção que continua noutro trecho não entra; a ponta de rua (só um trecho em toda a rede) entra
+    grau = {}
+    for f in TP.trechos_fisicos(conn):
+        for no in {f["no_ini"], f["no_fim"]} - {None, ""}:
+            grau.setdefault(no, set()).add(f["id"])
+    ligam = {no: fs for no, fs in pontas.items() if len(fs) > 1 or len(grau.get(no, ())) == 1}
     if ligam:
         ph = ",".join("?" * len(ligam))
         ativs = {r["nomenclatura"]: r for r in _rows(conn.execute(
@@ -86,7 +91,8 @@ def _selecao(conn, linhas, nos=()):
             liga = [" + ".join(_curto(m["ponto"]) for m in f["membros"]) for f in fs]
             a = ativs.get(no)
             if not a:
-                avisos.append(f"{_curto(no)} liga {' e '.join(liga)}, mas não é nó da 06.2 vigente: fica fora da sugestão de peças.")
+                if len(fs) > 1:                        # a ponta de rua sem peça na 06.2 (sem tampão, por exemplo) não é aviso
+                    avisos.append(f"{_curto(no)} liga {' e '.join(liga)}, mas não é nó da 06.2 vigente: fica fora da sugestão de peças.")
                 continue
             vistos.add(a["id"])
             nos_out.append({"atividade_id": a["id"], "nome": a["nomenclatura"], "numero": a["numero"], "tipo": a["tipo"],

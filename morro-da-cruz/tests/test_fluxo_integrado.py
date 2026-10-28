@@ -151,19 +151,12 @@ class TestNotaFiscalPeloHTTP(BaseReal):
         notas = self.ok(alm.get("/api/almox/notas"))
         nf = next(n for n in notas if n["numero"] == "18734")
         self.assertEqual(nf["sugestoes"][0]["material_id"], mat)
-        self.assertEqual(self.ok(alm.post("/api/nf/conferir", {"nf_id": nf["id"], "pedido_id": 0, "linhas": [
-            {"linha_id": nf["linhas"][0]["id"], "material_id": mat}]}))["sem_pedido"], True)
-        ni = self.c.execute("SELECT id FROM nf_itens WHERE nf_id=?", (nf["id"],)).fetchone()[0]
-        rec = self.ok(alm.post("/api/recebimento", {"nf_id": nf["id"], "data": RL.hoje().isoformat(), "itens": [{"nf_item_id": ni, "quantidade": 4}]}))
-        rid = rec["id"] if isinstance(rec, dict) else rec
-        self.ok(alm.post("/api/inspecao/entrega", {"recebimento_id": rid, "itens": [], "data": RL.hoje().isoformat()}))   # Aceitar tudo
+        self.ok(alm.post("/api/nf/receber", {"nf_id": nf["id"], "data": RL.hoje().isoformat()}))
         est = {m["id"]: m for m in self.ok(alm.get("/api/estoque"))}[mat]
-        self.assertEqual(est["aguardando_aprovacao"], 4)
-        self.recusa(alm.post("/api/nf/aprovar", {"nf_id": nf["id"]}), 403, "")         # o almoxarifado não aprova
-        self.recusa(self.cli("adm").post("/api/nf/aprovar", {"nf_id": 999999}), 422, "")
-        self.ok(eng.post("/api/nf/aprovar", {"nf_id": nf["id"]}))
-        est = {m["id"]: m for m in self.ok(alm.get("/api/estoque"))}[mat]
-        self.assertEqual(est["aguardando_aprovacao"], 0)
+        self.assertEqual(est["disponivel"], 4)                                    # sem aprovação da nota (D-175)
+        self.assertNotIn("aguardando_aprovacao", est)
+        self.assertEqual([tuple(r) for r in self.c.execute("SELECT aprovada_por,aprovada_em FROM notas_fiscais")], [(None, None), (None, None)])
+
 
 
 if __name__ == "__main__":

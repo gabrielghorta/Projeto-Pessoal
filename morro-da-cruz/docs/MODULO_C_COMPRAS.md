@@ -124,3 +124,32 @@ O sistema reconhece, nesta ordem: a linha já confirmada em Compras; o código d
 A linha que ele não reconhece, ou cuja unidade é diferente da do material sem fator conhecido, fica **faltando a confirmação** em **Compras e notas** (a mesma aba onde a nota sobe). Quem tem a permissão de receber (na prática, a engenharia) marca um dos materiais mais parecidos, outro material ou frete/serviço, e diz quantos vêm em cada unidade da nota quando a unidade é outra (`compras.confirmar_linhas`, rota `/api/nf/confirmar-linhas`). Uma linha reconhecida errada também é corrigida ali (**Corrigir**). A próxima nota do fornecedor com a mesma linha já vem reconhecida. Enquanto falta confirmar, a entrega pode ser recusada (a linha desconhecida é recusada junto; se nenhuma linha foi reconhecida, a nota é cancelada com a recusa como motivo), mas não aceita.
 
 O pedido é achado sozinho (`compras._pedido_automatico`): o único pedido emitido do fornecedor com todos os materiais comprados da nota. Nenhum, mais de um, ou um que não comporta a nota: ela entra sem pedido e espera a aprovação de Engenharia/Administração. A nota só de frete ou serviço é encerrada pelo verde. Testes: `TestConferenciaPorMarcacao` em `tests/test_compras.py`.
+
+### Pedir material e entrega antes da identificação (28/10/2026, esquema v22, D-172 a D-175)
+
+Substitui o que vem acima sobre pedido de compra, nota "sem pedido" com aprovação e "até lá, a entrega pode ser recusada, mas não aceita". Instalação e o que muda para cada pessoa: `docs/ATUALIZACAO_V22.md`.
+
+**Saiu o pedido de compra (D-172).** A nota fiscal já diz o que foi comprado. Saíram da tela e das rotas: o pedido, a lista de pedidos, a solicitação de compra antiga de Compras, a aprovação da nota sem pedido (`/api/nf/aprovar`) e o pedido achado sozinho (`_pedido_automatico`). As tabelas `pedidos_compra` e `pedido_itens` e o que já estava nelas continuam no banco. O fornecedor é cadastrado junto da nota (permissão nova `fornecedores`).
+
+**Pedir material (D-173)** é uma tela própria (`solicitar`), de quem tem `compras_solicitar`: almoxarifado, supervisor, encarregado (só para a frente da equipe dele), engenharia e administração. Quem é de campo não vê nota fiscal.
+- O material é escolhido por toques: o **tipo** (Tubo, Luva, Tê, Curva, Redução, Flange, Toco, Válvula, Tampa, Ligação de água, Obra), o **tamanho** e o material, com um nome curto e sem código ("Redução PEAD 110×63 mm", "Tê de sela eletrofusão 110×63 mm", "Parafuso sextavado 20 mm · 90 mm de comprimento"). Há também a busca por palavras.
+- O nome sai da descrição do material (`solicitacoes.catalogo`). Quando dois materiais ficariam com o mesmo nome, entra o primeiro detalhe que os separa (alma, comprimento, pressão). Serviço e administração local (taxa, locação, bombeamento) não aparecem. `config/materiais_pedido.json` corrige o nome, o tipo ou o tamanho de um material, pelo id.
+- **Não achei:** escrever o que é ou tirar uma foto, com a unidade. A foto fica nos documentos (`NF_IMAGEM`) e só a vê quem pediu e quem aprova.
+- A quantidade é acertada no − e no +; o destino é um toque na zona ou frente (a tabela `equipes`); a observação é opcional.
+- **Aprovar ou recusar** é de quem tem `compras_aprovar` (engenharia e administração), num toque; a recusa pede o motivo. Quem pediu não aprova o próprio pedido. O item escrito ou fotografado precisa do material escolhido antes da aprovação, com a quantidade na unidade do material.
+- **Meus pedidos** mostra cada pedido com cor e texto: aguardando, aprovado, recusado (com o motivo) e chegou.
+- Ligar a nota a uma solicitação aprovada é opcional (`/api/solicitacao/vincular`, permissão `nf_confirmar`). Só marca "Chegou" quando o aceito das notas ligadas cobre o que foi pedido. A solicitação nunca trava nota, entrega nem estoque.
+
+**Entrega antes da identificação (D-174).** Em **Estoque › Notas a receber**, o almoxarife marca todas as linhas, inclusive a que o sistema não reconheceu (ele confere pela descrição), e aceita a entrega.
+- A linha reconhecida entra no estoque na hora, como antes.
+- A linha não reconhecida fica registrada em `nf_entregas_linhas`, na unidade da nota, sem saldo. Ela vai para **faltando a confirmação** em Compras e notas (`nf_confirmacoes`).
+- Quando a engenharia diz o material e o fator (`nf_confirmar`, `/api/nf/confirmar-linhas`), a entrega já registrada vira estoque uma vez só, com a data e o recebedor da entrega (`recebimento.materializar`). Se a linha for frete ou serviço, a pendência fecha sem movimento.
+- **Corrigir** (quem tem `receber`) devolve uma linha reconhecida errada para "faltando a confirmação", desde que ela ainda não tenha entrado no estoque.
+- A recusa e o aceite parcial continuam. A nota inteira recusada é encerrada com a recusa registrada, mesmo quando nenhuma linha foi reconhecida (antes ela era cancelada).
+- A quarentena das entregas anteriores à v22 continua até a inspeção.
+
+**Sem aprovação da nota (D-175).** O saldo deixou de esperar a aprovação da nota sem pedido. Na migração para a v22 (`importacao.preparar_v22`), o aceito dessas notas é guardado em `nf_liberadas_v22` (nota, material, quantidade) e vai no relatório da importação (`notas_liberadas_v22`). Nenhum movimento nem aprovador é inventado.
+
+**Relatório de materiais e faltantes:** "comprado" vem das linhas das notas (sem o tubo da Caesb); "a receber" é o que está numa nota aberta e ainda não chegou (`planejamento.a_receber_por_material`, com o reconhecimento só nas notas que têm linha sem material).
+
+Testes: `tests/test_fluxo_v22.py` (`TestEntregaAntesDaIdentificacao`, `TestSolicitacoesHTTP`, `TestCatalogoDoPedido`) e `tests/test_compras.py`.

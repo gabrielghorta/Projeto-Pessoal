@@ -9,6 +9,7 @@ Travas desta versão (etapas 0 e 1 — regras financeiras ainda não aprovadas):
   * medição fechada fica congelada: revisão posterior do BM não altera o valor dela.
 """
 import base64
+import datetime
 import hashlib
 import json
 import struct
@@ -26,7 +27,7 @@ import relogio as RL
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 21
+VERSAO_ESQUEMA = 22
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -70,7 +71,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "memória de cálculo no modelo oficial do BM: fotos e justificativa de cada folha (medicao_folhas)"))
+                 (VERSAO_ESQUEMA, _agora(), "solicitação de material e entrega por linha antes da identificação; liberação sem pedido"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -342,25 +343,15 @@ CUSTODIA_SQL = """COALESCE(SUM(CASE WHEN tipo IN ('CUSTODIA','TRANSF_ENTRADA') T
 VALIDO = "id NOT IN (SELECT movimento_id FROM estornos)"
 
 
-# aceito de nota conferida SEM pedido e ainda não aprovada (compras.aprovar_nf_sem_pedido): no almoxarifado, fora do saldo
-NF_SEM_APROVACAO = "nf_id IN (SELECT id FROM notas_fiscais WHERE sem_pedido=1 AND aprovada_em IS NULL)"
-
-
+# D-175: nota conferida e entrega aceita bastam; solicitação não bloqueia o estoque.
 def saldo_almox(conn, material_id):
     r = conn.execute(
         f"""SELECT
-              COALESCE(SUM(CASE WHEN tipo IN {ENTRA_ALMOX} AND COALESCE(status,'ACEITO')='ACEITO'
-                                     AND NOT (tipo='ENTRADA_NF' AND COALESCE({NF_SEM_APROVACAO}, 0)) THEN quantidade END),0)
+              COALESCE(SUM(CASE WHEN tipo IN {ENTRA_ALMOX} AND COALESCE(status,'ACEITO')='ACEITO' THEN quantidade END),0)
             - COALESCE(SUM(CASE WHEN tipo IN {SAI_ALMOX} THEN quantidade END),0) AS saldo,
               COALESCE(SUM(CASE WHEN tipo='ENTRADA_NF' AND status='QUARENTENA' THEN quantidade END),0) AS quarentena
             FROM movimentos WHERE material_id=? AND {VALIDO}""", (material_id,)).fetchone()
     return r["saldo"], r["quarentena"]
-
-
-def aguardando_aprovacao(conn, material_id):
-    """Aceito de nota sem pedido ainda não aprovada: está no almoxarifado, mas não pode ser liberado às equipes."""
-    return conn.execute(f"""SELECT COALESCE(SUM(quantidade),0) FROM movimentos WHERE material_id=? AND tipo='ENTRADA_NF'
-                            AND status='ACEITO' AND {NF_SEM_APROVACAO} AND {VALIDO}""", (material_id,)).fetchone()[0]
 
 
 def reservado(conn, material_id, equipe_id=None, data=None):
@@ -414,7 +405,6 @@ def estoque(conn):
             f"""SELECT {CUSTODIA_SQL}
                 FROM movimentos WHERE material_id=? AND checkin_id IS NOT NULL AND {VALIDO}""", (m["id"],)).fetchone()[0]
         out.append({**m, "saldo_almox": round(saldo, 3), "quarentena": round(quar, 3), "reservado": round(res, 3),
-                    "aguardando_aprovacao": round(aguardando_aprovacao(conn, m["id"]), 3),
                     "disponivel": round(saldo - res, 3), "custodia": round(cust, 3),
                     "baixa_teorica_legada": round(_soma(conn, m["id"], "BAIXA_TEORICA"), 3)})
     return out
@@ -795,6 +785,28 @@ def alvos_do_checkin(conn, checkin_id):
     return [{"alvo_tipo": t, "alvo_id": a, "origem": o, "nome": nome_alvo(conn, t, a), "retirado": _retirado(conn, t, a)}
             for t, a, o in conn.execute("SELECT alvo_tipo, alvo_id, origem FROM checkin_alvos WHERE checkin_id=? ORDER BY rowid",
                                         (checkin_id,))]
+
+
+def alvos_da_equipe_no_dia(conn, equipe_id, data):
+    """Sugestões do apontamento sem NS (D-180): os trechos e nós de todos os check-ins da equipe na data, inclusive os
+    já devolvidos, sem repetir; "já lançado hoje" quando o alvo tem apontamento efetivo na data, de qualquer equipe."""
+    try:
+        if datetime.date.fromisoformat(data).isoformat() != data:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise RegraViolada("Escolha uma data válida.") from None
+    if not _one(conn, "SELECT id FROM equipes WHERE id=?", equipe_id):
+        raise RegraViolada("Escolha a equipe.")
+    feitos = {tuple(x) for x in conn.execute(
+        "SELECT alvo_tipo, alvo_id FROM apontamentos WHERE data=? AND anulado_por IS NULL", (data,))}
+    unicos = {}
+    checks = _rows(conn.execute("SELECT id FROM checkins WHERE equipe_id=? AND data=? ORDER BY id", (equipe_id, data)))
+    for ck in checks:
+        for a in alvos_do_checkin(conn, ck['id']):
+            chave = (a['alvo_tipo'], a['alvo_id'])
+            if chave not in unicos:
+                unicos[chave] = {**a, 'ja_lancado_hoje': chave in feitos}
+    return {'equipe_id': equipe_id, 'data': data, 'checkins': len(checks), 'alvos': list(unicos.values())}
 
 
 def checkins_abertos(conn, data=None):
