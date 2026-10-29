@@ -143,3 +143,8 @@ Substitui o satélite da D-176 no Dados da obra.
   - no Mapa iluminado, os trechos ficam como estavam e os nós e as caixas ganham a cor da situação (Camadas › Nós e caixas). O toque abre a ficha do nó.
 
 Testes: `test_geometria_traz_o_que_as_frentes_e_as_cores_pedem`, `test_html_base_com_a_frente_subadutora`, `test_dados_da_obra_com_a_planta_clara_sem_satelite` e `test_frentes_do_mapa_com_a_subadutora` (`tests/test_telas.py`), e `TestMapaNoNavegador` (a equipe do trecho de DE 225 e do nó compartilhado).
+
+**Ajuste de 29/10/2026 (depois da instalação):**
+- Os trechos dos dois mapas ficaram finos como no HTML do projeto: 1 px na obra inteira, crescendo pouco com o zoom.
+- O traçado aparece logo, sem esperar o estado do dia nem o estoque. No site, quando o servidor demorava, ficavam só as zonas e as caixas.
+- A imagem da planta (`mapa_geral.mosaico`) abre uma PB por vez: o pico de memória caiu de 874 MB para 196 MB. O instalador monta essa imagem antes do Reload, para o site não montá-la no primeiro acesso.

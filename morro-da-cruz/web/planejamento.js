@@ -74,6 +74,7 @@ async function carregarDadosObra() {
   if (g.ausente) return avisoPln('O mapa do projeto (REV02) não está na pasta mapa/ do sistema.');
   if (!PLN.pronto) montarPln(g); else ajustarAspecto(PLN);
   frentesPln();
+  colorirPln();                                  // o traçado aparece já: o estado do dia e o estoque vêm depois
   if (!MATERIAIS.length && pode('almox')) MATERIAIS = await api('/api/estoque').catch(() => []);
   await recarregarPln();
   if (PLN.abrir) { const a = PLN.abrir; PLN.abrir = null; escolherEquipeDoDia(a.equipe, a.aba); }   // vindo do Estoque
@@ -125,13 +126,13 @@ function vistaSalvaPln() {
 function desenharPln(px, zoom) {
   satDepois(PLN, GERAL, px);
   try { sessionStorage.setItem(VISTA_PLN, JSON.stringify({ vb: PLN.vb, zona: PLN.zona })); } catch (_) { /* sem storage */ }
-  const larg = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35));
+  const larg = larguraTrecho(zoom, 0.9);                // finas como no HTML do projeto
   espessura($('#plnLinhas'), larg); espessura($('#plnSelC'), larg);
-  const sub = $('#plnSub'); if (sub) espessura(sub, Math.min(9, larg * 1.7));
+  const sub = $('#plnSub'); if (sub) espessura(sub, Math.min(6, larg * 1.6));
   if (escalaMudou(PLN, px)) {                          // arrastar não muda a escala: só o zoom mexe em textos, pinos e nós
     $('#plnZonas').style.setProperty('--k', 1 / px);  // só no contorno tracejado: na raiz, refazia o estilo do mapa inteiro
-    espessura($('#plnSelG'), Math.min(14, 9 * Math.pow(Math.max(zoom, 1), 0.3)));
-    espessura($('#plnSelB'), Math.min(18, 13 * Math.pow(Math.max(zoom, 1), 0.3)));
+    const sel = Math.min(9, 4 * Math.pow(Math.max(zoom, 1), 0.45));
+    espessura($('#plnSelG'), sel); espessura($('#plnSelB'), sel + 3);
     $$('#plnNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
     $$('#plnPins .ilu-pin').forEach(p => {
       const c = p.querySelector('circle'), tx = p.querySelector('text');

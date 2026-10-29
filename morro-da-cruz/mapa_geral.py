@@ -439,13 +439,13 @@ def mosaico(caminho, escala=1.3, qualidade=58):
     g = c["dados"]["visaoGeral"]
     tela = Image.new("RGB", (round(g["w"] * escala), round(g["h"] * escala)), (14, 14, 14))
     quadros = {q["id"]: q["p"] for q in g.get("frames", [])}
-    fotos = [(im, Image.open(io.BytesIO(base64.b64decode(c["imagens"][im["id"]]))).convert("RGB"))
-             for im in g["images"] if c["imagens"].get(im["id"])]
-    for im, src in fotos:
-        _no_mosaico(Image, ImageDraw, tela, src, im, escala)
-    for im, src in fotos:
+    fotos = [im for im in g["images"] if c["imagens"].get(im["id"])]
+    abrir = lambda im: Image.open(io.BytesIO(base64.b64decode(c["imagens"][im["id"]]))).convert("RGB")
+    for im in fotos:                  # uma foto aberta por vez: as 25 juntas passavam de 800 MB e derrubavam o site
+        _no_mosaico(Image, ImageDraw, tela, abrir(im), im, escala)
+    for im in fotos:
         if im["id"] in quadros:
-            _no_mosaico(Image, ImageDraw, tela, src, im, escala, quadros[im["id"]])
+            _no_mosaico(Image, ImageDraw, tela, abrir(im), im, escala, quadros[im["id"]])
     buf = io.BytesIO()
     tela.save(buf, "WEBP", quality=qualidade, method=4)
     c["mosaico"] = buf.getvalue()

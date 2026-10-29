@@ -260,6 +260,7 @@ async function carregarIluminado() {
   if (g.ausente) return avisoIlu('O mapa do projeto (REV02) não está na pasta mapa/ do sistema.');
   if (!ILU.pronto) montarIluminado(g);
   else ajustarAspecto();
+  if (!ILU.est) { ILU.est = {}; colorirIluminado(); ILU.est = null; }   // o traçado aparece já, sem esperar o estado do servidor
   ILU.est = await estadoMapa(true).catch(() => ILU.est);
   if (ILU.est) colorirIluminado();
   if (!ILU.lista && pode('verificar')) $('#iluBlocoLista').hidden = false;          // supervisor: "Aguardando verificação"
@@ -392,7 +393,7 @@ function zonasCopia(g, u, opacidade) {
   g.globalAlpha = 1; g.setLineDash([]);
 }
 function linhasCopia(g, u, grupos) {          // grupos: [{ cor, tracejado: '5 4' | null, opacidade, trechos }]
-  g.lineCap = g.lineJoin = 'round'; g.lineWidth = 2.4 * u;
+  g.lineCap = g.lineJoin = 'round'; g.lineWidth = 1.2 * u;
   grupos.forEach(({ cor, tracejado, opacidade, trechos }) => {
     g.strokeStyle = cor; g.globalAlpha = opacidade || 1;
     g.setLineDash(tracejado ? tracejado.split(' ').map(v => v * u) : []);
@@ -404,18 +405,20 @@ function linhasCopia(g, u, grupos) {          // grupos: [{ cor, tracejado: '5 4
 }
 // espessura que acompanha o zoom em degraus de 0,25 px: mudar a espessura do grupo refaz o estilo de todos os trechos
 const degrau = v => Math.round(v * 4) / 4;
+// a largura do trecho na tela: fina na obra inteira e crescendo pouco com o zoom, como no HTML do projeto
+const larguraTrecho = (zoom, base) => Math.max(base, Math.min(4, base * Math.pow(Math.max(zoom, 1), 0.6)));
 function espessura(el, px) { const v = degrau(px) + 'px'; if (el.style.strokeWidth !== v) el.style.strokeWidth = v; }
 function desenharIlu(px, zoom) {
   if (ILU.fundo !== 'sem') satDepois(ILU, GERAL, px);
   if (escalaMudou(ILU, px)) {                        // arrastar não muda a escala: só o zoom mexe em traços e textos
     $('#iluZonas').style.setProperty('--k', 1 / px);   // só no grupo do contorno: na raiz, refazia o estilo do mapa inteiro
-    espessura($('#iluLinhas'), Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)));
+    espessura($('#iluLinhas'), larguraTrecho(zoom, 1.1));       // finas como no HTML: a rede não polui o mapa
     $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
     $$('#iluPins .ilu-pin').forEach(p => {
       const c = p.querySelector('circle'), tx = p.querySelector('text');
       c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
     });
-    espessura($('#iluSel'), Math.min(11, 7 * Math.pow(Math.max(zoom, 1), 0.3)));
+    espessura($('#iluSel'), Math.min(8, 4 * Math.pow(Math.max(zoom, 1), 0.4)));
   }
   desenharNosIlu(px);
   trilha($('#iluTrilha'), ILU.zona ? `<button type="button" data-ilu-tudo>Obra inteira</button> › ${esc(nomeZona(ILU.zona))}` : zoom > 1.15 ? '<button type="button" data-ilu-tudo>Ver a obra inteira</button>' : 'Obra inteira');

@@ -26,6 +26,19 @@ done
 
 echo "== 3/4 Banco da obra e administrador"
 "$PY" nuvem.py preparar || exit 1
+# a imagem da planta (visão geral) é montada aqui, uma vez: montada pelo site, prendia o servidor no primeiro acesso
+"$PY" - <<'FIM' || echo "   (não consegui montar a planta agora; o site monta no primeiro acesso)"
+import glob, json, os
+import mapa_geral as MG
+with open("config/fontes.json", encoding="utf-8") as f:
+    p = os.path.join("mapa", json.load(f)["arquivos"]["mapa"])
+if os.path.exists(p) and MG.mosaico(p):
+    atual = f"geral_v{MG.VERSAO_MOSAICO}_{int(os.path.getmtime(p))}_1.3_58.webp"
+    for velho in glob.glob("mapa/cache/geral_*.webp"):
+        if os.path.basename(velho) != atual:
+            os.remove(velho)
+    print("   Planta do mapa pronta.")
+FIM
 
 echo "== 4/4 Site"
 SITE="${PYTHONANYWHERE_SITE:-www.${PYTHONANYWHERE_DOMAIN:-pythonanywhere.com}}"
