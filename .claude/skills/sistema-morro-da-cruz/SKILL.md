@@ -407,9 +407,12 @@ recontagem se o saldo mudou; reservas vencidas liberadas em lote com motivo.
 ficam). Tela **Pedir material** (`compras_solicitar`: almoxarifado, supervisor, encarregado só para a frente dele,
 engenharia, administração): tipo, tamanho e nome curto sem código, tirados da descrição (`solicitacoes.catalogo`;
 ajuste em `config/materiais_pedido.json`), busca, "Não achei: escrever ou tirar foto", quantidade no − e no +, zona por
-toque. Engenharia e administração (`compras_aprovar`) aprovam num toque ou recusam com motivo, e identificam o item
-escrito ou fotografado antes de aprovar. **Meus pedidos** com cor e texto. A solicitação nunca trava nota nem estoque;
-ligar a nota a ela (`nf_confirmar`) só marca "Chegou".
+toque. **Meus pedidos** com cor e texto. A solicitação nunca trava nota nem estoque; ligar a nota a ela (`nf_confirmar`)
+só marca "Chegou". **Requerimentos em Compras e notas (D-187):** os pedidos aguardando decisão, onde engenharia e
+administração (`compras_aprovar`) aprovam num toque ou recusam com motivo (nunca o próprio) e identificam o item escrito
+ou fotografado antes de aprovar; **A comprar** soma por material o aprovado que ainda não chegou (pedido − aceito das
+notas ligadas, `solicitacoes.listar` → `falta`, `notas`); quem abre Compras vê os pedidos da obra. Pedir material só
+aponta para lá. Transferência entre equipes, inventário e reservas vencidas ficam em **Estoque e movimentos**.
 
 **Compras e notas:** NF por XML (biblioteca padrão; DOCTYPE recusado; modelo 55; chave com dígito; repetida recusada;
 emitente cadastrado na hora pelo CNPJ do XML) ou digitada do PDF/imagem (anexo obrigatório; quem digitou não confere);

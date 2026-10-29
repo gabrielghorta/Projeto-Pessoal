@@ -153,3 +153,13 @@ Substitui o que vem acima sobre pedido de compra, nota "sem pedido" com aprovaç
 **Relatório de materiais e faltantes:** "comprado" vem das linhas das notas (sem o tubo da Caesb); "a receber" é o que está numa nota aberta e ainda não chegou (`planejamento.a_receber_por_material`, com o reconhecimento só nas notas que têm linha sem material).
 
 Testes: `tests/test_fluxo_v22.py` (`TestEntregaAntesDaIdentificacao`, `TestSolicitacoesHTTP`, `TestCatalogoDoPedido`) e `tests/test_compras.py`.
+
+### Requerimentos em Compras e o almoxarifado no Estoque (29/10/2026, D-187)
+
+Não muda o banco. Substitui o que vem acima sobre aprovar em Pedir material.
+
+- **Compras e notas › Requerimentos de material:** os pedidos aguardando a decisão, com **Aprovar** e **Recusar** (`compras_aprovar`; quem pediu não decide o próprio; o item escrito ou fotografado é identificado antes de aprovar). "Os já decididos" guarda os recusados, os que chegaram e os cancelados.
+- **Compras e notas › A comprar:** o aprovado que ainda não chegou, somado por material, com a zona de destino e as solicitações. "Falta chegar" é o pedido menos o aceito das notas ligadas (`solicitacoes.listar`, campo `falta`); cada requerimento mostra as notas ligadas (`notas`). Quando o aceito cobre o pedido, ele sai da lista e vira "Chegou".
+- Quem abre Compras e notas (engenharia, administração e almoxarife) vê os pedidos da obra; os outros perfis veem só os seus. A foto do item continua só para quem pediu e quem aprova.
+- **Pedir material** ficou só para pedir e acompanhar os próprios pedidos; para quem aprova, mostra quantos esperam e o botão "Abrir os requerimentos".
+- **Transferência entre equipes, inventário e reservas vencidas** saíram de Compras e notas e foram para **Estoque e movimentos** (as regras são as da tabela acima). `/api/inventarios` e `/api/reservas-vencidas` servem a tela `almox`.
