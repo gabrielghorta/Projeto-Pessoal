@@ -148,3 +148,22 @@ Testes: `test_geometria_traz_o_que_as_frentes_e_as_cores_pedem`, `test_html_base
 - Os trechos dos dois mapas ficaram finos como no HTML do projeto: 1 px na obra inteira, crescendo pouco com o zoom.
 - O traçado aparece logo, sem esperar o estado do dia nem o estoque. No site, quando o servidor demorava, ficavam só as zonas e as caixas.
 - A imagem da planta (`mapa_geral.mosaico`) abre uma PB por vez: o pico de memória caiu de 874 MB para 196 MB. O instalador monta essa imagem antes do Reload, para o site não montá-la no primeiro acesso.
+
+## Foco por zona e seleção só na zona (29/10/2026, D-185 e D-186)
+
+Substitui a seleção na obra inteira (D-177) e a planta clara (D-184).
+- **Desenho:** o Dados da obra tem o fundo do Mapa iluminado: o satélite cortado nas zonas, escurecido pelo fundo escolhido lá. Os trechos ficam na cor do diâmetro, finos (0,75 px na obra inteira). O trecho escolhido ganha halo branco.
+- **Foco por zona, nos dois mapas:**
+  - só a zona escolhida tem cor, trechos, nós, caixas e equipes;
+  - as outras ficam sem preenchimento, sem trechos e sem nome, e não respondem ao toque;
+  - o contorno das zonas e o satélite continuam;
+  - para sair, há "Obra inteira", a janela Zonas e, no Dados da obra, a barra de frentes.
+- **Seleção:**
+  - na obra inteira, o toque só abre a zona (o trecho tocado leva à frente dele);
+  - na zona, cada toque escolhe um trecho ou nó, e tocar de novo não tira;
+  - **Desselecionar** liga um modo em que cada toque tira só o que foi tocado; outro toque no botão volta a escolher;
+  - **Limpar seleção** zera;
+  - os dois botões aparecem na barra do mapa quando há uma zona em foco.
+- A busca e "Ver a ficha completa" abrem a zona do trecho e o escolhem.
+
+Testes: `test_dados_da_obra_com_o_fundo_do_iluminado_e_selecao_na_zona` e `test_mapa_do_dados_da_obra_tela_cheia_vista_e_zonas` (`tests/test_telas.py`), e `TestMapaNoNavegador` (`tests/test_fluxo_v22.py`).

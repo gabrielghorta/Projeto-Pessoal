@@ -193,6 +193,29 @@ class TestSolicitacoesHTTP(BaseHTTP):
         self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s2['id'], 'aprovar': False})[0], 422)
         self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s2['id'], 'aprovar': False, 'motivo': 'Já tem na obra'})[0], 200)
 
+    def test_requerimentos_em_compras_falta_chegar_e_nota_ligada(self):
+        """D-187: quem abre Compras e notas vê os pedidos da obra; o aprovado traz o que falta chegar e as notas ligadas."""
+        almox, eng, enc = self.cliente('almox1'), self.cliente('eng1'), self.cliente('enc1')
+        s1 = enc.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'material_id': MAT, 'quantidade': 3}]})[1]
+        s2 = eng.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'material_id': MAT, 'quantidade': 1}]})[1]
+        self.assertEqual({x['id'] for x in almox.get('/api/solicitacoes')[1]['solicitacoes']}, {s1['id'], s2['id']})
+        self.assertEqual([x['id'] for x in enc.get('/api/solicitacoes')[1]['solicitacoes']], [s1['id']])
+        self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s1['id'], 'aprovar': True})[0], 200)
+        ver = lambda: {x['id']: x for x in eng.get('/api/solicitacoes')[1]['solicitacoes']}[s1['id']]
+        self.assertEqual([(f['material_id'], f['quantidade']) for f in ver()['falta']], [(MAT, 3)])
+        self.assertEqual(ver()['notas'], [])
+        import nfe_teste as NT
+        nf = C.importar_nfe_xml(self.c, NT.b64(NT.xml(8007, [(MAT, 'Peça', 'UN', 2, 10)])), 'n.xml', 'almox1', cadastrar=True)['nf_id']
+        self.assertEqual(eng.post('/api/solicitacao/vincular', {'nf_id': nf, 'solicitacao_id': s1['id']})[0], 200)
+        C.receber_nota(self.c, nf, 'almox1', D2)
+        s = ver()
+        self.assertEqual((s['situacao'], s['notas'], [f['quantidade'] for f in s['falta']]), ('APROVADA', ['8007'], [1]))
+        self.assertEqual(ver()['falta'][0]['nome'], SOL.catalogo(self.c)[[m['id'] for m in SOL.catalogo(self.c)].index(MAT)]['nome'])
+        # o inventário e as reservas vencidas servem o Estoque; quem só pede material não os lê
+        for rota in ('/api/inventarios', '/api/reservas-vencidas?hoje=' + D2):
+            self.assertEqual(almox.get(rota)[0], 200, rota)
+            self.assertEqual(enc.get(rota)[0], 403, rota)
+
     def test_rotas_antigas_removidas_e_confirmacao_restrita(self):
         import server
         for rota in ('/api/pedido', '/api/pedido/cancelar', '/api/nf/aprovar'):
@@ -239,7 +262,10 @@ class TestAlvosDoDia(BaseHTTP):
 
 
 class TestMapaNoNavegador(unittest.TestCase):
-    def test_selecao_por_zona_e_troca_de_equipe(self):
+    def test_selecao_so_dentro_da_zona_e_desselecionar(self):
+        """D-186 (29/10/2026): na obra inteira o toque abre a zona do trecho, sem escolher; na zona, cada toque soma (tocar
+        de novo não tira); com Desselecionar ligado, o toque tira só o tocado. D-182: a equipe do trecho de 200 mm pra cima
+        é a da adutora."""
         import re
         import shutil
         import subprocess
@@ -250,45 +276,43 @@ class TestMapaNoNavegador(unittest.TestCase):
         js = Path(AQUI, '..', 'web', 'planejamento.js').read_text(encoding='utf-8')
         ilu = Path(AQUI, '..', 'web', 'iluminado.js').read_text(encoding='utf-8')
         funcs = '\n'.join(re.search(r'const ' + n + r' = .*?;\n', ilu).group(0)
-                           for n in ('SUBADUTORA_MM', 'ehSubadutora', 'ZONA_ADUTORA'))
+                           for n in ('SUBADUTORA_MM', 'ehSubadutora', 'ZONA_ADUTORA', 'zonaDoTrecho'))
         funcs += '\n'.join(re.search(r'function ' + n + r'\(.*?\n\}', js, re.S).group(0)
-                            for n in ('escolherTrecho', 'alternarNo', 'equipeDoNo', 'equipePadrao', 'cliquePln'))
+                            for n in ('marcarTrecho', 'marcarNo', 'modoDesmarcar', 'equipeDoNo', 'equipePadrao', 'cliquePln'))
         funcs += '\n' + re.search(r'const equipeDoTrecho = .*?;', js).group(0)
+        funcs += '\n' + re.search(r'const naFrente = .*?;', js).group(0)
         roteiro = """
 const assert = require('node:assert/strict');
-const PLN = {sel:[],nos:[],resp:null,zona:null,noIdx:new Map([['N1',1],['N2',2],['Zona05_PB10_Rede_NÓ3.1',3]]),
+const PLN = {sel:[],nos:[],resp:null,zona:null,equipeFixa:false,noIdx:new Map([['N1',1],['N2',2],['Zona05_PB10_Rede_NÓ3.1',3]]),
   frentesNo:[new Set(), new Set(['Zona08']), new Set(['Zona08']), new Set(['Zona05','Adutora'])]};
 const RESUMO = {equipes:[{id:'Zona01'},{id:'Zona05'},{id:'Zona08'},{id:'ADUTORA'}]};
 const GERAL = {trechos:[{n:'Zona01_PB01_Rede_TR001',z:'Zona01',de:110}, {n:'Zona08_PB20_Rede_TR046',z:'Zona08',de:90},
-  {n:'Zona05_PB10_Rede_TR020',z:'Zona05',de:225}, {n:'Zona08_PB10_Adutora_TR003',z:'Zona08',de:500,tp:'Adutora'}]};
+  {n:'Zona05_PB10_Rede_TR020',z:'Zona05',de:225}, {n:'Zona08_PB10_Adutora_TR003',z:'Zona08',de:500,tp:'Adutora'},
+  {n:'Zona08_PB20_Rede_TR047',z:'Zona08',de:63}]};
 const indexar = () => ({trecho:new Map(GERAL.trechos.map(t=>[t.n,t]))});
 const atualizarSelecao = () => {}, fecharPopPln = () => {}, toast = () => {};
-const membrosDe = n => [n], $ = () => ({classList:{contains:()=>false}});
-const focarZonaPln = z => { PLN.zona=z; };
+const membrosDe = n => [n];
+const falso = {classList:{contains:()=>false, toggle:()=>{}}, setAttribute:()=>{}};
+const $ = () => falso;
+let aberta = null;
+const focarZonaPln = z => { aberta = z; PLN.zona = z; };
 """ + funcs + """
 const alvo = {closest:()=>null};
-cliquePln(alvo, {ctrlKey:true}, 0);
-cliquePln(alvo, {ctrlKey:true}, 1);
-assert.deepEqual(PLN.sel,[GERAL.trechos[1].n]); // obra inteira substitui até com Ctrl
-assert.equal(equipePadrao(),'Zona08');
-PLN.equipe='Zona01'; PLN.equipeFixa=true;
-escolherTrecho(GERAL.trechos[0].n,false);
-assert.equal(PLN.equipeFixa,false);
-PLN.zona='Zona08'; PLN.sel=[];
-cliquePln(alvo, {}, 0); cliquePln(alvo, {}, 1);
-assert.equal(PLN.sel.length,2);
-cliquePln(alvo, {}, 0); assert.deepEqual(PLN.sel,[GERAL.trechos[1].n]);
-alternarNo('N1'); alternarNo('N2'); assert.equal(PLN.nos.length,2);
-PLN.zona=null; alternarNo('N1'); assert.deepEqual(PLN.nos,['N1']); assert.deepEqual(PLN.sel,[]);
-PLN.sel=[GERAL.trechos[1].n]; PLN.nos=[]; assert.equal(equipePadrao(),'Zona08');
-// D-182: o trecho de 200 mm pra cima (DE 225 e 250) e a adutora são da Equipe Adutora, mesmo dentro de uma zona
+cliquePln(alvo, {}, 1);                                   // obra inteira: abre a Zona 08 e não escolhe nada
+assert.equal(aberta, 'Zona08'); assert.deepEqual(PLN.sel, []);
+cliquePln(alvo, {}, 1); cliquePln(alvo, {}, 4); cliquePln(alvo, {}, 1);
+assert.deepEqual(PLN.sel, [GERAL.trechos[1].n, GERAL.trechos[4].n]);   // cada toque soma; tocar de novo não tira
+modoDesmarcar(true); cliquePln(alvo, {}, 1);
+assert.deepEqual(PLN.sel, [GERAL.trechos[4].n]);         // Desselecionar: tira só o tocado
+modoDesmarcar(false); cliquePln(alvo, {}, 1); assert.equal(PLN.sel.length, 2);
+marcarNo('N1'); marcarNo('N1'); assert.deepEqual(PLN.nos, ['N1']);
+modoDesmarcar(true); marcarNo('N1'); assert.deepEqual(PLN.nos, []); modoDesmarcar(false);
+assert.equal(equipePadrao(), 'Zona08');
+// D-182: o trecho de 200 mm pra cima e a adutora são da Equipe Adutora
 assert.equal(equipeDoTrecho(GERAL.trechos[2]),'ADUTORA'); assert.equal(equipeDoTrecho(GERAL.trechos[3]),'ADUTORA');
-PLN.sel=[]; cliquePln(alvo, {}, 2); assert.deepEqual(PLN.sel,[GERAL.trechos[2].n]); assert.equal(equipePadrao(),'ADUTORA');
-// o nó de zona que liga um trecho da Subadutora: na Subadutora é da Equipe Adutora; na obra inteira, da zona do nome
 PLN.sel=[]; PLN.nos=['Zona05_PB10_Rede_NÓ3.1']; PLN.zona='Adutora'; assert.equal(equipePadrao(),'ADUTORA');
 PLN.zona='Zona05'; assert.equal(equipePadrao(),'Zona05');
 PLN.zona=null; assert.equal(equipePadrao(),'Zona05');
-PLN.nos=['N1']; assert.equal(equipePadrao(),'Zona08');
 """
         r = subprocess.run([node, '-e', roteiro], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stderr)

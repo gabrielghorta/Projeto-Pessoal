@@ -243,8 +243,9 @@ class TestPaginaECodigo(unittest.TestCase):
 
     def test_mapa_do_dados_da_obra_tela_cheia_vista_e_zonas(self):
         """Fluxo integrado (23/10/2026): tela cheia de verdade (API e a classe para o Safari do iPhone), a vista guardada na
-        sessão (o mapa não volta sozinho para a obra inteira), zonas nunca cinzas e o primeiro toque em outra zona
-        troca o foco; a caixa das ferramentas não engole o toque; o menu fechado sem barra de rolagem."""
+        sessão (o mapa não volta sozinho para a obra inteira); com uma zona em foco, as outras não respondem e só se troca de
+        zona pela janela Zonas, pela barra de frentes ou por "Obra inteira" (D-185); a caixa das ferramentas não engole o
+        toque; o menu fechado sem barra de rolagem."""
         pln, ilu, css, html = ler("planejamento.js"), ler("iluminado.js"), ler("app.css"), self.html
         for trecho in ("requestFullscreen", "classList.add('tela-cheia')", "fullscreenchange", "aria-pressed"):
             self.assertIn(trecho, pln)
@@ -252,9 +253,9 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertIn("⌖", html)
         self.assertIn("sessionStorage.setItem(VISTA_PLN", pln)
         self.assertNotIn("0.08", re.search(r"function aplicarCamadas\(\).*?\n\}", ilu, re.S).group(0))
-        self.assertIn("if (outra && outra !== ILU.zona)", ilu)
-        self.assertIn("const juntar = !!PLN.zona", pln)
-        self.assertIn("if (zona) return focarZonaPln(zona.dataset.zona)", pln)
+        self.assertIn("if (zona && !ILU.zona) return focarZona(zona.dataset.zona);", ilu)
+        self.assertNotIn("if (outra && outra !== ILU.zona)", ilu)
+        self.assertIn("return z ? focarZonaPln(z) : undefined;", pln)
         self.assertRegex(css, r"\.ilu-ferr \{ pointer-events: none; \}")
         self.assertIn(".rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }", css)
         self.assertIn("::-webkit-scrollbar { display: none; }", css)
@@ -350,15 +351,24 @@ console.log(JSON.stringify(r));
         # perto de C; no cruzamento, o mais perto (A); fora do mapa nada; D intocável → B
         self.assertEqual(eval(saida.stdout.strip()), [0, 3, 3, -1, 2, 0, -1, 1])
 
-    def test_dados_da_obra_com_a_planta_clara_sem_satelite(self):
-        """D-184 (29/10/2026): o Dados da obra perde o satélite escuro (revoga a D-176 para esta tela): fica a planta das
-        PBs clara, cortada nos quadros, e o véu branco fora da frente."""
-        pln = ler("planejamento.js")
-        for necessario in ("htmlSatelite(g, 'pln', 'quadros')", "ligarSatelite", "carregarMosaicoCopia", "satDepois",
-                           'id="plnVeu"', "PLANTA_OPACIDADE"):
-            self.assertIn(necessario, pln)
-        self.assertNotIn("FUNDOS[ILU.fundo]", pln)               # o fundo não segue mais o do Mapa iluminado
-        self.assertIn("#plnSat .sat-veu { display: none; }", ler("app.css"))
+    def test_dados_da_obra_com_o_fundo_do_iluminado_e_selecao_na_zona(self):
+        """D-185/D-186 (29/10/2026): o Dados da obra tem o fundo escuro do Mapa iluminado (revoga a planta clara da D-184),
+        os trechos na cor do diâmetro e finos, e escolhe só dentro da zona, com Desselecionar e Limpar seleção."""
+        pln, ilu, css = ler("planejamento.js"), ler("iluminado.js"), ler("app.css")
+        self.assertIn("htmlSatelite(g, 'pln')", pln)
+        self.assertIn("FUNDOS[ILU.fundo]", pln)                  # o véu do fundo escolhido no Mapa iluminado
+        self.assertNotIn("plnVeu", pln + css)
+        self.assertNotIn("#plnSat .sat-veu { display: none; }", css)
+        self.assertIn("larguraTrecho(zoom, 0.75)", pln)
+        for nome in ("function marcarTrecho(", "function marcarNo(", "function modoDesmarcar("):
+            self.assertIn(nome, pln)
+        self.assertNotIn("function escolherTrecho(", pln)
+        self.assertIn('id="plnDesmarcar"', self.html)
+        self.assertIn('id="plnLimpar"', self.html)
+        # foco por zona como no HTML, nos dois mapas: as outras zonas sem cor, sem trecho e sem toque
+        self.assertIn("const opacidadeZona = id => !PLN.zona ? 0.26 : id === PLN.zona ? 0.36 : 0;", pln)
+        self.assertIn("const opacidadeZonaIlu = id => !ILU.zona ? 0.26 : id === ILU.zona ? 0.36 : 0;", ilu)
+        self.assertIn("tocavel: t => naFrenteIlu(t)", ilu)
         self.assertNotIn("plnMulti", self.html + pln)            # D-177: sem o botão "Juntar trechos"
 
     def test_frentes_do_mapa_com_a_subadutora(self):
@@ -386,6 +396,29 @@ console.log(JSON.stringify(r));
                       "data-nota-parcial-ok", "data-nota-refazer", "class=\"nota-lado\""):
             self.assertIn(texto, app)
         self.assertIn(".nota-lado", ler("app.css"))
+
+    def test_requerimentos_em_compras_e_transferencia_no_estoque(self):
+        """D-187 (29/10/2026): o pedido de material vira requerimento em Compras e notas (aguardando a decisão, a comprar
+        e os decididos); a transferência entre equipes, o inventário e as reservas vencidas passam ao Estoque."""
+        estoque = self.html.split('id="aba-almox"', 1)[1].split('<section', 1)[0]
+        compras = self.html.split('id="aba-compras"', 1)[1].split('<section', 1)[0]
+        for ide in ('id="reqPainel"', 'id="reqDecidir"', 'id="reqDecididos"', 'id="reqComprarPainel"', 'id="reqComprar"'):
+            self.assertIn(ide, compras)
+        for ide in ('id="fTransf"', 'id="fInv"', 'id="invLista"', 'id="vencidasLista"'):
+            self.assertIn(ide, estoque)
+            self.assertNotIn(ide, compras)
+        app, sol = ler("app.js"), ler("solicitacoes.js")
+        corpo = lambda f, fonte: fonte.split(f"async function {f}()", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("await carregarRequerimentos();", corpo("carregarCompras", app))
+        self.assertNotIn("/api/inventarios", corpo("carregarCompras", app))
+        self.assertIn("if (podeTela('almox')) carregarInventarioEVencidas();", corpo("carregarAlmox", app))
+        req = corpo("carregarRequerimentos", sol)
+        for texto in ("solCard(s, decide && !solMeu(s), true)", "s.situacao === 'APROVADA'", "s.falta", "Falta chegar"):
+            self.assertIn(texto, req)
+        self.assertNotIn("solOutros", sol)                      # Pedir material só aponta para Compras e notas
+        self.assertIn('data-tela="compras"', sol)
+        self.assertIn("solAcaoCard(b, carregarCompras)", sol)
+        self.assertIn("solAcaoCard(b, carregarSolicitacoes)", sol)
 
     def test_conferir_e_marcar_e_o_que_falta_e_confirmado_em_compras(self):
         """D-171 (27/10/2026): no Estoque, uma caixinha por linha com o material reconhecido, "Marcar todas" e o verde só
