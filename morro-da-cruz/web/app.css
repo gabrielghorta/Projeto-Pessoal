@@ -402,6 +402,12 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .ilu-pin text { fill: #fff; font-weight: 700; text-anchor: middle; dominant-baseline: central; font-family: var(--fonte); pointer-events: none; }
 .ilu-pin { cursor: pointer; }
 .ilu-sel { fill: none; stroke: #FFFFFF; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+/* nós e caixas (D-183): a forma diz o que é; contorno claro para aparecer no satélite escuro */
+.ilu-no { stroke: #F2F2F2; stroke-width: 1.6px; vector-effect: non-scaling-stroke; cursor: pointer; }
+.ilu-ico { width: 16px; height: 16px; flex: none; overflow: visible; }
+.ilu-ico path { stroke: #F2F2F2; stroke-width: 1.2px; }
+.ilu-nos-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 6px 6px; font-size: 13px; }
+.ilu-nos-leg span { display: inline-flex; align-items: center; gap: 6px; }
 
 /* ======================================================================== Planejamento: Dados da obra e cronograma */
 .pln { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
@@ -411,8 +417,22 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .pln-no { fill: #101010; stroke: #F2F2F2; stroke-width: 1.5px; vector-effect: non-scaling-stroke; cursor: pointer; }
 .pln-no.sel { fill: #F15922; stroke: #FFFFFF; stroke-width: 2px; }
 .pln-no.auto { fill: #6CB8F0; stroke: #FFFFFF; stroke-width: 3px; }
-#plnNos.longe .pln-no { pointer-events: none; }
-#plnNos.longe .pln-no:not(.sel) { display: none; }
+#plnNos.longe .pln-no:not(.pln-cx) { pointer-events: none; }
+#plnNos.longe .pln-no:not(.sel):not(.pln-cx) { display: none; }
+/* Dados da obra com o desenho do HTML do projeto (D-184): a planta clara ao fundo, contornos e nomes escuros */
+#plnMapa { background: #EEF0F3; }
+#plnMapa .vista-fundo { fill: #EEF0F3; }
+#plnSat { opacity: .5; }
+#plnSat .sat-veu { display: none; }
+#plnVeu { fill: #FFFFFF; fill-opacity: .5; pointer-events: none; }
+#plnMapa .ilu-zl { stroke: #2B2F36; stroke-opacity: .7; }
+#plnMapa .ilu-nome { fill: #17202B; stroke: #FFFFFF; }
+.pln-sel-borda { stroke: #111827; stroke-opacity: .9; }
+.pln-frentes { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.pln-frentes button { min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--borda2); background: var(--painel2); color: var(--texto); font: 700 14px var(--fonte); cursor: pointer; }
+.pln-frentes button[aria-pressed="true"] { background: var(--texto); border-color: var(--texto); color: var(--bg); }
+.pln-frentes button.sub { border-color: #00B85C; }
+.pln-frentes button.sub[aria-pressed="true"] { background: #00B85C; border-color: #00B85C; color: #FFFFFF; }
 .pln-dia input { border: 0; background: transparent; color: #F2F2F2; font: inherit; font-weight: 700; padding: 0; min-height: 0; width: auto; color-scheme: dark; }
 .pln-busca { width: 230px; }
 .pln-busca input { min-height: 42px; background: rgba(20, 20, 20, .92); color: #F2F2F2; border-color: #3A3A3A; }
@@ -655,3 +675,8 @@ label.nota-confere:has(input:checked) { border-color: var(--verde); background: 
 /* o trecho escolhido no apontamento: as tabelas de etapas rolam dentro do quadro, sem alargar a página no celular */
 #apAlvo { min-width: 0; }
 #apAlvo table { display: block; max-width: 100%; overflow-x: auto; }
+/* a faixa de frentes do Dados da obra no celular: uma linha que rola de lado */
+@media (max-width: 760px) {
+  .pln-frentes { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+  .pln-frentes button { flex: none; }
+}

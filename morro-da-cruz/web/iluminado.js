@@ -84,9 +84,37 @@ function posicaoAlvo(g, tipo, nome) {
   const e = ix.el.get(nome); return e ? { xy: [e.x, e.y] } : null;
 }
 const rotuloEquipe = id => /^Zona(\d\d)$/.test(id) ? id.slice(4) : id === 'ADUTORA' ? 'AD' : String(id || '?').slice(0, 2).toUpperCase();
+// Subadutora (D-182): a adutora e todo trecho de 200 mm pra cima (os de 225 e 250 que passam nas zonas inclusive) são uma
+// frente só, da equipe da adutora (ADUTORA); a zona fica com a rede abaixo de 200 mm. ZONA_ADUTORA é o id interno da
+// frente (fica guardado na vista da sessão); na tela, o nome é Subadutora
+const SUBADUTORA_MM = 200;
+const ehSubadutora = t => t.tp === 'Adutora' || (t.de || 0) >= SUBADUTORA_MM;
 const ZONA_ADUTORA = 'Adutora';
-const zonaDoTrecho = t => t.tp === 'Adutora' ? ZONA_ADUTORA : t.z;
-const nomeZona = z => z === ZONA_ADUTORA ? 'Adutora' : String(z).replace(/^Zona(\d\d)$/, 'Zona $1');
+const zonaDoTrecho = t => ehSubadutora(t) ? ZONA_ADUTORA : t.z;
+const nomeZona = z => z === ZONA_ADUTORA ? 'Subadutora' : String(z).replace(/^Zona(\d\d)$/, 'Zona $1');
+// onde o trecho fica (a zona da 06.1), que não muda com a frente: o de 225 da Zona 05 fica na Zona 05
+const localDoTrecho = t => t.tp === 'Adutora' ? 'Adutora' : nomeZona(t.z);
+
+/* ---- nós e caixas (D-183): o nó é bola e cada caixa tem a sua forma, no Mapa iluminado e no Dados da obra. O desenho é
+   em pixels da tela (scale pelo tamanho do pixel no mapa); a cor vem de quem desenha */
+const TIPOS_NO = {
+  'NÓ': { nome: 'Nó', cor: '#111827', d: 'M0 -4.5A4.5 4.5 0 1 1 0 4.5A4.5 4.5 0 1 1 0 -4.5Z' },
+  DF: { nome: 'Descarga (DF)', cor: '#0B7285', d: 'M-6.5 -5H6.5L0 6.5Z' },                       // triângulo invertido
+  VTF: { nome: 'Ventosa (VTF)', cor: '#2B8A3E', d: 'M0 -6.5L6.5 5H-6.5Z' },                      // triângulo
+  VM: { nome: 'Válvula de manobra (VM)', cor: '#1971C2', d: 'M-5.5 -5.5H5.5V5.5H-5.5Z' },        // quadrado
+  VRP: { nome: 'Redutora de pressão (VRP)', cor: '#9C36B5', d: 'M0 -7L7 0L0 7L-7 0Z' },           // losango
+  MV: { nome: 'Macromedidor (MV)', cor: '#E67700', d: 'M-3.3 -6H3.3L6.6 0L3.3 6H-3.3L-6.6 0Z' },  // hexágono
+  HID: { nome: 'Hidrante (HID)', cor: '#C92A2A', d: 'M-2.2 -6.5H2.2V-2.2H6.5V2.2H2.2V6.5H-2.2V2.2H-6.5V-2.2H-2.2Z' },   // cruz
+};
+// o tipo sai do nome (…_Rede_NÓ1.8, …_CH_VRP-16); a caixa no mesmo ponto de um nó vale como caixa
+function tipoNo(e) {
+  const tipos = e.n.map(n => (/^(NÓ|DF|VTF|VRP|VM|MV|HID)/.exec(n.split('_').pop()) || [0, 'NÓ'])[1]);
+  return tipos.find(t => t !== 'NÓ') || 'NÓ';
+}
+const simboloNo = (tp, x, y, px, extra = '') => `<path d="${TIPOS_NO[tp].d}" transform="translate(${x} ${y}) scale(${px})" ${extra}/>`;
+const iconeNo = (tp, cor) => `<svg class="ilu-ico" viewBox="-8 -8 16 16" aria-hidden="true"><path d="${TIPOS_NO[tp].d}" fill="${cor || TIPOS_NO[tp].cor}"/></svg>`;
+const legendaNos = (cor, nota) => `<h3 style="margin-top:12px">Nós e caixas</h3><div class="ilu-nos-leg">${Object.keys(TIPOS_NO)
+  .map(tp => `<span>${iconeNo(tp, cor)}${esc(TIPOS_NO[tp].nome)}</span>`).join('')}</div>${nota ? `<p>${nota}</p>` : ''}`;
 
 /* ---------------------------------------------------------------- tela inicial: a rede acendendo */
 let REDE_OK = false;
@@ -149,7 +177,7 @@ const nomeSituacao = (est, nome, s) => SITU_ID[s].nome + ((etapaDe(est, nome) ||
 // o visor (arrastar, aproximar, clique) serve a este mapa e ao do Dados da obra (planejamento.js): cada um passa o seu
 // contexto com svg(), caixa(), desenhar(px, zoom) e clique(alvo, ev)
 const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
-  vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true }, fundo: 'escura',
+  vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true, nos: true }, fundo: 'escura',
   prefixo: 'ilu', svg: () => $('#iluSvg'), caixa: () => $('#ilu'), desenhar: desenharIlu, clique: cliqueNoMapa,
   copia: (g, u) => copiaIlu(g, u), tocavel: t => !t.s || ILU.vis[t.s],     // situação escondida não se toca
   copiaChave: () => [ILU.fundo, ILU.cam.zonas, SITU.map(s => +ILU.vis[s.id]).join(''), ILU.cores || 0, !!ILU.mosaico].join('|') };
@@ -163,8 +191,11 @@ try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') |
 // quadro). Aproximando, as PBs à vista entram em resolução cheia por cima. Tudo cortado no limite das zonas: fora delas
 // não há nada (pedido do responsável em 21/10/2026). Onde nenhuma PB tem foto (~3 % da área, na borda das zonas), fica escuro.
 const SAT_DETALHE_PX = 0.7, SAT_DETALHE_MAX = 6;     // unidades do mapa por pixel da tela; PBs carregadas ao mesmo tempo
-function htmlSatelite(g, p) {
-  return `<defs><clipPath id="${p}ZonasClip">${g.zonas.map(z => `<polygon points="${pontos(z.p)}"/>`).join('')}</clipPath>
+// corte: 'zonas' (Mapa iluminado: fora das zonas não há nada) ou 'quadros' (Dados da obra: a planta inteira de cada PB,
+// como no HTML do projeto)
+function htmlSatelite(g, p, corte = 'zonas') {
+  const polis = corte === 'quadros' ? g.quadros.map(q => q.p) : g.zonas.map(z => z.p);
+  return `<defs><clipPath id="${p}ZonasClip">${polis.map(q => `<polygon points="${pontos(q)}"/>`).join('')}</clipPath>
       ${g.quadros.map(q => `<clipPath id="${p}Q${esc(q.id)}"><polygon points="${pontos(q.p)}"/></clipPath>`).join('')}</defs>
     <g id="${p}Sat" clip-path="url(#${p}ZonasClip)"><image class="sat-mosaico" href="/mapa/geral.webp?v=${g.versao}" x="0" y="0" width="${g.w}" height="${g.h}" preserveAspectRatio="none"/><g class="sat-detalhe"></g>
       <rect class="sat-veu" x="0" y="0" width="${g.w}" height="${g.h}"/></g>`;
@@ -242,7 +273,7 @@ function montarIluminado(g) {
   const svg = iluSvg();
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}"/>`).join('')
     + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
-  svg.innerHTML = `${htmlSatelite(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g>
+  svg.innerHTML = `${htmlSatelite(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluNos"></g>
     <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="iluPins"></g>`;
   ligarSatelite(ILU, g); carregarMosaicoCopia(g);
   ILU.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
@@ -386,9 +417,27 @@ function desenharIlu(px, zoom) {
     });
     espessura($('#iluSel'), Math.min(11, 7 * Math.pow(Math.max(zoom, 1), 0.3)));
   }
+  desenharNosIlu(px);
   trilha($('#iluTrilha'), ILU.zona ? `<button type="button" data-ilu-tudo>Obra inteira</button> › ${esc(nomeZona(ILU.zona))}` : zoom > 1.15 ? '<button type="button" data-ilu-tudo>Ver a obra inteira</button>' : 'Obra inteira');
 }
 // a escala só muda com o zoom (2 % de folga); ctx.ultPx = 0 força o redesenho (pinos novos, cores novas)
+// os nós e as caixas (D-183): a forma diz o que é e a cor, a situação, como nos trechos (preto = não iniciado). As caixas
+// (umas 130) sempre; os 1.188 nós só de perto e só os da área visível, refeitos a cada desenho como no Dados da obra
+const NOS_DE_PERTO_PX = 1.2;               // unidades do mapa por pixel: abaixo disso (zona aberta no computador), os nós
+function desenharNosIlu(px) {
+  const caixa = $('#iluNos'); if (!caixa || !ILU.est || !ILU.vb) return;
+  const perto = px < NOS_DE_PERTO_PX, [x, y, w, h] = ILU.vb;
+  const chave = `${ILU.cores}|${px.toPrecision(3)}|${perto ? ILU.vb.map(v => Math.round(v)).join(',') : ''}`;
+  if (caixa.dataset.chave === chave) return;
+  caixa.dataset.chave = chave;
+  const dentro = e => e.x > x - w / 2 && e.x < x + w * 1.5 && e.y > y - h / 2 && e.y < y + h * 1.5;
+  caixa.innerHTML = GERAL.els.map(e => {
+    const tp = tipoNo(e); if (tp === 'NÓ' && !(perto && dentro(e))) return '';
+    const s = e.n.map(n => situacao(ILU.est, n)).find(v => v !== 'nao') || 'nao';
+    return simboloNo(tp, e.x, e.y, px * (perto ? 1 : 0.8), `class="ilu-no" data-no="${esc(e.n[0])}" style="fill:${s === 'nao' ? '#101010' : SITU_ID[s].cor}"`)
+      .replace('/>', `><title>${esc(nomeCompleto(e.n[0]))} · ${esc(SITU_ID[s].nome)}</title></path>`);
+  }).join('');
+}
 function escalaMudou(ctx, px) {
   if (ctx.ultPx && Math.abs(px - ctx.ultPx) <= ctx.ultPx * 0.02) return false;
   ctx.ultPx = px;
@@ -526,9 +575,13 @@ function ligarGestos(svg, ctx = ILU) {
 function cliqueNoMapa(alvo, ev, i) {
   fecharPop();
   const pin = alvo.closest && alvo.closest('.ilu-pin'), zona = alvo.closest && alvo.closest('.ilu-zf');
+  const no = alvo.closest && alvo.closest('.ilu-no');
   if (pin) return focarAlvo(pin.dataset.tipo, pin.dataset.alvo);
-  // com uma zona em foco, o primeiro toque em outra zona (no polígono ou num trecho dela) troca o foco
-  const outra = ILU.zona && (i >= 0 ? zonaDoTrecho(GERAL.trechos[i]) : zona && zona.dataset.zona);
+  if (no) return abrirFicha('ATIVIDADE', no.dataset.no);
+  // com uma frente em foco, o primeiro toque em outra zona (no polígono ou num trecho dela) troca o foco; o trecho da
+  // Subadutora que passa pela zona em foco não troca nada (fica onde está)
+  const t = i >= 0 ? GERAL.trechos[i] : null;
+  const outra = ILU.zona && (t ? (zonaDoTrecho(t) === ILU.zona || t.z === ILU.zona ? null : zonaDoTrecho(t)) : zona && zona.dataset.zona);
   if (outra && outra !== ILU.zona) return focarZona(outra);
   if (i >= 0) return abrirFicha('TRECHO', GERAL.trechos[i].n);
   if (zona) return focarZona(zona.dataset.zona);
@@ -575,6 +628,7 @@ function aplicarCamadas() {
   $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.36 : 0.22) : 0.26));
   $('#iluNomes').style.display = ILU.cam.nomes ? '' : 'none';
   $('#iluPins').style.display = ILU.cam.equipes ? '' : 'none';
+  $('#iluNos').style.display = ILU.cam.nos ? '' : 'none';
   $$('#iluLinhas .ilu-tr').forEach(p => p.style.display = ILU.vis[p.dataset.situ] ? '' : 'none');
   try { localStorage.setItem('mc-ilu-camadas', JSON.stringify(ILU.cam)); localStorage.setItem('mc-ilu-fundo', ILU.fundo); } catch (_) { /* sem storage */ }
   agendarCopia(ILU);
@@ -594,7 +648,8 @@ function abrirPop(nome, recarregar) {
     pop.innerHTML = `<h3>Situação dos trechos: ${esc(ILU.zona ? nomeZona(ILU.zona) : 'obra inteira')}</h3>`
       + SITU.map(s => `<button type="button" class="ilu-linha" data-situ="${s.id}" aria-pressed="${ILU.vis[s.id]}"><i class="${s.tracejado ? 'tracejado' : ''}" style="border-color:${s.cor}"></i>
         <span>${esc(s.nome)}</span><span class="fim">${nf(conta[s.id].n, 0)} · ${km(conta[s.id].m)}</span></button>`).join('')
-      + '<p>Toque numa linha para mostrar ou esconder. "OK interno" é a conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada.</p>';
+      + '<p>Toque numa linha para mostrar ou esconder. "OK interno" é a conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada.</p>'
+      + legendaNos('#101010', 'A forma diz o que é; a cor é a mesma situação dos trechos (preto: não iniciado). De longe, só as caixas; os nós aparecem ao aproximar.');
   }
   if (nome === 'zonas') {
     const zs = [...new Set(GERAL.trechos.map(zonaDoTrecho))].sort((a, b) => (a === ZONA_ADUTORA) - (b === ZONA_ADUTORA) || String(a).localeCompare(String(b)));
@@ -620,7 +675,7 @@ function abrirPop(nome, recarregar) {
     const ch = (k, rot) => `<button type="button" class="ilu-linha" data-camada="${k}" aria-pressed="${ILU.cam[k]}"><span>${ILU.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`;
     pop.innerHTML = '<h3>Fundo de satélite</h3><div class="ilu-fundos">' + Object.entries(FUNDOS).map(([k, [rot]]) =>
       `<button type="button" class="ilu-fundo" data-fundo="${k}" aria-pressed="${ILU.fundo === k}">${rot}</button>`).join('') + '</div>'
-      + '<h3 style="margin-top:14px">Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes');
+      + '<h3 style="margin-top:14px">Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes') + ch('nos', 'Nós e caixas');
   }
 }
 // abre o Mapa iluminado já focado: a zona (sem nome, a obra inteira) ou o trecho (Topografia e Cadastro de campo)
@@ -703,7 +758,7 @@ async function abrirFicha(tipo, nome) {
   const ex = d.execucao, faltam = d.fotos_faltando || [];
   const pend = (d.pendencias || []).length;
   const linhas = tipo === 'TRECHO' ? [
-    ['Zona e planta', `${esc(nomeZona(t ? zonaDoTrecho(t) : d.frente_id))} · ${esc(d.pb || (t && t.pb) || '')}`],
+    ['Zona e planta', `${esc(t ? localDoTrecho(t) : nomeZona(d.frente_id))} · ${esc(d.pb || (t && t.pb) || '')}${t && ehSubadutora(t) ? ' · frente Subadutora' : ''}`],
     ['Extensão', `${nf(d.extensao_m)} m`], ['Tubo', `DE ${esc(d.de_mm)} · ${esc(d.material || '')} · ${esc(d.metodologia || '')}`],
     ['Pontas', `${esc(curto(d.no_ini))} → ${esc(curto(d.no_fim))}`],
     ...(fis ? [['Trecho físico', esc(fis.texto.replace(/^Trecho físico:\s*/, ''))]] : []),
@@ -715,7 +770,7 @@ async function abrirFicha(tipo, nome) {
   if (prox) linhas.push(['Programado', `${esc(prox.data.split('-').reverse().join('/'))} · ${esc(equipeNome(prox.equipe_id))}`]);
   f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button>
     <h2>${esc(nomeCompleto(d.nome || nome))}</h2>
-    ${tipo === 'TRECHO' ? `<span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(ILU.est ? nomeSituacao(ILU.est, nome, s.id) : s.nome)}</span>` : ''}
+    <span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(ILU.est ? nomeSituacao(ILU.est, nome, s.id) : s.nome)}</span>
     ${d.retirado ? '<div class="aviso problema">Retirado da revisão vigente do projeto: só consulta.</div>' : ''}
     <dl>${linhas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
     <div class="acoes">${pode('campo') && !d.retirado ? `<button type="button" class="btn prim" data-ficha-campo>Lançar avanço</button>` : ''}
