@@ -419,15 +419,10 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .pln-no.auto { fill: #6CB8F0; stroke: #FFFFFF; stroke-width: 3px; }
 #plnNos.longe .pln-no:not(.pln-cx) { pointer-events: none; }
 #plnNos.longe .pln-no:not(.sel):not(.pln-cx) { display: none; }
-/* Dados da obra com o desenho do HTML do projeto (D-184): a planta clara ao fundo, contornos e nomes escuros */
-#plnMapa { background: #EEF0F3; }
-#plnMapa .vista-fundo { fill: #EEF0F3; }
-#plnSat { opacity: .5; }
-#plnSat .sat-veu { display: none; }
-#plnVeu { fill: #FFFFFF; fill-opacity: .5; pointer-events: none; }
-#plnMapa .ilu-zl { stroke: #2B2F36; stroke-opacity: .7; }
-#plnMapa .ilu-nome { fill: #17202B; stroke: #FFFFFF; }
-.pln-sel-borda { stroke: #111827; stroke-opacity: .9; }
+/* Dados da obra com o fundo do Mapa iluminado (D-186); o trecho escolhido ganha halo e contorno brancos */
+.pln-sel-borda { stroke: #FFFFFF; stroke-opacity: .35; }
+#plnDesmarcar[aria-pressed="true"] { background: #F15922; border-color: #F15922; color: #FFFFFF; }
+.pln-mapa.desmarcando svg { cursor: crosshair; }
 .pln-frentes { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 .pln-frentes button { min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--borda2); background: var(--painel2); color: var(--texto); font: 700 14px var(--fonte); cursor: pointer; }
 .pln-frentes button[aria-pressed="true"] { background: var(--texto); border-color: var(--texto); color: var(--bg); }

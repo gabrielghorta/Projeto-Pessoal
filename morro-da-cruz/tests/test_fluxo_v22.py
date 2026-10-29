@@ -239,7 +239,10 @@ class TestAlvosDoDia(BaseHTTP):
 
 
 class TestMapaNoNavegador(unittest.TestCase):
-    def test_selecao_por_zona_e_troca_de_equipe(self):
+    def test_selecao_so_dentro_da_zona_e_desselecionar(self):
+        """D-186 (29/10/2026): na obra inteira o toque abre a zona do trecho, sem escolher; na zona, cada toque soma (tocar
+        de novo não tira); com Desselecionar ligado, o toque tira só o tocado. D-182: a equipe do trecho de 200 mm pra cima
+        é a da adutora."""
         import re
         import shutil
         import subprocess
@@ -250,45 +253,43 @@ class TestMapaNoNavegador(unittest.TestCase):
         js = Path(AQUI, '..', 'web', 'planejamento.js').read_text(encoding='utf-8')
         ilu = Path(AQUI, '..', 'web', 'iluminado.js').read_text(encoding='utf-8')
         funcs = '\n'.join(re.search(r'const ' + n + r' = .*?;\n', ilu).group(0)
-                           for n in ('SUBADUTORA_MM', 'ehSubadutora', 'ZONA_ADUTORA'))
+                           for n in ('SUBADUTORA_MM', 'ehSubadutora', 'ZONA_ADUTORA', 'zonaDoTrecho'))
         funcs += '\n'.join(re.search(r'function ' + n + r'\(.*?\n\}', js, re.S).group(0)
-                            for n in ('escolherTrecho', 'alternarNo', 'equipeDoNo', 'equipePadrao', 'cliquePln'))
+                            for n in ('marcarTrecho', 'marcarNo', 'modoDesmarcar', 'equipeDoNo', 'equipePadrao', 'cliquePln'))
         funcs += '\n' + re.search(r'const equipeDoTrecho = .*?;', js).group(0)
+        funcs += '\n' + re.search(r'const naFrente = .*?;', js).group(0)
         roteiro = """
 const assert = require('node:assert/strict');
-const PLN = {sel:[],nos:[],resp:null,zona:null,noIdx:new Map([['N1',1],['N2',2],['Zona05_PB10_Rede_NÓ3.1',3]]),
+const PLN = {sel:[],nos:[],resp:null,zona:null,equipeFixa:false,noIdx:new Map([['N1',1],['N2',2],['Zona05_PB10_Rede_NÓ3.1',3]]),
   frentesNo:[new Set(), new Set(['Zona08']), new Set(['Zona08']), new Set(['Zona05','Adutora'])]};
 const RESUMO = {equipes:[{id:'Zona01'},{id:'Zona05'},{id:'Zona08'},{id:'ADUTORA'}]};
 const GERAL = {trechos:[{n:'Zona01_PB01_Rede_TR001',z:'Zona01',de:110}, {n:'Zona08_PB20_Rede_TR046',z:'Zona08',de:90},
-  {n:'Zona05_PB10_Rede_TR020',z:'Zona05',de:225}, {n:'Zona08_PB10_Adutora_TR003',z:'Zona08',de:500,tp:'Adutora'}]};
+  {n:'Zona05_PB10_Rede_TR020',z:'Zona05',de:225}, {n:'Zona08_PB10_Adutora_TR003',z:'Zona08',de:500,tp:'Adutora'},
+  {n:'Zona08_PB20_Rede_TR047',z:'Zona08',de:63}]};
 const indexar = () => ({trecho:new Map(GERAL.trechos.map(t=>[t.n,t]))});
 const atualizarSelecao = () => {}, fecharPopPln = () => {}, toast = () => {};
-const membrosDe = n => [n], $ = () => ({classList:{contains:()=>false}});
-const focarZonaPln = z => { PLN.zona=z; };
+const membrosDe = n => [n];
+const falso = {classList:{contains:()=>false, toggle:()=>{}}, setAttribute:()=>{}};
+const $ = () => falso;
+let aberta = null;
+const focarZonaPln = z => { aberta = z; PLN.zona = z; };
 """ + funcs + """
 const alvo = {closest:()=>null};
-cliquePln(alvo, {ctrlKey:true}, 0);
-cliquePln(alvo, {ctrlKey:true}, 1);
-assert.deepEqual(PLN.sel,[GERAL.trechos[1].n]); // obra inteira substitui até com Ctrl
-assert.equal(equipePadrao(),'Zona08');
-PLN.equipe='Zona01'; PLN.equipeFixa=true;
-escolherTrecho(GERAL.trechos[0].n,false);
-assert.equal(PLN.equipeFixa,false);
-PLN.zona='Zona08'; PLN.sel=[];
-cliquePln(alvo, {}, 0); cliquePln(alvo, {}, 1);
-assert.equal(PLN.sel.length,2);
-cliquePln(alvo, {}, 0); assert.deepEqual(PLN.sel,[GERAL.trechos[1].n]);
-alternarNo('N1'); alternarNo('N2'); assert.equal(PLN.nos.length,2);
-PLN.zona=null; alternarNo('N1'); assert.deepEqual(PLN.nos,['N1']); assert.deepEqual(PLN.sel,[]);
-PLN.sel=[GERAL.trechos[1].n]; PLN.nos=[]; assert.equal(equipePadrao(),'Zona08');
-// D-182: o trecho de 200 mm pra cima (DE 225 e 250) e a adutora são da Equipe Adutora, mesmo dentro de uma zona
+cliquePln(alvo, {}, 1);                                   // obra inteira: abre a Zona 08 e não escolhe nada
+assert.equal(aberta, 'Zona08'); assert.deepEqual(PLN.sel, []);
+cliquePln(alvo, {}, 1); cliquePln(alvo, {}, 4); cliquePln(alvo, {}, 1);
+assert.deepEqual(PLN.sel, [GERAL.trechos[1].n, GERAL.trechos[4].n]);   // cada toque soma; tocar de novo não tira
+modoDesmarcar(true); cliquePln(alvo, {}, 1);
+assert.deepEqual(PLN.sel, [GERAL.trechos[4].n]);         // Desselecionar: tira só o tocado
+modoDesmarcar(false); cliquePln(alvo, {}, 1); assert.equal(PLN.sel.length, 2);
+marcarNo('N1'); marcarNo('N1'); assert.deepEqual(PLN.nos, ['N1']);
+modoDesmarcar(true); marcarNo('N1'); assert.deepEqual(PLN.nos, []); modoDesmarcar(false);
+assert.equal(equipePadrao(), 'Zona08');
+// D-182: o trecho de 200 mm pra cima e a adutora são da Equipe Adutora
 assert.equal(equipeDoTrecho(GERAL.trechos[2]),'ADUTORA'); assert.equal(equipeDoTrecho(GERAL.trechos[3]),'ADUTORA');
-PLN.sel=[]; cliquePln(alvo, {}, 2); assert.deepEqual(PLN.sel,[GERAL.trechos[2].n]); assert.equal(equipePadrao(),'ADUTORA');
-// o nó de zona que liga um trecho da Subadutora: na Subadutora é da Equipe Adutora; na obra inteira, da zona do nome
 PLN.sel=[]; PLN.nos=['Zona05_PB10_Rede_NÓ3.1']; PLN.zona='Adutora'; assert.equal(equipePadrao(),'ADUTORA');
 PLN.zona='Zona05'; assert.equal(equipePadrao(),'Zona05');
 PLN.zona=null; assert.equal(equipePadrao(),'Zona05');
-PLN.nos=['N1']; assert.equal(equipePadrao(),'Zona08');
 """
         r = subprocess.run([node, '-e', roteiro], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stderr)
