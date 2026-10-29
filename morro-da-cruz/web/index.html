@@ -1,0 +1,950 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 11 600 575'%3E%3Cpath d='M19 585L235.5 11.5H364.5L579 585H449L299 152L146 585Z' fill='%23FF5E24'/%3E%3Cpath d='M220 585L265 464H333L378 585Z' fill='%23FF9B1E'/%3E%3C/svg%3E">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Morro da Cruz</title>
+<script>try { if (localStorage.getItem('mc-tema') === 'claro') document.documentElement.dataset.tema = 'claro'; } catch (_) { /* sem storage: escuro */ }</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&amp;family=Big+Shoulders:wght@700;800&amp;display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="no-inicio">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="logoA" viewBox="0 11 600 575"><path d="M19 585L235.5 11.5H364.5L579 585H449L299 152L146 585Z" fill="#FF5E24"/><path d="M220 585L265 464H333L378 585Z" fill="#FF9B1E"/></symbol></defs></svg>
+<header class="topo-movel">
+  <button type="button" id="menuBtn" class="btn-icone" aria-label="Abrir o menu" aria-controls="rail" aria-expanded="false"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <button type="button" class="topo-logo" data-tela="inicio" aria-label="Início"><svg aria-hidden="true"><use href="#logoA"/></svg></button>
+  <span id="topoTitulo">Morro da Cruz</span>
+</header>
+<div class="rail-fundo" id="railFundo" hidden></div>
+<nav id="rail" class="rail" aria-label="Menu principal">
+  <div class="rail-topo">
+    <button type="button" class="rail-logo" data-tela="inicio" aria-label="Início"><svg aria-hidden="true"><use href="#logoA"/></svg></button>
+    <button type="button" id="railFixar" class="rail-fixar rail-rot" aria-pressed="false" aria-label="Fixar o menu aberto" title="Fixar o menu aberto"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM9 4v16"/></svg></button>
+  </div>
+  <div class="rail-itens">
+      <button type="button" class="rail-item" data-tela="inicio" title="Início"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg><span class="rail-rot">Início</span></button>
+      <div class="rail-div" aria-hidden="true"></div>
+      <button type="button" class="rail-item" data-tela="iluminado" title="Mapa iluminado"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg><span class="rail-rot">Mapa iluminado</span></button>
+      <button type="button" class="rail-item rail-grupo" data-grupo="administrativo" title="Administrativo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h16v11H4zM9 8V5h6v3M4 13h16"/></svg><span class="rail-rot">Administrativo</span></button>
+      <div class="rail-sub" data-grupo="administrativo">
+        <button type="button" class="rail-item sub" data-tela="equipes" title="Equipes"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.5a3 3 0 0 1 0 5.5M18 14.5c1.8.8 3 2.6 3 4.5"/></svg><span class="rail-rot">Equipes</span></button>
+        <button type="button" class="rail-item sub" data-tela="relatorios" title="Relatórios"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20V11M10 20V5M16 20v-6M2 20h20"/></svg><span class="rail-rot">Relatórios</span></button>
+        <button type="button" class="rail-item sub" data-tela="admin" title="Usuários e histórico"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg><span class="rail-rot">Usuários e histórico</span></button>
+        <button type="button" class="rail-item sub" data-tela="lev" title="LEV"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 5h18v14H3zM3 10h18M3 15h18M9 5v14"/></svg><span class="rail-rot">LEV</span></button>
+        <button type="button" class="rail-item sub" data-tela="medicao" title="Medição"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 17L17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2"/></svg><span class="rail-rot">Medição</span></button>
+      </div>
+      <button type="button" class="rail-item rail-grupo" data-grupo="planejamento" title="Planejamento"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4M8.5 15l2.5 2.5 4.5-4.5"/></svg><span class="rail-rot">Planejamento</span></button>
+      <div class="rail-sub" data-grupo="planejamento">
+        <button type="button" class="rail-item sub" data-tela="mapa" title="Dados da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg><span class="rail-rot">Dados da obra</span></button>
+        <button type="button" class="rail-item sub" data-tela="cronograma" title="Cronograma da obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4v16h18M7 7h6M9 11h8M12 15h7"/></svg><span class="rail-rot">Cronograma da obra</span></button>
+        <button type="button" class="rail-item sub" data-tela="almox" title="Estoque e movimentos"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h2M8 16.5h2"/></svg><span class="rail-rot">Estoque e movimentos</span></button>
+        <button type="button" class="rail-item sub" data-tela="solicitar" title="Pedir material"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7.5L12 3l8 4.5v9L12 21l-8-4.5zM4 7.5l8 4.5 8-4.5M12 12v9"/></svg><span class="rail-rot">Pedir material</span></button>
+        <button type="button" class="rail-item sub" data-tela="compras" title="Compras e notas"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4"/></svg><span class="rail-rot">Compras e notas</span></button>
+      </div>
+      <button type="button" class="rail-item rail-grupo" data-grupo="grupo-campo" title="Execução"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4"/></svg><span class="rail-rot">Execução</span></button>
+      <div class="rail-sub" data-grupo="grupo-campo">
+        <button type="button" class="rail-item sub" data-tela="campo" title="Lançamento do dia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4"/></svg><span class="rail-rot">Lançamento do dia</span></button>
+        <button type="button" class="rail-item sub" data-tela="notas" title="Notas de serviço"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3"/></svg><span class="rail-rot">Notas de serviço</span></button>
+        <button type="button" class="rail-item sub" data-tela="topografia" title="Topografia"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg><span class="rail-rot">Topografia</span></button>
+        <button type="button" class="rail-item sub" data-tela="cadastro_campo" title="Cadastro de campo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 18l5-5 4 4 7-7M4 6h6M4 10h3M17 10h3v3"/></svg><span class="rail-rot">Cadastro de campo</span></button>
+        <button type="button" class="rail-item sub" data-tela="interferencias" title="Interferências"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></svg><span class="rail-rot">Interferências</span></button>
+        <button type="button" class="rail-item sub" data-tela="diario" title="Diário de obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><span class="rail-rot">Diário de obra</span></button>
+      </div>
+  </div>
+  <div class="rail-pe">
+    <div class="rail-quem"><span class="avatar" id="railAvatar" aria-hidden="true"></span><span class="rail-rot"><b id="quemNome"></b><small id="quemPerfil"></small></span></div>
+    <div class="rail-acoes rail-rot">
+      <button type="button" class="btn-texto" id="senhaBtn" hidden>Trocar senha</button>
+      <button type="button" class="btn-texto" id="linkBtn" hidden title="Copiar o link para a equipe">Link da equipe</button>
+      <button type="button" class="btn-texto" id="temaBtn" title="Alternar entre tema escuro e claro">Tema claro</button>
+      <button type="button" class="btn-texto" id="sairBtn" hidden>Sair</button>
+    </div>
+  </div>
+</nav>
+
+<div class="area" id="area">
+<div id="faixaDemo" class="faixa-demo" hidden><b>Demonstração:</b> banco de teste separado (dados_demo). Nada aqui vale como registro oficial da obra.</div>
+<main>
+  <!-- ======================================================= INÍCIO -->
+  <section class="aba" id="aba-inicio">
+    <div class="inicio">
+      <header class="inicio-topo">
+        <div class="inicio-marca">
+          <svg class="ankara-a" aria-hidden="true"><use href="#logoA"/></svg>
+          <span class="ankara-nome"><b>ANKARA</b><small>ENGENHARIA</small></span>
+          <span class="sep" aria-hidden="true"></span>
+          <span class="obra-nome"><b>Morro da Cruz</b><small id="inicioContrato">Contrato Caesb 10.239/2026</small></span>
+        </div>
+        <div class="inicio-quem">
+          <span class="avatar" id="inicioAvatar" aria-hidden="true"></span>
+          <span class="inicio-quem-txt"><b id="inicioNome"></b><small id="inicioPerfil"></small></span>
+          <button type="button" class="btn" id="inicioSair">Sair</button>
+        </div>
+      </header>
+      <div class="inicio-corpo">
+        <section class="inicio-menu">
+          <div class="inicio-titulo"><svg class="a-grande" role="img" aria-label="Ankara Engenharia"><use href="#logoA"/></svg><h1>Morro<br>da Cruz</h1></div>
+          <p class="inicio-desc" id="inicioDesc">Rede de água em São Sebastião (DF) para a Caesb.</p>
+          <h2>Menu</h2>
+          <div class="menu-lista" id="menuLista"></div>
+        </section>
+        <section class="inicio-rede" aria-label="Traçado da rede">
+          <svg id="redeSvg" role="img" aria-label="Traçado da rede de água do Morro da Cruz, com as equipes em campo hoje" preserveAspectRatio="xMidYMid meet"></svg>
+        </section>
+      </div>
+      <footer class="inicio-pe" id="inicioPe" hidden><span class="ponto-amarelo" aria-hidden="true"></span>Banco de demonstração: os lançamentos ainda não valem como registro oficial.</footer>
+    </div>
+  </section>
+
+  <!-- ======================================================= MAPA ILUMINADO -->
+  <section class="aba" id="aba-iluminado">
+    <header class="cab-tela"><h1>Mapa iluminado</h1><p>Onde cada equipe está e em que etapa está cada trecho.</p></header>
+    <div class="ilu" id="ilu">
+      <svg id="iluSvg" role="img" aria-label="Mapa iluminado da obra: satélite, zonas, situação dos trechos e equipes"></svg>
+      <div class="ilu-ferr" id="iluFerr">
+        <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="situacao" aria-expanded="false">Situação</button><div class="ilu-pop" id="popSituacao" hidden></div></div>
+        <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="zonas" aria-expanded="false">Zonas</button><div class="ilu-pop" id="popZonas" hidden></div></div>
+        <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="equipes" aria-expanded="false">Equipes</button><div class="ilu-pop" id="popEquipes" hidden></div></div>
+        <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pop="camadas" aria-expanded="false">Camadas</button><div class="ilu-pop" id="popCamadas" hidden></div></div>
+        <div class="ilu-bloco" id="iluBlocoLista" hidden><button type="button" class="ilu-bt" id="iluBtLista" data-pop="lista" aria-expanded="false">Aguardando verificação</button><div class="ilu-pop" id="popLista" hidden></div></div>
+      </div>
+      <div class="ilu-zoom">
+        <button type="button" class="ilu-bt quadrado" id="iluMais" aria-label="Aproximar">+</button>
+        <button type="button" class="ilu-bt quadrado" id="iluMenos" aria-label="Afastar">−</button>
+        <button type="button" class="ilu-bt quadrado" id="iluTudo" aria-label="Ver a obra inteira" title="Ver a obra inteira"><span aria-hidden="true" class="icone-glifo">⌖</span></button>
+      </div>
+      <div class="ilu-trilha" id="iluTrilha">Obra inteira</div>
+      <aside class="ilu-ficha" id="iluFicha" hidden aria-live="polite"></aside>
+      <div class="ilu-aviso" id="iluAviso" hidden></div>
+    </div>
+  </section>
+
+  <!-- ======================================================= EXECUÇÃO: LANÇAMENTO DO DIA (o lançamento solto, sem nota de serviço) -->
+  <section class="aba" id="aba-campo">
+    <header class="cab-tela"><h1>Lançamento do dia</h1><p>Lançamentos sem nota de serviço. A NS do dia é enviada em Execução › Notas de serviço.</p></header>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas do Lançamento do dia" style="margin:0 0 16px"></div>
+
+    <!-- apontamento à mão, sem nota do dia (só Engenharia e Administração) -->
+    <div class="painel" data-pagina="apontamento" hidden>
+        <h3>Apontamento à mão</h3>
+        <p class="vazio" style="margin:0 0 8px">Só para a engenharia e a administração, quando não há nota do dia. O motivo fica guardado junto do apontamento.</p>
+        <form id="fApont" data-perm="lancar_sem_ns">
+          <div class="linha">
+            <label>Data<input type="date" name="data" required></label>
+            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
+          </div>
+          <div id="apSugestoes" aria-live="polite"></div>
+          <div class="linha">
+            <label>Clima — manhã<select name="MANHA" class="selClima" required></select></label>
+            <label>Clima — tarde<select name="TARDE" class="selClima" required></select></label>
+          </div>
+          <label>Por que sem a nota do dia (obrigatório para trecho)<input name="motivo_sem_ns" placeholder="ex.: a nota do dia molhou; lançado pela caderneta do encarregado"></label>
+          <label>Trecho / nó / caixa
+            <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div>
+          </label>
+          <div id="apAlvo"></div>
+          <div id="apMetros">
+            <p class="vazio" style="margin:4px 0">Intervalos em metros a partir do início do trecho (sentido da 06.1). Sobreposição e repetição são recusadas; reaterro só sobre o assentado. Liberação topográfica e cadastro de campo são de equipes terceirizadas e registrados pela engenharia, nas abas Topografia e Cadastro de campo.</p>
+            <div class="linha"><label>Assentado de (m)<input type="number" step="any" min="0" name="ass_ini"></label><label>até (m)<input type="number" step="any" min="0" name="ass_fim"></label></div>
+            <div class="linha"><label>Reaterrado de (m)<input type="number" step="any" min="0" name="rea_ini"></label><label>até (m)<input type="number" step="any" min="0" name="rea_fim"></label></div>
+            <div class="linha"><label>Estaca inicial (NS, referência)<input name="estaca_ini"></label><label>Estaca final<input name="estaca_fim"></label></div>
+          </div>
+          <label class="check"><input type="checkbox" name="concluido_100"> 100 % concluído (preenche as lacunas de assentado e reaterro)</label>
+          <div class="acoes"><button type="button" class="btn azul" id="apPrevisto">Calcular previsto</button></div>
+          <div id="apQuant"></div>
+        </form>
+    </div>
+
+    <!-- fotos obrigatórias e soldas do trecho ou nó -->
+    <div class="painel" data-pagina="fotos" hidden>
+      <p class="vazio" style="margin:0 0 8px">Escolha o trecho, o nó ou a caixa pela busca (com o nome completo) ou no Mapa iluminado, e envie as fotos obrigatórias e as soldas.</p>
+      <div class="grade-2">
+        <div style="min-width:0">
+          <label>Trecho, nó ou caixa das soldas e fotos
+            <div class="busca"><input id="ndAlvo" placeholder="Zona 03 PB06 TR14, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
+          <div class="acoes"><button type="button" class="btn" id="ndNoMapa">Escolher no Mapa iluminado</button></div>
+          <div id="ndAlvoInfo" class="vazio">Escolha o trecho ou o nó.</div>
+        </div>
+        <div class="painel" style="min-width:0">
+          <h3>Fotos obrigatórias</h3>
+          <div id="fotoPend" class="vazio">Selecione o trecho/nó.</div>
+          <form id="fFoto" data-perm="campo" style="margin-top:10px">
+            <label>Categoria<select name="categoria">
+              <option value="SINALIZACAO">1. Placa de sinalização / segurança da via</option>
+              <option value="EXECUCAO">2. Executando o serviço / vala aberta</option>
+              <option value="CONCLUIDO">3. Serviço concluído / reaterrado</option>
+            </select></label>
+            <label>Foto<input type="file" name="arquivo" accept="image/*" capture="environment" required></label>
+            <p class="vazio" style="margin:0">O arquivo ORIGINAL é guardado sem alteração, com hash SHA-256. Data e GPS vêm do EXIF da foto; sem EXIF, do aparelho/navegador (a origem fica registrada). O carimbo é exibido sobre a foto.</p>
+            <div class="acoes"><button class="btn prim">Enviar foto original</button></div>
+          </form>
+          <div class="fotos" id="fotoLista" style="margin-top:12px"></div>
+          <h3 style="margin-top:16px">Soldas — informadas × verificadas</h3>
+          <form id="fSolda" data-perm="campo" class="form">
+            <div class="linha">
+              <label>Tipo<select name="tipo"><option value="ELETROFUSAO">Eletrofusão</option><option value="TOPO">Topo</option></select></label>
+              <label>Quantidade<input type="number" min="1" step="1" name="quantidade" required></label>
+              <label>Posição (m, opcional)<input type="number" step="any" min="0" name="posicao_m"></label>
+            </div>
+            <label>Soldador<input name="soldador" required></label>
+            <div class="acoes"><button class="btn prim">Registrar soldas</button></div>
+          </form>
+          <div id="soldas" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- clima do dia da equipe, para o diário dos dias sem nota do dia -->
+    <div data-pagina="clima" hidden>
+      <form class="painel nota-dia" id="fClima" data-perm="campo">
+        <p class="vazio" style="margin:0">O clima do dia da equipe, para o diário. A NS do dia é a fonte principal: se ela vier com o clima, vale o dela; se vier sem, vale o marcado aqui. Depois que a NS do dia chega, só a engenharia muda o clima daquele dia.</p>
+        <div class="linha"><label>Equipe<select id="climaEquipe" required></select></label><label>Dia<input type="date" name="data" required></label></div>
+        <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
+        <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
+        <button class="btn prim grande">Gravar o clima do dia</button>
+      </form>
+    </div>
+
+    <!-- apropriação direta: lançamento sem nota de serviço, direto no item do orçamento (só Engenharia e Administração) -->
+    <div id="campoApr" data-pagina="apropriacao" hidden>
+      <p class="vazio" style="margin:0 0 12px">Para o que não vem por nota de serviço: o canteiro feito por uma equipe de outra obra, os gastos do canteiro e outros lançamentos avulsos. Escolha o item como no BM Vertical (grupo, material ou serviço, item) ou pela busca.</p>
+      <div class="grade-2">
+        <div style="display:grid;gap:16px;min-width:0;align-content:start">
+          <div class="painel">
+            <h3>Item do orçamento</h3>
+            <label>Buscar<input id="aprBusca" type="search" placeholder="Buscar por código, item do BM, descrição, diâmetro, material…" autocomplete="off"></label>
+            <div id="aprResultados" class="apr-resultados" aria-live="polite"></div>
+            <div class="linha" style="margin-top:10px">
+              <label>Grupo<select id="aprGrupo"></select></label>
+              <label>Material ou serviço<select id="aprTipo"><option value="">Escolha</option><option value="MATERIAL">Material</option><option value="SERVIÇO">Serviço</option></select></label>
+            </div>
+            <label style="margin-top:10px">Item<select id="aprItem"><option value="">Escolha o grupo e o tipo</option></select></label>
+            <div id="aprCartao" style="margin-top:10px"></div>
+            <p class="vazio" style="margin:10px 0 0">Achou o item? Preencha a <b>Apropriação</b> logo abaixo.</p>
+            <div class="acoes" style="margin-top:6px"><button type="button" class="btn" id="aprNovoBtn" data-perm="apropriacao">O item não está no orçamento? Cadastrar item novo a aprovar</button></div>
+          </div>
+          <form class="painel" id="fApr" data-perm="apropriacao">
+            <h3>Apropriação</h3>
+            <div class="linha">
+              <label>Data<input type="date" name="data" required></label>
+              <label>Quantidade <span id="aprUnidade"></span><input type="number" step="any" min="0" name="quantidade" required></label>
+            </div>
+            <div class="linha">
+              <label>Local (opcional)<select name="local_tipo" id="aprLocalTipo"><option value="">Sem local</option><option value="CANTEIRO">Canteiro</option><option value="ZONA">Zona</option><option value="TRECHO">Trecho</option><option value="ATIVIDADE">Nó ou caixa</option></select></label>
+              <label id="aprZonaRot" hidden>Zona<select id="aprZona"></select></label>
+              <label id="aprAlvoRot" hidden>Trecho / nó / caixa<div class="busca"><input id="aprAlvo" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
+            </div>
+            <div class="linha">
+              <label>Quem executou<select name="executor_tipo" id="aprExecutor" required></select></label>
+              <label id="aprEquipeRot">Equipe da obra<select name="equipe_id" id="aprEquipe"></select></label>
+              <label id="aprObraRot" hidden>Obra ou contrato da Ankara<input name="executor_obra" placeholder="ex.: CT 9702/2024 — ETE Paranoá"></label>
+              <label id="aprNomeRot" hidden>Equipe<input name="executor_nome" placeholder="qual equipe ou nome do terceiro"></label>
+            </div>
+            <label>O que foi feito<textarea name="o_que_foi_feito" rows="2" required></textarea></label>
+            <label>Memória de cálculo da quantidade<textarea name="memoria_calculo" rows="2" required placeholder="ex.: 2 contêineres × 1 instalação"></textarea></label>
+            <label>Justificativa técnica<textarea name="justificativa" rows="2" required></textarea></label>
+            <label>Evidências: fotos, croqui ou documento (pelo menos uma)<input type="file" name="evidencias" multiple accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
+            <p class="vazio" style="margin:0">As evidências vão para o memorial da medição (galeria de fotos/croqui e justificativa técnica) e para o Drive. Correção só por estorno, com motivo.</p>
+            <div class="acoes"><button class="btn prim grande" id="aprGravar">Gravar a apropriação</button></div>
+          </form>
+          <form class="painel" id="fItemNovo" data-perm="apropriacao" hidden>
+            <h3>Item novo a aprovar na base de custo</h3>
+            <p class="vazio" style="margin:0 0 8px">Entra como "a aprovar" e já pode receber apropriação. Fica fora da medição até a Caesb dar o código oficial.</p>
+            <div class="linha">
+              <label>Grupo<select name="grupo" id="novoGrupo" required></select></label>
+              <label>Material ou serviço<select name="classificacao" required><option value="MATERIAL">Material</option><option value="SERVIÇO">Serviço</option></select></label>
+            </div>
+            <label>Descrição<input name="descricao" required placeholder="ex.: BANHEIRO QUÍMICO, LOCAÇÃO MENSAL"></label>
+            <div class="linha">
+              <label>Unidade<input name="unidade" required placeholder="UN, M, M2, MÊS…"></label>
+              <label>Descrição resumida<input name="descricao_resumida"></label>
+            </div>
+            <details><summary>Identificadores (ajudam a busca a achar o item)</summary>
+              <div class="linha" style="margin-top:8px">
+                <label>Material<input name="material" placeholder="PEAD, PVC, FOFO…"></label>
+                <label>Diâmetro<input name="diametro" placeholder="63, 110X63…"></label>
+                <label>Pressão<input name="pressao" placeholder="PN10"></label>
+                <label>Resina<input name="resina" placeholder="PE100"></label>
+                <label>Tipo de conexão<input name="tipo_conexao"></label>
+                <label>Solda<input name="solda" placeholder="ELETROFUSÃO, TOPO"></label>
+                <label>Grupo de orçamento Ankara<input name="grupo_orcamento_ankara"></label>
+              </div>
+            </details>
+            <div class="linha">
+              <label>Preço proposto (R$, sem BDI)<input type="number" step="0.01" min="0" name="preco_proposto" required></label>
+              <label>Fonte do preço<select name="fonte_preco" id="novoFonte" required></select></label>
+              <label>Código ou nº da fonte<input name="fonte_ref" placeholder="SINAPI 10775, NF 123, cotação 45"></label>
+            </div>
+            <label>Justificativa<textarea name="justificativa" rows="2" required placeholder="por que o item é preciso e por que não está no BM"></textarea></label>
+            <div id="novoParecidos"></div>
+            <div class="acoes"><button class="btn prim grande" id="novoGravar">Cadastrar o item a aprovar</button><button type="button" class="btn grande" id="novoCancelar">Cancelar</button></div>
+          </form>
+        </div>
+        <div class="painel" style="min-width:0;align-self:start">
+          <h3>Apropriações recentes</h3>
+          <div id="aprLista"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= EXECUÇÃO: DIÁRIO DE OBRA (montado da NS do dia) -->
+  <section class="aba" id="aba-diario">
+    <header class="cab-tela"><h1>Diário de obra</h1><p>O dia de cada equipe a partir da nota do dia e do croqui: o que o sistema lançou, o que espera a engenharia, programado × executado, clima, pessoas e material, soldas, fotos e ocorrências.</p></header>
+    <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
+      <label>Dia<input type="date" id="diaData"></label>
+      <label>Equipe<select id="diaEquipe"></select></label>
+      <button type="button" class="btn" id="diaAnterior">‹ Dia anterior</button>
+      <button type="button" class="btn" id="diaProximo">Dia seguinte ›</button>
+    </div>
+    <div id="diaAlertas"></div>
+    <div class="kpis" id="diaKpis"></div>
+    <div class="painel" id="painelDiaNs" style="margin-bottom:16px"><h3>Nota do dia e croqui</h3><div id="diaNs"></div></div>
+    <div class="grade-2">
+      <div style="display:grid;gap:16px;min-width:0">
+        <div class="painel"><h3>Programado × executado</h3><div id="diaProgExec"></div></div>
+        <div class="painel"><h3>Produção do dia</h3><div id="diaProducao"></div></div>
+        <div class="painel"><h3>Soldas</h3><div id="diaSoldas"></div></div>
+        <div class="painel"><h3>Fotos</h3><div class="fotos" id="diaFotos"></div></div>
+      </div>
+      <div style="display:grid;gap:16px;min-width:0">
+        <div class="painel"><h3>Equipes e clima</h3><div id="diaEquipes"></div></div>
+        <div class="painel"><h3>Programação</h3><div id="diaProg"></div></div>
+        <div class="painel"><h3>Check-in: pessoas e material</h3><div id="diaCheckins"></div></div>
+        <div class="painel"><h3>Interferências e ocorrências</h3><div id="diaOcorrencias"></div></div>
+        <div class="painel" id="painelDiaLib"><h3>Liberação topográfica e escavação</h3><div id="diaLiberacoes"></div></div>
+        <div class="painel"><h3>Apropriações diretas do dia</h3><div id="diaApropriacoes"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= CAMPO: INTERFERÊNCIAS -->
+  <section class="aba" id="aba-interferencias">
+    <header class="cab-tela"><h1>Interferências e ocorrências</h1><p>O que impede ou atrapalha o avanço — rede existente, falta de material, chuva, acesso — e o que precisa ser corrigido.</p></header>
+    <div class="grade-2">
+      <div class="painel" style="min-width:0">
+        <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Registradas</h3><span id="intContagem" class="vazio" style="padding:0"></span></div>
+        <div class="abas-chip" id="intSituacao" role="group" aria-label="Situação">
+          <button type="button" data-int-situacao="1" aria-pressed="true">Abertas</button>
+          <button type="button" data-int-situacao="0" aria-pressed="false">Resolvidas</button>
+          <button type="button" data-int-situacao="" aria-pressed="false">Todas</button>
+        </div>
+        <div class="linha" style="margin-top:10px">
+          <label>Equipe<select id="intEquipe"></select></label>
+          <label>Categoria<select id="intCategoria"></select></label>
+        </div>
+        <div id="intLista" style="margin-top:10px"></div>
+      </div>
+      <form class="painel" id="fInterf" data-perm="campo">
+        <h3 style="margin:0">Relatar interferência</h3>
+        <label>Trecho / nó / caixa
+          <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div></label>
+        <div class="linha"><label>Tipo<select name="tipo" id="intTipo"><option value="IMPEDIMENTO">Impedimento</option><option value="NAO_CONFORMIDADE">Não conformidade</option></select></label>
+          <label>Categoria<select name="categoria" id="intCat"></select></label></div>
+        <div class="linha"><label>Dia<input type="date" name="data" required></label><label>Equipe<select name="equipe_id" class="selEquipe"></select></label></div>
+        <label>O que foi encontrado<textarea name="descricao" rows="4" required placeholder="ex.: rede de esgoto cruzando a vala a 1,2 m, entre as estacas 3 e 4"></textarea></label>
+        <div class="acoes"><button class="btn prim">Registrar</button></div>
+        <p class="vazio" style="margin:0">Fica registrado com o seu usuário. Quem tem a permissão de verificar marca como resolvida.</p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ======================================================= EXECUÇÃO: NOTAS DE SERVIÇO (as do campo da obra) -->
+  <section class="aba" id="aba-notas">
+    <header class="cab-tela"><h1>Notas de serviço</h1><p>As notas do campo da obra: a NS do dia (o que a equipe executou, com o croqui e o clima) e a NS de serviço de obra (o plano da zona). As de topografia e de cadastro são enviadas nas abas Topografia e Cadastro de campo.</p></header>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Tipo da nota" style="margin:0 0 16px"></div>
+
+    <!-- NS do dia: o que a equipe executou, enviado pela engenharia; o supervisor e o RH consultam (D-134) -->
+    <div data-pagina="dia" hidden>
+      <p class="vazio" style="margin:0 0 12px">A engenharia envia a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a fila "NS do dia a conferir".</p>
+    <p class="vazio" id="ndSoConsulta" hidden style="margin:0 0 12px">Só consulta: a NS do dia é enviada pela engenharia.</p>
+    <div class="grade-2">
+      <div id="ndEnvio" style="display:grid;gap:16px;min-width:0;align-content:start">
+        <form class="painel nota-dia" id="fNd" data-perm="ns_dia">
+          <label>Equipe<select id="ndEquipe" required></select></label>
+          <label>Nota de serviço do dia (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
+          <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
+          <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
+          <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
+          <p class="vazio" style="margin:0">O clima tocado aqui é o que vale. Se a equipe já marcou em Lançamento do dia › Clima do dia, pode deixar sem tocar: fica o marcado.</p>
+          <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
+          <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
+          <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
+        </form>
+        <div class="painel" id="ndLote" hidden aria-live="polite"></div>
+      </div>
+      <div style="display:grid;gap:16px;min-width:0;align-content:start">
+        <div class="painel"><h3>Notas do dia enviadas</h3><div class="linha"><label>Equipe<select id="ndVerEquipe"></select></label><label>Dia (vazio: os últimos 7)<input type="date" id="ndDia"></label></div><div id="ndEnviadas" style="margin-top:8px"></div></div>
+        <div class="painel"><h3>Notas de serviço da zona</h3><p class="vazio" style="margin:0 0 6px">O plano do serviço (nota e croqui) enviado pela engenharia.</p><div id="ndServico"></div></div>
+      </div>
+    </div>
+    <div class="painel" id="nsFilaPainel" style="margin-top:16px" hidden>
+      <h3>NS do dia a conferir</h3>
+      <p class="vazio" style="margin:0 0 6px">O que o sistema não lançou sozinho das notas do dia das equipes. Escolha o trecho (e com ele o sentido) e aceite, ou deixe de fora com o motivo; depois, "Registrar o que foi conferido".</p>
+      <div id="nsFila"></div>
+    </div>
+    </div>
+
+    <!-- NS de serviço de obra: o plano da zona, enviado pela engenharia -->
+    <div data-pagina="servico" hidden>
+      <div class="aviso info" style="margin:0 0 12px"><b>A NS de serviço de obra é o plano da zona: não acende o executado.</b> A nota e o croqui ficam para a equipe abrir aqui, na página NS do dia. O que acende o executado é a NS do dia.</div>
+      <div id="nsEnvioServico"></div>
+    </div>
+
+    <!-- a conferência dos segmentos de uma nota da fila: vai para a página que está conferindo (Serviço, Topografia ou Cadastro) -->
+    <div id="nsConferencia" hidden style="display:grid;gap:16px;min-width:0">
+        <div class="painel" id="nsResultado"></div>
+        <div class="painel" id="nsSegPainel" hidden>
+          <h3>Segmentos da nota × trechos da obra</h3>
+          <div id="nsSegmentos"></div>
+          <h3 style="margin-top:16px">Ao registrar, o sistema grava</h3>
+          <div id="nsPrevia"></div>
+          <div class="acoes" style="margin-top:10px"><button type="button" class="btn prim" id="nsRegistrar" disabled>Registrar</button><span id="nsFalta" class="vazio"></span></div>
+        </div>
+    </div>
+    <div class="painel" style="margin-top:16px">
+      <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Notas recebidas da obra</h3>
+        <label class="check"><input type="checkbox" id="nsAnuladas"> mostrar as anuladas</label></div>
+      <div class="abas-chip" id="nsFiltro" role="group" aria-label="Tipo">
+        <button type="button" data-ns-filtro="" aria-pressed="true">Todas da obra</button>
+        <button type="button" data-ns-filtro="EXECUCAO" aria-pressed="false">Do dia</button>
+        <button type="button" data-ns-filtro="SERVICO" aria-pressed="false">Serviço de obra</button>
+      </div>
+      <div id="nsLista" style="margin-top:10px"></div>
+      <details id="nsForaPainel" hidden style="margin-top:14px"><summary>Fora de ordem (legado): <span id="nsForaN">0</span> registro(s)</summary>
+        <p class="vazio" style="margin:6px 0">Registros de antes do bloqueio da ordem topografia → serviço → cadastro. Nada é apagado: registre a etapa que falta (a NS de topografia, por exemplo) ou retifique o registro na ficha do trecho.</p>
+        <div id="nsFora"></div></details>
+    </div>
+  </section>
+
+  <!-- ======================================================= EXECUÇÃO: TOPOGRAFIA (terceirizada) -->
+  <section class="aba" id="aba-topografia">
+    <header class="cab-tela"><h1>Topografia</h1><p>A liberação topográfica feita pela equipe terceirizada: envie as notas de serviço de topografia e veja o resumo do que já foi liberado, todo ou em partes.</p></header>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas da Topografia" style="margin:0 0 16px"></div>
+
+    <div data-pagina="enviar" hidden>
+      <div id="topEnvio"></div>
+      <details class="painel" id="topExcecao" style="margin-top:16px"><summary>Sem nota de serviço (exceção)</summary>
+      <form id="fTop" data-perm="topografia">
+        <h3 style="margin:0">Registrar liberação à mão</h3>
+        <label>Trecho
+          <div class="busca"><input name="alvo_txt" placeholder="TR001…" autocomplete="off" required><ul hidden></ul></div></label>
+        <div id="topAlvo"></div>
+        <div class="linha"><label>De (m)<input name="ini_m" type="number" step="any" min="0" required></label><label>Até (m)<input name="fim_m" type="number" step="any" min="0" required></label></div>
+        <div class="acoes"><button type="button" class="btn" id="topTodo">Trecho todo</button><button type="button" class="btn" id="topFalta">Só o que falta</button></div>
+        <div class="linha"><label>Data<input type="date" name="data" required></label><label>Nota de serviço / locação<input name="referencia" required placeholder="ex.: NS 045/2026"></label></div>
+        <div class="acoes"><button class="btn prim">Registrar liberação</button></div>
+        <p class="vazio" style="margin:0">Fica registrada com o seu usuário. Liberação errada é anulada com motivo (fica no histórico).</p>
+      </form>
+      </details>
+    </div>
+
+    <div data-pagina="resumo" hidden>
+      <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
+        <label>Frente<select id="topFrente"><option value="">Obra inteira</option></select></label>
+        <button type="button" class="btn" id="topMapa">Ver no Mapa iluminado</button>
+      </div>
+      <div id="topMacro"></div>
+      <div class="kpis" id="topKpis"></div>
+      <div class="painel" style="min-width:0">
+        <div class="abas-chip" id="topLista" role="group" aria-label="Lista">
+          <button type="button" data-top-lista="programados" aria-pressed="true">Programado sem liberação</button>
+          <button type="button" data-top-lista="executados" aria-pressed="false">Executado sem liberação</button>
+          <button type="button" data-top-lista="parciais" aria-pressed="false">Liberados em parte</button>
+          <button type="button" data-top-lista="recentes" aria-pressed="false">Liberações registradas</button>
+        </div>
+        <div id="topConteudo" style="margin-top:10px"></div>
+      </div>
+      <div class="painel" style="margin-top:16px"><h3 style="margin:0">Notas de serviço de topografia</h3><div id="topNsLista" style="margin-top:10px"></div></div>
+    </div>
+  </section>
+
+  <!-- ======================================================= EXECUÇÃO: CADASTRO DE CAMPO (terceirizado) -->
+  <section class="aba" id="aba-cadastro_campo">
+    <header class="cab-tela"><h1>Cadastro de campo</h1><p>O levantamento com a vala aberta, antes do reaterro, feito pela equipe terceirizada: envie as notas de serviço de cadastro e veja o que já foi feito. Só vale sobre o que já foi executado.</p></header>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas do Cadastro de campo" style="margin:0 0 16px"></div>
+
+    <div data-pagina="enviar" hidden>
+      <div id="cadEnvio"></div>
+      <div style="display:grid;gap:16px;min-width:0;margin-top:16px">
+        <details class="painel" id="cadExcecao"><summary>Sem nota de serviço (exceção)</summary>
+        <form id="fCad" data-perm="cadastro_campo">
+          <h3 style="margin:0">Registrar levantamento à mão</h3>
+          <label>Trecho
+            <div class="busca"><input name="alvo_txt" placeholder="TR001…" autocomplete="off" required><ul hidden></ul></div></label>
+          <div id="cadAlvo"></div>
+          <div class="linha"><label>De (m)<input name="ini_m" type="number" step="any" min="0" required></label><label>Até (m)<input name="fim_m" type="number" step="any" min="0" required></label></div>
+          <div class="acoes"><button type="button" class="btn" id="cadFalta">Só o que falta</button></div>
+          <div class="linha"><label>Data do levantamento<input type="date" name="data" required></label>
+            <label>Registro do levantamento<input name="referencia" required placeholder="caderneta, croqui ou arquivo de pontos"></label></div>
+          <div class="acoes"><button class="btn prim">Registrar levantamento</button></div>
+          <p class="vazio" style="margin:0">Levantamento feito depois do reaterro não conta como anterior: o alerta do reaterro continua.</p>
+        </form>
+        </details>
+        <div id="cadRetif"></div>
+      </div>
+    </div>
+
+    <div data-pagina="feito" hidden>
+      <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
+        <label>Frente<select id="cadFrente"><option value="">Obra inteira</option></select></label>
+        <button type="button" class="btn" id="cadMapa">Ver no Mapa iluminado</button>
+      </div>
+      <div id="cadMacro"></div>
+      <div id="cadAviso"></div>
+      <div class="kpis" id="cadKpis"></div>
+      <div class="painel" style="min-width:0">
+        <div class="abas-chip" id="cadLista" role="group" aria-label="Lista">
+          <button type="button" data-cad-lista="aberta" aria-pressed="true">Vala aberta sem levantamento</button>
+          <button type="button" data-cad-lista="reaterrados" aria-pressed="false">Reaterrado sem levantamento</button>
+          <button type="button" data-cad-lista="recentes" aria-pressed="false">Levantamentos registrados</button>
+        </div>
+        <div id="cadConteudo" style="margin-top:10px"></div>
+      </div>
+      <div class="painel" style="margin-top:16px"><h3 style="margin:0">Notas de serviço de cadastro</h3>
+        <p class="vazio" style="margin:6px 0 0">O que cada nota gravou e o que foi recusado pela ordem obrigatória (só vale sobre o executado até a data da nota). "Aplicar de novo" grava a parte recusada que agora cabe.</p>
+        <div id="cadNsLista" style="margin-top:10px"></div></div>
+    </div>
+  </section>
+
+  <!-- ======================================================= ADMINISTRATIVO: EQUIPES -->
+  <section class="aba" id="aba-equipes">
+    <header class="cab-tela"><h1>Equipes</h1><p>Integrantes e máquinas de cada equipe e o histograma diário de presença.</p></header>
+    <div class="grade">
+      <div class="painel">
+        <h3>Integrantes e máquinas</h3>
+        <form id="fRecurso" data-perm="equipes">
+          <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
+          <div class="linha"><label>Funcionário<input name="nome"></label><label>Função<input name="funcao"></label></div>
+          <label>Máquina<input name="descricao" placeholder="Retroescavadeira, compactador…"></label>
+          <div class="acoes"><button class="btn">Adicionar</button></div>
+        </form>
+      </div>
+      <div class="painel">
+        <h3>Histograma diário</h3>
+        <div class="linha"><label>De<input type="date" id="hIni"></label><label>Até<input type="date" id="hFim"></label></div>
+        <div id="histograma" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= PLANEJAMENTO: COMPRAS -->
+  <section class="aba" id="aba-solicitar">
+    <header class="cab-tela"><h1>Pedir material</h1><p>Escolha o que precisa e para onde vai.</p></header>
+    <div id="solicitarConteudo"></div>
+  </section>
+  <section class="aba" id="aba-compras">
+    <header class="cab-tela"><h1>Compras e notas</h1><p>Cadastre a nota. O almoxarife confere e recebe a entrega.</p></header>
+    <p class="aviso info" style="margin-top:0">A nota não precisa de pedido nem de solicitação. O almoxarife confere e aceita a entrega no Estoque; a linha que o sistema não reconheceu entra no estoque quando a engenharia disser o que é. Material aceito vira estoque, <b>nunca</b> lançamento de medição. <button type="button" class="btn" data-tela="solicitar">Pedir material</button></p>
+    <div class="grade">
+      <div class="painel">
+        <h3>Nota fiscal</h3>
+        <details style="margin-top:8px"><summary>Cadastrar fornecedor</summary>
+          <form id="fForn" class="form" data-perm="fornecedores">
+            <div class="linha"><label>CNPJ<input name="cnpj" required></label><label>Razão social<input name="nome" required></label></div>
+            <label>Contato<input name="contato"></label>
+            <div class="acoes"><button class="btn">Cadastrar</button></div>
+          </form>
+        </details>
+        <p class="vazio" style="margin:0 0 8px">A nota sobe aqui. Quando o material chegar, o aceite ou a recusa da entrega é em <b>Estoque e movimentos › Notas a receber</b>.</p>
+        <form id="fXml" data-perm="receber">
+          <label>XML da NF-e (um ou vários)<input type="file" name="arquivos" accept=".xml,text/xml,application/xml" multiple required></label>
+          <div class="acoes"><button class="btn prim">Importar XML (fica a conferir)</button></div>
+        </form>
+        <details style="margin-top:8px"><summary>Sem XML: digitar a partir do PDF/imagem da nota</summary>
+          <form id="fNfDig" class="form" data-perm="receber">
+            <div class="linha"><label>Nº<input name="numero" required></label><label>Emissão<input type="date" name="data_emissao" required></label></div>
+            <div class="linha"><label>Fornecedor<select name="fornecedor_id" class="selForn" required></select></label><label>Chave (opcional)<input name="chave"></label></div>
+            <div class="editor-itens" data-itens="nfdig"></div>
+            <button type="button" class="btn" data-mais-item="nfdig">+ linha</button>
+            <label>PDF ou imagem da nota (obrigatório)<input type="file" name="arquivo" accept="application/pdf,image/*" required></label>
+            <p class="vazio" style="margin:0">Outra pessoa confere os dados digitados contra o anexo antes de qualquer entrega.</p>
+            <div class="acoes"><button class="btn">Registrar (fica a conferir)</button></div>
+          </form>
+        </details>
+      </div>
+      <div class="painel">
+        <h3>Almoxarifado — transferência, inventário e reservas vencidas</h3>
+        <details open><summary>Transferência entre equipes em campo</summary>
+          <form id="fTransf" class="form" data-perm="almox">
+            <div class="linha"><label>De<select name="de_equipe" class="selEquipe" required></select></label><label>Para<select name="para_equipe" class="selEquipe" required></select></label></div>
+            <div class="linha"><label>Material<select name="material_id" class="selMaterialTodos" required></select></label><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label></div>
+            <div class="linha"><label>Quem autorizou<input name="autorizacao" required></label><label>Motivo<input name="motivo"></label></div>
+            <div class="acoes"><button class="btn">Transferir</button></div>
+          </form>
+        </details>
+        <details><summary>Inventário (contagem física)</summary>
+          <form id="fInv" class="form" data-perm="inventario_contar">
+            <div class="editor-itens" data-itens="inv"></div>
+            <button type="button" class="btn" data-mais-item="inv">+ material</button>
+            <div class="acoes"><button class="btn">Registrar contagem</button></div>
+          </form>
+          <div id="invLista"></div>
+        </details>
+        <details><summary>Reservas vencidas</summary><div id="vencidasLista"></div></details>
+      </div>
+      <div class="painel" style="grid-column:1/-1">
+        <h3>Notas fiscais — conferência, entregas, inspeção e devolução</h3>
+        <div id="notasLista"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= PLANEJAMENTO: ESTOQUE E MOVIMENTOS -->
+  <section class="aba" id="aba-almox">
+    <header class="cab-tela"><h1>Estoque e movimentos</h1><p>As equipes do dia, o aceite ou a recusa do material que chegou, entradas, reservas, estoque e movimentos.</p></header>
+    <div class="grade">
+      <div class="painel largo" id="almoxDiaPainel" hidden>
+        <h3>Equipes programadas hoje</h3>
+        <p class="vazio" style="margin:0 0 8px">O que cada equipe vai executar hoje, programado no Dados da obra, e as peças que o projeto sugere. "Liberar" abre o Dados da obra com o dia da equipe escolhido: confira as quantidades e libere. Na hora, os trechos ficam em execução no Mapa iluminado, com o pino da equipe.</p>
+        <div id="almoxDia" class="vazio">Carregando…</div>
+      </div>
+      <div class="painel largo">
+        <h3>Notas a receber</h3>
+        <p class="vazio" style="margin:0 0 8px">As notas são importadas em <b>Compras e notas</b>. Quando o material chega, use os botões ao lado de cada nota: <b>Aceitar a entrega</b> (chegou tudo certo: o material sugerido de cada linha é conferido, recebido e aceito de uma vez), <b>Recusar a entrega</b> (com o porquê: nada entra no estoque) ou <b>Aceite ou recusa parcial</b> (o que foi aceito e o que foi recusado em cada linha, e o porquê; o que não chegou continua a receber). Nota sem pedido: o aceito só vai para as equipes depois da aprovação de Engenharia ou Administração. Tubo da Caesb (remessa) entra como romaneio.</p>
+        <div id="notasReceber" class="vazio">Carregando as notas…</div>
+      </div>
+      <div class="painel">
+        <h3>Entradas no almoxarifado</h3>
+        <p class="vazio" style="margin:0 0 8px">Nota fiscal de material: importe em Compras e notas e receba em "Notas a receber", acima. Aqui ficam o romaneio da Caesb, o empréstimo de tubo e o consumo diário.</p>
+        <form id="fMov" data-perm="almox">
+          <div class="linha">
+            <label>Data<input type="date" name="data" required></label>
+            <label>Tipo<select name="tipo">
+              <option value="ROMANEIO_CAESB">Romaneio Caesb (retirada de tubo)</option>
+              <option value="EMPRESTIMO_OUTRA_OBRA">Tubo Caesb emprestado p/ outra obra</option>
+              <option value="ENTRADA_CONSUMO">Caminhão / nota — consumo diário</option>
+            </select></label>
+          </div>
+          <label>Material<select name="material_id" class="selMaterial" required></select></label>
+          <div class="linha"><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
+            <label>Documento<input name="documento" placeholder="nº romaneio / nota / ofício"></label></div>
+          <label>Autorização (empréstimo)<input name="autorizacao" placeholder="quem autorizou + documento"></label>
+          <p class="vazio" style="margin:4px 0">O responsável é o usuário logado. Empréstimo exige documento e autorização. Consumo não é baixado por estimativa: confirma-se no check-out.</p>
+          <div class="acoes"><button class="btn prim">Lançar</button></div>
+        </form>
+      </div>
+      <div class="painel">
+        <h3>Reserva para a programação</h3>
+        <form id="fReserva" data-perm="almox">
+          <div class="linha">
+            <label>Dia<input type="date" name="data" required></label>
+            <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
+          </div>
+          <label>Material<select name="material_id" class="selMaterialReserva" required></select></label>
+          <label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label>
+          <p class="vazio" style="margin:4px 0">A reserva não tira material do almoxarifado: só reduz o disponível para as outras equipes. É consumida no check-in da equipe naquele dia.</p>
+          <div class="acoes"><button class="btn prim">Reservar</button></div>
+        </form>
+        <div id="reservasLista" style="margin-top:10px"></div>
+      </div>
+      <div class="painel">
+        <h3>Notas fiscais anteriores (registro direto)</h3>
+        <p class="vazio" style="margin:0">Notas novas seguem a tela <b>Compras e notas</b>: XML da NF-e ou dados digitados com o PDF/imagem, conferência, entregas parciais e inspeção item a item. Aqui ficam só as notas registradas antes, para concluir o aceite.</p>
+        <div id="nfLista" style="margin-top:12px"></div>
+      </div>
+      <div class="painel largo">
+        <h3>Tabela de compatibilização de tubos Caesb</h3>
+        <div class="tabela" id="compat"></div>
+      </div>
+      <div class="painel largo">
+        <h3>Tubos Caesb — consumo previsto (apontado) × aplicado confirmado no check-out</h3>
+        <div class="tabela" id="consumo"></div>
+      </div>
+      <div class="painel largo">
+        <h3>Movimentos recentes (correção só por estorno, com motivo)</h3>
+        <div class="tabela" id="movimentos"></div>
+      </div>
+      <div class="painel largo">
+        <h3>Estoque</h3>
+        <div class="acoes" style="margin-bottom:8px">
+          <select id="estFiltro"><option value="">Todos</option><option>CAESB</option><option>ANKARA</option><option>CONSUMO</option></select>
+          <label class="check"><input type="checkbox" id="estSaldo" checked> só com movimento</label>
+        </div>
+        <div class="tabela" id="estoque"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= PLANEJAMENTO: DADOS DA OBRA (mapa de planejamento) -->
+  <section class="aba" id="aba-mapa">
+    <header class="cab-tela"><h1>Dados da obra</h1><p>O mapa em que se planeja a obra: escolha os trechos, programe a equipe, libere o material do dia e receba a devolução. O que se faz aqui aparece no Mapa iluminado.</p></header>
+    <div class="pln-frentes" id="plnFrentes" role="group" aria-label="Frente do mapa"></div>
+    <div class="pln" id="pln">
+      <div class="ilu pln-mapa" id="plnMapa">
+        <svg id="plnSvg" role="img" aria-label="Mapa de planejamento: trechos programados, equipes em campo e trechos escolhidos"></svg>
+        <div class="ilu-ferr" id="plnFerr">
+          <label class="ilu-bt pln-dia">Dia <input type="date" id="plnDia" aria-label="Dia do planejamento"></label>
+          <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pln-pop="legenda" aria-expanded="false">Legenda</button><div class="ilu-pop" id="plnPopLegenda" hidden></div></div>
+          <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pln-pop="zonas" aria-expanded="false">Zonas</button><div class="ilu-pop" id="plnPopZonas" hidden></div></div>
+          <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pln-pop="camadas" aria-expanded="false">Camadas</button><div class="ilu-pop" id="plnPopCamadas" hidden></div></div>
+          <div class="busca pln-busca"><input id="plnBusca" placeholder="Achar trecho ou nó…" autocomplete="off" aria-label="Achar trecho ou nó no mapa"><ul hidden></ul></div>
+        </div>
+        <div class="ilu-zoom">
+          <button type="button" class="ilu-bt quadrado" id="plnMais" aria-label="Aproximar">+</button>
+          <button type="button" class="ilu-bt quadrado" id="plnMenos" aria-label="Afastar">−</button>
+          <button type="button" class="ilu-bt quadrado" id="plnTudo" aria-label="Ver a obra inteira" title="Ver a obra inteira"><span aria-hidden="true" class="icone-glifo">⌖</span></button>
+          <button type="button" class="ilu-bt quadrado" id="plnTela" aria-pressed="false" aria-label="Entrar na tela cheia" title="Entrar na tela cheia"><span aria-hidden="true" class="icone-glifo">⛶</span></button>
+        </div>
+        <div class="ilu-trilha" id="plnTrilha">Obra inteira</div>
+        <div class="ilu-aviso" id="plnAviso" hidden></div>
+      </div>
+      <aside class="pln-painel" id="plnPainel" aria-live="polite"></aside>
+    </div>
+    <div class="acoes filtro-frente" style="margin-top:18px"><label class="check">Números da obra
+      <select id="selFrente"><option value="">Obra inteira (11 zonas, Adutora e CH)</option></select></label>
+      <a class="btn" href="/mapa/" target="_blank" rel="noopener">Abrir o mapa técnico do projeto (REV02)</a></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grade">
+      <div class="painel largo">
+        <h3>Ficha do trecho ou nó</h3>
+        <div class="busca"><input id="fiscBusca" placeholder="Trecho (TR001), nó (NÓ1.8) ou caixa (DF-33)…" autocomplete="off"><ul hidden></ul></div>
+        <div id="fiscDetalhe" class="vazio">Escolha um trecho no mapa e toque em “Ver a ficha completa”, ou busque aqui.</div>
+      </div>
+      <div class="painel">
+        <h3>Equipes em campo hoje</h3>
+        <div id="pins" class="vazio">Nenhum check-in aberto hoje.</div>
+      </div>
+      <div class="painel">
+        <h3>Bandeja — sem posição no projeto</h3>
+        <div id="semPosicao"></div>
+      </div>
+      <div class="painel" id="painelLegado" hidden>
+        <h3>Avanço anterior sem posição — conciliar</h3>
+        <div id="legadoLista"></div>
+      </div>
+      <div class="painel" id="painelRetirados" hidden>
+        <h3>Retirados da revisão vigente — com histórico</h3>
+        <div id="retirados"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= PLANEJAMENTO: CRONOGRAMA DA OBRA (MS Project) -->
+  <section class="aba" id="aba-cronograma">
+    <header class="cab-tela"><h1>Cronograma da obra</h1><p>O planejamento inteiro da obra, vindo do MS Project. Cada versão enviada fica guardada; as tarefas que citam trechos mostram o assentado registrado no sistema.</p></header>
+    <div class="grade">
+      <div class="painel">
+        <h3>Enviar o cronograma</h3>
+        <form id="fCrono" data-perm="planejar">
+          <label>Arquivo exportado do Project<input type="file" name="arquivo" accept=".xml,.xlsx,.csv,.mpp,application/xml,text/xml,text/csv" required></label>
+          <p class="vazio" style="margin:0">No Project: <b>Arquivo › Salvar como › Formato XML (*.xml)</b>, o mais completo. Também vale <b>Arquivo › Exportar</b> para Excel (.xlsx) ou CSV. O arquivo .mpp só abre no próprio Project.</p>
+          <div class="acoes"><button class="btn prim">Enviar cronograma</button></div>
+        </form>
+      </div>
+      <div class="painel">
+        <h3>Versão em uso</h3>
+        <div id="cronoInfo" class="vazio">Nenhum cronograma enviado.</div>
+        <details style="margin-top:8px"><summary>Versões anteriores</summary><div id="cronoVersoes"></div></details>
+      </div>
+      <div class="painel largo">
+        <div class="linha">
+          <label>Buscar<input id="cronoBusca" placeholder="tarefa, EDT ou recurso" autocomplete="off"></label>
+          <label>Frente<select id="cronoFrente"><option value="">todas</option></select></label>
+          <label>Mostrar<select id="cronoMostrar"><option value="">todas as tarefas</option><option value="andamento">em andamento hoje</option><option value="proximas">começam nas próximas 2 semanas</option><option value="atrasadas">atrasadas (o fim passou e não está em 100 %)</option><option value="ligadas">ligadas a trechos</option></select></label>
+          <label>Até o nível<select id="cronoNivel"><option value="">todos</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+        </div>
+        <div id="cronoResumo" style="margin:10px 0"></div>
+        <div class="crono" id="cronoGantt"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================================================= ADMINISTRATIVO: RELATÓRIOS -->
+  <section class="aba" id="aba-relatorios">
+    <header class="cab-tela"><h1>Relatórios</h1><p>Material, avanço e pendências, com exportação em planilha.</p></header>
+    <div class="painel">
+      <div class="acoes" style="justify-content:space-between">
+        <div class="linha"><label>De<input type="date" id="rlIni"></label><label>Até<input type="date" id="rlFim"></label>
+          <label>Frente<select id="rlFrente"><option value="">obra inteira</option></select></label></div>
+        <a class="btn azul" id="rlExport" href="#">⬇ Exportar .xlsx</a>
+      </div>
+      <p class="vazio" style="margin:4px 0 0">Tudo calculado a partir dos registros efetivos: sem movimentos estornados e sem intervalos anulados por retificação.</p>
+    </div>
+    <div class="grade-2" style="margin-top:16px">
+      <div class="painel"><h3>Avanço no período (por frente e equipe)</h3><div id="rlAvanco" class="vazio">—</div>
+        <h3 style="margin-top:14px">Acumulado por frente</h3><div class="tabela" id="rlFrentes"></div></div>
+      <div class="painel"><h3>Pendências por frente</h3><div id="rlPend" class="vazio">—</div>
+        <h3 style="margin-top:14px">Materiais faltantes para a programação do período</h3><div class="tabela" id="rlFalt"></div></div>
+    </div>
+    <div class="painel" style="margin-top:16px">
+      <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Ciclo do material — previsto × comprado × recebido × reservado × aplicado × medido</h3>
+        <label class="check"><input type="checkbox" id="rlSoMov" checked> só materiais com movimento</label></div>
+      <div class="tabela" id="rlMat"></div>
+    </div>
+  </section>
+
+  <!-- ======================================================= ADMINISTRATIVO: USUÁRIOS -->
+  <section class="aba" id="aba-admin">
+    <header class="cab-tela"><h1>Usuários e histórico</h1><p>Quem tem acesso, com qual perfil, e o histórico de alterações.</p></header>
+    <div class="painel" id="painelLink" hidden style="margin-bottom:16px"><h3>Link para a equipe</h3><div id="linkEstado"></div></div>
+    <div style="display:grid;gap:16px">
+      <div class="painel" id="painelUsuarios">
+        <h3>Usuários e perfis</h3>
+        <p class="vazio" style="margin:0 0 8px">Matriz de perfis provisória (decisão D-10): <code>config/perfis.json</code>.</p>
+        <div id="usuariosLista" style="overflow-x:auto"></div>
+        <form id="fUsuario" data-perm="usuarios" class="form" style="margin-top:10px">
+          <div class="linha"><label>Login<input name="login" required></label><label>Nome<input name="nome" required></label></div>
+          <div class="linha"><label>Perfil<select name="perfil" id="selPerfil" required></select></label><label>Equipe (perfil Equipe)<select name="equipe_id" class="selEquipe"></select></label></div>
+          <label>Senha inicial (mín. 10)<input name="senha" type="password" autocomplete="new-password" required></label>
+          <div class="acoes"><button class="btn prim">Criar usuário</button></div>
+        </form>
+      </div>
+      <div class="painel">
+        <h3>Histórico de alterações (auditoria)</h3>
+        <div class="linha"><label>Usuário<input id="audLogin" placeholder="login (opcional)"></label><label>Objeto<input id="audAlvo" placeholder="TR-00001, nº do movimento… (opcional)"></label></div>
+        <div class="acoes" style="margin:8px 0"><button type="button" class="btn azul" id="audBtn">Consultar</button></div>
+        <div class="tabela" id="audLista"></div>
+      </div>
+    </div>
+    <div class="painel" id="painelDrive" data-perm="documentos" style="margin-top:16px">
+      <h3>Fotos e notas no Google Drive</h3>
+      <p class="vazio" style="margin:0 0 8px">Cada foto de campo e cada anexo de nota fiscal sobe sozinho para a pasta da obra no Drive, numa subpasta por trecho ou por mês. O nome da pasta aparece junto de cada foto e de cada nota. Quando o Drive confirma que recebeu a foto igual (mesmo conteúdo), o original sai do servidor e fica uma miniatura: o espaço do servidor não acaba e o registro (hash) do original continua no sistema. Notas e laudos continuam também aqui.</p>
+      <div id="driveEstado"></div>
+      <div class="acoes" style="margin-top:8px"><span id="driveContagem"></span>
+        <button type="button" class="btn" id="driveEnviar" hidden>Enviar a fila agora</button></div>
+      <div id="driveErro" class="aviso problema" hidden></div>
+      <div id="driveRecentes" class="lista-drive"></div>
+      <details id="driveGerenciar" hidden style="margin-top:12px"><summary><b>Ligar a conta Google da obra</b>: ID e segredo do cliente, pasta e conexão</summary>
+        <form id="fDrive" data-perm="documentos" style="margin-top:10px">
+          <p class="vazio" style="margin:0">Passo a passo em <code>docs/GOOGLE_DRIVE.md</code>. No Google Cloud, em <b>URIs de redirecionamento autorizados</b>, cole este endereço: <b id="driveRetorno"></b> <button type="button" class="btn-texto" id="driveCopiar">copiar</button></p>
+          <div class="linha"><label>ID do cliente<input name="cliente_id" placeholder="….apps.googleusercontent.com" autocomplete="off"></label>
+            <label>Segredo do cliente<input name="cliente_segredo" type="password" autocomplete="new-password"></label></div>
+          <label>Pasta da obra no Drive<input name="pasta_url" placeholder="https://drive.google.com/drive/folders/…"></label>
+          <div class="acoes"><button class="btn">Salvar</button><button type="button" class="btn prim" id="driveConectar">Conectar com o Google</button>
+            <button type="button" class="btn" id="driveTestar" hidden>Testar a pasta</button><button type="button" class="btn" id="driveDesconectar" hidden>Desconectar</button></div>
+        </form>
+      </details>
+    </div>
+  </section>
+
+  <!-- ======================================================= LEV -->
+  <section class="aba" id="aba-lev">
+    <header class="cab-tela"><h1>LEV</h1><p>As planilhas da obra dentro do sistema: cronograma físico-financeiro, BM, BM Vertical e os levantamentos de redes e conexões.</p></header>
+    <div class="abas-chip" id="levAbas" role="group" aria-label="Planilha">
+      <button type="button" data-lev="cronograma" aria-pressed="true">Cronograma FF Caesb</button>
+      <button type="button" data-lev="bm" aria-pressed="false">BM</button>
+      <button type="button" data-lev="vertical" aria-pressed="false">BM Vertical</button>
+      <button type="button" data-lev="redes" aria-pressed="false">LEV Redes</button>
+      <button type="button" data-lev="conexoes" aria-pressed="false">LEV Conexões</button>
+      <button type="button" data-lev="arquivos" aria-pressed="false">Baixar planilhas</button>
+    </div>
+    <div class="acoes" id="levFiltros" style="margin-top:12px;align-items:flex-end" hidden>
+      <label style="flex:1;min-width:220px">Buscar<input id="levBusca" type="search" placeholder="Item, descrição, trecho ou código"></label>
+      <label id="levFrenteRot">Frente<select id="levFrente"><option value="">Obra inteira</option></select></label>
+    </div>
+    <div id="levConteudo" style="margin-top:12px"></div>
+    <div class="painel" id="painelPlanilhas" hidden>
+      <h3>Planilhas e mapa do projeto</h3>
+      <p class="vazio" style="margin:0 0 8px">Os arquivos originais que alimentam o sistema. Baixam direto daqui, sem Drive.</p>
+      <div id="planilhasLista" class="lista-arquivos"></div>
+    </div>
+  </section>
+
+  <!-- ======================================================= MEDIÇÃO -->
+  <section class="aba" id="aba-medicao">
+    <header class="cab-tela"><h1>Medição</h1><span class="selo-teste">teste</span><p>Boletim e memória de cálculo. Por enquanto, só de teste: a medição oficial continua bloqueada.</p></header>
+    <div class="painel largo" style="margin-bottom:16px">
+      <h3>Caminho até a medição</h3>
+      <p class="vazio" style="margin:0 0 8px">Um trecho entra na medição com a execução completa, verificada pelo supervisor, com as 3 fotos e o OK interno. Toque num número para ver os trechos no mapa.</p>
+      <div id="medCaminho" class="numeros-caminho vazio">—</div>
+    </div>
+    <div class="painel largo" id="painelPacote" style="margin-bottom:16px">
+      <div class="acoes" style="justify-content:space-between;align-items:center">
+        <h3 style="margin:0">Pacote da medição no modelo oficial</h3>
+        <a class="btn ok" id="medPacote" data-perm="medicao" href="#">⬇ Baixar pacote (.xlsx)</a>
+      </div>
+      <p class="vazio" style="margin:6px 0 10px">O BM oficial do Morro da Cruz preenchido: juntada só com os itens do mês, BM vertical, memória de cálculo (uma folha por item, com 6 fotos e a justificativa), reajuste, cronograma FF e gráficos. Toque numa folha para trocar as fotos ou escrever a justificativa.</p>
+      <div id="medPacoteResumo" class="vazio">—</div>
+      <div id="medFolhas"></div>
+    </div>
+    <div class="grade-2">
+      <div class="painel">
+        <div class="acoes" style="justify-content:space-between;margin-bottom:12px">
+          <div class="acoes"><label>Medição<select id="medSel"></select></label></div>
+          <div class="acoes"><a class="btn azul" id="medExport" data-perm="medicao" href="#" title="Planilha de conferência interna (gavetas, regras, elegibilidade)">⬇ Resumo interno (.xlsx)</a><button class="btn" id="medFechar" data-perm="medicao">Fechar medição</button></div>
+        </div>
+        <div id="medResumo" class="vazio">Crie a medição do mês ao lado.</div>
+        <h3 style="margin-top:16px">Elegibilidade do período</h3>
+        <div id="medEleg" class="vazio">—</div>
+        <h3 style="margin-top:16px">Parcelas medidas por item do BM</h3>
+        <div id="medParcelas" class="vazio">—</div>
+      </div>
+      <div style="display:grid;gap:16px;align-content:start">
+        <div class="painel">
+          <h3>Conferência interna (engenharia Ankara)</h3>
+          <p class="vazio" style="margin:0 0 8px">Confere a proposta contra os registros e as evidências antes de fechar. Não é aprovação da Caesb nem libera medição oficial.</p>
+          <div id="medConfEstado"></div>
+          <form id="fMedConf" data-perm="medicao">
+            <div id="medConfItens"></div>
+            <label>Resultado<select name="resultado"><option value="CONFORME">CONFORME</option><option value="NAO_CONFORME">NÃO CONFORME</option></select></label>
+            <label>Observação<input name="obs" placeholder="obrigatória se NÃO CONFORME"></label>
+            <div class="acoes"><button class="btn prim">Registrar conferência</button></div>
+          </form>
+          <div id="medConfHist"></div>
+        </div>
+        <div class="painel"><h3>Regras da medição</h3><div id="medRegras" class="vazio">—</div></div>
+        <div class="painel">
+          <h3>Nova medição de TESTE</h3>
+          <p class="vazio" style="margin:0 0 8px">Medição oficial bloqueada até validar regras financeiras, controle de acesso e exportação no modelo oficial.</p>
+          <form id="fMed" data-perm="medicao">
+            <input type="hidden" name="tipo" value="TESTE">
+            <div class="linha"><label>Nº<input type="number" min="1" name="numero" required></label>
+              <label>Início<input type="date" name="periodo_ini" required></label>
+              <label>Fim<input type="date" name="periodo_fim" required></label></div>
+            <div class="acoes"><button class="btn prim">Abrir medição</button></div>
+          </form>
+        </div>
+        <div class="painel"><h3>Teto por subgrupo (BM Vertical)</h3><div id="medTetos" class="vazio">—</div></div>
+      </div>
+    </div>
+    <div class="painel" style="margin-top:16px">
+      <h3>Medível com restrição <small>(dinheiro parado)</small></h3>
+      <p class="vazio" style="margin:0 0 8px">O que foi executado ou registrado e não entra na medição: a restrição, o valor parado (sem BDI), há quantos dias e a ação que libera. Quando a restrição cai, entra sozinho na próxima medição de teste aberta.</p>
+      <div id="medRestTotais"></div>
+      <div class="acoes" style="align-items:flex-end;margin:8px 0">
+        <label>Restrição<select id="medRestFiltro"><option value="">Todas</option></select></label>
+        <label>Grupo<select id="medRestGrupo"><option value="">Todos</option></select></label>
+        <button type="button" class="btn" id="medRestCodigo">Registrar código oficial</button>
+        <button type="button" class="btn" id="medRestEsteira">Ver o cadastro parado no mapa</button>
+      </div>
+      <div id="medRestricoes" class="vazio">—</div>
+    </div>
+    <div class="painel" style="margin-top:16px" id="itensAprovar">
+      <h3>Itens a aprovar na base de custo</h3>
+      <p class="vazio" style="margin:0 0 8px">Os itens do BM com código provisório (XX) e os itens novos. Registrado o código oficial da Caesb (com o ofício ou memorando em PDF), o que estava parado entra na medição de teste aberta. A planilha do BM não muda.</p>
+      <div id="medItensAprovar" class="vazio">—</div>
+    </div>
+  </section>
+</main>
+</div>
+<!-- ======================================================= login -->
+<div id="login" class="login" hidden>
+  <form id="fLogin" class="painel">
+    <div class="login-marca"><svg aria-hidden="true"><use href="#logoA"/></svg><h1>Morro<br>da Cruz</h1></div>
+    <p class="login-sub">Entre com o seu usuário para abrir o sistema da obra.</p>
+    <label>Usuário<input name="login" autocomplete="username" required></label>
+    <label>Senha<input name="senha" type="password" autocomplete="current-password" required></label>
+    <div id="loginMsg" class="aviso problema" hidden></div>
+    <div id="dicaPrimeiro" class="aviso sugestao" hidden><b>Primeiro acesso?</b> Crie aqui o seu usuário de administrador (é ele que libera o link para a equipe).
+      <div class="acoes" style="margin-top:6px"><a class="btn prim" href="/configurar">Criar meu usuário</a></div></div>
+    <div id="dicaLocal" class="aviso sugestao" hidden><b>Você está no computador do sistema.</b>
+      <div class="acoes" style="margin-top:6px"><button type="button" class="btn prim" id="entrarLocal">Entrar sem senha</button></div>
+      <small>Só funciona neste computador. Pelo link, cada pessoa entra com o próprio usuário e senha.</small></div>
+    <div id="dicaDemo" class="aviso info" hidden><b>Demonstração:</b> usuário <code>eng.demo</code> (ou <code>eng2.demo</code>, <code>almox.demo</code>, <code>equipe.demo</code>, <code>admin.demo</code>, <code>topo.demo</code>, <code>cadastro.demo</code>) e senha <code>demo-morro-123</code>.</div>
+    <div class="acoes"><button class="btn prim">Entrar</button></div>
+    <p class="vazio" style="margin:0">Cada lançamento fica registrado com o seu usuário. Usuários são criados pela administração.</p>
+  </form>
+</div>
+<div id="toast" role="status"></div>
+<script src="/app.js"></script>
+<script src="/solicitacoes.js"></script>
+<script src="/iluminado.js"></script>
+<script src="/planejamento.js"></script>
+<script src="/notas.js"></script>
+<script src="/apropriacao.js"></script>
+</body>
+</html>
