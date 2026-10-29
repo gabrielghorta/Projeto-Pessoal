@@ -1,11 +1,14 @@
 /* Planejamento: o mapa do Dados da obra e o cronograma do MS Project.
- * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02, o satélite com o mesmo fundo escolhido
- * lá — escuro, claro ou sem satélite — e o visor de arrastar e aproximar), com as mesmas cores (D-176).
- * Aqui se escolhem trechos: na obra inteira, cada toque escolhe um trecho ou nó; com uma zona escolhida, os toques somam
+ * O mapa usa a mesma base do Mapa iluminado (iluminado.js: traçado do REV02 e o visor de arrastar e aproximar), com o
+ * desenho do HTML do projeto (D-184): a planta das PBs clara ao fundo, sem satélite escuro; os trechos na cor do diâmetro
+ * (a Subadutora, de 200 mm pra cima, mais grossa; MND tracejado) ou, à escolha, na cor da programação do dia; os nós em
+ * bola e as caixas com a sua forma (D-183). A frente escolhida (uma zona ou a Subadutora, D-182) é a única com cor: fora
+ * dela não aparece trecho nem nó.
+ * Aqui se escolhem trechos: na obra inteira, cada toque escolhe um trecho ou nó; com uma frente escolhida, os toques somam
  * e tiram, sem Ctrl (D-177). O servidor completa a seleção (/api/dados-obra/selecao): cada linha traz o trecho físico
  * inteiro, e o nó entre dois trechos escolhidos e a ponta de rua da 06.2 entram sozinhos (D-178). A equipe já vem a da
- * zona (D-179). Com a seleção, o painel ao lado programa a equipe (período e dias), libera o material do dia
- * (check-in), reserva para um dia que ainda não chegou e recebe a devolução do fim do dia (check-out). */
+ * frente (D-179; na Subadutora, a da adutora). Com a seleção, o painel ao lado programa a equipe (período e dias), libera
+ * o material do dia (check-in), reserva para um dia que ainda não chegou e recebe a devolução do fim do dia (check-out). */
 
 /* ---------------------------------------------------------------- estado */
 const PLAN = [   // de baixo para cima no desenho: o último fica por cima
@@ -20,15 +23,34 @@ const PLAN = [   // de baixo para cima no desenho: o último fica por cima
 const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: null, dia: null, est: null,
   sel: [], nos: [], resp: null, aba: null, pedido: 0, equipe: null, equipeFixa: false, crono: null, foco: null, ultPx: 0,
   extra: [], qtd: {}, noIdx: null, vis: Object.fromEntries(PLAN.map(s => [s.id, true])),
-  cam: { zonas: true, nomes: true },
+  cam: { zonas: true, nomes: true }, corPor: 'de',
   prefixo: 'pln', svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln,
-  copia: (g, u) => copiaPln(g, u), copiaChave: () => [PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0, !!PLN.mosaico, ILU.fundo].join('|') };
+  tocavel: t => naFrente(t),                                         // fora da frente não há trecho para tocar
+  copia: (g, u) => copiaPln(g, u), copiaChave: () => [PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0, !!PLN.mosaico, PLN.corPor, PLN.zona].join('|') };
 const CAMADAS_PLN = { zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
 try {                                 // só as camadas que existem: as antigas (plantas, quadros) salvas no navegador caem fora
   const salvas = JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}');
   Object.keys(CAMADAS_PLN).forEach(k => { if (typeof salvas[k] === 'boolean') PLN.cam[k] = salvas[k]; });
+  if (localStorage.getItem('mc-pln-cor') === 'plan') PLN.corPor = 'plan';
 } catch (_) { /* sem storage */ }
 const nomeAlvoCurto = n => nomeCurto(n).replace(/^NÓ/, 'NÓ ');
+// a frente em foco (PLN.zona: uma zona, a Subadutora ou nenhuma = obra inteira) e o que pertence a ela
+const naFrente = t => !PLN.zona || zonaDoTrecho(t) === PLN.zona;
+// as frentes de cada nó ou caixa: as dos trechos que chegam nele; a caixa sem trecho (as da CH), a zona do nome
+function frentesDosNos(g) {
+  const fr = g.els.map(() => new Set());
+  g.trechos.forEach(t => [t.a, t.b].forEach(n => { const i = n && PLN.noIdx.get(n); if (i != null) fr[i].add(zonaDoTrecho(t)); }));
+  g.els.forEach((e, i) => {
+    if (e.n.some(n => n.includes('_Adutora_'))) fr[i].add(ZONA_ADUTORA);
+    if (!fr[i].size) e.n.forEach(n => { const m = /^(Zona\d\d)_/.exec(n); if (m) fr[i].add(m[1]); });
+  });
+  return fr;
+}
+// trechos e nós escolhidos por fora do toque (equipe do dia, lote, ficha): a frente em foco não pode escondê-los
+function mostrarNaFrente(nomes) {
+  const ix = indexar(GERAL);
+  if (PLN.zona && nomes.some(n => { const t = ix.trecho.get(n); return t && !naFrente(t); })) { PLN.zona = null; zonasPln(); colorirPln(); }
+}
 
 function planSitu(nome, mapa) {
   const e = PLN.est || {};
@@ -40,8 +62,8 @@ function planSitu(nome, mapa) {
   if (s !== 'nao' && s !== 'liberado') return 'feito';
   return s === 'liberado' ? 'liberado' : 'livre';
 }
-// equipe da frente do trecho (Zona01 … Zona11, ADUTORA)
-const equipeDoTrecho = t => t ? (t.tp === 'Adutora' ? 'ADUTORA' : (/^(Zona\d{2}|ADUTORA|CH)_/.exec(t.n || '') || [])[1] || t.z) : null;
+// equipe da frente do trecho (Zona01 … Zona11; a Subadutora, de 200 mm pra cima, é da equipe da adutora, D-182)
+const equipeDoTrecho = t => t ? (ehSubadutora(t) ? 'ADUTORA' : (/^(Zona\d{2}|CH)_/.exec(t.n || '') || [])[1] || t.z) : null;
 
 /* ---------------------------------------------------------------- abrir a tela */
 async function carregarDadosObra() {
@@ -51,7 +73,7 @@ async function carregarDadosObra() {
   try { g = await obterGeral(); } catch (e) { return avisoPln('Não consegui abrir o traçado do mapa: ' + e.message); }
   if (g.ausente) return avisoPln('O mapa do projeto (REV02) não está na pasta mapa/ do sistema.');
   if (!PLN.pronto) montarPln(g); else ajustarAspecto(PLN);
-  veuPln();                                            // o fundo pode ter mudado no Mapa iluminado
+  frentesPln();
   if (!MATERIAIS.length && pode('almox')) MATERIAIS = await api('/api/estoque').catch(() => []);
   await recarregarPln();
   if (PLN.abrir) { const a = PLN.abrir; PLN.abrir = null; escolherEquipeDoDia(a.equipe, a.aba); }   // vindo do Estoque
@@ -75,11 +97,15 @@ async function recarregarPln() {
 
 function montarPln(g) {
   const svg = PLN.svg();
-  const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}" fill-opacity=".16"/>`).join('')
+  const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}" fill-opacity=".3"/>`).join('')
     + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
   PLN.noIdx = new Map();
   g.els.forEach((e, i) => e.n.forEach(n => PLN.noIdx.set(n, i)));
-  svg.innerHTML = `${htmlSatelite(g, 'pln')}<g id="plnZonas">${zonas}</g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnNos" class="longe"></g>
+  PLN.frentesNo = frentesDosNos(g);
+  // a planta das PBs clara (o mosaico e, de perto, as PBs inteiras), cortada nos quadros das plantas, como no HTML; o véu
+  // branco apaga o que fica fora da zona em foco
+  svg.innerHTML = `${htmlSatelite(g, 'pln', 'quadros')}<path id="plnVeu" fill-rule="evenodd"/><g id="plnZonas">${zonas}</g>
+    <g id="plnSelB"></g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnSelC"></g><g id="plnNos" class="longe"></g>
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
   aplicarCamadasPln();
   ligarSatelite(PLN, g); carregarMosaicoCopia(g, PLN);
@@ -91,13 +117,6 @@ function montarPln(g) {
   new ResizeObserver(() => TELA === 'mapa' && ajustarAspecto(PLN)).observe($('#plnMapa'));
 }
 
-// o satélite com o fundo do Mapa iluminado (escuro, claro ou sem satélite): os dois mapas ficam iguais
-function veuPln() {
-  const sat = satDe(PLN); if (!sat) return;
-  sat.style.display = ILU.fundo === 'sem' ? 'none' : '';
-  $('.sat-veu', sat).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]);
-  agendarCopia(PLN);
-}
 const VISTA_PLN = 'mc-pln-vista';
 function vistaSalvaPln() {
   try { const v = JSON.parse(sessionStorage.getItem(VISTA_PLN) || 'null'); return v && Array.isArray(v.vb) && v.vb.length === 4 && v.vb.every(Number.isFinite) ? v : null; }
@@ -106,10 +125,13 @@ function vistaSalvaPln() {
 function desenharPln(px, zoom) {
   satDepois(PLN, GERAL, px);
   try { sessionStorage.setItem(VISTA_PLN, JSON.stringify({ vb: PLN.vb, zona: PLN.zona })); } catch (_) { /* sem storage */ }
-  espessura($('#plnLinhas'), Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35)));
+  const larg = Math.min(6, 2.4 * Math.pow(Math.max(zoom, 1), 0.35));
+  espessura($('#plnLinhas'), larg); espessura($('#plnSelC'), larg);
+  const sub = $('#plnSub'); if (sub) espessura(sub, Math.min(9, larg * 1.7));
   if (escalaMudou(PLN, px)) {                          // arrastar não muda a escala: só o zoom mexe em textos, pinos e nós
     $('#plnZonas').style.setProperty('--k', 1 / px);  // só no contorno tracejado: na raiz, refazia o estilo do mapa inteiro
     espessura($('#plnSelG'), Math.min(14, 9 * Math.pow(Math.max(zoom, 1), 0.3)));
+    espessura($('#plnSelB'), Math.min(18, 13 * Math.pow(Math.max(zoom, 1), 0.3)));
     $$('#plnNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
     $$('#plnPins .ilu-pin').forEach(p => {
       const c = p.querySelector('circle'), tx = p.querySelector('text');
@@ -122,30 +144,51 @@ function desenharPln(px, zoom) {
 }
 
 // os nós só existem onde aparecem: de perto (zoom ≥ 3), os da área visível com folga; de longe, só os escolhidos. Os
-// 1.188 círculos sempre no SVG (escondidos de longe) pesavam em cada redesenho. Raio constante na tela, exato a cada desenho.
+// 1.188 nós sempre no SVG (escondidos de longe) pesavam em cada redesenho. Tamanho constante na tela, exato a cada desenho.
+// As caixas (D-183), umas 130, aparecem sempre, cada uma com a sua forma e cor. Só os da frente em foco (D-182).
 function desenharNos(px, longe) {
   const g = GERAL, caixa = $('#plnNos'), sel = PLN.noSel || new Map(), [x, y, w, h] = PLN.vb;
   const dentro = e => e.x > x - w / 2 && e.x < x + w * 1.5 && e.y > y - h / 2 && e.y < y + h * 1.5;
-  const chave = `${longe}|${px.toPrecision(3)}|${longe ? '' : PLN.vb.map(v => Math.round(v)).join(',')}|${[...sel].join(',')}`;
+  const chave = `${longe}|${px.toPrecision(3)}|${longe ? '' : PLN.vb.map(v => Math.round(v)).join(',')}|${[...sel].join(',')}|${PLN.zona}`;
   if (caixa.dataset.chave === chave) return;
   caixa.dataset.chave = chave; caixa.classList.toggle('longe', longe);
   caixa.innerHTML = g.els.map((e, i) => {
-    const k = sel.get(i); if (longe ? !k : !k && !dentro(e)) return '';
+    const k = sel.get(i), tp = tipoNo(e), cx = tp !== 'NÓ';
+    if (!k && PLN.zona && !PLN.frentesNo[i].has(PLN.zona)) return '';
+    if (!k && !cx && (longe || !dentro(e))) return '';
     const nome = e.n.find(n => n.includes('_Rede_')) || e.n[0];          // a ponta do trecho cita o nome da Rede
-    return `<circle class="pln-no${k ? ' sel' : ''}${k === 'auto' ? ' auto' : ''}" data-i="${i}" data-n="${esc(nome)}" cx="${e.x}" cy="${e.y}" r="${(k ? 7 : 4.5) * px}"><title>${esc(nomeCompleto(nome))}</title></circle>`;
+    return simboloNo(tp, e.x, e.y, px * (k ? 1.4 : 1), `class="pln-no${cx ? ' pln-cx' : ''}${k ? ' sel' : ''}${k === 'auto' ? ' auto' : ''}" data-i="${i}" data-n="${esc(nome)}"${cx && !k ? ` style="fill:${TIPOS_NO[tp].cor}"` : ''}`)
+      .replace('/>', `><title>${esc(nomeCompleto(nome))}${cx ? ' · ' + esc(TIPOS_NO[tp].nome) : ''}</title></path>`);
   }).join('');
 }
 
+// os trechos da frente em foco: na cor do diâmetro (a legenda do projeto, como no HTML) ou na da programação do dia
+const corDe = de => (GERAL.cores_de || {})[de] || '#5D6774';
+function gruposDe(ts) {                       // por diâmetro, do menor ao maior; a Subadutora à parte (mais grossa)
+  const por = new Map();
+  ts.forEach(t => { const k = `${ehSubadutora(t) ? 1 : 0}|${t.de}|${t.met === 'MND' ? 1 : 0}`; if (!por.has(k)) por.set(k, []); por.get(k).push(t); });
+  return [...por.entries()].map(([k, l]) => { const [sub, de, mnd] = k.split('|'); return { sub: sub === '1', de: +de, mnd: mnd === '1', trechos: l }; })
+    .sort((a, b) => a.sub - b.sub || a.de - b.de);
+}
 function colorirPln() {
   if (!PLN.pronto || !GERAL) return;
   const mapa = ESTADO_MAPA, por = Object.fromEntries(PLAN.map(s => [s.id, []]));
-  GERAL.trechos.forEach(t => { t.ps = planSitu(t.n, mapa); por[t.ps].push(t); });
+  GERAL.trechos.forEach(t => { t.ps = planSitu(t.n, mapa); if (naFrente(t)) por[t.ps].push(t); });
   PLN.cores = (PLN.cores || 0) + 1;
-  $('#plnLinhas').innerHTML = PLAN.map(s => {
-    const attrs = `class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}"${s.opacidade ? ` stroke-opacity="${s.opacidade}"` : ''}`;
-    return s.tracejado ? linhasTracejadas(por[s.id], `${attrs} stroke-dasharray="${s.tracejado}"`) : `<path ${attrs} d="${caminho(por[s.id].flatMap(t => t.p))}"/>`;
-  }).join('');
-  $$('#plnLinhas .ilu-tr').forEach(p => p.style.display = PLN.vis[p.dataset.situ] ? '' : 'none');
+  if (PLN.corPor === 'de') {
+    const linha = gr => {
+      const attrs = `class="ilu-tr" stroke="${corDe(gr.de)}"`;
+      return gr.mnd ? linhasTracejadas(gr.trechos, `${attrs} stroke-dasharray="9 6"`) : `<path ${attrs} d="${caminho(gr.trechos.flatMap(t => t.p))}"/>`;
+    };
+    const grupos = gruposDe(GERAL.trechos.filter(naFrente));
+    $('#plnLinhas').innerHTML = grupos.filter(gr => !gr.sub).map(linha).join('') + `<g id="plnSub">${grupos.filter(gr => gr.sub).map(linha).join('')}</g>`;
+  } else {
+    $('#plnLinhas').innerHTML = PLAN.map(s => {
+      const attrs = `class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}"${s.opacidade ? ` stroke-opacity="${s.opacidade}"` : ''}`;
+      return s.tracejado ? linhasTracejadas(por[s.id], `${attrs} stroke-dasharray="${s.tracejado}"`) : `<path ${attrs} d="${caminho(por[s.id].flatMap(t => t.p))}"/>`;
+    }).join('');
+    $$('#plnLinhas .ilu-tr').forEach(p => p.style.display = PLN.vis[p.dataset.situ] ? '' : 'none');
+  }
   const doDia = ((PLN.est || {}).checkins || []).filter(c => c.data === PLN.dia);
   $('#plnPins').innerHTML = doDia.flatMap(c => c.alvos.map(n => {        // o pino da equipe em cada trecho e nó do dia
     const tipo = indexar(GERAL).trecho.has(n) ? 'TRECHO' : 'ATIVIDADE', pos = posicaoAlvo(GERAL, tipo, n);
@@ -156,15 +199,18 @@ function colorirPln() {
   PLN.ultPx = 0; desenharVista(PLN); marcarSelPln(); agendarCopia(PLN);
   if (PLN.pop) abrirPopPln(PLN.pop, true);
 }
-// a cópia leve do gesto (iluminado.js): as zonas e as linhas por situação do dia
+// a cópia leve do gesto (iluminado.js): a planta clara, as zonas e as linhas da frente em foco
+const PLANTA_OPACIDADE = 0.5;                  // a mesma do #plnSat no app.css
 function copiaPln(g, u) {
-  if (ILU.fundo !== 'sem' && PLN.mosaico) {
-    g.save(); g.beginPath(); GERAL.zonas.forEach(z => poligonoCopia(g, z.p)); g.clip();
-    g.drawImage(PLN.mosaico, 0, 0, GERAL.w, GERAL.h);
-    g.globalAlpha = FUNDOS[ILU.fundo][1]; g.fillStyle = '#000'; g.fillRect(0, 0, GERAL.w, GERAL.h); g.restore();
+  if (PLN.mosaico) {
+    g.save(); g.beginPath(); GERAL.quadros.forEach(q => poligonoCopia(g, q.p)); g.clip();
+    g.globalAlpha = PLANTA_OPACIDADE; g.drawImage(PLN.mosaico, 0, 0, GERAL.w, GERAL.h); g.restore();
   }
-  if (PLN.cam.zonas) zonasCopia(g, u, () => 0.16);
-  linhasCopia(g, u, PLAN.filter(s => PLN.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado, opacidade: s.opacidade, trechos: GERAL.trechos.filter(t => t.ps === s.id) })));
+  if (PLN.cam.zonas) zonasCopia(g, u, z => opacidadeZona(z.id));
+  const ts = GERAL.trechos.filter(naFrente);
+  linhasCopia(g, u, PLN.corPor === 'de'
+    ? gruposDe(ts).map(gr => ({ cor: corDe(gr.de), tracejado: gr.mnd ? '9 6' : null, trechos: gr.trechos }))
+    : PLAN.filter(s => PLN.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado, opacidade: s.opacidade, trechos: ts.filter(t => t.ps === s.id) })));
 }
 
 /* ---------------------------------------------------------------- seleção */
@@ -173,7 +219,12 @@ function marcarSelPln() {
   const ix = indexar(GERAL), r = PLN.resp;
   const nomes = new Set([...PLN.sel, ...(r ? r.fisicos.flatMap(f => f.membros) : [])]);
   const ts = [...nomes].map(n => ix.trecho.get(n)).filter(Boolean);
-  $('#plnSelG').innerHTML = ts.length ? `<path class="ilu-sel pln-sel" d="${caminho(ts.flatMap(t => t.p))}"/>` : '';
+  const d = ts.length ? caminho(ts.flatMap(t => t.p)) : '';         // contorno escuro e branco: o fundo é claro
+  $('#plnSelB').innerHTML = d ? `<path class="ilu-sel pln-sel-borda" d="${d}"/>` : '';
+  $('#plnSelG').innerHTML = d ? `<path class="ilu-sel pln-sel" d="${d}"/>` : '';
+  // a parte do trecho físico escolhido que fica fora da frente (continua noutra zona) também ganha a sua cor
+  const cor = t => PLN.corPor === 'de' ? corDe(t.de) : (PLAN.find(s => s.id === t.ps) || PLAN[0]).cor;
+  $('#plnSelC').innerHTML = ts.filter(t => !naFrente(t)).map(t => `<path class="ilu-tr" stroke="${cor(t)}" d="${caminho(t.p)}"/>`).join('');
   const sel = new Map();                                              // nó escolhido: 'sel', ou 'auto' (entrou sozinho)
   [...PLN.nos, ...(r ? r.nos.filter(n => !n.automatico).map(n => n.nome) : [])].forEach(n => sel.set(PLN.noIdx.get(n), 'sel'));
   (r ? r.nos.filter(n => n.automatico) : []).forEach(n => sel.set(PLN.noIdx.get(n.nome), 'auto'));
@@ -221,10 +272,16 @@ function atualizarSelecao() {
   if (!PLN.sel.length && !PLN.nos.length) { PLN.resp = null; PLN.pedido++; marcarSelPln(); return renderPainel(); }
   SEL_T = setTimeout(buscarSelecao, 120);
 }
+// a equipe do nó: a da frente em foco, se o nó for dela; senão a única frente dele; senão a zona do nome
+function equipeDoNo(nome) {
+  const fr = (PLN.frentesNo || [])[PLN.noIdx.get(nome)] || new Set();
+  const z = PLN.zona && fr.has(PLN.zona) ? PLN.zona : fr.size === 1 ? [...fr][0] : (/^(Zona\d{2})_/.exec(nome) || [])[1];
+  return z === ZONA_ADUTORA ? 'ADUTORA' : z;
+}
 function equipePadrao() {
   const ix = indexar(GERAL);
   const frentes = new Set(PLN.sel.map(n => equipeDoTrecho(ix.trecho.get(n))).filter(Boolean));
-  if (!frentes.size) PLN.nos.forEach(n => { const m = /^(Zona\d{2}|ADUTORA|CH)_/.exec(n); if (m) frentes.add(m[1]); });
+  if (!frentes.size) PLN.nos.forEach(n => { const e = equipeDoNo(n); if (e) frentes.add(e); });
   const eq = frentes.size === 1 ? [...frentes][0] : !frentes.size ? (PLN.zona === ZONA_ADUTORA ? 'ADUTORA' : PLN.zona) : null;
   return ((RESUMO && RESUMO.equipes) || []).some(x => x.id === eq) ? eq : null;
 }
@@ -247,7 +304,7 @@ function cliquePln(alvo, ev, i) {
   const perto = s => alvo.closest && alvo.closest(s);
   const no = perto('.pln-no'), pin = perto('.ilu-pin'), zona = perto('.ilu-zf');
   const juntar = !!PLN.zona;
-  const noPerto = no && !$('#plnNos').classList.contains('longe');
+  const noPerto = no && (!$('#plnNos').classList.contains('longe') || no.classList.contains('pln-cx'));   // a caixa, até de longe
   if (noPerto) return alternarNo(no.dataset.n);
   if (pin && indexar(GERAL).trecho.has(pin.dataset.alvo)) return escolherTrecho(pin.dataset.alvo, juntar);
   if (i >= 0) return escolherTrecho(GERAL.trechos[i].n, juntar);
@@ -255,12 +312,31 @@ function cliquePln(alvo, ev, i) {
 }
 function focarZonaPln(z) {
   if (PLN.zona !== z) limparSelecao();
-  PLN.zona = z; zonasPln();
+  PLN.zona = z; zonasPln(); colorirPln();
   const ts = GERAL.trechos.filter(t => zonaDoTrecho(t) === z), poli = GERAL.zonas.find(x => x.id === z);
-  irPara(limites([...(poli ? [poli.p] : []), ...ts.flatMap(t => t.p)], 0.06), true, PLN);
+  irPara(limites([...(poli && z !== ZONA_ADUTORA ? [poli.p] : []), ...ts.flatMap(t => t.p)], 0.06), true, PLN);
 }
-function verTudoPln() { limparSelecao(); PLN.zona = null; zonasPln(); irPara(PLN.base, true, PLN); }
-const zonasPln = () => $$('#plnZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', PLN.zona && p.dataset.zona === PLN.zona ? 0.26 : 0.16));
+function verTudoPln() { limparSelecao(); PLN.zona = null; zonasPln(); colorirPln(); irPara(PLN.base, true, PLN); }
+// obra inteira: todas as zonas com a sua cor clara; uma zona em foco: só ela tem cor e o resto fica apagado (véu branco);
+// a Subadutora: as zonas bem fracas, só para orientar
+const opacidadeZona = id => !PLN.zona ? 0.3 : PLN.zona === ZONA_ADUTORA ? 0.1 : id === PLN.zona ? 0.45 : 0;
+function zonasPln() {
+  $$('#plnZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', opacidadeZona(p.dataset.zona)));
+  const z = PLN.zona && GERAL && GERAL.zonas.find(x => x.id === PLN.zona), m = 1e5;
+  const veu = $('#plnVeu'); if (veu) veu.setAttribute('d', z ? `M${-m} ${-m}H${m}V${m}H${-m}Z M${pontos(z.p).trim().split(' ').join(' L')}Z` : '');
+  $$('#plnFrentes [data-pln-frente]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.plnFrente || null) === PLN.zona)));
+}
+// a faixa de frentes acima do mapa: Obra inteira, as zonas e a Subadutora (D-182)
+function frentesPln() {
+  const box = $('#plnFrentes'); if (!box || !GERAL) return;
+  const zs = GERAL.zonas.map(z => z.id).sort();
+  box.innerHTML = [['', 'Obra inteira'], ...zs.map(z => [z, nomeZona(z)]), [ZONA_ADUTORA, 'Subadutora']]
+    .map(([id, rot]) => `<button type="button" class="${id === ZONA_ADUTORA ? 'sub' : ''}" data-pln-frente="${esc(id)}" aria-pressed="${(id || null) === PLN.zona}">${esc(rot)}</button>`).join('');
+}
+$('#plnFrentes').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-pln-frente]'); if (!b || !GERAL) return;
+  if (b.dataset.plnFrente) focarZonaPln(b.dataset.plnFrente); else verTudoPln();
+});
 function focarNomes(nomes) {
   const ix = indexar(GERAL), ps = [];
   nomes.forEach(n => { const t = ix.trecho.get(n); if (t) ps.push(...t.p); else { const e = ix.el.get(n); if (e) ps.push([e.x, e.y]); } });
@@ -274,7 +350,7 @@ function plnFocar(tipo, nome) { PLN.foco = { tipo, nome }; if (PLN.pronto && TEL
 function aplicarFoco() {
   const f = PLN.foco; PLN.foco = null;
   if (!f || !GERAL) return;
-  focarNomes([f.nome]);
+  mostrarNaFrente([f.nome]); focarNomes([f.nome]);
   if (f.tipo === 'TRECHO' && indexar(GERAL).trecho.has(f.nome) && !PLN.sel.includes(f.nome)) { PLN.sel = [f.nome]; PLN.nos = []; atualizarSelecao(); }
 }
 // o trecho achado pisca no mapa (onde ele está, com o nome completo) antes de ficar escolhido
@@ -286,7 +362,11 @@ function piscarTrecho(nome) {
 }
 ligarBusca($('#plnBusca'), async r => {
   $('#plnBusca').value = '';
-  if (r.tipo === 'TRECHO') { focarNomes([r.rotulo]); toast(`Achado: ${nomeCompleto(r.rotulo)} · ${r.extra || ''}`); await piscarTrecho(r.rotulo); return escolherTrecho(r.rotulo, !!PLN.zona); }
+  if (r.tipo === 'TRECHO') {                     // achado fora da frente em foco: a frente passa a ser a dele
+    const t = indexar(GERAL).trecho.get(r.rotulo);
+    if (t && !naFrente(t)) { limparSelecao(); PLN.zona = zonaDoTrecho(t); zonasPln(); colorirPln(); }
+    focarNomes([r.rotulo]); toast(`Achado: ${nomeCompleto(r.rotulo)} · ${r.extra || ''}`); await piscarTrecho(r.rotulo); return escolherTrecho(r.rotulo, !!PLN.zona);
+  }
   focarNomes([r.rotulo]);
   if (PLN.sel.length) alternarNo(r.rotulo); else toast('Escolha os trechos no mapa: o nó entre dois trechos escolhidos entra sozinho.');
 });
@@ -324,18 +404,34 @@ function abrirPopPln(nome, recarregar) {
   $(`[data-pln-pop="${nome}"]`).setAttribute('aria-expanded', 'true');
   const ts = GERAL.trechos.filter(t => !PLN.zona || zonaDoTrecho(t) === PLN.zona);
   if (nome === 'legenda') {
-    const conta = Object.fromEntries(PLAN.map(s => [s.id, { n: 0, m: 0 }]));
-    ts.forEach(t => { if (t.ps) { conta[t.ps].n++; conta[t.ps].m += t.L || 0; } });
-    pop.innerHTML = `<h3>Trechos em ${esc(dataBR(PLN.dia))}${PLN.zona ? ' · ' + esc(nomeZona(PLN.zona)) : ''}</h3>`
-      + [...PLAN].reverse().map(s => `<button type="button" class="ilu-linha" data-pln-situ="${s.id}" aria-pressed="${PLN.vis[s.id]}"><i class="${s.tracejado ? 'tracejado' : ''}" style="border-color:${s.cor}"></i>
+    const modo = '<h3>Cor dos trechos</h3><div class="ilu-fundos" style="margin-bottom:10px">' + [['de', 'Diâmetro'], ['plan', 'Programação do dia']]
+      .map(([k, rot]) => `<button type="button" class="ilu-fundo" data-pln-cor="${k}" aria-pressed="${PLN.corPor === k}">${rot}</button>`).join('') + '</div>';
+    const titulo = `<h3>Trechos${PLN.corPor === 'plan' ? ' em ' + esc(dataBR(PLN.dia)) : ''}${PLN.zona ? ' · ' + esc(nomeZona(PLN.zona)) : ''}</h3>`;
+    let corpo;
+    if (PLN.corPor === 'de') {                   // a legenda do projeto, só com os diâmetros da frente em foco
+      const grupo = (sub, rot) => {
+        const por = new Map(); ts.filter(t => ehSubadutora(t) === sub).forEach(t => { const c = por.get(t.de) || { n: 0, m: 0 }; c.n++; c.m += t.L || 0; por.set(t.de, c); });
+        return por.size ? `<p style="margin:8px 6px 2px;font-weight:700;color:#F2F2F2">${rot}</p>` + [...por.entries()].sort((a, b) => a[0] - b[0]).map(([de, c]) =>
+          `<div class="ilu-linha"><i style="border-color:${corDe(de)}${sub ? ';border-top-width:6px' : ''}"></i><span>DE ${de}</span><span class="fim">${nf(c.n, 0)} · ${km(c.m)}</span></div>`).join('') : '';
+      };
+      corpo = grupo(false, 'Rede (abaixo de 200 mm)') + grupo(true, 'Subadutora (200 mm pra cima)')
+        + '<div class="ilu-linha"><i class="tracejado" style="border-color:#F2F2F2"></i><span>MND (método não destrutivo)</span></div>';
+    } else {
+      const conta = Object.fromEntries(PLAN.map(s => [s.id, { n: 0, m: 0 }]));
+      ts.forEach(t => { if (t.ps) { conta[t.ps].n++; conta[t.ps].m += t.L || 0; } });
+      corpo = [...PLAN].reverse().map(s => `<button type="button" class="ilu-linha" data-pln-situ="${s.id}" aria-pressed="${PLN.vis[s.id]}"><i class="${s.tracejado ? 'tracejado' : ''}" style="border-color:${s.cor}"></i>
         <span>${esc(s.nome)}</span><span class="fim">${nf(conta[s.id].n, 0)} · ${km(conta[s.id].m)}</span></button>`).join('')
-      + '<p>Toque numa linha para mostrar ou esconder. O pino é a equipe com check-in no dia; contorno branco é a seleção e o nó com anel entrou sozinho (liga dois trechos escolhidos).</p>';
+        + '<p>Toque numa linha para mostrar ou esconder.</p>';
+    }
+    pop.innerHTML = modo + titulo + corpo
+      + legendaNos(null, 'As caixas aparecem sempre; os nós, ao aproximar.')
+      + '<p>O pino é a equipe com check-in no dia; o contorno escuro e branco é a seleção; o nó azul com anel entrou sozinho (liga dois trechos escolhidos ou é ponta de rua).</p>';
   } else if (nome === 'camadas') {
     pop.innerHTML = '<h3>Camadas</h3>' + Object.entries(CAMADAS_PLN).map(([k, rot]) => `<button type="button" class="ilu-linha" data-pln-camada="${k}" aria-pressed="${PLN.cam[k]}"><span>${PLN.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`).join('')
-      + '<p>Sem plantas baixas neste mapa: só as zonas, os trechos e os nós. O satélite fica no Mapa iluminado.</p>';
+      + '<p>Ao fundo, a planta das PBs, clara, como no HTML do projeto. O satélite fica só no Mapa iluminado.</p>';
   } else {
     const zs = [...new Set(GERAL.trechos.map(zonaDoTrecho))].sort((a, b) => (a === ZONA_ADUTORA) - (b === ZONA_ADUTORA) || String(a).localeCompare(String(b)));
-    pop.innerHTML = '<h3>Zonas</h3>' + `<button type="button" class="ilu-linha" data-pln-zona="" aria-current="${!PLN.zona}"><i class="zona"></i><span>Obra inteira</span></button>`
+    pop.innerHTML = '<h3>Frentes</h3>' + `<button type="button" class="ilu-linha" data-pln-zona="" aria-current="${!PLN.zona}"><i class="zona"></i><span>Obra inteira</span></button>`
       + zs.map(z => { const cor = (GERAL.zonas.find(x => x.id === z) || {}).cor || '#F2F2F2';
         return `<button type="button" class="ilu-linha" data-pln-zona="${esc(z)}" aria-current="${PLN.zona === z}"><i class="zona" style="background:${cor}33;border-color:${cor}"></i><span>${esc(nomeZona(z))}</span></button>`; }).join('');
   }
@@ -347,6 +443,12 @@ function fecharPopPln() {
 }
 $('#plnFerr').addEventListener('click', ev => {
   const bt = ev.target.closest('[data-pln-pop]'); if (bt) return GERAL && abrirPopPln(bt.dataset.plnPop);
+  const cor = ev.target.closest('[data-pln-cor]');
+  if (cor) {
+    PLN.corPor = cor.dataset.plnCor;
+    try { localStorage.setItem('mc-pln-cor', PLN.corPor); } catch (_) { /* sem storage */ }
+    colorirPln(); return abrirPopPln('legenda', true);
+  }
   const s = ev.target.closest('[data-pln-situ]');
   if (s) { PLN.vis[s.dataset.plnSitu] = !PLN.vis[s.dataset.plnSitu]; colorirPln(); return abrirPopPln('legenda', true); }
   const z = ev.target.closest('[data-pln-zona]'); if (z) { fecharPopPln(); return z.dataset.plnZona ? focarZonaPln(z.dataset.plnZona) : verTudoPln(); }
@@ -386,7 +488,7 @@ function renderPainel() {
 }
 function cabecalhoDia() {
   return `<div class="pln-cab"><h2>${esc(dataBR(PLN.dia))}${PLN.dia === hoje() ? ' · hoje' : ''}</h2></div>
-    <p class="vazio" style="margin:0 0 10px">Toque num trecho para escolher. <b>Escolha uma zona</b> para juntar trechos com toques. Nós entre trechos e pontas de rua entram sozinhos.</p>`;
+    <p class="vazio" style="margin:0 0 10px">Toque num trecho para escolher. <b>Escolha uma frente</b> (uma zona ou a Subadutora) para juntar trechos com toques. Nós entre trechos e pontas de rua entram sozinhos.</p>`;
 }
 function cabecalhoSel(r) {
   const t = r.totais, um = r.fisicos.length === 1;
@@ -523,6 +625,7 @@ function escolherEquipeDoDia(eq, aba) {
   const alvos = Object.entries(e.programado).filter(([, ps]) => ps.some(p => p.hoje && p.equipe === eq)).map(([n]) => n)
     .concat(Object.entries(e.em_campo).filter(([, c]) => c.equipe === eq).map(([n]) => n));
   PLN.sel = [...new Set(alvos.filter(n => ix.trecho.has(n)))]; PLN.nos = [...new Set(alvos.filter(n => !ix.trecho.has(n)))];
+  mostrarNaFrente(PLN.sel);
   PLN.equipe = eq; PLN.equipeFixa = true; if (aba) PLN.aba = aba;
   if (alvos.length) focarNomes(alvos);
   atualizarSelecao();
@@ -573,7 +676,7 @@ PAINEL.addEventListener('click', async ev => {
     const l = [...((PLN.est || {}).lotes || []), ...((PLN.resp || {}).programacoes || [])].find(x => x.lote === q('[data-pln-lote-ver]').dataset.plnLoteVer);
     if (!l) return;
     const ix = indexar(GERAL);
-    PLN.sel = l.alvos.filter(n => ix.trecho.has(n)); PLN.nos = l.alvos.filter(n => !ix.trecho.has(n));
+    PLN.sel = l.alvos.filter(n => ix.trecho.has(n)); PLN.nos = l.alvos.filter(n => !ix.trecho.has(n)); mostrarNaFrente(PLN.sel);
     PLN.equipe = l.equipe_id; PLN.equipeFixa = true; focarNomes(l.alvos); return atualizarSelecao();
   }
   if (q('[data-pln-cancelar]')) {

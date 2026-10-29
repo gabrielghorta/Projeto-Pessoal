@@ -5,9 +5,10 @@ description: Lógica completa do sistema web de gestão da obra Morro da Cruz (A
 
 # Sistema Morro da Cruz — a obra, o contrato Caesb × Ankara e o web app
 
-Estado de 28/10/2026, esquema do banco **v22**, ramo do site `claude/powerbi-modifications-wqxekj` (repositório
-`gabrielghorta/Projeto-Pessoal`, pasta `morro-da-cruz/`). Último PR desta fase: v22 (pedir material, entrega por linha,
-satélite no Dados da obra e trechos do dia no apontamento sem NS; `docs/ATUALIZACAO_V22.md`).
+Estado de 29/10/2026, esquema do banco **v22**, ramo do site `claude/powerbi-modifications-wqxekj` (repositório
+`gabrielghorta/Projeto-Pessoal`, pasta `morro-da-cruz/`). PRs desta fase: v22 (pedir material, entrega por linha e
+trechos do dia no apontamento sem NS; `docs/ATUALIZACAO_V22.md`) e mapas (frente Subadutora ≥200 mm, nós e caixas com
+forma, Dados da obra com o desenho do HTML e sem satélite; D-182 a D-184, sem mudança no banco).
 
 ## 0. Como usar este arquivo
 
@@ -75,7 +76,7 @@ OK interno usam outras cores (rosa, roxo, azul) e dizem "conferência interna An
 | EVIDÊNCIAS REV08 | Conferência do agrupamento por handle, zona, status de posição, ID da auditoria. |
 | BM REV04 | Boletim de medição oficial do Morro da Cruz: juntada (horizontal), vertical, 01ª MC, cronograma FF, reajuste, gráficos e conferência. Também é o **modelo** do pacote mensal. |
 | 03.3.2 BM REV03 REAJUSTE | Data-base, aniversário e índice da CEFR. |
-| REV02 (HTML) | `PLANTAS_TRECHOS_E_NOS_MORRO_DA_CRUZ_REV02_EQUIPES.html`: mapa técnico com satélite das 25 PBs; **nunca é alterado** (o servidor injeta a camada). |
+| REV02 (HTML) | `PLANTAS_TRECHOS_E_NOS_MORRO_DA_CRUZ_REV02_EQUIPES.html`: mapa técnico com satélite das 25 PBs. O `DADOS` (traçado, peças, imagens) **nunca é alterado**; o servidor injeta a camada. O bloco de código do fim só muda a pedido do responsável (29/10/2026: frente Subadutora e formas dos dispositivos, D-182/D-183). |
 | BM juntada (horizontal) | Uma linha por item do orçamento Caesb e colunas por medição; é a peça anexada ao processo. |
 | BM vertical | Os mesmos itens repetidos por frente × material/serviço × categoria; chave `CódCronFF_ItemBM` (ex.: `2.2_5.8.44`). Alimenta o cronograma FF. |
 | nª MC | Memória de cálculo do mês: uma folha por item medido (fotos, justificativa, memorial). |
@@ -388,8 +389,8 @@ estorno com motivo. Item que não está no BM: cadastro de item novo (a aprovar)
 
 **Dados da obra = o dia da equipe (D-104):** programar equipe + trechos (na obra inteira, um por toque; com uma zona
 escolhida, os toques somam e tiram, sem Ctrl, D-177; o nó entre dois trechos escolhidos e a ponta de rua da 06.2 entram
-sozinhos, D-178; a equipe já vem a da zona, D-179) para um dia ou período (uma programação por alvo e dia, num lote
-cancelável) → o
+sozinhos, D-178; a equipe já vem a da frente, D-179; DE 225, 250 e adutora → EQUIPE ADUTORA, D-182) para um dia
+ou período (uma programação por alvo e dia, num lote cancelável) → o
 almoxarife **libera o material do dia** (sugestão do projeto: tubo pelo que falta assentar, peças dos nós pela 06.2 →
 BM vertical, limitada ao que há no almoxarifado), o que abre o check-in com todos os trechos (`checkin_alvos`) e acende
 "em execução hoje" com o pino da equipe até a NS do dia chegar → **devolução** no fim do dia (aplicado, sobra, perda
@@ -454,8 +455,19 @@ Ficha do trecho: caminho até a medição, verificação, fotos, esteira, histó
 supervisor, por zona, o mais perto primeiro. O pino diz "programado" (do check-in), não a posição real. Nada sem
 posição no projeto ganha coordenada (MV-11, VTF-12, VTF-16 na bandeja, D-03).
 
-**Dados da obra:** mapa próprio sobre o traçado do REV02, com o satélite do Mapa iluminado e véu claro (D-176), tela
-cheia, o mapa não se move sozinho, zonas sempre com cor, nomes completos.
+**Subadutora (D-182):** adutora + redes de 200 mm pra cima (DE 225 e 250) = 132 trechos (~10,5 km), executados pela
+EQUIPE ADUTORA e fora das zonas nos dois mapas e no HTML base (`ehSubadutora`/`zonaDoTrecho` no `iluminado.js`;
+`isSub`/`pipeFront` no HTML). O nó que liga um trecho dela é da Subadutora; o que também liga trecho da zona fica nas
+duas frentes. O `frente_id` do banco continua a zona do local.
+
+**Nós e caixas (D-183):** nó = bola; DF ▼, VTF ▲, VM ■, VRP ◆, MV ⬢, HID ✚ (`TIPOS_NO`). No Mapa iluminado os trechos
+ficam como estavam e os nós/caixas ganham a cor da situação (caixa sempre, nó só de perto; toque abre a ficha).
+
+**Dados da obra (D-184, revoga a D-176 nesta tela):** mapa próprio sobre o traçado do REV02, com o desenho do HTML: a
+planta das PBs clara (sem satélite escuro), trechos na cor do diâmetro do projeto (Subadutora mais grossa, MND
+tracejado) ou, à escolha na legenda, na cor da programação; barra **Frentes** (Obra inteira, Zona 01 a 11,
+Subadutora); fora da frente não aparece trecho nem nó, com véu branco. Tela cheia, o mapa não se move sozinho, nomes
+completos.
 
 **Mapa técnico REV02** (aberto à parte): camadas Andamento, Planejado (7 dias), Material, Informado × verificado,
 Cadastro e Pendências, calculadas no servidor; modo Projeto restaura as cores de DE.

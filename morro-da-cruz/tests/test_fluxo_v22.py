@@ -248,14 +248,19 @@ class TestMapaNoNavegador(unittest.TestCase):
         if not node:
             self.skipTest('Node não disponível')
         js = Path(AQUI, '..', 'web', 'planejamento.js').read_text(encoding='utf-8')
-        funcs = '\n'.join(re.search(r'function ' + n + r'\(.*?\n\}', js, re.S).group(0)
-                          for n in ('escolherTrecho', 'alternarNo', 'equipePadrao', 'cliquePln'))
+        ilu = Path(AQUI, '..', 'web', 'iluminado.js').read_text(encoding='utf-8')
+        funcs = '\n'.join(re.search(r'const ' + n + r' = .*?;\n', ilu).group(0)
+                           for n in ('SUBADUTORA_MM', 'ehSubadutora', 'ZONA_ADUTORA'))
+        funcs += '\n'.join(re.search(r'function ' + n + r'\(.*?\n\}', js, re.S).group(0)
+                            for n in ('escolherTrecho', 'alternarNo', 'equipeDoNo', 'equipePadrao', 'cliquePln'))
         funcs += '\n' + re.search(r'const equipeDoTrecho = .*?;', js).group(0)
         roteiro = """
 const assert = require('node:assert/strict');
-const PLN = {sel:[],nos:[],resp:null,zona:null,noIdx:new Map([['N1',1],['N2',2]])};
-const RESUMO = {equipes:[{id:'Zona01'},{id:'Zona08'}]};
-const GERAL = {trechos:[{n:'Zona01_PB01_Rede_TR001',z:'01'}, {n:'Zona08_PB20_Rede_TR046',z:'08'}]};
+const PLN = {sel:[],nos:[],resp:null,zona:null,noIdx:new Map([['N1',1],['N2',2],['Zona05_PB10_Rede_NÓ3.1',3]]),
+  frentesNo:[new Set(), new Set(['Zona08']), new Set(['Zona08']), new Set(['Zona05','Adutora'])]};
+const RESUMO = {equipes:[{id:'Zona01'},{id:'Zona05'},{id:'Zona08'},{id:'ADUTORA'}]};
+const GERAL = {trechos:[{n:'Zona01_PB01_Rede_TR001',z:'Zona01',de:110}, {n:'Zona08_PB20_Rede_TR046',z:'Zona08',de:90},
+  {n:'Zona05_PB10_Rede_TR020',z:'Zona05',de:225}, {n:'Zona08_PB10_Adutora_TR003',z:'Zona08',de:500,tp:'Adutora'}]};
 const indexar = () => ({trecho:new Map(GERAL.trechos.map(t=>[t.n,t]))});
 const atualizarSelecao = () => {}, fecharPopPln = () => {}, toast = () => {};
 const membrosDe = n => [n], $ = () => ({classList:{contains:()=>false}});
@@ -276,6 +281,14 @@ cliquePln(alvo, {}, 0); assert.deepEqual(PLN.sel,[GERAL.trechos[1].n]);
 alternarNo('N1'); alternarNo('N2'); assert.equal(PLN.nos.length,2);
 PLN.zona=null; alternarNo('N1'); assert.deepEqual(PLN.nos,['N1']); assert.deepEqual(PLN.sel,[]);
 PLN.sel=[GERAL.trechos[1].n]; PLN.nos=[]; assert.equal(equipePadrao(),'Zona08');
+// D-182: o trecho de 200 mm pra cima (DE 225 e 250) e a adutora são da Equipe Adutora, mesmo dentro de uma zona
+assert.equal(equipeDoTrecho(GERAL.trechos[2]),'ADUTORA'); assert.equal(equipeDoTrecho(GERAL.trechos[3]),'ADUTORA');
+PLN.sel=[]; cliquePln(alvo, {}, 2); assert.deepEqual(PLN.sel,[GERAL.trechos[2].n]); assert.equal(equipePadrao(),'ADUTORA');
+// o nó de zona que liga um trecho da Subadutora: na Subadutora é da Equipe Adutora; na obra inteira, da zona do nome
+PLN.sel=[]; PLN.nos=['Zona05_PB10_Rede_NÓ3.1']; PLN.zona='Adutora'; assert.equal(equipePadrao(),'ADUTORA');
+PLN.zona='Zona05'; assert.equal(equipePadrao(),'Zona05');
+PLN.zona=null; assert.equal(equipePadrao(),'Zona05');
+PLN.nos=['N1']; assert.equal(equipePadrao(),'Zona08');
 """
         r = subprocess.run([node, '-e', roteiro], capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stderr)

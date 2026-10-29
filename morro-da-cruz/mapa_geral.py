@@ -56,6 +56,7 @@ def _ler(caminho):
             dados, _ = json.JSONDecoder().raw_decode(html[j:].lstrip())
             imagens = dict(re.findall(r'"(PB\d+)":\s*"data:image/webp;base64,([A-Za-z0-9+/=]+)"', html))
             dados = {"visaoGeral": dados.get("visaoGeral"), "trechos": dados.get("trechos"),   # o resto (peças) fica no HTML
+                     "coresTubos": dados.get("coresTubos") or {},
                      "els": [{"noms": e.get("noms") or [], "E": e.get("E"), "N": e.get("N")} for e in dados.get("els") or []],
                      "pbs": [{"id": p["id"], "tr": [{"i": t["i"], "p": t["p"]} for t in p.get("tr") or []],
                               "el": p.get("el") or []} for p in dados.get("pbs") or []]}
@@ -369,14 +370,17 @@ def geometria(caminho):
         "quadros": [{"id": q["id"], "p": [_r(v) for v in q["p"]]} for q in g.get("frames", [])],
         "imagens": [{"id": im["id"], "w": im["w"], "h": im["h"], "m": im["matrix"]} for im in g.get("images", [])],
         "trechos": [],
+        "cores_de": d.get("coresTubos") or {},             # a legenda de cores por diâmetro do projeto (prancha 02/037)
         # nós e caixas desenhados na visão geral: [índice em DADOS.els, x, y]; os sem posição não aparecem aqui
         "els": [{"n": d["els"][e[0]]["noms"], "x": _r(e[1]), "y": _r(e[2])} for e in g.get("el", []) if e[0] < len(d["els"])],
     }
     for t in g.get("tr", []):
         f = trechos[t["i"]]
         partes = encaixar(t["p"], corr[t["i"]]) if t["i"] in corr else t["p"]   # ponta no centro do nó (lei da obra)
+        # met: MND sai tracejado; a e b: os nós das pontas (a frente de cada nó no Dados da obra, D-182)
         out["trechos"].append({"n": f["R"], "z": f.get("loc"), "tp": f.get("tipo"), "de": f.get("de"), "L": f.get("L"),
-                               "pb": f.get("pb"), "p": [[_r(v) for v in parte] for parte in partes]})
+                               "pb": f.get("pb"), "met": f.get("met"), "a": f.get("ini"), "b": f.get("fim"),
+                               "p": [[_r(v) for v in parte] for parte in partes]})
     c["geometria"] = out
     return out
 

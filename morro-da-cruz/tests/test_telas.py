@@ -43,6 +43,31 @@ class TestVisaoGeral(unittest.TestCase):
         desenhados = {n for e in g["els"] for n in e["n"]}
         self.assertFalse([n for n in desenhados if re.search(r"_(MV-11|VTF-12|VTF-16)$", n)])
 
+    def test_geometria_traz_o_que_as_frentes_e_as_cores_pedem(self):
+        """D-182/D-184: as cores do projeto por diâmetro, a metodologia (MND tracejado) e os nós das pontas (a frente de
+        cada nó). A Subadutora (adutora e 200 mm pra cima) tem 132 trechos, cerca de 10,5 km."""
+        g = MG.geometria(MAPA)
+        self.assertEqual(g["cores_de"]["225"].lower(), "#00ff7f")
+        self.assertTrue(all(str(t["de"]) in g["cores_de"] for t in g["trechos"]))
+        self.assertTrue({t["met"] for t in g["trechos"]} >= {"VCA", "MND"})
+        nos = {n for e in g["els"] for n in e["n"]}
+        self.assertGreater(sum(t["a"] in nos and t["b"] in nos for t in g["trechos"]), 1300)
+        sub = [t for t in g["trechos"] if t["tp"] == "Adutora" or t["de"] >= 200]
+        self.assertEqual((len(sub), sum(t["de"] in (225, 250) for t in sub)), (132, 96))
+        self.assertAlmostEqual(sum(t["L"] for t in sub), 10463.38, places=1)
+
+    def test_html_base_com_a_frente_subadutora(self):
+        """D-182/D-183: o HTML do mapa base também tira os 200 mm pra cima das zonas e desenha cada dispositivo com a sua
+        forma (o DADOS não muda)."""
+        with open(MAPA, encoding="utf-8") as f:
+            html = f.read()
+        codigo = html[html.rfind("<script>"):]
+        self.assertIn("const isSub = t => t.tipo === 'Adutora' || t.de >= SUBADUTORA_MM;", codigo)
+        self.assertIn("const pipeFront = t => isSub(t) ? 'ADUTORA' : t.loc;", codigo)
+        self.assertIn("key === 'ADUTORA' ? 'Subadutora'", codigo)
+        self.assertIn("mk('polygon', { class: 'el'", codigo)
+        self.assertNotIn(".elg rect", codigo)
+
     def test_mosaico_do_satelite_com_todas_as_pbs_no_lugar(self):
         try:
             from PIL import Image
@@ -325,12 +350,28 @@ console.log(JSON.stringify(r));
         # perto de C; no cruzamento, o mais perto (A); fora do mapa nada; D intocável → B
         self.assertEqual(eval(saida.stdout.strip()), [0, 3, 3, -1, 2, 0, -1, 1])
 
-    def test_dados_da_obra_compartilha_satelite_sem_adicionar_pbs(self):
+    def test_dados_da_obra_com_a_planta_clara_sem_satelite(self):
+        """D-184 (29/10/2026): o Dados da obra perde o satélite escuro (revoga a D-176 para esta tela): fica a planta das
+        PBs clara, cortada nos quadros, e o véu branco fora da frente."""
         pln = ler("planejamento.js")
-        for necessario in ("htmlSatelite", "ligarSatelite", "carregarMosaicoCopia", "satDepois", "FUNDOS[ILU.fundo]"):
-            self.assertIn(necessario, pln)                       # D-176: o mesmo fundo escolhido no Mapa iluminado
-        self.assertNotIn("plnQuadros", pln)
+        for necessario in ("htmlSatelite(g, 'pln', 'quadros')", "ligarSatelite", "carregarMosaicoCopia", "satDepois",
+                           'id="plnVeu"', "PLANTA_OPACIDADE"):
+            self.assertIn(necessario, pln)
+        self.assertNotIn("FUNDOS[ILU.fundo]", pln)               # o fundo não segue mais o do Mapa iluminado
+        self.assertIn("#plnSat .sat-veu { display: none; }", ler("app.css"))
         self.assertNotIn("plnMulti", self.html + pln)            # D-177: sem o botão "Juntar trechos"
+
+    def test_frentes_do_mapa_com_a_subadutora(self):
+        """D-182/D-183 (29/10/2026): a Subadutora (adutora e redes de 200 mm pra cima) é uma frente do Dados da obra, com
+        a Equipe Adutora; os nós e as caixas têm a sua forma nos dois mapas."""
+        ilu, pln = ler("iluminado.js"), ler("planejamento.js")
+        self.assertIn("const SUBADUTORA_MM = 200;", ilu)
+        self.assertIn("t.tp === 'Adutora' || (t.de || 0) >= SUBADUTORA_MM", ilu)
+        for tipo in ("'NÓ'", "DF:", "VTF:", "VM:", "VRP:", "MV:", "HID:"):
+            self.assertIn(tipo, ilu.split("const TIPOS_NO", 1)[1].split("};", 1)[0])
+        self.assertIn('id="plnFrentes"', self.html)
+        self.assertIn("function frentesPln()", pln)
+        self.assertIn("desenharNosIlu(", ilu)
 
     def test_nota_sobe_em_compras_e_e_recebida_pelos_botoes_da_lateral(self):
         """D-170 (27/10/2026): a importação do XML só em Compras e notas; no Estoque, as notas com Aceitar a entrega,

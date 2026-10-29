@@ -136,6 +136,7 @@ svg .rel { fill: none; stroke: #111; vector-effect: non-scaling-stroke; stroke-w
 .pipe-swatch { width: 22px; height: 4px; border-radius: 2px; }
 .zone-swatch { width: 14px; height: 11px; border: 1px solid rgba(30,40,50,.2); border-radius: 2px; }
 .legend .zones-title { margin-top: 8px; }
+.legend .ico { width: 12px; height: 12px; overflow: visible; vertical-align: middle; margin-right: 4px;}
 .legend .symbols { margin-top: 8px; }
 .legend summary { cursor: pointer; font-weight: 600; }
 .legend-content { padding-top: 7px; }
@@ -166,7 +167,7 @@ svg .pb-frame-badge text { fill: var(--ink); font-weight: 700; pointer-events: n
 svg .pb-frame-badge { cursor: pointer; }
 svg.macro .elg { display: none; }
 svg.overview-svg .tr { stroke-width: var(--pipe-width, .75px); }
-svg.overview-svg .tr[data-tipo="Adutora"] { stroke-width: var(--adutora-width, 1.125px); }
+svg.overview-svg .tr[data-sub] { stroke-width: var(--adutora-width, 1.125px); }
 svg.overview-svg.macro .hit { pointer-events: none; }
 .app > aside.side { grid-column: 1; grid-row: 2; }
 .app > main.view { grid-column: 2; grid-row: 2; }
@@ -270,6 +271,17 @@ const DE_COLORS = D.coresTubos;
 const pipeColor = t => DE_COLORS[t.de];
 const ELC = { 'NÓ': '#111827', 'DF': '#0b7285', 'VM': '#1971c2', 'VRP': '#9c36b5', 'MV': '#e67700', 'VTF': '#2b8a3e', 'HID': '#c92a2a' };
 const ELN = { 'NÓ': 'Nó', 'DF': 'Descarga de fundo (DF)', 'VM': 'Válvula de manobra (VM)', 'VRP': 'Válvula redutora de pressão (VRP)', 'MV': 'Macromedidor (MV)', 'VTF': 'Ventosa (VTF)', 'HID': 'Hidrante (HID)' };
+// Cada dispositivo tem a sua forma (os mesmos símbolos do sistema web); o nó continua bola.
+const ELP = {
+  'DF': [[-6.5, -5], [6.5, -5], [0, 6.5]],                                   // triângulo invertido
+  'VTF': [[0, -6.5], [6.5, 5], [-6.5, 5]],                                   // triângulo
+  'VM': [[-5.5, -5.5], [5.5, -5.5], [5.5, 5.5], [-5.5, 5.5]],                // quadrado
+  'VRP': [[0, -7], [7, 0], [0, 7], [-7, 0]],                                 // losango
+  'MV': [[-3.3, -6], [3.3, -6], [6.6, 0], [3.3, 6], [-3.3, 6], [-6.6, 0]],   // hexágono
+  'HID': [[-2.2, -6.5], [2.2, -6.5], [2.2, -2.2], [6.5, -2.2], [6.5, 2.2], [2.2, 2.2], [2.2, 6.5], [-2.2, 6.5], [-2.2, 2.2], [-6.5, 2.2], [-6.5, -2.2], [-2.2, -2.2]],   // cruz
+};
+const elShape = (tp, x, y, k) => (ELP[tp] || ELP.VM).map(([a, b]) => (x + a * k).toFixed(2) + ',' + (y + b * k).toFixed(2)).join(' ');
+const elIcon = tp => `<svg class="ico" viewBox="-7.5 -7.5 15 15" aria-hidden="true">${tp === 'NÓ' ? `<circle r="4.5" fill="${ELC[tp]}"/>` : `<polygon points="${elShape(tp, 0, 0, 1)}" fill="${ELC[tp]}"/>`}</svg>`;
 const FS = 5.0, PADX = 1.3, HL = FS * 1.12 + 1.6;
 const NS = 'http://www.w3.org/2000/svg';
 const $ = s => document.querySelector(s);
@@ -285,11 +297,21 @@ const nomLocal = n => /_CH_/.test(n) ? 'CH' : (/_Adutora_/.test(n) ? 'ADUTORA' :
 const nomEquipe = n => /_CH_/.test(n) ? 'EQUIPE CH' : (/_Adutora_/.test(n) ? 'EQUIPE ADUTORA' : 'EQUIPE ZONA ' + n.slice(4, 6));
 
 // Each front uses existing ownership; shared physical nodes can belong to two teams.
+// Subadutora: a adutora e as redes de 200 mm pra cima (DE 225 e 250) são executadas pela Equipe Adutora, fora das zonas.
+const SUBADUTORA_MM = 200;
+const isSub = t => t.tipo === 'Adutora' || t.de >= SUBADUTORA_MM;
+const teamOf = t => isSub(t) ? 'EQUIPE ADUTORA' : t.eq;
 const FRONT_KEYS = [...Array.from({ length: 11 }, (_, i) => 'Zona' + String(i + 1).padStart(2, '0')), 'ADUTORA', 'CH'];
 const FRONTS = {};
-const pipeFront = t => t.loc;
-const elementInFront = (e, key) => e.noms.some(n => nomLocal(n) === key);
-const frontTitle = key => key === 'CH' ? 'Caixa Hidráulica' : key === 'ADUTORA' ? 'Adutora' : 'Zona ' + key.slice(4);
+const pipeFront = t => isSub(t) ? 'ADUTORA' : t.loc;
+// O nó vai para a Subadutora quando liga um trecho dela; sai da zona quando só liga trechos da Subadutora. A caixa (CH) é da Equipe CH.
+const elementInFront = (e, key) => {
+  if (key === 'CH') return e.noms.some(n => /_CH_/.test(n));
+  const own = e.noms.filter(n => !/_CH_/.test(n));
+  if (key === 'ADUTORA') return own.some(n => /_Adutora_/.test(n)) || (own.length > 0 && e.tr.some(ti => isSub(T[ti])));
+  return own.some(n => nomLocal(n) === key) && (!e.tr.length || e.tr.some(ti => !isSub(T[ti])));
+};
+const frontTitle = key => key === 'CH' ? 'Caixa Hidráulica' : key === 'ADUTORA' ? 'Subadutora' : 'Zona ' + key.slice(4);
 FRONT_KEYS.forEach(key => {
   const activeT = new Set(T.map((t, i) => pipeFront(t) === key ? i : -1).filter(i => i >= 0));
   const activeE = new Set(E.map((e, i) => elementInFront(e, key) ? i : -1).filter(i => i >= 0));
@@ -417,7 +439,7 @@ function buildSide() {
   const L = $('#pblist');
   L.innerHTML = FRONT_KEYS.map(key => {
     const f = FRONTS[key], nt = f.activeT.size, ne = f.activeE.size;
-    const sub = key === 'CH' ? `${ne} caixas · ${f.positioned} localizadas${f.pending ? `<br>${f.pending} sem posição no projeto` : ''}` : `${nt} trechos · ${ne} nós/dispositivos<br>${nf(f.length)} m · ${key === 'ADUTORA' ? 'Equipe Adutora' : 'Equipe Zona ' + key.slice(4)}`;
+    const sub = key === 'CH' ? `${ne} caixas · ${f.positioned} localizadas${f.pending ? `<br>${f.pending} sem posição no projeto` : ''}` : `${nt} trechos · ${ne} nós/dispositivos<br>${nf(f.length)} m · ${key === 'ADUTORA' ? 'Equipe Adutora · adutora e redes de 200 mm pra cima' : 'Equipe Zona ' + key.slice(4)}`;
     return `<button data-pb="${key}" data-front="${key}" aria-pressed="false"><b>${esc(f.title)}</b><span>${sub}</span></button>`;
   }).join('');
   L.onclick = ev => { const b = ev.target.closest('button'); if (b) openPB(b.dataset.pb); };
@@ -445,13 +467,14 @@ function renderLegend() {
   const isOpen = cur && cur.team && previous !== cur.team ? false : ($('#legend details') ? $('#legend details').open : true);
   $('#legend').dataset.front = cur && cur.team || '';
   $('#legend').innerHTML = `<details ${isOpen ? 'open' : ''}><summary>Legenda</summary><div class="legend-content"><div class="legend-title">PEAD · diâmetros da legenda do projeto</div>
-  <div class="row diameters">${diameters.map(de => `<span><i class="pipe-swatch" style="background:${DE_COLORS[de]}"></i>DE ${de}</span>`).join('')}</div>
+  ${[['Rede · abaixo de 200 mm', diameters.filter(de => de < SUBADUTORA_MM)], ['Subadutora · 200 mm pra cima (Equipe Adutora)', diameters.filter(de => de >= SUBADUTORA_MM)]].map(([titulo, lista], n) => `<div class="small"${n ? ' style="margin-top:4px"' : ''}>${titulo}</div>
+  <div class="row diameters">${lista.map(de => `<span><i class="pipe-swatch" style="background:${DE_COLORS[de]}"></i>DE ${de}</span>`).join('')}</div>`).join('')}
   ${cur && cur.zf.length ? `<div class="legend-title zones-title">${cur.team ? 'Zona selecionada' : 'Zonas · preenchimento transparente'}</div><div class="row">${cur.zf.map(z => `<span><i class="zone-swatch" style="background:${z.color}"></i>${esc(z.id)}</span>`).join('')}</div>` : ''}
   <div class="row symbols"><span><i style="width:22px;height:0;border-top:2px dashed var(--ink)"></i>MND</span>
-<span><i style="width:10px;height:10px;border-radius:50%;background:${ELC['NÓ']}"></i>nó</span>
-${['DF', 'VM', 'VRP', 'MV', 'VTF', 'HID'].map(k => `<span><i style="width:10px;height:10px;border-radius:2px;background:${ELC[k]}"></i>${k}</span>`).join('')}
+<span>${elIcon('NÓ')}nó</span>
+${['DF', 'VTF', 'VM', 'VRP', 'MV', 'HID'].map(k => `<span title="${esc(ELN[k])}">${elIcon(k)}${k}</span>`).join('')}
 <span><i style="width:22px;border-top:2px dashed #2b2f36"></i>divisa de zona</span></div>
-<div class="small" style="margin-top:3px">${cur && cur.team ? (cur.team === 'CH' ? 'Caixas da Equipe CH em destaque; a rede ao fundo serve de referência. Sem preenchimento de zonas.' : cur.team === 'ADUTORA' ? 'Trechos e nós da Equipe Adutora em destaque. Sem preenchimento de zonas.' : 'Somente a zona selecionada e os elementos da sua equipe estão destacados.') : cur && cur.id === 'GERAL' ? 'Visão do projeto inteiro. Use o zoom; clique no quadro de uma PB para abrir a planta detalhada.' : 'Clique nos trechos ou nós para consultar.'} ⛶ Tela cheia · arraste para mover · +/− para aproximar.</div></div></details>`;
+<div class="small" style="margin-top:3px">${cur && cur.team ? (cur.team === 'CH' ? 'Caixas da Equipe CH em destaque; a rede ao fundo serve de referência. Sem preenchimento de zonas.' : cur.team === 'ADUTORA' ? 'Subadutora em destaque: a adutora e as redes de 200 mm pra cima (DE 225 e 250), executadas pela Equipe Adutora. Sem preenchimento de zonas.' : 'Somente a zona selecionada e os elementos da sua equipe estão destacados.') : cur && cur.id === 'GERAL' ? 'Visão do projeto inteiro. Use o zoom; clique no quadro de uma PB para abrir a planta detalhada.' : 'Clique nos trechos ou nós para consultar.'} ⛶ Tela cheia · arraste para mover · +/− para aproximar.</div></div></details>`;
 }
 
 /* ---------- planta ---------- */
@@ -503,9 +526,9 @@ function showPB(id, keep) {
   const gl = mk('g', { class: 'trg' }, svg);
   // Context is painted first; owned elements remain visible on top.
   [...p.tr].sort((a, b) => Number(activePipe(a.i)) - Number(activePipe(b.i))).forEach(t => {
-    const c = pipeColor(T[t.i]), wide = T[t.i].tipo === 'Adutora', active = activePipe(t.i);
+    const c = pipeColor(T[t.i]), wide = isSub(T[t.i]), active = activePipe(t.i);
     t.p.forEach(a => {
-      mk('polyline', { class: 'tr' + (active ? '' : ' context-pipe'), points: pts(a), stroke: active ? c : '#758394', 'data-de': T[t.i].de, 'data-tipo': T[t.i].tipo, 'data-active': String(active), 'data-pipe': t.i, 'stroke-width': wide ? '6px' : '4px', 'stroke-opacity': active ? 1 : .13, 'stroke-dasharray': T[t.i].met === 'MND' ? '8 5' : null }, gt);
+      mk('polyline', { class: 'tr' + (active ? '' : ' context-pipe'), points: pts(a), stroke: active ? c : '#758394', 'data-de': T[t.i].de, 'data-tipo': T[t.i].tipo, 'data-sub': wide ? '' : null, 'data-active': String(active), 'data-pipe': t.i, 'stroke-width': wide ? '6px' : '4px', 'stroke-opacity': active ? 1 : .13, 'stroke-dasharray': T[t.i].met === 'MND' ? '8 5' : null }, gt);
       if (active) mk('polyline', { class: 'hit', points: pts(a), 'data-t': t.i }, gt);
     });
     if (t.lab && active) {
@@ -522,7 +545,7 @@ function showPB(id, keep) {
     if (!activeElement(j)) return;
     const e = E[j], c = ELC[e.tp] || '#333';
     if (e.tp === 'NÓ') mk('circle', { class: 'el', cx: x, cy: y, r: 2, fill: c, 'data-e': j }, ge);
-    else mk('rect', { class: 'el', x: x - 2, y: y - 2, width: 4, height: 4, rx: .6, fill: c, 'data-e': j, 'data-x': x, 'data-y': y }, ge);
+    else mk('polygon', { class: 'el', points: elShape(e.tp, x, y, 2 / 5.5), fill: c, 'data-e': j, 'data-tp': e.tp, 'data-x': x, 'data-y': y }, ge);
   });
   if (isMosaic(p)) {
     const labels = mk('g', { class: 'pb-frame-labels' }, svg);
@@ -555,7 +578,7 @@ function setVB() {
   svg.classList.toggle('nolab', !layers.lab || FS * ppu < 6.2);
   const rr = 5.5 / ppu;
   svg.querySelectorAll('.elg circle').forEach(c => c.setAttribute('r', rr));
-  svg.querySelectorAll('.elg rect').forEach(c => { const x = +c.dataset.x, y = +c.dataset.y; c.setAttribute('x', x - rr); c.setAttribute('y', y - rr); c.setAttribute('width', 2 * rr); c.setAttribute('height', 2 * rr); });
+  svg.querySelectorAll('.elg polygon').forEach(c => c.setAttribute('points', elShape(c.dataset.tp, +c.dataset.x, +c.dataset.y, rr / 5.5)));
   svg.querySelectorAll('.pb-frame-badge').forEach(badge => {
     badge.setAttribute('transform', `translate(${badge.dataset.x} ${+badge.dataset.y + 16 / ppu})`);
     const box = badge.querySelector('rect'); box.setAttribute('x', -24 / ppu); box.setAttribute('y', -11 / ppu); box.setAttribute('width', 48 / ppu); box.setAttribute('height', 22 / ppu);
@@ -683,7 +706,7 @@ function selectEl(i, nav) {
 function renderEmpty() {
   if (cur && cur.team) {
     const f = cur;
-    $('#det').innerHTML = `<div class="empty"><h2>${esc(f.title)}</h2><p>${f.team === 'CH' ? `Projeto inteiro com ${f.positioned} caixas localizadas da Equipe CH em destaque. ${f.pending} dispositivos permanecem sem posição no projeto.` : f.team === 'ADUTORA' ? `Projeto inteiro com ${f.activeT.size} trechos e ${f.activeE.size} nós/dispositivos da Equipe Adutora em destaque.` : `Apenas a ${esc(f.title)} está iluminada. Os ${f.activeT.size} trechos e ${f.activeE.size} nós/dispositivos destacados pertencem à Equipe Zona ${f.team.slice(4)}.`}</p><p>Os demais traçados ficam atenuados para orientação. Clique em um elemento destacado para consultar; o mapa das plantas continua abrindo cada PB.</p><p class="small">Nós e descargas compartilhados podem aparecer em mais de uma frente, conforme a divisão de peças entre equipes.</p></div>`;
+    $('#det').innerHTML = `<div class="empty"><h2>${esc(f.title)}</h2><p>${f.team === 'CH' ? `Projeto inteiro com ${f.positioned} caixas localizadas da Equipe CH em destaque. ${f.pending} dispositivos permanecem sem posição no projeto.` : f.team === 'ADUTORA' ? `Projeto inteiro com os ${f.activeT.size} trechos e ${f.activeE.size} nós/dispositivos da Subadutora em destaque: a adutora e as redes de 200 mm pra cima (DE 225 e 250). Quem executa é a Equipe Adutora; esses trechos saem das zonas.` : `Apenas a ${esc(f.title)} está iluminada. Os ${f.activeT.size} trechos e ${f.activeE.size} nós/dispositivos destacados pertencem à Equipe Zona ${f.team.slice(4)}.`}</p><p>Os demais traçados ficam atenuados para orientação. Clique em um elemento destacado para consultar; o mapa das plantas continua abrindo cada PB.</p><p class="small">Nós e descargas compartilhados podem aparecer em mais de uma frente, conforme a divisão de peças entre equipes.</p></div>`;
     addInfoClose(); return;
   }
   $('#det').innerHTML = `<div class="empty"><h2>Clique num trecho ou num nó</h2>
@@ -700,7 +723,7 @@ function renderTr(i) {
   const t = T[i];
   const ext = t.Lx > 0 ? `${nf(t.L)} m <span class="small">(${nf(t.Lg)} m na linha + ${nf(t.Lx)} m desenhados dentro do nó)</span>` : `${nf(t.L)} m`;
   $('#det').innerHTML = `<div class="hd"><div class="k">Trecho · Tabela de Redes 06.1 REV01</div><h2>${esc(t.R)}</h2>
-  <div class="chips"><span class="chip blue">LOCAL ${esc(t.loc)}</span><span class="chip">${esc(t.eq)}</span><span class="chip">${esc(t.cl)}</span>${t.met === 'MND' ? '<span class="chip warn">MND</span>' : ''}</div></div>
+  <div class="chips"><span class="chip blue">LOCAL ${esc(t.loc)}</span><span class="chip">${esc(teamOf(t))}</span>${isSub(t) && t.tipo !== 'Adutora' ? '<span class="chip">SUBADUTORA</span>' : ''}<span class="chip">${esc(t.cl)}</span>${t.met === 'MND' ? '<span class="chip warn">MND</span>' : ''}</div></div>
   <div class="sec"><table class="kv">
   <tr><th>Comprimento</th><td><b>${ext}</b></td></tr>
   <tr><th>Diâmetro</th><td>DE ${t.de} · PEAD</td></tr>
@@ -752,7 +775,7 @@ function renderEl(i) {
   const pos = e.E == null ? '<tr><th>Posição</th><td><span class="chip warn">sem posição no projeto (só nas tabelas)</span></td></tr>' :
     `<tr><th>Coordenadas</th><td>E ${nf(e.E, 3)} · N ${nf(e.N, 3)}<br><span class="small">${e.lat}, ${e.lon} · ${gmaps(e.lat, e.lon)}</span></td></tr>`;
   $('#det').innerHTML = `<div class="hd"><div class="k">${esc(ELN[e.tp] || e.tp)} · Tabela de Conexões 06.2 REV08</div><h2>${esc(e.id)}</h2>
-  <div class="chips">${e.noms.map(n => `<span class="chip blue">${esc(n)}</span>`).join('')}</div></div>
+  <div class="chips">${e.noms.map(n => `<span class="chip blue">${esc(n)}</span>`).join('')}${FRONTS.ADUTORA.activeE.has(i) && !e.noms.some(n => /_Adutora_/.test(n)) ? '<span class="chip">FRENTE SUBADUTORA · EQUIPE ADUTORA</span>' : ''}</div></div>
   <div class="sec"><table class="kv">
   <tr><th>Número no projeto</th><td>${esc(e.id)}${e.proj && e.proj.length ? ` <span class="small">(coluna PROJETO: ${esc(e.proj.join('; '))})</span>` : ''}</td></tr>
   <tr><th>Planta baixa</th><td>${esc(e.pb || '—')}${e.pb && D.pbs[PBI[e.pb]] ? ' · prancha ' + D.pbs[PBI[e.pb]].prancha : ''}</td></tr>

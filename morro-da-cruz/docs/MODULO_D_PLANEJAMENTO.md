@@ -126,3 +126,20 @@ Substitui o pedido de 22/10 de mapa sem satélite e a seleção com Ctrl (ou "Ju
 - **Equipe da zona (D-179):** a equipe já vem a da frente dos trechos escolhidos (Zona 08 → EQUIPE ZONA 08; o nome completo do trecho diz a frente). A escolha feita à mão vale enquanto a seleção continua na mesma frente; trocar de frente ou limpar a seleção volta para a equipe da zona.
 
 Testes: `test_no_terminal_da_062_entra_sozinho_mas_juncao_nao` (`tests/test_fluxo_v22.py`) e `TestMapaNoNavegador`.
+
+## Frentes, Subadutora e o desenho do HTML (29/10/2026, D-182 a D-184)
+
+Substitui o satélite da D-176 no Dados da obra.
+- **Subadutora (D-182):** a adutora mais as redes de 200 mm pra cima (DE 225 e 250) formam a frente **Subadutora**: 132 trechos, cerca de 10,5 km. Quem executa é a EQUIPE ADUTORA. Esses trechos saem das zonas: a Zona 05, por exemplo, fica com 79 trechos. O nó vai para a Subadutora quando liga um trecho dela; o que liga também um trecho da zona aparece nas duas frentes, e nele vem a equipe da frente em foco. A regra é a mesma no Mapa iluminado e no HTML do mapa base. No banco nada muda: o `frente_id` continua sendo a zona do local.
+- **Frentes:** a barra acima do mapa traz Obra inteira, Zona 01 a 11 e Subadutora. Tocar numa zona do mapa também escolhe a frente. Com uma frente escolhida, só ela tem cor: fora dela não aparece trecho nem nó, e um véu branco cobre o resto. A busca, a equipe do dia e o lote voltam para a obra inteira quando o trecho está fora da frente.
+- **Desenho (D-184):**
+  - o fundo é a planta das PBs clara, cortada nos quadros; o satélite escuro saiu;
+  - os trechos têm a cor do diâmetro da legenda do projeto (`coresTubos` do HTML, em `mapa_geral.geometria` como `cores_de`), a Subadutora mais grossa e o MND tracejado;
+  - na legenda, **Cor dos trechos** troca para a cor da programação do dia, e a escolha fica guardada no navegador;
+  - o trecho escolhido ganha contorno escuro com miolo branco.
+- **Nós e caixas (D-183):**
+  - o nó é bola; DF é triângulo invertido, VTF é triângulo, VM é quadrado, VRP é losango, MV é hexágono e HID é cruz;
+  - no Dados da obra só aparecem os da frente em foco; a caixa aparece sempre, e o nó só de perto ou escolhido;
+  - no Mapa iluminado, os trechos ficam como estavam e os nós e as caixas ganham a cor da situação (Camadas › Nós e caixas). O toque abre a ficha do nó.
+
+Testes: `test_geometria_traz_o_que_as_frentes_e_as_cores_pedem`, `test_html_base_com_a_frente_subadutora`, `test_dados_da_obra_com_a_planta_clara_sem_satelite` e `test_frentes_do_mapa_com_a_subadutora` (`tests/test_telas.py`), e `TestMapaNoNavegador` (a equipe do trecho de DE 225 e do nó compartilhado).
