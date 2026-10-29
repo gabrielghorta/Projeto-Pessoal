@@ -397,6 +397,29 @@ console.log(JSON.stringify(r));
             self.assertIn(texto, app)
         self.assertIn(".nota-lado", ler("app.css"))
 
+    def test_requerimentos_em_compras_e_transferencia_no_estoque(self):
+        """D-187 (29/10/2026): o pedido de material vira requerimento em Compras e notas (aguardando a decisão, a comprar
+        e os decididos); a transferência entre equipes, o inventário e as reservas vencidas passam ao Estoque."""
+        estoque = self.html.split('id="aba-almox"', 1)[1].split('<section', 1)[0]
+        compras = self.html.split('id="aba-compras"', 1)[1].split('<section', 1)[0]
+        for ide in ('id="reqPainel"', 'id="reqDecidir"', 'id="reqDecididos"', 'id="reqComprarPainel"', 'id="reqComprar"'):
+            self.assertIn(ide, compras)
+        for ide in ('id="fTransf"', 'id="fInv"', 'id="invLista"', 'id="vencidasLista"'):
+            self.assertIn(ide, estoque)
+            self.assertNotIn(ide, compras)
+        app, sol = ler("app.js"), ler("solicitacoes.js")
+        corpo = lambda f, fonte: fonte.split(f"async function {f}()", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("await carregarRequerimentos();", corpo("carregarCompras", app))
+        self.assertNotIn("/api/inventarios", corpo("carregarCompras", app))
+        self.assertIn("if (podeTela('almox')) carregarInventarioEVencidas();", corpo("carregarAlmox", app))
+        req = corpo("carregarRequerimentos", sol)
+        for texto in ("solCard(s, decide && !solMeu(s), true)", "s.situacao === 'APROVADA'", "s.falta", "Falta chegar"):
+            self.assertIn(texto, req)
+        self.assertNotIn("solOutros", sol)                      # Pedir material só aponta para Compras e notas
+        self.assertIn('data-tela="compras"', sol)
+        self.assertIn("solAcaoCard(b, carregarCompras)", sol)
+        self.assertIn("solAcaoCard(b, carregarSolicitacoes)", sol)
+
     def test_conferir_e_marcar_e_o_que_falta_e_confirmado_em_compras(self):
         """D-171 (27/10/2026): no Estoque, uma caixinha por linha com o material reconhecido, "Marcar todas" e o verde só
         com todas marcadas; ninguém escolhe material nem pedido ali. Em Compras e notas, as linhas faltando a confirmação."""

@@ -431,6 +431,7 @@ async function carregarAlmox() {
   $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
   if (TELA === 'almox' && pode('almox') && podeTela('mapa')) almoxEquipesDoDia();
+  if (podeTela('almox')) carregarInventarioEVencidas();
   if (podeTela('almox') || podeTela('compras')) {
     // "Nenhuma nota a receber" só depois da resposta: enquanto carrega, ou se a consulta falha, o painel diz isso
     const box = $('#notasReceber');
@@ -680,9 +681,14 @@ async function carregarCompras() {
   COMPRAS = await api('/api/compras');
   const fs = COMPRAS.fornecedores.map(f => `<option value="${f.id}">${esc(f.nome)} · ${esc(f.cnpj)}</option>`).join('');
   $$('.selForn').forEach(x => x.innerHTML = fs);
-  $$('.selMaterialTodos').forEach(x => x.innerHTML = opMat(() => true));
-  ['nfdig', 'inv'].forEach(t => { const e = $(`.editor-itens[data-itens=${t}]`); if (!e.children.length) e.innerHTML = LINHA_ITEM[t](); });
+  const e = $('.editor-itens[data-itens=nfdig]'); if (!e.children.length) e.innerHTML = LINHA_ITEM.nfdig();
   renderNotas();
+  await carregarRequerimentos();
+}
+/* Estoque e movimentos (D-187): a transferência entre equipes, o inventário e as reservas vencidas são do almoxarifado */
+async function carregarInventarioEVencidas() {
+  $$('.selMaterialTodos').forEach(x => x.innerHTML = opMat(() => true));
+  const e = $('.editor-itens[data-itens=inv]'); if (!e.children.length) e.innerHTML = LINHA_ITEM.inv();
   const invs = await api('/api/inventarios');
   $('#invLista').innerHTML = invs.map(v => `<div class="registro"><div><b>Inventário #${v.id} · ${esc(v.data)} · ${esc(v.contado_por)}</b> <span class="chip ${v.status === 'AJUSTADO' ? 'azul' : v.status === 'CONTADO' ? 'amarelo' : ''}">${esc(v.status.toLowerCase())}</span></div>
     ${v.itens.map(i => `<div><small>${esc(i.material_id)}: sistema ${nf(i.saldo_sistema, 3)} · contado ${nf(i.contado, 3)} · diferença <b>${nf(i.diferenca, 3)}</b></small></div>`).join('')}
@@ -770,11 +776,11 @@ $('#fNfDig').addEventListener('submit', async ev => {
 $('#fTransf').addEventListener('submit', async ev => {
   ev.preventDefault();
   const r = await acao(() => api('/api/transferencia', { ...formObj(ev.target), data: hoje() }), 'Transferência registrada (custódia da equipe de origem para a de destino).').catch(() => null);
-  if (r) ev.target.reset();
+  if (r) { ev.target.reset(); carregarAlmox(); }
 });
 $('#fInv').addEventListener('submit', async ev => {
   ev.preventDefault();
-  recarregarCompras(await acao(() => api('/api/inventario/contagem', { data: hoje(), itens: lerItens(ev.target, 'inv') }), 'Contagem registrada (o ajuste precisa da aprovação de outra pessoa).').catch(() => null));
+  if (await acao(() => api('/api/inventario/contagem', { data: hoje(), itens: lerItens(ev.target, 'inv') }), 'Contagem registrada (o ajuste precisa da aprovação de outra pessoa).').catch(() => null)) carregarAlmox();
 });
 document.addEventListener('click', async ev => {
   const t = ev.target, q = s => t.closest(s);
@@ -804,9 +810,9 @@ document.addEventListener('click', async ev => {
   else if (q('[data-cancelar-nf]')) { const motivo = prompt('Motivo do cancelamento da nota:'); if (!motivo) return;
     r = await acao(() => api('/api/nf/cancelar', { nf_id: q('[data-cancelar-nf]').dataset.cancelarNf, motivo }), 'Nota cancelada.').catch(() => null); }
   else if (q('[data-inv]')) { const b = q('[data-inv]'), motivo = prompt(b.dataset.ap === '1' ? 'Motivo do ajuste:' : 'Motivo do descarte:'); if (!motivo) return;
-    r = await acao(() => api('/api/inventario/decidir', { inventario_id: b.dataset.inv, aprovar: b.dataset.ap === '1', motivo }), 'Inventário decidido.').catch(() => null); }
+    if (await acao(() => api('/api/inventario/decidir', { inventario_id: b.dataset.inv, aprovar: b.dataset.ap === '1', motivo }), 'Inventário decidido.').catch(() => null)) carregarAlmox(); return; }
   else if (t.id === 'vencBtn') { const ids = $$('[data-venc]:checked').map(i => +i.dataset.venc);
-    r = await acao(() => api('/api/reservas/liberar-vencidas', { ids, motivo: $('#vencMotivo').value, hoje: hoje() }), 'Reservas vencidas liberadas.').catch(() => null); }
+    if (await acao(() => api('/api/reservas/liberar-vencidas', { ids, motivo: $('#vencMotivo').value, hoje: hoje() }), 'Reservas vencidas liberadas.').catch(() => null)) carregarAlmox(); return; }
   else return;
   recarregarCompras(r);
 });

@@ -193,6 +193,29 @@ class TestSolicitacoesHTTP(BaseHTTP):
         self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s2['id'], 'aprovar': False})[0], 422)
         self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s2['id'], 'aprovar': False, 'motivo': 'Já tem na obra'})[0], 200)
 
+    def test_requerimentos_em_compras_falta_chegar_e_nota_ligada(self):
+        """D-187: quem abre Compras e notas vê os pedidos da obra; o aprovado traz o que falta chegar e as notas ligadas."""
+        almox, eng, enc = self.cliente('almox1'), self.cliente('eng1'), self.cliente('enc1')
+        s1 = enc.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'material_id': MAT, 'quantidade': 3}]})[1]
+        s2 = eng.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'material_id': MAT, 'quantidade': 1}]})[1]
+        self.assertEqual({x['id'] for x in almox.get('/api/solicitacoes')[1]['solicitacoes']}, {s1['id'], s2['id']})
+        self.assertEqual([x['id'] for x in enc.get('/api/solicitacoes')[1]['solicitacoes']], [s1['id']])
+        self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s1['id'], 'aprovar': True})[0], 200)
+        ver = lambda: {x['id']: x for x in eng.get('/api/solicitacoes')[1]['solicitacoes']}[s1['id']]
+        self.assertEqual([(f['material_id'], f['quantidade']) for f in ver()['falta']], [(MAT, 3)])
+        self.assertEqual(ver()['notas'], [])
+        import nfe_teste as NT
+        nf = C.importar_nfe_xml(self.c, NT.b64(NT.xml(8007, [(MAT, 'Peça', 'UN', 2, 10)])), 'n.xml', 'almox1', cadastrar=True)['nf_id']
+        self.assertEqual(eng.post('/api/solicitacao/vincular', {'nf_id': nf, 'solicitacao_id': s1['id']})[0], 200)
+        C.receber_nota(self.c, nf, 'almox1', D2)
+        s = ver()
+        self.assertEqual((s['situacao'], s['notas'], [f['quantidade'] for f in s['falta']]), ('APROVADA', ['8007'], [1]))
+        self.assertEqual(ver()['falta'][0]['nome'], SOL.catalogo(self.c)[[m['id'] for m in SOL.catalogo(self.c)].index(MAT)]['nome'])
+        # o inventário e as reservas vencidas servem o Estoque; quem só pede material não os lê
+        for rota in ('/api/inventarios', '/api/reservas-vencidas?hoje=' + D2):
+            self.assertEqual(almox.get(rota)[0], 200, rota)
+            self.assertEqual(enc.get(rota)[0], 403, rota)
+
     def test_rotas_antigas_removidas_e_confirmacao_restrita(self):
         import server
         for rota in ('/api/pedido', '/api/pedido/cancelar', '/api/nf/aprovar'):
