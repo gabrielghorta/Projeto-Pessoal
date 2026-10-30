@@ -178,3 +178,13 @@ Em **Lançamento do dia › Apontamento sem NS**, depois da data e da equipe, ap
 - Sem check-in na data, a tela avisa; a busca continua valendo para qualquer trecho ou nó.
 
 Lançar vários trechos a 100% de uma vez ficou como proposta (D-181). Testes: `TestAlvosDoDia` em `tests/test_fluxo_v22.py`.
+
+
+## Revisão do código (30/10/2026, D-189 e D-195)
+
+- **OK interno:** a data não pode ser anterior ao último serviço registrado do trecho (ou ao último apontamento do nó).
+- **Equipe:** para o usuário preso à equipe, o servidor sempre grava a equipe dele (pedido sem `equipe_id` incluído).
+- **Fotos:** EXIF ilegível ou com data zerada é ignorado (vale a data do aparelho ou do envio); data e GPS são lidos à
+  parte.
+- Corrigir a posição de um avanço legado conciliado segue a regra do legado (não exige a liberação).
+- Detalhes: `CORRECOES_REVISAO_30-10-2026.md`.

@@ -225,7 +225,8 @@ def _ler_tabela(linhas):
         tarefas.append({
             "id": tid, "nome": nome[:300], "edt": str(reg.get("edt") or estrutura or "").strip(), "nivel": max(nivel, 1),
             "inicio": _data(reg.get("inicio")), "fim": _data(reg.get("fim")), "duracao_dias": _duracao_txt(reg.get("duracao")),
-            "concluido": _pct(reg.get("concluido")), "resumo": _sim(reg.get("resumo")) if "resumo" in reg else None,
+            "concluido": _pct(reg.get("concluido")), "_pct_bruto": reg.get("concluido"),
+            "resumo": _sim(reg.get("resumo")) if "resumo" in reg else None,
             "marco": _sim(reg.get("marco")) if "marco" in reg else False, "critica": _sim(reg.get("critica")) if "critica" in reg else False,
             "inativa": False, "recursos": [r.strip() for r in re.split(r"[;,]", str(reg.get("recursos") or "")) if r.strip()],
             "notas": str(reg.get("notas") or "")[:500], "predecessoras": _predecessoras_txt(reg.get("predecessoras")),
@@ -236,6 +237,12 @@ def _ler_tabela(linhas):
     if cab is None:
         raise RegraViolada("Não achei a linha de títulos: a planilha precisa de uma coluna \"Nome\" (ou \"Nome da tarefa\"). "
                            + COMO_EXPORTAR)
+    brutos = [x["_pct_bruto"] for x in tarefas if isinstance(x["_pct_bruto"], (int, float)) and not isinstance(x["_pct_bruto"], bool)]
+    fracao = brutos and all(0 <= b <= 1 for b in brutos) and any(0 < b < 1 for b in brutos)
+    for x in tarefas:                                   # coluna em fração (célula de %): 1 é 100 %, não 1 %
+        b = x.pop("_pct_bruto")
+        if fracao and isinstance(b, (int, float)) and not isinstance(b, bool):
+            x["concluido"] = round(float(b) * 100, 1)
     for i, x in enumerate(tarefas):                     # sem a coluna Resumo: é resumo quem tem tarefa de nível maior logo abaixo
         if x["resumo"] is None:
             x["resumo"] = i + 1 < len(tarefas) and tarefas[i + 1]["nivel"] > x["nivel"]

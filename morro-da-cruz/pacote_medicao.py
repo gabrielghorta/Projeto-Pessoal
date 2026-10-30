@@ -157,7 +157,7 @@ def _linhas_memorial(conn, medicao_id, item, unidade):
         ext = info.get("extensao")
         if R.normalizar_unidade(unidade) == "M" and l["alvo_tipo"] == "TRECHO" and ext and abs(ext - q) <= R.TOL_M:
             est = int(q // ESTACA_M)
-            lin["estacas"] = (0, 0.0, est, round(q - est * ESTACA_M, 3))
+            lin["estacas"] = (0, 0.0, est, round(q - est * ESTACA_M, 4))   # 4 casas, como a quantidade do lançamento
         elif ext and l["alvo_tipo"] == "TRECHO":
             lin["ref"] = " · ".join(x for x in (info["ref"], f"L = {ext:.2f} m".replace(".", ",")) if x)
         out.append(lin)
@@ -286,15 +286,41 @@ def resumo(conn, medicao_id):
         exc = 0
     if exc:
         avisos.append(f"Teto por subgrupo (D-57, hipótese) não aplicado no modelo oficial: excedente de R$ {exc:.2f}.")
+    fora = sorted({k for m in range(1, med["numero"]) for k, v in q.get(m, {}).items() if k not in vert and abs(v) > 1e-12})
+    if fora:
+        avisos.append(f"{len(fora)} item(ns) medido(s) em medição anterior saíram do BM vigente e não aparecem no vertical "
+                      f"({', '.join(fora[:5])}{'…' if len(fora) > 5 else ''}): o acumulado do pacote fica menor que o medido.")
+    bm_atual = _one(conn, "SELECT sha256 FROM fontes_arquivo WHERE chave='bm' ORDER BY id DESC LIMIT 1")
+    for m in _congeladas(conn, med):
+        sha = ((m["congelamento"].get("bm_fonte") or {}).get("sha256"))
+        if sha and bm_atual and sha != bm_atual["sha256"]:
+            avisos.append(f"A {m['numero']}ª medição fechou com outra revisão do BM: o pacote usa os preços do BM atual; "
+                          "o valor congelado no fechamento continua valendo.")
     per = periodo_no_modelo(med["numero"])
     if per and per != (med["periodo_ini"], med["periodo_fim"]):
         avisos.append(f"Período: o modelo põe a {med['numero']}ª medição de {_br(per[0])} a {_br(per[1])} (data da OS na aba "
                       f"REAJUSTE); a do sistema vai de {_br(med['periodo_ini'])} a {_br(med['periodo_fim'])}. O cabeçalho "
                       "do pacote mostra o período do modelo.")
+    adm_ant = {m["numero"]: m["congelamento"]["adm_quantidade"] for m in _congeladas(conn, med)
+               if m["numero"] < med["numero"] and m["congelamento"].get("adm_quantidade") is not None}
     return {"medicao": med, "teste": teste, "aba_mc": f"{med['numero']:02d}ª MC", "folhas": fl, "adm": adm,
+            "adm_anteriores": adm_ant,
             "totais": {"vertical": tot["vertical"]["total"], "juntada": tot["juntada"]["total"],
                        "material": tot["juntada"]["material"], "servico": tot["juntada"]["servico"]},
             "frases": FRASES, "avisos": avisos}
+
+
+def _congeladas(conn, med):
+    """Medições fechadas do mesmo tipo até esta, com o congelamento gravado no fechamento."""
+    out = []
+    for m in conn.execute("SELECT numero, resumo_congelado FROM medicoes WHERE tipo=? AND numero<=? AND status='FECHADA' "
+                          "AND resumo_congelado IS NOT NULL ORDER BY numero", (med["tipo"], med["numero"])):
+        try:
+            cg = (json.loads(m["resumo_congelado"]) or {}).get("congelamento") or {}
+        except (TypeError, ValueError):
+            cg = {}
+        out.append({"numero": m["numero"], "congelamento": cg})
+    return out
 
 
 def _br(iso):
@@ -390,7 +416,7 @@ def caminho_modelo():
 
 
 def _contrato_numero(conn):
-    m = re.search(r"(\d{3,6})\s*/\s*(\d{4})", S.contrato(conn) or "")
+    m = re.search(r"(\d{3,6})\s*/\s*(\d{4})", re.sub(r"(?<=\d)\.(?=\d{3}\b)", "", S.contrato(conn) or ""))   # 10.239 = 10239
     return (m.group(1), m.group(2)) if m else (None, None)
 
 
@@ -632,6 +658,9 @@ def _vertical_preencher(p, vert, q, r, n, aba_mc, fim_mc, cq, teste, num, hoje):
     fim = fim_mc
     adm_ant = {}
     for m in range(1, n):
+        if m in (r.get("adm_anteriores") or {}):          # congelada no fechamento daquela medição (D-152)
+            adm_ant[m] = r["adm_anteriores"][m]
+            continue
         mes = dict(q.get(m, {}))
         mes.pop(CHAVE_ADM, None)
         adm_ant[m] = adm_local_por_vertical(vert, mes, r)

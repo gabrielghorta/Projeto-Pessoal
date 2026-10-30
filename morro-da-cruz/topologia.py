@@ -254,14 +254,14 @@ def _texto(f):
 
 
 def _estado(conn, cfg_caminho=None):
+    global _CACHE
     trechos = _trechos(conn)
     chave = (_chave_config(cfg_caminho), _impressao(trechos))
     with _TRAVA:
-        if _CACHE.get("chave") != chave:
+        if _CACHE.get("chave") != chave:          # dicionário novo: quem já tem o anterior continua com um estado inteiro
             cfg = _ler_config(cfg_caminho)
             fisicos, de_trecho, avisos, usadas, cortadas = _montar(trechos, cfg)
-            _CACHE.clear()
-            _CACHE.update(chave=chave, cfg=cfg, fisicos=fisicos, de_trecho=de_trecho, avisos=avisos, usadas=usadas,
+            _CACHE = dict(chave=chave, cfg=cfg, fisicos=fisicos, de_trecho=de_trecho, avisos=avisos, usadas=usadas,
                           cortadas=cortadas, trechos=trechos)
         return _CACHE
 

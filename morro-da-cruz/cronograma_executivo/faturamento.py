@@ -132,7 +132,8 @@ def distribuir(plano, itens, D):
     inst_ini, inst_fim = plano['canteiro_inst']
     des_ini, des_fim = plano['desmob']
     # contêineres no canteiro por mês: chegam com as equipes e ficam até o fim da obra
-    nm_ = len(L.meses)
+    ult = L.mes(plano['fim'] - 1)                      # o mês em que a obra acaba: o canteiro não fatura depois dele
+    nm_ = len(L.meses) if ult is None else ult + 1
     no_canteiro = [0] * nm_
     chegadas = [(L.mes(CAL.w(d)), n) for d, n in motor.CONTEINERES]
     for k in range(nm_):
@@ -159,7 +160,7 @@ def distribuir(plano, itens, D):
                               f'({usado / q:.0%} do BM)')
             elif 'MES' in un or 'MÊS' in un or un in ('CHP', 'CHI'):
                 # o funcionamento do canteiro: igual em cada mês, de nov/2026 (em out só o alambrado, o portão e 2 contêineres)
-                n = len(L.meses) - 1
+                n = nm_ - 1
                 for k in range(1, n + 1):
                     L.q[('CANT', ch, k)] += q / n
                 origem[ch] = f'mensal: 1/{n} por mês, de nov/2026 ao fim da obra'

@@ -28,7 +28,7 @@ ITERACOES = 200_000
 VALIDADE_SESSAO = timedelta(hours=12)
 MAX_FALHAS, JANELA_FALHAS = 5, timedelta(minutes=15)
 CAMPOS_OCULTOS = {"senha", "senha_atual", "nova_senha", "conteudo_b64", "xml", "arquivo_b64", "documento_b64", "pdf_b64",
-                  "croqui_b64", "planilha_b64"}
+                  "croqui_b64", "planilha_b64", "cliente_segredo"}
 
 
 class AcessoNegado(R.RegraViolada):

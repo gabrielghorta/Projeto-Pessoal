@@ -167,3 +167,11 @@ Substitui a seleção na obra inteira (D-177) e a planta clara (D-184).
 - A busca e "Ver a ficha completa" abrem a zona do trecho e o escolhem.
 
 Testes: `test_dados_da_obra_com_o_fundo_do_iluminado_e_selecao_na_zona` e `test_mapa_do_dados_da_obra_tela_cheia_vista_e_zonas` (`tests/test_telas.py`), e `TestMapaNoNavegador` (`tests/test_fluxo_v22.py`).
+
+## Revisão do código (30/10/2026, D-192)
+
+- **Reserva** no Dados da obra só para dia futuro; para hoje, libere o material do dia.
+- O dia da equipe aberto pelo Estoque (Liberar), pelo lote ou pela ficha abre já na zona da seleção; abrir a zona da
+  própria seleção não a apaga, e a seleção de mais de uma zona pede confirmação antes de abrir uma zona.
+- Programação com intervalo pede o início e o fim.
+- Detalhes: `CORRECOES_REVISAO_30-10-2026.md`.

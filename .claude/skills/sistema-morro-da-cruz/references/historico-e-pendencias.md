@@ -24,9 +24,10 @@ responsável gosta de receber o trabalho. A lista completa e oficial das decisõ
 | #17 | 29/10 | claude/mapa-linhas-finas | Trechos finos, traçado sem esperar o servidor, mosaico no instalador | mesclado |
 | #18 | 29/10 | claude/mapa-foco-zona | Foco por zona como no HTML; Dados da obra igual ao Mapa iluminado, seleção só na zona (D-185, D-186) | **aberto** |
 | #19 | 29/10 | claude/compras-requerimentos | Requerimentos em Compras; transferência, inventário e reservas vencidas no Estoque (D-187). Empilhado sobre o #18 | **aberto** |
-| — | 30/10 | claude/skill-continuidade | Esta skill reorganizada e o motor do cronograma no repositório. Empilhado sobre o #19 | PR novo |
+| #20 | 30/10 | claude/skill-continuidade | Esta skill reorganizada e o motor do cronograma no repositório. Empilhado sobre o #19 | **aberto** |
+| — | 30/10 | claude/pensive-lamport-szymez | Revisão do código inteiro e dos PRs #18 a #20: 69 correções (segurança do servidor, medição, compras e estoque, NS, campo, importação, telas, cronograma) e as regras D-188 a D-195 (`docs/CORRECOES_REVISAO_30-10-2026.md`). Empilhado sobre o #20 | PR novo |
 
-Os PRs empilhados devem ser mesclados na ordem (#18, #19, depois o da skill). Fora do Git, em 29/10/2026: o
+Os PRs empilhados devem ser mesclados na ordem (#18, #19, #20, depois o da revisão). Fora do Git, em 29/10/2026: o
 cronograma físico executivo base (dois cenários) e a animação (`cronograma-executivo.md`).
 
 Existe também o repositório `gabrielghorta/morrodacruz_webapp` (cópia anterior, parada em 27/10/2026, com a skill
@@ -59,9 +60,14 @@ novo · e as provisórias de campo e almoxarifado (D-12 a D-18, D-21, D-22, D-40
 | D-185, D-186 | Foco por zona nos dois mapas; Dados da obra igual ao Mapa iluminado, seleção só na zona, Desselecionar e Limpar seleção |
 | D-187 | Requerimentos de material em Compras e notas (A comprar); transferência, inventário e reservas vencidas no Estoque |
 
+**Revisão do código (30/10/2026, D-188 a D-195):** apropriação no item da ADM recusada · OK interno não antes do
+serviço · nota repetida pelo fornecedor, número e série · estorno só pelo caminho de cada movimento (transferência,
+inventário, nota, check-in encerrado) · reserva só para dia futuro · NS de topografia em lote na ordem das datas, com
+aviso · ADM congelada no fechamento · equipe do usuário preso à equipe sempre gravada.
+
 ## Pendências e próximos passos
 
-1. Mesclar #18, #19 e o PR desta skill; rodar o comando de atualização do site.
+1. Mesclar #18, #19, #20 e o PR da revisão do código; rodar o comando de atualização do site.
 2. Cronograma: o responsável valida os 7 pontos (`cronograma-executivo.md`) e pede a REV01; depois, ligar o
    cronograma ao executado (% por trecho, linha de status, "REV nn - nª MEDIÇÃO").
 3. Relatório mensal em Word (fase 2), com a tela "Dados do contrato", a presença diária e as imagens fixas.
@@ -69,6 +75,9 @@ novo · e as provisórias de campo e almoxarifado (D-12 a D-18, D-21, D-22, D-40
 5. Decisões que liberam a medição oficial (D-30, D-31, D-50 a D-57) e a importação real (D-01).
 6. Primeiras NS reais (formato da NS do dia, nós na NS do dia) para ajustar tolerâncias e leitura.
 7. Ideia oferecida e não respondida: contador de pedidos aguardando decisão no menu.
+8. Da revisão de 30/10 (`docs/CORRECOES_REVISAO_30-10-2026.md`, Pendências): NS do dia mais antiga enviada depois de
+   uma mais nova; chamadas ao Google dentro da trava (Testar, Desconectar, Sincronizar documentos); no cronograma, a
+   zona entra em carga antes da Subadutora (validar se ela deve esperar a interligação da Subadutora).
 
 ## Como o responsável trabalha (o que funciona com ele)
 

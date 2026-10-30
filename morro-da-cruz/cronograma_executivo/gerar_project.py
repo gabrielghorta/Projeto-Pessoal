@@ -195,6 +195,10 @@ def xml(P, plano, cen, caminho):
                     break
                 if not u['resumo']:
                     filhos.append(u)
+            if not filhos:                          # resumo sem tarefa (ex.: equipe sem bloco nesta produtividade)
+                if t['ini'] is None:
+                    t['ini'] = t['fim'] = 0             # vazio, no início da obra (o Project aceita resumo de duração zero)
+                continue
             t['ini'] = min(u['ini'] for u in filhos)
             t['fim'] = max(u['fim'] for u in filhos)
     # números de EDT
