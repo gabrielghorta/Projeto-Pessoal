@@ -184,7 +184,9 @@ def montar(plano, cen):
     return P
 
 
-def xml(P, plano, cen, caminho):
+def xml(P, plano, cen, caminho, criacao=dt.datetime(2026, 10, 29, 12, 0)):
+    """Grava o MSPDI. Tarefa com 'manual' (o marco do reservatório da REV01) sai agendada manualmente e sem data
+    ("a definir"): o Project não a usa para agendar as sucessoras até alguém pôr a data."""
     tarefas = P.tarefas
     # datas dos resumos: do primeiro filho ao último
     for k, t in enumerate(tarefas):
@@ -193,7 +195,7 @@ def xml(P, plano, cen, caminho):
             for u in tarefas[k + 1:]:
                 if u['nivel'] <= t['nivel']:
                     break
-                if not u['resumo']:
+                if not u['resumo'] and u['ini'] is not None:
                     filhos.append(u)
             if not filhos:                          # resumo sem tarefa (ex.: equipe sem bloco nesta produtividade)
                 if t['ini'] is None:
@@ -209,14 +211,14 @@ def xml(P, plano, cen, caminho):
         for j in range(n + 1, 12):
             cont[j] = 0
         t['edt'] = '.'.join(str(cont[j]) for j in range(1, n + 1))
-    fim_proj = max(t['fim'] for t in tarefas)
+    fim_proj = max(t['fim'] for t in tarefas if t['fim'] is not None)
     o = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
          '<Project xmlns="http://schemas.microsoft.com/project">',
          '<SaveVersion>14</SaveVersion>',
          f"<Name>{escape(cen['arquivo'])}.xml</Name>",
          f"<Title>{escape('CT 10.239/2026 - Morro da Cruz - Cronograma físico executivo base - ' + cen['titulo'])}</Title>",
          '<Company>Ankara Engenharia</Company>',
-         f'<CreationDate>{dt.datetime(2026, 10, 29, 12, 0):{ISO}}</CreationDate>',
+         f'<CreationDate>{criacao:{ISO}}</CreationDate>',
          '<ScheduleFromStart>1</ScheduleFromStart>',
          f'<StartDate>{CAL.inicio(0):{ISO}}</StartDate>',
          f'<FinishDate>{CAL.fim(fim_proj):{ISO}}</FinishDate>',
@@ -263,6 +265,18 @@ def xml(P, plano, cen, caminho):
              f"<Summary>1</Summary><ConstraintType>0</ConstraintType><CalendarUID>-1</CalendarUID>"
              f"<Active>1</Active><Manual>0</Manual></Task>")
     for n, t in enumerate(tarefas, 1):
+        if t.get('manual'):
+            # na ordem do propOrder do MPXJ: Active, Manual, StartText e FinishText vêm no fim
+            o.append(f'<Task><UID>{t["uid"]}</UID><ID>{n}</ID><Name>{escape(t["nome"])}</Name>'
+                     f'<Type>1</Type><IsNull>0</IsNull><WBS>{t["edt"]}</WBS>'
+                     f'<OutlineNumber>{t["edt"]}</OutlineNumber><OutlineLevel>{t["nivel"]}</OutlineLevel>'
+                     f'<Priority>500</Priority><Duration>PT0H0M0S</Duration><DurationFormat>7</DurationFormat>'
+                     f'<Milestone>{int(t["marco"])}</Milestone><Summary>0</Summary><PercentComplete>0</PercentComplete>'
+                     f'<ConstraintType>0</ConstraintType><CalendarUID>-1</CalendarUID>'
+                     + (f'<Notes>{escape(t["notas"])}</Notes>' if t['notas'] else '') +
+                     f'<Active>1</Active><Manual>1</Manual><StartText>{escape(t["manual"])}</StartText>'
+                     f'<FinishText>{escape(t["manual"])}</FinishText></Task>')
+            continue
         ini, fim = t['ini'], t['fim']
         d = 0 if t['marco'] else max(0, fim - ini)
         s_ini = CAL.inicio(ini)

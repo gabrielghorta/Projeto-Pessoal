@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avanço da obra Morro da Cruz · REV01</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* REV01: a obra sai do reservatório da Zona 11. O mapa iluminado ocupa a cena; à direita, o painel do dia; embaixo, a régua
+   do tempo com o faturamento de cada medição. Um só tema escuro, como o Mapa iluminado do sistema. As cores das equipes e
+   das situações vêm de paleta_rev01.py (CIEDE2000 ≥ 20 em cada legenda); as zonas não têm cor: o número fica no mapa. */
+:root {
+  color-scheme: dark;
+  --fundo: #0D0F11;
+  --painel: #15181B;
+  --linha: #282D33;
+  --tinta: #EEF1F3;
+  --apagado: #98A1AA;
+  --f-titulo: "Archivo Narrow", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-texto: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-dado: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+html, body { height: 100%; }
+body { background: var(--fundo); color: var(--tinta); font-family: var(--f-texto); font-size: 14px; line-height: 1.45; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 18px; }
+.app { display: grid; gap: 12px; max-width: 1500px; margin: 0 auto; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 24px; }
+h1 { font-family: var(--f-titulo); font-weight: 700; font-size: clamp(26px, 3.4vw, 38px); line-height: 1; margin: 0; letter-spacing: .2px; text-wrap: balance; }
+.sub { color: var(--apagado); margin: 4px 0 0; font-size: 13px; max-width: 760px; }
+.chaves { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.grupo { display: inline-flex; border: 1px solid var(--linha); border-radius: 8px; overflow: hidden; }
+.grupo button { font: 500 13px var(--f-texto); color: var(--apagado); background: transparent; border: 0; padding: 7px 12px; cursor: pointer; }
+.grupo button + button { border-left: 1px solid var(--linha); }
+.grupo button[aria-pressed="true"] { background: var(--tinta); color: var(--fundo); }
+.grupo button:focus-visible, .play:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--tinta); outline-offset: 2px; }
+.rotulo { font: 500 11px var(--f-texto); color: var(--apagado); text-transform: uppercase; letter-spacing: .08em; }
+.res { display: inline-flex; gap: 6px; align-items: center; }
+.res input { font: 500 13px var(--f-texto); background: var(--fundo); color: var(--tinta); border: 1px solid var(--linha); border-radius: 8px; padding: 6px 8px; color-scheme: dark; }
+.cena { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; }
+.mapa { position: relative; background: #08090A; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; min-height: 0; }
+.mapa svg { display: block; width: 100%; height: min(74vh, 860px); }
+.selo { position: absolute; left: 12px; top: 10px; display: grid; gap: 1px; pointer-events: none;
+  background: rgba(13, 15, 17, .8); border: 1px solid var(--linha); border-radius: 8px; padding: 8px 12px; }
+.selo .data { font: 700 24px/1 var(--f-titulo); }
+.selo .med { font: 500 12px var(--f-dado); color: var(--apagado); }
+.aviso { position: absolute; right: 12px; top: 10px; max-width: 46%; font-size: 12px; background: rgba(13, 15, 17, .8);
+  border: 1px solid var(--linha); border-radius: 8px; padding: 7px 10px; color: var(--tinta); pointer-events: none; }
+.aviso b { font-weight: 600; }
+aside { background: var(--painel); border: 1px solid var(--linha); border-radius: 10px; padding: 14px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.numeros { display: grid; gap: 11px; }
+.num { display: grid; gap: 4px; }
+.num .v { font: 600 21px/1.1 var(--f-titulo); font-variant-numeric: tabular-nums; }
+.num .v small { font: 400 12.5px var(--f-texto); color: var(--apagado); }
+.num .rotulo { display: flex; align-items: center; gap: 7px; }
+.num .rotulo i { display: inline-block; width: 18px; height: 0; border-top: 3px solid; }
+.barra { height: 6px; background: var(--linha); border-radius: 3px; overflow: hidden; display: flex; }
+.barra i { display: block; height: 100%; width: 0; background: var(--tinta); }
+.equipes { display: grid; gap: 7px; }
+.eq { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
+.eq .sw { width: 12px; height: 12px; border-radius: 3px; }
+.eq .onde { font: 500 12px var(--f-dado); color: var(--apagado); text-align: right; white-space: nowrap; }
+.eq.ativa .onde { color: var(--tinta); }
+.legenda { display: grid; gap: 6px; font-size: 12px; color: var(--apagado); }
+.legenda .l { display: flex; align-items: center; gap: 8px; }
+.legenda .tr { width: 22px; height: 0; border-top: 3px solid; flex: none; }
+.legenda .tr.trac { border-top: 2px dashed; }
+.legenda svg { flex: none; }
+.tempo { background: var(--painel); border: 1px solid var(--linha); border-radius: 10px; padding: 10px 14px 12px; display: grid; gap: 6px; }
+.tempo .linha1 { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.play { font: 600 14px var(--f-texto); background: var(--tinta); color: var(--fundo); border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; min-width: 132px; }
+.play.sec { background: transparent; color: var(--tinta); border: 1px solid var(--linha); min-width: 0; }
+select { font: 500 13px var(--f-texto); background: var(--fundo); color: var(--tinta); border: 1px solid var(--linha); border-radius: 8px; padding: 7px 8px; }
+.trilho { position: relative; height: 92px; }
+.trilho svg { position: absolute; inset: 0 0 22px 0; width: 100%; height: 70px; }
+.trilho input[type=range] { position: absolute; left: 0; right: 0; bottom: 14px; width: 100%; margin: 0; accent-color: var(--tinta); background: transparent; }
+.meses { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; font: 500 10px var(--f-dado); color: var(--apagado); }
+.meses span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.nota { font-size: 12px; color: var(--apagado); margin: 0; }
+.nota i { display: inline-block; width: 16px; height: 0; border-top: 2px dashed; vertical-align: middle; margin: 0 4px 0 2px; }
+@media (max-width: 900px) {
+  .cena { grid-template-columns: minmax(0, 1fr); }
+  .mapa svg { height: auto; aspect-ratio: .78; max-height: 78vh; }
+  .meses span.fora { display: none; }
+  .selo { left: 8px; top: 8px; padding: 6px 9px; }
+  .selo .data { font-size: 18px; }
+  .selo .med { font-size: 11px; }
+  .aviso { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .cabeca { animation: none !important; } }
+.cabeca { animation: pulsa 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes pulsa { 50% { opacity: .55; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div>
+      <h1>Avanço da obra Morro da Cruz</h1>
+      <p class="sub">CT 10.239/2026 · REV01 (30/10/2026), cenário B, 90 m/dia · a obra sai do reservatório da Zona 11 e sobe com a rede, para que cada trecho pronto já fique ligado a ele</p>
+    </div>
+    <div class="chaves">
+      <span class="rotulo">Cor</span>
+      <div class="grupo" role="group" aria-label="Cor dos trechos">
+        <button type="button" id="corSit" aria-pressed="true">Por situação</button>
+        <button type="button" id="corEq" aria-pressed="false">Por equipe</button>
+      </div>
+      <label class="res"><span class="rotulo">Operação do reservatório</span><input type="date" id="dataRes" min="2026-10-01" max="2029-12-31" aria-describedby="notaRes"></label>
+      <button type="button" class="play sec" id="limparRes">Limpar</button>
+    </div>
+  </header>
+
+  <div class="cena">
+    <div class="mapa">
+      <svg id="mapa" role="img" aria-label="Mapa da obra com a situação de cada trecho na data escolhida"></svg>
+      <div class="selo"><span class="data" id="data">-</span><span class="med" id="med">-</span></div>
+      <div class="aviso" id="aviso" hidden></div>
+    </div>
+    <aside>
+      <div class="numeros">
+        <div class="num"><span class="rotulo">Rede executada</span><span class="v" id="vRede">-</span><div class="barra" id="bRede"></div></div>
+        <div class="num"><span class="rotulo"><i id="swLig"></i>Ligada ao reservatório</span><span class="v" id="vLig">-</span></div>
+        <div class="num"><span class="rotulo"><i id="swNl"></i>Pronta e não ligada</span><span class="v" id="vNl">-</span></div>
+        <div class="num"><span class="rotulo"><i id="swCarga"></i>Em carga</span><span class="v" id="vCarga">-</span></div>
+        <div class="num"><span class="rotulo">Ligações prediais</span><span class="v" id="vLigp">-</span></div>
+        <div class="num"><span class="rotulo">Caixas hidráulicas</span><span class="v" id="vCx">-</span></div>
+        <div class="num"><span class="rotulo">Faturamento acumulado (P0)</span><span class="v" id="vFat">-</span><div class="barra"><i id="bFat"></i></div></div>
+      </div>
+      <div class="equipes" id="equipes"></div>
+      <div class="legenda" id="legenda"></div>
+    </aside>
+  </div>
+
+  <div class="tempo">
+    <div class="linha1">
+      <div class="chaves">
+        <button type="button" class="play" id="play">▶ Reproduzir</button>
+        <button type="button" class="play sec" id="inicio">Do início</button>
+        <label class="rotulo" for="vel">Velocidade</label>
+        <select id="vel"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+      </div>
+      <p class="nota" id="notaCen">-</p>
+    </div>
+    <div class="trilho">
+      <svg id="fatura" viewBox="0 0 1000 70" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <input type="range" id="t" min="0" max="578" step="0.25" value="300" aria-label="Data">
+      <div class="meses" id="meses"></div>
+    </div>
+    <p class="nota" id="notaRes">-</p>
+  </div>
+</div>
+
+<script>
+const DADOS = __DADOS__;
+const C = DADOS.cen;
+const COR_EQ = Object.fromEntries(DADOS.equipes.map(e => [e.id, e.cor]));
+const SIT = Object.fromEntries(DADOS.situacoes.map(s => [s.id, s.cor]));
+const NOME_SIT = Object.fromEntries(DADOS.situacoes.map(s => [s.id, s.nome]));
+const LIN = DADOS.linhas, TINTA = '#EEF1F3', FUNDO = '#0D0F11';
+const FORMAS = {
+  DF: 'M-6.5 -5H6.5L0 6.5Z', VTF: 'M0 -6.5L6.5 5H-6.5Z', VM: 'M-5.5 -5.5H5.5V5.5H-5.5Z', VRP: 'M0 -7L7 0L0 7L-7 0Z',
+  MV: 'M-3.3 -6H3.3L6.6 0L3.3 6H-3.3L-6.6 0Z', HID: 'M-2.2 -6.5H2.2V-2.2H6.5V2.2H2.2V6.5H-2.2V2.2H-6.5V-2.2H-2.2Z' };
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const P0 = 49878748.66, KM = DADOS.trechos.reduce((s, t) => s + t.L, 0) / 1000, LIG = 11894;
+const NS = 'http://www.w3.org/2000/svg';
+const $ = s => document.querySelector(s);
+const el = (tag, at, pai) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); if (pai) pai.appendChild(e); return e; };
+const pts = p => { let s = ''; for (let i = 0; i < p.length; i += 2) s += p[i] + ',' + p[i + 1] + ' '; return s; };
+const caminho = partes => partes.map(p => { let s = 'M' + p[0] + ' ' + p[1]; for (let i = 2; i < p.length; i += 2) s += 'L' + p[i] + ' ' + p[i + 1]; return s; }).join('');
+const ehSub = t => t.de >= 200 || t.z === 'ADUTORA';
+const frenteDe = t => ehSub(t) ? 'Adutora' : t.z;
+const nomeFrente = z => z === 'Adutora' ? 'Subadutora' : z.replace('Zona', 'Zona ');
+const dataDe = d => { const x = new Date(Date.UTC(2026, 9, 1) + d * 86400000); return x.getUTCDate() + ' ' + MESES[x.getUTCMonth()] + ' ' + x.getUTCFullYear(); };
+const brl = v => 'R$ ' + (v / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' mi';
+const num = (v, d = 0) => v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+/* ---------- mapa ---------- */
+const svg = $('#mapa');
+let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+DADOS.zonas.forEach(z => { for (let i = 0; i < z.p.length; i += 2) { x0 = Math.min(x0, z.p[i]); x1 = Math.max(x1, z.p[i]); y0 = Math.min(y0, z.p[i + 1]); y1 = Math.max(y1, z.p[i + 1]); } });
+const pad = 30;
+svg.setAttribute('viewBox', `${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`);
+svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+const defs = el('defs', {}, svg);
+const clip = el('clipPath', { id: 'corte' }, defs);
+DADOS.zonas.forEach(z => el('polygon', { points: pts(z.p) }, clip));
+const fundo = el('g', { 'clip-path': 'url(#corte)' }, svg);
+el('image', { href: DADOS.mosaico, x: 0, y: 0, width: DADOS.w, height: DADOS.h, preserveAspectRatio: 'none' }, fundo);
+el('rect', { x: 0, y: 0, width: DADOS.w, height: DADOS.h, fill: '#000', 'fill-opacity': '.52' }, fundo);
+// zonas sem cor: um véu neutro e o limite tracejado; o número de cada uma fica escrito
+const gZonas = el('g', { fill: TINTA, 'fill-opacity': '.03', stroke: 'none' }, svg);
+DADOS.zonas.forEach(z => el('polygon', { points: pts(z.p) }, gZonas));
+const gLim = el('g', { fill: 'none', stroke: TINTA, 'stroke-opacity': '.5' }, svg);
+DADOS.zonas.forEach(z => el('polygon', { points: pts(z.p), class: 'lim' }, gLim));
+const base = el('path', { d: caminho(DADOS.trechos.flatMap(t => t.p)), fill: 'none', stroke: SIT.nao_iniciado, 'stroke-opacity': '.8', 'stroke-linecap': 'round', class: 'base' }, svg);
+const gTr = el('g', { fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svg);
+const trEl = DADOS.trechos.map(t => el('path', { d: caminho(t.p), class: ehSub(t) ? 'tr sub' : 'tr', visibility: 'hidden' }, gTr));
+const comp = trEl.map(p => p.getTotalLength() || 1);
+trEl.forEach((p, k) => { p.setAttribute('stroke-dasharray', comp[k] + ' ' + (comp[k] + 1)); p.setAttribute('stroke-dashoffset', comp[k]); });
+const gCx = el('g', {}, svg);
+const cxEl = C.caixas.map(c => el('path', { d: FORMAS[c[2]] || FORMAS.VM, class: 'cx', visibility: 'hidden' }, gCx));
+// o reservatório: dois tanques entre as saídas, e um ponto em cada saída
+const R = DADOS.reservatorio;
+const gRes = el('g', {}, svg);
+const resSaidas = R.saidas.map(s => el('circle', { cx: s.xy[0], cy: s.xy[1], fill: TINTA, stroke: FUNDO }, gRes));
+const tanques = [-1, 1].map(lado => el('circle', { fill: FUNDO, stroke: TINTA }, gRes));
+const resRot = el('text', { 'text-anchor': 'start', 'font-family': 'IBM Plex Sans, sans-serif', 'font-weight': '600', fill: TINTA, stroke: FUNDO, 'paint-order': 'stroke' }, gRes);
+resRot.textContent = 'Reservatório';
+const gCab = el('g', {}, svg);
+const cab = {};
+['ANK1', 'E1A', 'E1B', 'E2C', 'E2D'].forEach(eq => { cab[eq] = el('circle', { r: 5, class: 'cabeca', visibility: 'hidden' }, gCab); });
+const gNomes = el('g', { 'text-anchor': 'middle', 'font-family': 'Archivo Narrow, IBM Plex Sans, sans-serif', 'font-weight': '700', fill: TINTA, stroke: FUNDO, 'paint-order': 'stroke' }, svg);
+const nomesEl = DADOS.nomes.map(n => {
+  const tx = el('text', { x: n.x, y: n.y }, gNomes);
+  const a = el('tspan', { x: n.x }, tx); a.textContent = nomeFrente(n.id);
+  const b = el('tspan', { x: n.x, 'font-weight': '500', 'fill-opacity': '.75' }, tx); b.textContent = n.ordem != null ? `${n.ordem}ª da água` : '';
+  return { tx, b };
+});
+
+/* ---------- estado ---------- */
+let MODO = 'situacao', T = 300, tocando = false, ult = 0, RES_DIA = null;
+const porEq = {};
+C.trechos.forEach(r => { (porEq[r[3]] = porEq[r[3]] || []).push(r); });
+Object.values(porEq).forEach(l => l.sort((a, b) => a[1] - b[1]));
+const cache = trEl.map(() => ({ p: -1, cor: '' }));
+const nCam = C.caixas.filter(c => c[8]).length;
+// as larguras em pixels de tela: o mapa encaixa no espaço e as linhas não engrossam no celular
+function escala() {
+  const vb = svg.viewBox.baseVal, r = svg.getBoundingClientRect();
+  const k = Math.max(vb.width / r.width, vb.height / r.height) || 3;
+  base.setAttribute('stroke-width', 0.9 * k); base.setAttribute('stroke-dasharray', `${4 * k} ${4 * k}`);
+  trEl.forEach(p => p.setAttribute('stroke-width', (p.classList.contains('sub') ? 3.4 : 2.2) * k));
+  gLim.setAttribute('stroke-width', 1.1 * k); gLim.setAttribute('stroke-dasharray', `${6 * k} ${5 * k}`);
+  Object.values(cab).forEach(c => { c.setAttribute('r', 5 * k); c.setAttribute('stroke-width', 1.5 * k); });
+  cxEl.forEach((p, i) => { const c = C.caixas[i]; p.setAttribute('transform', `translate(${c[0]} ${c[1]}) scale(${0.85 * k})`); p.setAttribute('stroke-width', 1.2 / 0.85); });
+  resSaidas.forEach(c => { c.setAttribute('r', 2.6 * k); c.setAttribute('stroke-width', 1 * k); });
+  tanques.forEach((c, i) => { c.setAttribute('cx', R.xy[0] + (i ? 1 : -1) * 6.5 * k); c.setAttribute('cy', R.xy[1]); c.setAttribute('r', 6 * k); c.setAttribute('stroke-width', 2 * k); });
+  resRot.setAttribute('x', R.xy[0] + 15 * k); resRot.setAttribute('y', R.xy[1] + 4 * k); resRot.setAttribute('font-size', 12 * k); resRot.setAttribute('stroke-width', 3 * k);
+  gNomes.setAttribute('font-size', 15 * k); gNomes.setAttribute('stroke-width', 3.2 * k);
+  nomesEl.forEach(n => { n.b.setAttribute('dy', 12 * k); n.b.setAttribute('font-size', 10.5 * k); });
+}
+
+/* ---------- desenho do dia ---------- */
+function desenhar(tudo) {
+  const t = T, res = RES_DIA;
+  let km = 0, kmLig = 0, kmNl = 0, kmCarga = 0, nNl = 0, lig = 0, cxCiv = 0, cxHid = 0, cxCam = 0, fat = 0;
+  for (const r of C.trechos) {
+    const [k, s, e, eq, lg, li, pc] = r;
+    const L = DADOS.trechos[k].L;
+    const prog = t <= s ? 0 : t >= e ? 1 : (t - s) / (e - s);
+    km += L * prog;
+    if (lg) { const s2 = s + 7, e2 = e + 7; lig += lg * (t <= s2 ? 0 : t >= e2 ? 1 : (t - s2) / (e2 - s2)); }
+    let sit = 'execucao';
+    if (prog >= 1) {
+      if (t < li) { sit = 'nao_ligado'; kmNl += L; nNl++; }
+      else if (res != null && t >= Math.max(res, pc)) { sit = 'carga'; kmCarga += L; kmLig += L; }
+      else { sit = 'ligado'; kmLig += L; }
+    }
+    const cor = MODO === 'equipe' ? COR_EQ[eq] : SIT[sit];
+    const c = cache[k];
+    if (tudo || c.p !== prog || c.cor !== cor) {
+      const p = trEl[k];
+      if (prog <= 0) p.setAttribute('visibility', 'hidden');
+      else { p.setAttribute('visibility', 'visible'); p.setAttribute('stroke-dashoffset', comp[k] * (1 - prog)); p.setAttribute('stroke', cor); }
+      c.p = prog; c.cor = cor;
+    }
+  }
+  // a ponta de cada equipe: onde ela está assentando agora
+  const onde = {};
+  ['ANK1', 'E1A', 'E1B', 'E2C', 'E2D'].forEach(eq => {
+    const l = porEq[eq] || [];
+    const at = l.find(r => r[1] <= t && t < r[2]);
+    const c = cab[eq];
+    c.setAttribute('fill', MODO === 'equipe' ? COR_EQ[eq] : TINTA);
+    c.setAttribute('stroke', MODO === 'equipe' ? '#fff' : FUNDO);
+    if (at) {
+      const k = at[0], prog = (t - at[1]) / (at[2] - at[1]);
+      const pt = trEl[k].getPointAtLength(comp[k] * prog);
+      c.setAttribute('cx', pt.x); c.setAttribute('cy', pt.y); c.setAttribute('visibility', 'visible');
+      onde[eq] = nomeFrente(frenteDe(DADOS.trechos[k]));
+    } else {
+      c.setAttribute('visibility', 'hidden');
+      const antes = l.length && t < l[0][1], depois = l.length && t >= l[l.length - 1][2];
+      onde[eq] = antes ? 'ainda não entrou' : depois ? 'terminou' : 'entre frentes';
+    }
+  });
+  C.caixas.forEach((c, i) => {
+    const p = cxEl[i];
+    if (t < c[3]) { p.setAttribute('visibility', 'hidden'); return; }
+    p.setAttribute('visibility', 'visible');
+    if (t >= c[4]) cxCiv++;
+    if (t >= c[6]) { cxHid++; if (c[8]) cxCam++; p.setAttribute('fill', DADOS.caixa.montada); p.setAttribute('stroke', FUNDO); }
+    else if (t >= c[4]) { p.setAttribute('fill', DADOS.caixa.pronta); p.setAttribute('stroke', FUNDO); }
+    else { p.setAttribute('fill', 'none'); p.setAttribute('stroke', TINTA); }
+  });
+  const ativosCx = C.caixas.some(c => (c[3] <= t && t < c[4]) || (c[5] <= t && t < c[6]));
+  onde.ANK2 = t < C.caixas.reduce((m, c) => Math.min(m, c[3]), 1e9) ? 'ainda não entrou' : ativosCx ? 'caixas' : 'entre caixas';
+  // o reservatório: com água só depois da data de operação, se houver
+  const agua = res != null && t >= res;
+  tanques.forEach(c => c.setAttribute('fill', agua ? SIT.carga : FUNDO));
+  for (let k = 0; k < C.meses.length; k++) {
+    const [, a, b] = C.meses[k];
+    if (t >= b) fat += C.fat[k]; else if (t > a) fat += C.fat[k] * (t - a) / (b - a);
+  }
+  const mes = C.meses.find(m => m[1] <= t && t <= m[2]);
+  $('#data').textContent = dataDe(t);
+  $('#med').textContent = mes ? `${mes[0]}ª medição · ${mes[3]}` + (t > DADOS.marcos.prazo ? ' · depois do prazo' : '') : 'depois da obra';
+  $('#vRede').innerHTML = `${num(km / 1000, 1)} km <small>de ${num(KM, 1)} km</small>`;
+  const kmExec = km / 1000 - (kmLig + kmNl) / 1000;
+  const barra = $('#bRede'); barra.innerHTML = '';
+  [[kmCarga, 'carga'], [kmLig - kmCarga, 'ligado'], [kmNl, 'nao_ligado'], [Math.max(0, kmExec * 1000), 'execucao']].forEach(([v, s]) => {
+    const i = document.createElement('i'); i.style.width = (100 * v / 1000 / KM) + '%'; i.style.background = SIT[s]; barra.appendChild(i); });
+  $('#vLig').innerHTML = `${num(kmLig / 1000, 1)} km <small>prontos e ligados</small>`;
+  $('#vNl').innerHTML = `${num(kmNl / 1000, 2)} km <small>${nNl} trecho${nNl === 1 ? '' : 's'}</small>`;
+  $('#vCarga').innerHTML = res == null ? `0 km <small>sem a data do reservatório, nada entra em carga</small>` : `${num(kmCarga / 1000, 1)} km <small>${agua ? 'com água do reservatório' : 'o reservatório ainda não opera'}</small>`;
+  $('#vLigp').innerHTML = `${num(lig)} <small>de ${num(LIG)}</small>`;
+  $('#vCx').innerHTML = `${cxCiv} <small>prontas · ${cxHid} montadas de ${C.caixas.length} · do caminho da água: ${cxCam} de ${nCam}</small>`;
+  $('#vFat').innerHTML = `${brl(fat)} <small>${num(100 * fat / P0, 1)}% do contrato</small>`;
+  $('#bFat').style.width = (100 * fat / P0) + '%';
+  document.querySelectorAll('.eq').forEach(d => {
+    const eq = d.dataset.eq, txt = onde[eq] || '-';
+    d.querySelector('.onde').textContent = txt;
+    d.classList.toggle('ativa', !/ainda|terminou|entre/.test(txt));
+  });
+  avisar(t, res);
+  $('#t').value = t;
+  const fimEixo = DADOS.marcos.fim_eixo;
+  const cur = $('#cursor'); if (cur) { const xv = 1000 * t / fimEixo; cur.setAttribute('x1', xv); cur.setAttribute('x2', xv); }
+  document.querySelectorAll('#fatura .bar').forEach((b, k) => b.setAttribute('fill-opacity', C.meses[k][1] <= t ? '1' : '.35'));
+}
+function avisar(t, res) {
+  const a = $('#aviso');
+  const m = DADOS.marcos;
+  let msg = '';
+  if (res != null && t >= res && t < res + 12) msg = '<b>Reservatório em operação:</b> a rede ligada a ele, testada, interligada e com as caixas do caminho montadas entra em carga.';
+  else if (t < 46) msg = '<b>Out/26:</b> só o canteiro e a NS de topografia. O reservatório ainda vai ser licitado: sem data de operação.';
+  else if (t < m.reajuste) msg = '<b>Pé alto até o reajuste:</b> a Equipe Adutora, a 60 m/dia, na Zona 11, junto da saída do reservatório: DE 160, depois DE 225 e DE 90/110.';
+  else if (t < m.reajuste + 20) msg = '<b>Reajuste em 01/02/2027:</b> a Equipe Adutora começa a Subadutora pelo TR005, a saída do reservatório, e vai para fora; o Empreiteiro 1 segue na Zona 11.';
+  else if (t >= 182 && t < 200) msg = '<b>Abr/27:</b> o Empreiteiro 2 entra com 2 equipes. Cada equipe pega o bloco já ligado ao reservatório, na ordem em que a água chega.';
+  else if (t >= 273 && t < 290) msg = '<b>Jul/27:</b> começa a montagem do hidromecânico, com as caixas do caminho da água primeiro.';
+  else if (t >= m.prazo - 6 && t <= m.prazo + 4) msg = '<b>Término contratual:</b> 23/03/2028.';
+  a.innerHTML = msg; a.hidden = !msg;
+}
+
+/* ---------- régua do tempo ---------- */
+function desenharFatura() {
+  const f = $('#fatura'); f.innerHTML = '';
+  const fim = DADOS.marcos.fim_eixo, max = Math.max(...C.fat);
+  C.meses.forEach((m, k) => {
+    const xa = 1000 * m[1] / fim, xb = 1000 * Math.min(m[2], fim) / fim, h = 62 * C.fat[k] / max;
+    el('rect', { x: xa + 1.5, y: 66 - h, width: Math.max(1, xb - xa - 3), height: h, rx: 1.5, fill: m[1] > DADOS.marcos.prazo ? LIN.termino : '#98A1AA', class: 'bar' }, f);
+  });
+  const linhas = [[DADOS.marcos.reajuste, LIN.reajuste], [DADOS.marcos.prazo, LIN.termino]];
+  if (RES_DIA != null) linhas.push([RES_DIA, SIT.carga]);
+  linhas.forEach(([d, cor]) => {
+    const xv = 1000 * d / fim; el('line', { x1: xv, x2: xv, y1: 0, y2: 70, stroke: cor, 'stroke-width': 2, 'stroke-dasharray': '4 3', 'vector-effect': 'non-scaling-stroke' }, f);
+  });
+  el('line', { id: 'cursor', x1: 0, x2: 0, y1: 0, y2: 70, stroke: LIN.cursor, 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke' }, f);
+  const ms = $('#meses'); ms.innerHTML = '';
+  C.meses.forEach((m, k) => { const s = document.createElement('span'); s.textContent = m[3]; s.style.left = (100 * ((m[1] + m[2]) / 2) / fim) + '%'; if (k % 3) s.className = 'fora'; ms.appendChild(s); });
+  $('#notaRes').innerHTML = `Barras: faturamento programado de cada medição (P0). <i style="border-color:${LIN.reajuste}"></i>reajuste em 01/02/2027. <i style="border-color:${LIN.termino}"></i>término contratual em 23/03/2028.` +
+    (RES_DIA != null ? ` <i style="border-color:${SIT.carga}"></i>operação do reservatório em ${dataDe(RES_DIA)} (simulação).` : ' O reservatório ainda não tem data: informe uma acima para simular a entrada em carga.');
+}
+
+/* ---------- painel e controles ---------- */
+function equipes() {
+  // por situação, a ponta de cada equipe no mapa é um ponto claro (a cor fica para a situação dos trechos)
+  $('#equipes').innerHTML = '<span class="rotulo">Onde cada equipe está</span>' + DADOS.equipes.map(e =>
+    `<div class="eq" data-eq="${e.id}"><span class="sw" style="${MODO === 'equipe' ? `background:${e.cor}` : `background:${TINTA};border-radius:50%;transform:scale(.7)`}"></span><span>${e.nome}</span><span class="onde">-</span></div>`).join('');
+}
+function legenda() {
+  const linha = (cor, txt, trac) => `<div class="l"><span class="tr${trac ? ' trac' : ''}" style="border-color:${cor}"></span>${txt}</div>`;
+  const tanque = `<svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="${FUNDO}" stroke="${TINTA}" stroke-width="1.6"/><circle cx="16" cy="6" r="5" fill="${FUNDO}" stroke="${TINTA}" stroke-width="1.6"/></svg>`;
+  $('#legenda').innerHTML = '<span class="rotulo">Legenda</span>' + (MODO === 'equipe'
+    ? linha(TINTA, 'trecho assentado, na cor da equipe que executa')
+    : ['execucao', 'nao_ligado', 'ligado', 'carga'].map(s => linha(SIT[s], NOME_SIT[s])).join(''))
+    + linha(SIT.nao_iniciado, 'ainda não iniciado', true)
+    + `<div class="l">${tanque}reservatório da Zona 11 e as 4 saídas (TR005 e TR006, DE 500; TR080 e TR077, DE 225)</div>`
+    + `<div class="l">▼ ▲ ■ ◆ ⬡ ✚ caixas DF, VTF, VM, VRP, MV, HID: contorno na obra civil, cinza pronta, branca montada</div>`
+    + '<div class="l">Zonas sem cor: o nome e a ordem em que a água chega ficam escritos no mapa.</div>';
+  ['Lig', 'Nl', 'Carga'].forEach((n, i) => { $('#sw' + n).style.borderColor = SIT[['ligado', 'nao_ligado', 'carga'][i]]; });
+}
+function tocar(sim) { tocando = sim; $('#play').textContent = sim ? '❚❚ Pausar' : '▶ Reproduzir'; if (sim) { ult = performance.now(); requestAnimationFrame(passo); } }
+function passo(agora) {
+  if (!tocando) return;
+  const dt = Math.min(0.1, (agora - ult) / 1000); ult = agora;
+  T = Math.min(DADOS.marcos.fim_eixo, T + dt * 14.5 * +$('#vel').value);
+  desenhar(false);
+  if (T >= DADOS.marcos.fim_eixo) return tocar(false);
+  requestAnimationFrame(passo);
+}
+$('#play').onclick = () => { if (!tocando && T >= DADOS.marcos.fim_eixo) T = 0; tocar(!tocando); };
+$('#inicio').onclick = () => { T = 0; desenhar(false); tocar(true); };
+$('#t').max = DADOS.marcos.fim_eixo;
+$('#t').addEventListener('input', e => { T = +e.target.value; desenhar(false); });
+document.addEventListener('keydown', e => { if (e.code === 'Space' && !['SELECT', 'BUTTON', 'INPUT'].includes(e.target.tagName)) { e.preventDefault(); $('#play').click(); } });
+const escolher = (a, b, fn) => { a.onclick = () => { a.setAttribute('aria-pressed', 'true'); b.setAttribute('aria-pressed', 'false'); fn(); }; };
+escolher($('#corSit'), $('#corEq'), () => { MODO = 'situacao'; equipes(); legenda(); desenhar(true); });
+escolher($('#corEq'), $('#corSit'), () => { MODO = 'equipe'; equipes(); legenda(); desenhar(true); });
+function lerData() {
+  const v = $('#dataRes').value;
+  if (!v) RES_DIA = null;
+  else { const [a, m, d] = v.split('-').map(Number); RES_DIA = (Date.UTC(a, m - 1, d) - Date.UTC(2026, 9, 1)) / 86400000; }
+  desenharFatura(); desenhar(true);
+}
+$('#dataRes').addEventListener('change', lerData);
+$('#limparRes').onclick = () => { $('#dataRes').value = ''; lerData(); };
+$('#notaCen').textContent = `REV01, cenário B: 90 m/dia · fim da obra em ${C.fim_txt}` + (C.fim <= DADOS.marcos.prazo + 1 ? ', no prazo.' : `, ${Math.round(C.fim - DADOS.marcos.prazo)} dias depois do prazo.`);
+new ResizeObserver(() => escala()).observe(svg);
+equipes();
+legenda();
+escala();
+desenharFatura();
+desenhar(true);
+</script>
+
+</body>
+</html>

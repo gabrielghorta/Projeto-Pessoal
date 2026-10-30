@@ -25,10 +25,11 @@ responsável gosta de receber o trabalho. A lista completa e oficial das decisõ
 | #18 | 29/10 | claude/mapa-foco-zona | Foco por zona como no HTML; Dados da obra igual ao Mapa iluminado, seleção só na zona (D-185, D-186) | **aberto** |
 | #19 | 29/10 | claude/compras-requerimentos | Requerimentos em Compras; transferência, inventário e reservas vencidas no Estoque (D-187). Empilhado sobre o #18 | **aberto** |
 | #20 | 30/10 | claude/skill-continuidade | Esta skill reorganizada e o motor do cronograma no repositório. Empilhado sobre o #19 | **aberto** |
-| — | 30/10 | claude/pensive-lamport-szymez | Revisão do código inteiro e dos PRs #18 a #20: 69 correções (segurança do servidor, medição, compras e estoque, NS, campo, importação, telas, cronograma) e as regras D-188 a D-195 (`docs/CORRECOES_REVISAO_30-10-2026.md`). Empilhado sobre o #20 | PR novo |
+| #21 | 30/10 | claude/cronograma-rev01 | REV01 do cronograma (só o cenário B): a obra sai do reservatório da Zona 11; grafo da água, carga, aba CARGA, marcos no Project, Gantt e animação novos. Empilhado sobre o #20 | **aberto** |
+| — | 30/10 | claude/pensive-lamport-szymez | Revisão do código inteiro e dos PRs #18 a #20: 69 correções (segurança do servidor, medição, compras e estoque, NS, campo, importação, telas, cronograma) e as regras D-188 a D-195 (`docs/CORRECOES_REVISAO_30-10-2026.md`). Empilhado sobre o #21 | PR novo |
 
-Os PRs empilhados devem ser mesclados na ordem (#18, #19, #20, depois o da revisão). Fora do Git, em 29/10/2026: o
-cronograma físico executivo base (dois cenários) e a animação (`cronograma-executivo.md`).
+Os PRs empilhados devem ser mesclados na ordem (#18, #19, #20, #21, depois o da revisão). Fora do Git: em 29/10/2026, o
+cronograma físico executivo base (dois cenários) e a animação; em 30/10/2026, a REV01 (`cronograma-executivo.md`).
 
 Existe também o repositório `gabrielghorta/morrodacruz_webapp` (cópia anterior, parada em 27/10/2026, com a skill
 `medicao-e-relatorio-mensal-caesb`, hoje em `modelo-lago-sul.md`). O site usa o `Projeto-Pessoal`.
@@ -67,9 +68,10 @@ aviso · ADM congelada no fechamento · equipe do usuário preso à equipe sempr
 
 ## Pendências e próximos passos
 
-1. Mesclar #18, #19, #20 e o PR da revisão do código; rodar o comando de atualização do site.
-2. Cronograma: o responsável valida os 7 pontos (`cronograma-executivo.md`) e pede a REV01; depois, ligar o
-   cronograma ao executado (% por trecho, linha de status, "REV nn - nª MEDIÇÃO").
+1. Mesclar #18, #19, #20, #21 e o PR da revisão do código; rodar o comando de atualização do site.
+2. Cronograma REV01: confirmar as 4 saídas do reservatório com a Caesb e o engenheiro sênior, preencher a data de
+   operação quando houver, decidir o aluguel de contêiner (82,1 % do item); depois, ligar o cronograma ao executado
+   (% por trecho, linha de status, "REV nn - nª MEDIÇÃO").
 3. Relatório mensal em Word (fase 2), com a tela "Dados do contrato", a presença diária e as imagens fixas.
 4. Documento da juntada (ordem das peças, folha de rosto, ofício): pedir de novo ao responsável.
 5. Decisões que liberam a medição oficial (D-30, D-31, D-50 a D-57) e a importação real (D-01).

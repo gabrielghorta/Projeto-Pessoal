@@ -25,7 +25,7 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
 | `references/webapp.md` | for mexer no web app: ciclo, arquitetura, mapa do código, banco, importação, trecho físico, perfis, execução, almoxarifado e compras, mapas, regras do repositório |
 | `references/medicao-caesb.md` | o assunto for medição: cálculo do contrato, gavetas, conferência, reajuste, administração local, o pacote mensal no BM REV04 |
 | `references/modelo-lago-sul.md` | precisar do formato completo do pacote e do relatório mensal da Ankara (modelo do Lago Sul) |
-| `references/cronograma-executivo.md` | o assunto for o cronograma físico executivo base: premissas, decisões, resultados, como gerar de novo, abrir no Project |
+| `references/cronograma-executivo.md` | o assunto for o cronograma físico executivo (REV01: a obra sai do reservatório; REV00): premissas, decisões, resultados, como gerar de novo, abrir no Project |
 | `references/historico-e-pendencias.md` | quiser saber o que já foi feito (PRs), as decisões recentes, o que falta e o jeito de trabalhar com o responsável |
 | `scripts/zerar_dados_de_teste.sh` | o responsável pedir para zerar os dados de teste do site |
 
@@ -36,10 +36,13 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
 - **Abertos, empilhados (mesclar nesta ordem):** #18 foco por zona e Dados da obra igual ao Mapa iluminado
   (D-185, D-186) → #19 requerimentos de material em Compras e almoxarifado no Estoque (D-187) → #20 esta skill
   (`claude/skill-continuidade`: skill reorganizada e o motor do cronograma em `morro-da-cruz/cronograma_executivo/`) →
-  a revisão do código (`claude/pensive-lamport-szymez`: 69 correções e as regras D-188 a D-195;
+  #21 a REV01 do cronograma (`claude/cronograma-rev01`) → a revisão do código (`claude/pensive-lamport-szymez`: 69 correções e as regras D-188 a D-195;
   `morro-da-cruz/docs/CORRECOES_REVISAO_30-10-2026.md`).
 - **Fora do site, entregue em 29/10/2026:** cronograma físico executivo base, cenários A (95 m/dia, fim 23/03/2028) e
   B (90 m/dia, fim 12/04/2028), em xlsx, XML do Project e Gantt em PDF; animação do Mapa iluminado em HTML.
+- **REV01 do cronograma, 30/10/2026 (a que vale):** só o cenário B; a obra sai do reservatório da Zona 11 (4 saídas, a
+  confirmar com a Caesb); fim em 20/03/2028; reservatório sem data (célula amarela em branco). PR
+  `claude/cronograma-rev01`, empilhado no da skill.
 - **Banco no site:** o de demonstração (`dados_demo/`, faixa DEMONSTRAÇÃO). A importação real espera a D-01.
 - **Medição:** só de TESTE (D-56). O pacote mensal no BM REV04 já é gerado com a marca "TESTE – NÃO OFICIAL".
 - **Próximos passos:** `references/historico-e-pendencias.md`.
@@ -119,6 +122,12 @@ Detalhes: `references/medicao-caesb.md`; formato do modelo da Ankara: `reference
 - Sete premissas ainda a validar pelo responsável (pé alto, Subadutora logo após o reajuste, 95 m/dia sem margem,
   produtividade igual em todo DE, tempos das caixas, MND, sem chuva e sem recesso).
 
+- **REV01 (30/10/2026):** só o cenário B; a obra sai do reservatório da Zona 11 e as zonas seguem a ordem da água
+  (11, 09, 07, 06, 10, 05, 08, 03, 02, 01, 04); pé alto no DE 160 da Zona 11, depois DE 225 e DE 90/110; Subadutora
+  do TR005 para fora; fim em 20/03/2028; R$ 2,85 mi até jan/2027; 34 trechos (2,09 km) prontos antes de ligados, com
+  o motivo. Ligado ao reservatório, entrada em carga e dias sem carga dependem da data de operação do reservatório,
+  em branco até a licitação.
+
 Detalhes, decisões e como abrir o XML no Project: `references/cronograma-executivo.md`.
 
 ## 6. Como trabalhar (regras permanentes)
@@ -166,7 +175,8 @@ cd ~/Projeto-Pessoal && git fetch origin claude/powerbi-modifications-wqxekj && 
 **Zerar os dados de teste do site:** o conteúdo de `scripts/zerar_dados_de_teste.sh` colado no mesmo console (apaga
 o que foi lançado, mantém usuários e planilhas, guarda cópia antes, para se houver banco oficial).
 
-**Refazer o cronograma:** `cd morro-da-cruz/cronograma_executivo && bash gerar_tudo.sh`.
+**Refazer o cronograma:** `cd morro-da-cruz/cronograma_executivo && bash gerar_tudo.sh` (REV00) ou
+`MPXJ=1 bash gerar_rev01.sh` (REV01, com as conferências).
 
 **Testes:** `cd morro-da-cruz && python -m unittest discover -s tests`.
 
