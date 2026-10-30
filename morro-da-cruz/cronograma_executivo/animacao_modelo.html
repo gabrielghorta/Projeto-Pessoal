@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avanço da obra Morro da Cruz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: o mapa iluminado ocupa a cena; à direita, o painel do dia; embaixo, a régua do tempo com o faturamento de cada medição.
+   Um só tema escuro, como o Mapa iluminado do sistema. */
+:root {
+  color-scheme: dark;
+  --fundo: #0D0F11;
+  --painel: #15181B;
+  --linha: #282D33;
+  --tinta: #EEF1F3;
+  --apagado: #98A1AA;
+  --destaque: #F15922;
+  --execucao: #F6936F;
+  --executado: #F7DC8B;
+  --carga: #82E4B6;
+  --nao: #B4B4B4;
+  --f-titulo: "Archivo Narrow", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-texto: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-dado: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+html, body { height: 100%; }
+body { background: var(--fundo); color: var(--tinta); font-family: var(--f-texto); font-size: 14px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 18px; }
+.app { display: grid; gap: 12px; max-width: 1500px; margin: 0 auto; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 24px; }
+h1 { font-family: var(--f-titulo); font-weight: 700; font-size: clamp(26px, 3.4vw, 38px); line-height: 1; margin: 0; letter-spacing: .2px; text-wrap: balance; }
+.sub { color: var(--apagado); margin: 4px 0 0; font-size: 13px; }
+.chaves { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.grupo { display: inline-flex; border: 1px solid var(--linha); border-radius: 8px; overflow: hidden; }
+.grupo button { font: 500 13px var(--f-texto); color: var(--apagado); background: transparent; border: 0; padding: 7px 12px; cursor: pointer; }
+.grupo button + button { border-left: 1px solid var(--linha); }
+.grupo button[aria-pressed="true"] { background: var(--tinta); color: var(--fundo); }
+.grupo button:focus-visible, .play:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--destaque); outline-offset: 2px; }
+.rotulo { font: 500 11px var(--f-texto); color: var(--apagado); text-transform: uppercase; letter-spacing: .08em; }
+.cena { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 12px; }
+.mapa { position: relative; background: #08090A; border: 1px solid var(--linha); border-radius: 10px; overflow: hidden; min-height: 0; }
+.mapa svg { display: block; width: 100%; height: min(74vh, 860px); }
+.selo { position: absolute; left: 12px; top: 10px; display: grid; gap: 1px; pointer-events: none;
+  background: rgba(13, 15, 17, .78); border: 1px solid var(--linha); border-radius: 8px; padding: 8px 12px; }
+.selo .data { font: 700 24px/1 var(--f-titulo); }
+.selo .med { font: 500 12px var(--f-dado); color: var(--apagado); }
+.aviso { position: absolute; right: 12px; top: 10px; max-width: 46%; font-size: 12px; background: rgba(13, 15, 17, .78);
+  border: 1px solid var(--linha); border-radius: 8px; padding: 7px 10px; color: var(--tinta); pointer-events: none; }
+.aviso b { color: var(--destaque); }
+aside { background: var(--painel); border: 1px solid var(--linha); border-radius: 10px; padding: 14px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.numeros { display: grid; gap: 12px; }
+.num { display: grid; gap: 4px; }
+.num .v { font: 600 22px/1.1 var(--f-titulo); font-variant-numeric: tabular-nums; }
+.num .v small { font: 400 13px var(--f-texto); color: var(--apagado); }
+.barra { height: 6px; background: var(--linha); border-radius: 3px; overflow: hidden; }
+.barra i { display: block; height: 100%; width: 0; background: var(--tinta); }
+.equipes { display: grid; gap: 7px; }
+.eq { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
+.eq .sw { width: 12px; height: 12px; border-radius: 3px; }
+.eq .onde { font: 500 12px var(--f-dado); color: var(--apagado); text-align: right; white-space: nowrap; }
+.eq.ativa .onde { color: var(--tinta); }
+.legenda { display: grid; gap: 6px; font-size: 12px; color: var(--apagado); }
+.legenda .l { display: flex; align-items: center; gap: 8px; }
+.legenda .tr { width: 22px; height: 0; border-top: 3px solid; }
+.legenda .tr.trac { border-top: 2px dashed var(--nao); }
+.tempo { background: var(--painel); border: 1px solid var(--linha); border-radius: 10px; padding: 10px 14px 12px; display: grid; gap: 6px; }
+.tempo .linha1 { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.play { font: 600 14px var(--f-texto); background: var(--destaque); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; min-width: 132px; }
+.play.sec { background: transparent; color: var(--tinta); border: 1px solid var(--linha); min-width: 0; }
+select { font: 500 13px var(--f-texto); background: var(--fundo); color: var(--tinta); border: 1px solid var(--linha); border-radius: 8px; padding: 7px 8px; }
+.trilho { position: relative; height: 92px; }
+.trilho svg { position: absolute; inset: 0 0 22px 0; width: 100%; height: 70px; }
+.trilho input[type=range] { position: absolute; left: 0; right: 0; bottom: 14px; width: 100%; margin: 0; accent-color: var(--destaque); background: transparent; }
+.meses { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; font: 500 10px var(--f-dado); color: var(--apagado); }
+.meses span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.nota { font-size: 12px; color: var(--apagado); margin: 0; }
+@media (max-width: 900px) {
+  .cena { grid-template-columns: minmax(0, 1fr); }
+  .mapa svg { height: auto; aspect-ratio: .78; max-height: 78vh; }
+  .meses span.fora { display: none; }
+  .selo { left: 8px; top: 8px; padding: 6px 9px; }
+  .selo .data { font-size: 18px; }
+  .selo .med { font-size: 11px; }
+  .aviso { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .cabeca { animation: none !important; } }
+.cabeca { animation: pulsa 1.2s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes pulsa { 50% { opacity: .55; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <div>
+      <h1>Avanço da obra Morro da Cruz</h1>
+      <p class="sub">CT 10.239/2026 · o Mapa iluminado dia a dia, pelo cronograma físico executivo base (REV00, 29/10/2026)</p>
+    </div>
+    <div class="chaves">
+      <span class="rotulo">Cenário</span>
+      <div class="grupo" role="group" aria-label="Cenário">
+        <button type="button" id="cenA" aria-pressed="true">A · prazo</button>
+        <button type="button" id="cenB" aria-pressed="false">B · 90 m/dia</button>
+      </div>
+      <span class="rotulo">Cor</span>
+      <div class="grupo" role="group" aria-label="Cor dos trechos">
+        <button type="button" id="corEq" aria-pressed="true">Por equipe</button>
+        <button type="button" id="corSit" aria-pressed="false">Por situação</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="cena">
+    <div class="mapa">
+      <svg id="mapa" role="img" aria-label="Mapa da obra com os trechos executados até a data escolhida"></svg>
+      <div class="selo"><span class="data" id="data">-</span><span class="med" id="med">-</span></div>
+      <div class="aviso" id="aviso" hidden></div>
+    </div>
+    <aside>
+      <div class="numeros">
+        <div class="num"><span class="rotulo">Rede assentada</span><span class="v" id="vRede">-</span><div class="barra"><i id="bRede"></i></div></div>
+        <div class="num"><span class="rotulo">Ligações prediais</span><span class="v" id="vLig">-</span><div class="barra"><i id="bLig"></i></div></div>
+        <div class="num"><span class="rotulo">Caixas hidráulicas</span><span class="v" id="vCx">-</span><div class="barra"><i id="bCx"></i></div></div>
+        <div class="num"><span class="rotulo">Frentes em carga</span><span class="v" id="vCarga">-</span></div>
+        <div class="num"><span class="rotulo">Faturamento acumulado (P0)</span><span class="v" id="vFat">-</span><div class="barra"><i id="bFat"></i></div></div>
+      </div>
+      <div class="equipes" id="equipes"></div>
+      <div class="legenda" id="legenda"></div>
+    </aside>
+  </div>
+
+  <div class="tempo">
+    <div class="linha1">
+      <div class="chaves">
+        <button type="button" class="play" id="play">▶ Reproduzir</button>
+        <button type="button" class="play sec" id="inicio">Do início</button>
+        <label class="rotulo" for="vel">Velocidade</label>
+        <select id="vel"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+      </div>
+      <p class="nota" id="notaCen">-</p>
+    </div>
+    <div class="trilho">
+      <svg id="fatura" viewBox="0 0 1000 70" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <input type="range" id="t" min="0" max="578" step="0.25" value="318" aria-label="Data">
+      <div class="meses" id="meses"></div>
+    </div>
+    <p class="nota">Barras: faturamento programado de cada medição (P0). Linha azul: reajuste em 01/02/2027. Linha vermelha: término contratual em 23/03/2028.</p>
+  </div>
+</div>
+
+<script>
+const DADOS = __DADOS__;
+const CORES = { ANK1: '#2a78d6', E1A: '#eb6834', E1B: '#1baf7a', E2C: '#eda100', E2D: '#e87ba4', ANK2: '#3fbf55' };
+const SIT = { exec: '#F6936F', feito: '#F7DC8B', carga: '#82E4B6' };
+const FORMAS = {
+  DF: 'M-6.5 -5H6.5L0 6.5Z', VTF: 'M0 -6.5L6.5 5H-6.5Z', VM: 'M-5.5 -5.5H5.5V5.5H-5.5Z', VRP: 'M0 -7L7 0L0 7L-7 0Z',
+  MV: 'M-3.3 -6H3.3L6.6 0L3.3 6H-3.3L-6.6 0Z', HID: 'M-2.2 -6.5H2.2V-2.2H6.5V2.2H2.2V6.5H-2.2V2.2H-6.5V-2.2H-2.2Z' };
+const COR_CX = { DF: '#0B7285', VTF: '#2B8A3E', VM: '#1971C2', VRP: '#9C36B5', MV: '#E67700', HID: '#C92A2A' };
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const P0 = 49878748.66, KM = DADOS.trechos.reduce((s, t) => s + t.L, 0) / 1000, LIG = 11894;
+const NS = 'http://www.w3.org/2000/svg';
+const $ = s => document.querySelector(s);
+const el = (tag, at, pai) => { const e = document.createElementNS(NS, tag); for (const k in at) e.setAttribute(k, at[k]); if (pai) pai.appendChild(e); return e; };
+const pts = p => { let s = ''; for (let i = 0; i < p.length; i += 2) s += p[i] + ',' + p[i + 1] + ' '; return s; };
+const caminho = partes => partes.map(p => { let s = 'M' + p[0] + ' ' + p[1]; for (let i = 2; i < p.length; i += 2) s += 'L' + p[i] + ' ' + p[i + 1]; return s; }).join('');
+const ehSub = t => t.de >= 200 || t.z === 'ADUTORA';
+const frenteDe = t => ehSub(t) ? 'Adutora' : t.z;
+const nomeFrente = z => z === 'Adutora' ? 'Subadutora' : z.replace('Zona', 'Zona ');
+const dataDe = d => { const x = new Date(Date.UTC(2026, 9, 1) + d * 86400000); return x.getUTCDate() + ' ' + MESES[x.getUTCMonth()] + ' ' + x.getUTCFullYear(); };
+const brl = v => 'R$ ' + (v / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' mi';
+const num = (v, d = 0) => v.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+/* ---------- mapa ---------- */
+const svg = $('#mapa');
+let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+DADOS.zonas.forEach(z => { for (let i = 0; i < z.p.length; i += 2) { x0 = Math.min(x0, z.p[i]); x1 = Math.max(x1, z.p[i]); y0 = Math.min(y0, z.p[i + 1]); y1 = Math.max(y1, z.p[i + 1]); } });
+const pad = 30;
+svg.setAttribute('viewBox', `${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`);
+svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+const defs = el('defs', {}, svg);
+const clip = el('clipPath', { id: 'corte' }, defs);
+DADOS.zonas.forEach(z => el('polygon', { points: pts(z.p) }, clip));
+const fundo = el('g', { 'clip-path': 'url(#corte)' }, svg);
+el('image', { href: DADOS.mosaico, x: 0, y: 0, width: DADOS.w, height: DADOS.h, preserveAspectRatio: 'none' }, fundo);
+el('rect', { x: 0, y: 0, width: DADOS.w, height: DADOS.h, fill: '#000', 'fill-opacity': '.5' }, fundo);
+const gZonas = el('g', {}, svg);
+const zonaEl = {};
+DADOS.zonas.forEach(z => { zonaEl[z.id] = el('polygon', { points: pts(z.p), fill: z.cor, 'fill-opacity': '.16', stroke: 'none' }, gZonas); });
+const gLim = el('g', { fill: 'none', stroke: '#EEF1F3', 'stroke-opacity': '.55' }, svg);
+DADOS.zonas.forEach(z => el('polygon', { points: pts(z.p), class: 'lim' }, gLim));
+const base = el('path', { d: caminho(DADOS.trechos.flatMap(t => t.p)), fill: 'none', stroke: '#B4B4B4', 'stroke-opacity': '.55', 'stroke-linecap': 'round', class: 'base' }, svg);
+const gTr = el('g', { fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svg);
+const trEl = DADOS.trechos.map(t => el('path', { d: caminho(t.p), class: ehSub(t) ? 'tr sub' : 'tr', visibility: 'hidden' }, gTr));
+const comp = trEl.map(p => p.getTotalLength() || 1);
+trEl.forEach((p, k) => { p.setAttribute('stroke-dasharray', comp[k] + ' ' + (comp[k] + 1)); p.setAttribute('stroke-dashoffset', comp[k]); });
+const gCx = el('g', {}, svg);
+const gCab = el('g', {}, svg);
+const gNomes = el('g', { 'text-anchor': 'middle', 'font-family': 'IBM Plex Sans, sans-serif', 'font-weight': '600', fill: '#EEF1F3', stroke: '#0D0F11', 'paint-order': 'stroke' }, svg);
+DADOS.nomes.forEach(n => { const tx = el('text', { x: n.x, y: n.y, class: 'nome' }, gNomes); tx.textContent = nomeFrente(n.id); });
+
+/* ---------- estado ---------- */
+let CEN = 'A', MODO = 'equipe', T = 318, tocando = false, ult = 0;
+let C, porEq, cxEl = [], cab = {}, cache = [];
+function montarCenario() {
+  C = DADOS.cenarios[CEN];
+  porEq = {};
+  C.trechos.forEach(r => { (porEq[r[3]] = porEq[r[3]] || []).push(r); });
+  Object.values(porEq).forEach(l => l.sort((a, b) => a[1] - b[1]));
+  gCx.innerHTML = ''; gCab.innerHTML = '';
+  cxEl = C.caixas.map(c => el('path', { d: FORMAS[c[2]] || FORMAS.VM, class: 'cx', visibility: 'hidden' }, gCx));
+  cab = {};
+  ['ANK1', 'E1A', 'E1B', 'E2C', 'E2D'].forEach(eq => { cab[eq] = el('circle', { r: 5, fill: CORES[eq], stroke: '#fff', class: 'cabeca', visibility: 'hidden' }, gCab); });
+  cache = trEl.map(() => ({ p: -1, cor: '' }));
+  escala();
+  $('#notaCen').textContent = CEN === 'A'
+    ? `Cenário A: ${num(C.p, 1)} m/dia depois do reajuste · fim da obra em ${C.fim_txt}, no prazo.`
+    : `Cenário B: 90 m/dia · fim da obra em ${C.fim_txt}, ${Math.round(C.fim - DADOS.marcos.prazo)} dias depois do prazo.`;
+  desenharFatura();
+  desenhar(true);
+}
+// as larguras em pixels de tela: o mapa encaixa no espaço e as linhas não engrossam no celular
+function escala() {
+  const vb = svg.viewBox.baseVal, r = svg.getBoundingClientRect();
+  const k = Math.max(vb.width / r.width, vb.height / r.height) || 3;
+  base.setAttribute('stroke-width', 0.9 * k); base.setAttribute('stroke-dasharray', `${5 * k} ${4 * k}`);
+  trEl.forEach(p => p.setAttribute('stroke-width', (p.classList.contains('sub') ? 3.4 : 2.2) * k));
+  gLim.setAttribute('stroke-width', 1.2 * k); gLim.setAttribute('stroke-dasharray', `${6 * k} ${5 * k}`);
+  Object.values(cab).forEach(c => { c.setAttribute('r', 5 * k); c.setAttribute('stroke-width', 1.5 * k); });
+  cxEl.forEach((p, i) => { const c = C.caixas[i]; p.setAttribute('transform', `translate(${c[0]} ${c[1]}) scale(${0.85 * k})`); p.setAttribute('stroke-width', 1.2 / 0.85); });
+  gNomes.setAttribute('font-size', 12 * k); gNomes.setAttribute('stroke-width', 3 * k);
+}
+
+/* ---------- desenho do dia ---------- */
+function desenhar(tudo) {
+  const t = T;
+  let km = 0, lig = 0, cxCiv = 0, cxHid = 0, fat = 0;
+  for (const r of C.trechos) {
+    const [k, s, e, eq, lg] = r;
+    const prog = t <= s ? 0 : t >= e ? 1 : (t - s) / (e - s);
+    km += DADOS.trechos[k].L * prog;
+    if (lg) { const s2 = s + 7, e2 = e + 7; lig += lg * (t <= s2 ? 0 : t >= e2 ? 1 : (t - s2) / (e2 - s2)); }
+    let cor;
+    if (MODO === 'equipe') cor = CORES[eq];
+    else { const carga = C.carga[frenteDe(DADOS.trechos[k])]; cor = prog < 1 ? SIT.exec : (carga != null && t >= carga ? SIT.carga : SIT.feito); }
+    const c = cache[k];
+    if (tudo || c.p !== prog || c.cor !== cor) {
+      const p = trEl[k];
+      if (prog <= 0) p.setAttribute('visibility', 'hidden');
+      else { p.setAttribute('visibility', 'visible'); p.setAttribute('stroke-dashoffset', comp[k] * (1 - prog)); p.setAttribute('stroke', cor); }
+      c.p = prog; c.cor = cor;
+    }
+  }
+  // a ponta de cada equipe: onde ela está assentando agora
+  const onde = {};
+  ['ANK1', 'E1A', 'E1B', 'E2C', 'E2D'].forEach(eq => {
+    const l = porEq[eq] || [];
+    const at = l.find(r => r[1] <= t && t < r[2]);
+    const c = cab[eq];
+    if (at) {
+      const k = at[0], prog = (t - at[1]) / (at[2] - at[1]);
+      const pt = trEl[k].getPointAtLength(comp[k] * prog);
+      c.setAttribute('cx', pt.x); c.setAttribute('cy', pt.y); c.setAttribute('visibility', 'visible');
+      onde[eq] = nomeFrente(frenteDe(DADOS.trechos[k]));
+    } else {
+      c.setAttribute('visibility', 'hidden');
+      const antes = l.length && t < l[0][1], depois = l.length && t >= l[l.length - 1][2];
+      onde[eq] = antes ? 'ainda não entrou' : depois ? 'terminou' : 'entre frentes';
+    }
+  });
+  C.caixas.forEach((c, i) => {
+    const p = cxEl[i];
+    if (t < c[3]) { p.setAttribute('visibility', 'hidden'); return; }
+    p.setAttribute('visibility', 'visible');
+    if (t >= c[4]) cxCiv++;
+    if (t >= c[6]) { cxHid++; p.setAttribute('fill', COR_CX[c[2]]); p.setAttribute('stroke', '#fff'); }
+    else if (t >= c[4]) { p.setAttribute('fill', '#EEF1F3'); p.setAttribute('stroke', '#0D0F11'); }
+    else { p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#EEF1F3'); }
+  });
+  const ativosCx = C.caixas.some(c => (c[3] <= t && t < c[4]) || (c[5] <= t && t < c[6]));
+  onde.ANK2 = t < C.caixas.reduce((m, c) => Math.min(m, c[3]), 1e9) ? 'ainda não entrou' : ativosCx ? 'caixas' : 'entre caixas';
+  // frentes em carga
+  let carga = 0;
+  Object.entries(C.carga).forEach(([z, d]) => {
+    const em = t >= d; if (em) carga++;
+    const zEl = zonaEl[z];
+    if (zEl) { zEl.setAttribute('fill-opacity', em ? '.34' : '.16'); if (em) zEl.setAttribute('fill', SIT.carga); else zEl.setAttribute('fill', DADOS.zonas.find(x => x.id === z).cor); }
+  });
+  // faturamento acumulado
+  for (let k = 0; k < C.meses.length; k++) {
+    const [, a, b] = C.meses[k];
+    if (t >= b) fat += C.fat[k]; else if (t > a) fat += C.fat[k] * (t - a) / (b - a);
+  }
+  const mes = C.meses.find(m => m[1] <= t && t <= m[2]);
+  $('#data').textContent = dataDe(t);
+  $('#med').textContent = mes ? `${mes[0]}ª medição · ${mes[3]}` + (t > DADOS.marcos.prazo ? ' · depois do prazo' : '') : 'depois da obra';
+  $('#vRede').innerHTML = `${num(km / 1000, 1)} km <small>de ${num(KM, 1)} km</small>`;
+  $('#bRede').style.width = (100 * km / 1000 / KM) + '%';
+  $('#vLig').innerHTML = `${num(lig)} <small>de ${num(LIG)}</small>`;
+  $('#bLig').style.width = (100 * lig / LIG) + '%';
+  $('#vCx').innerHTML = `${cxCiv} <small>prontas · ${cxHid} montadas de ${C.caixas.length}</small>`;
+  $('#bCx').style.width = (100 * cxHid / C.caixas.length) + '%';
+  $('#vCarga').innerHTML = `${carga} <small>de 12 (11 zonas e a Subadutora)</small>`;
+  $('#vFat').innerHTML = `${brl(fat)} <small>${num(100 * fat / P0, 1)}% do contrato</small>`;
+  $('#bFat').style.width = (100 * fat / P0) + '%';
+  document.querySelectorAll('.eq').forEach(d => {
+    const eq = d.dataset.eq, txt = onde[eq] || '-';
+    d.querySelector('.onde').textContent = txt;
+    d.classList.toggle('ativa', !/ainda|terminou|entre/.test(txt));
+  });
+  avisar(t);
+  $('#t').value = t;
+  const cur = $('#cursor'); if (cur) { const xv = 1000 * t / DADOS.marcos.fim_eixo; cur.setAttribute('x1', xv); cur.setAttribute('x2', xv); }
+  document.querySelectorAll('#fatura .bar').forEach((b, k) => b.setAttribute('fill-opacity', C.meses[k][1] <= t ? '1' : '.35'));
+}
+function avisar(t) {
+  const a = $('#aviso');
+  const m = DADOS.marcos;
+  let msg = '';
+  if (t < 46) msg = '<b>Out/26:</b> só o canteiro (alambrado, portão e 2 contêineres) e a NS de topografia.';
+  else if (t < m.reajuste) msg = '<b>Pé alto até o reajuste:</b> só a Equipe Adutora, nos trechos de 160 mm, a 60 m/dia.';
+  else if (t < m.reajuste + 20) msg = '<b>Reajuste em 01/02/2027:</b> a Equipe Adutora vai para a Subadutora e o Empreiteiro 1 já está nas zonas.';
+  else if (t >= 182 && t < 200) msg = '<b>Abr/27:</b> o Empreiteiro 2 entra com 2 equipes e completa as frentes.';
+  else if (t >= m.prazo - 6 && t <= m.prazo + 4) msg = '<b>Término contratual:</b> 23/03/2028.';
+  a.innerHTML = msg; a.hidden = !msg;
+}
+
+/* ---------- régua do tempo ---------- */
+function desenharFatura() {
+  const f = $('#fatura'); f.innerHTML = '';
+  const fim = DADOS.marcos.fim_eixo, max = Math.max(...C.fat);
+  C.meses.forEach((m, k) => {
+    const xa = 1000 * m[1] / fim, xb = 1000 * Math.min(m[2], fim) / fim, h = 62 * C.fat[k] / max;
+    el('rect', { x: xa + 1.5, y: 66 - h, width: Math.max(1, xb - xa - 3), height: h, rx: 1.5, fill: m[1] > DADOS.marcos.prazo ? '#E66767' : '#98A1AA', class: 'bar' }, f);
+  });
+  [[DADOS.marcos.reajuste, '#3987e5'], [DADOS.marcos.prazo, '#E66767']].forEach(([d, cor]) => {
+    const xv = 1000 * d / fim; el('line', { x1: xv, x2: xv, y1: 0, y2: 70, stroke: cor, 'stroke-width': 2, 'stroke-dasharray': '4 3', 'vector-effect': 'non-scaling-stroke' }, f);
+  });
+  el('line', { id: 'cursor', x1: 0, x2: 0, y1: 0, y2: 70, stroke: '#F15922', 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke' }, f);
+  const ms = $('#meses'); ms.innerHTML = '';
+  C.meses.forEach((m, k) => { const s = document.createElement('span'); s.textContent = m[3]; s.style.left = (100 * ((m[1] + m[2]) / 2) / fim) + '%'; if (k % 3) s.className = 'fora'; ms.appendChild(s); });
+}
+
+/* ---------- painel e controles ---------- */
+$('#equipes').innerHTML = '<span class="rotulo">Onde cada equipe está</span>' + DADOS.equipes.map(e =>
+  `<div class="eq" data-eq="${e.id}"><span class="sw" style="background:${CORES[e.id]}"></span><span>${e.nome}</span><span class="onde">-</span></div>`).join('');
+function legenda() {
+  $('#legenda').innerHTML = '<span class="rotulo">Legenda</span>' + (MODO === 'equipe'
+    ? '<div class="l"><span class="tr" style="border-color:#EEF1F3"></span>trecho assentado, na cor da equipe</div>'
+    : `<div class="l"><span class="tr" style="border-color:${SIT.exec}"></span>em execução</div><div class="l"><span class="tr" style="border-color:${SIT.feito}"></span>executado</div><div class="l"><span class="tr" style="border-color:${SIT.carga}"></span>zona em carga (interligada)</div>`)
+    + '<div class="l"><span class="tr trac"></span>ainda não iniciado</div><div class="l">◆ ▲ ▼ ■ caixas: contorno na obra civil, branca pronta, colorida montada</div>';
+}
+function tocar(sim) { tocando = sim; $('#play').textContent = sim ? '❚❚ Pausar' : '▶ Reproduzir'; if (sim) { ult = performance.now(); requestAnimationFrame(passo); } }
+function passo(agora) {
+  if (!tocando) return;
+  const dt = Math.min(0.1, (agora - ult) / 1000); ult = agora;
+  T = Math.min(DADOS.marcos.fim_eixo, T + dt * 14.5 * +$('#vel').value);
+  desenhar(false);
+  if (T >= DADOS.marcos.fim_eixo) return tocar(false);
+  requestAnimationFrame(passo);
+}
+$('#play').onclick = () => { if (!tocando && T >= DADOS.marcos.fim_eixo) T = 0; tocar(!tocando); };
+$('#inicio').onclick = () => { T = 0; desenhar(false); tocar(true); };
+$('#t').max = DADOS.marcos.fim_eixo;
+$('#t').addEventListener('input', e => { T = +e.target.value; desenhar(false); });
+document.addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') { e.preventDefault(); $('#play').click(); } });
+const escolher = (a, b, fn) => { a.onclick = () => { a.setAttribute('aria-pressed', 'true'); b.setAttribute('aria-pressed', 'false'); fn(); }; };
+escolher($('#cenA'), $('#cenB'), () => { CEN = 'A'; montarCenario(); });
+escolher($('#cenB'), $('#cenA'), () => { CEN = 'B'; montarCenario(); });
+escolher($('#corEq'), $('#corSit'), () => { MODO = 'equipe'; legenda(); desenhar(true); });
+escolher($('#corSit'), $('#corEq'), () => { MODO = 'situacao'; legenda(); desenhar(true); });
+new ResizeObserver(() => { if (C) escala(); }).observe(svg);
+legenda();
+montarCenario();
+</script>
+
+</body>
+</html>
