@@ -32,6 +32,8 @@ def programar(conn, data, equipe_id, alvo_tipo, ref, servico, por, ini_m=None, f
     if ini_m not in (None, "") or fim_m not in (None, ""):
         if a["alvo_tipo"] != "TRECHO":
             raise RegraViolada("Intervalo só se aplica a trecho.")
+        if ini_m in (None, "") or fim_m in (None, ""):
+            raise RegraViolada("Intervalo: informe o início e o fim (em metros).")
         ini_m, fim_m = float(ini_m), float(fim_m)
         if not (0 <= ini_m < fim_m <= float(a["extensao_m"]) + R.TOL_M):
             raise RegraViolada(f"Intervalo {ini_m:g}–{fim_m:g} m fora do trecho (0–{float(a['extensao_m']):g} m).")

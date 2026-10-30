@@ -274,8 +274,12 @@ class Importador:
         return out
 
     def _concil_aplicada(self, e, ref, texto):
+        depois = json.dumps(e, ensure_ascii=False)
+        if self.c.execute("SELECT 1 FROM alteracoes WHERE entidade='conciliacao' AND entidade_id=? AND depois=? "
+                          "AND importacao_id<>?", (ref, depois, self.imp)).fetchone():
+            return                                   # já aplicada numa importação anterior: reimportar igual = SEM_ALTERACOES
         self.pendencia("CONCILIACAO_APLICADA", ref, f"{texto} — {e['responsavel']}, {e['data']}: {e['motivo']}")
-        self._alteracao("conciliacao", ref, e["tipo"], None, json.dumps(e, ensure_ascii=False))
+        self._alteracao("conciliacao", ref, e["tipo"], None, depois)
 
     # -------------------------------------------------------------- cargas
     def equipes(self):
@@ -443,6 +447,8 @@ class Importador:
         for n, l in enumerate(linhas):                                   # 2) mesma identidade física
             if atrib[n] is None:
                 cands = [i for i in por_fisica.get((l["handle"], l["ini"], l["fim"]), []) if i not in usados]
+                if not (l["ini"] and l["fim"]):      # sem as pontas UTM a geometria não identifica: exige handle e o mesmo nome
+                    cands = [i for i in cands if l["handle"] and exist[i]["ponto"] == l["ponto"]]
                 if len(cands) == 1:
                     atribuir(n, cands[0])
                 elif len(cands) > 1:
@@ -794,7 +800,8 @@ class Importador:
     def materiais(self):
         """Tubos PEAD da rede (fornecimento Caesb, SL0327 §6) por DE; itens MATERIAL do BM (aquisição Ankara);
         consumo diário. Nunca apaga material (há movimentos ligados)."""
-        for r in self.c.execute("SELECT de_mm, SUM(extensao_m) ext FROM trechos WHERE vigente=1 GROUP BY de_mm ORDER BY de_mm").fetchall():
+        for r in self.c.execute("SELECT de_mm, SUM(extensao_m) ext FROM trechos WHERE vigente=1 AND de_mm IS NOT NULL "
+                                "GROUP BY de_mm ORDER BY de_mm").fetchall():   # DE vazio ou em texto: sem tubo (o aviso vem da carga)
             de = int(r["de_mm"])
             self.upsert("materiais", "material", {"id": f"CAESB-PEAD-DE{de}"}, dict(
                 descricao=f"TUBO PEAD DE{de} PN10 — fornecimento Caesb", unidade="M", propriedade="CAESB",

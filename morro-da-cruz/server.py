@@ -151,6 +151,17 @@ PLANILHAS = {"bm": "Boletim de Medição com a identificação dos itens", "reaj
              "evidencias": "Evidências e conciliação entre a 06.1 e a 06.2", "mapa": "Mapa de plantas, trechos e nós (equipes)"}
 
 
+def _host_local(host):
+    """O endereço pedido é o do próprio computador. Uma página de fora que troca o DNS para 127.0.0.1 (DNS rebinding)
+    chega com o nome dela no Host e não ganha a entrada sem senha."""
+    h = (host or "").strip().lower()
+    if h.startswith("["):
+        h = h[1:].split("]", 1)[0]
+    else:
+        h = h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+    return h in ("localhost", "127.0.0.1", "::1")
+
+
 def _arquivo_oficial(chave):
     nome = _cfg()["arquivos"].get(chave)
     if not nome:
@@ -985,7 +996,7 @@ class Handler(BaseHTTPRequestHandler):
         """Pedido feito no próprio computador (não veio pelo link da equipe: o túnel acrescenta Cf-Connecting-Ip).
         Na nuvem, nunca: o "computador do sistema" é da hospedagem e todo pedido chega pela internet."""
         return (not NUVEM and self.client_address[0] in ("127.0.0.1", "::1") and not self.headers.get("Cf-Connecting-Ip")
-                and not self.headers.get("X-Forwarded-For"))
+                and not self.headers.get("X-Forwarded-For") and _host_local(self.headers.get("Host")))
 
     def _ip(self):
         encaminhado = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip() if NUVEM else ""
@@ -1103,6 +1114,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(e.status, {"erro": str(e)})
             except R.RegraViolada as e:
                 return self._send(422, {"erro": str(e)})
+            except Exception as e:  # noqa: BLE001
+                return self._falha_download(e)
         if u.path == "/api/medicao/pacote/baixar":       # a medição no modelo oficial do BM (juntada, MC, FF, gráficos)
             try:
                 A.exigir(usuario, "medicao")
@@ -1115,11 +1128,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(e.status, {"erro": str(e)})
             except R.RegraViolada as e:
                 return self._send(422, {"erro": str(e)})
+            except Exception as e:  # noqa: BLE001
+                return self._falha_download(e)
         if u.path == "/api/relatorios/exportar":
-            with LOCK:
-                ini, fim = _periodo(q)
-                nome, dados = RL.planilha(CONN, ini, fim, q.get("frente") or None)
-                A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
+            try:
+                with LOCK:
+                    ini, fim = _periodo(q)
+                    nome, dados = RL.planilha(CONN, ini, fim, q.get("frente") or None)
+                    A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
+            except R.RegraViolada as e:
+                return self._send(422, {"erro": str(e)})
+            except Exception as e:  # noqa: BLE001
+                return self._falha_download(e)
             return self._send(200, dados, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                               {"Content-Disposition": f'attachment; filename="{nome}"'})
         if u.path == "/api/ns/arquivo":
@@ -1146,6 +1166,13 @@ class Handler(BaseHTTPRequestHandler):
                     rel = DR.miniatura_de(CONN, rel) or rel
             return self._static(DIR_FOTOS, rel)
         return self._static(WEB, u.path.lstrip("/"))
+
+    def _falha_download(self, e):
+        """Parâmetro errado ou falha ao montar a planilha: responde com o erro em vez de fechar a conexão calado."""
+        if isinstance(e, (KeyError, ValueError, TypeError)):
+            return self._send(400, {"erro": f"Requisição inválida: {e}"})
+        LOG.exception("falha em GET %s", self.path)
+        return self._send(500, {"erro": f"Erro interno: {e}"})
 
     def _ns_arquivo(self, q, usuario):
         """PDF, croqui ou planilha de uma NS registrada, para abrir no navegador (inline, sem executar nada)."""
@@ -1177,8 +1204,12 @@ class Handler(BaseHTTPRequestHandler):
         try:
             with LOCK:
                 doc, nome = AP.arquivo(CONN, int(q.get("doc") or 0))
+                if usuario["restrito_a_equipe"] and not AP.documento_da_equipe(CONN, doc["id"], usuario["equipe_id"]):
+                    raise A.AcessoNegado("Este documento é de uma apropriação de outra equipe.", 403)
                 caminho = os.path.join(C.documento_dir(CONN), doc["arquivo"])
                 no_drive = (DR.por_ref(CONN, "DOCUMENTO", [doc["id"]]) or {}).get(doc["id"]) or {}
+        except A.AcessoNegado as e:
+            return self._send(e.status, {"erro": str(e)})
         except R.RegraViolada as e:
             return self._send(404, {"erro": str(e)})
         except (KeyError, ValueError, TypeError) as e:
@@ -1194,7 +1225,13 @@ class Handler(BaseHTTPRequestHandler):
                            "Content-Security-Policy": "sandbox", "Cache-Control": "private, max-age=3600"})
 
     def _ler_corpo(self):
-        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if n < 0:                                     # read(-1) leria até o fim da conexão, sem limite
+            self.close_connection = True
+            raise json.JSONDecodeError("Content-Length inválido", "", 0)
         if n > LIMITE_CORPO:
             raise CorpoGrande(n)
         return json.loads(self.rfile.read(n) or b"{}")
@@ -1366,8 +1403,10 @@ class Handler(BaseHTTPRequestHandler):
                                              "sem nota, é exceção da engenharia e da administração.", 403)
                     if not str(body.get("motivo_sem_ns") or "").strip():
                         raise R.RegraViolada("Lançamento sem nota de serviço: informe o motivo (fica guardado junto do apontamento).")
-                if usuario["restrito_a_equipe"] and body.get("equipe_id") not in (None, "", usuario["equipe_id"]):
-                    raise A.AcessoNegado(f"Seu usuário lança só para a equipe {usuario['equipe_id']}.", 403)
+                if usuario["restrito_a_equipe"]:
+                    if body.get("equipe_id") not in (None, "", usuario["equipe_id"]):
+                        raise A.AcessoNegado(f"Seu usuário lança só para a equipe {usuario['equipe_id']}.", 403)
+                    body["equipe_id"] = usuario["equipe_id"]      # sem equipe no pedido: vale a do usuário, nunca nenhuma
                 for campo in AUTOR.get(rota, ()):
                     body[campo] = usuario["login"]
                 with S.transacao(CONN):
@@ -1384,6 +1423,12 @@ class Handler(BaseHTTPRequestHandler):
                 status, msg = e.status, str(e)
             except R.RegraViolada as e:
                 status, msg = 422, str(e)
+                depois = getattr(e, "depois_do_rollback", None)
+                if depois:                                  # ex.: autorização do Drive revogada fica registrada
+                    try:
+                        depois(CONN)
+                    except Exception:  # noqa: BLE001 — a recusa continua sendo a resposta
+                        LOG.exception("falha ao gravar o que vem depois da recusa em %s", rota)
             except (KeyError, ValueError, TypeError) as e:
                 status, msg = 400, f"Requisição inválida: {e}"
             except Exception as e:  # noqa: BLE001

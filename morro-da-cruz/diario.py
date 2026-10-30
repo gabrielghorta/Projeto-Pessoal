@@ -72,6 +72,9 @@ def diario(conn, data, equipe=None):
     if equipe:                                       # foto não tem equipe: valem as dos lugares em que a equipe trabalhou
         lugares = ({("TRECHO", p["trecho_id"]) for p in producao} | {(s["alvo_tipo"], s["alvo_id"]) for s in soldas}
                    | {(c["alvo_tipo"], c["alvo_id"]) for c in checkins if c["alvo_id"]})
+        for c in checkins:                           # o check-in do dia cobre vários trechos e nós (v20)
+            lugares |= {(a, b) for a, b in conn.execute("SELECT alvo_tipo, alvo_id FROM checkin_alvos WHERE checkin_id=?",
+                                                           (c["id"],))}
         fotos = [f for f in fotos if (f["alvo_tipo"], f["alvo_id"]) in lugares]
     for f in fotos:
         f["alvo_nome"] = nome(f["alvo_tipo"], f["alvo_id"])

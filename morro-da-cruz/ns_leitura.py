@@ -117,7 +117,7 @@ def data_iso(s):
 
 def norm_contrato(s):
     """'CT 10239/2026 Caesb × Ankara' -> '10239/2026' ; '9702/24' -> '9702/2024' (só número e ano)."""
-    m = re.search(r'(\d{1,6})\s*/\s*(\d{4}|\d{2})\b', s or '')
+    m = re.search(r'(\d{1,6})\s*/\s*(\d{4}|\d{2})\b', re.sub(r'(?<=\d)\.(?=\d{3}\b)', '', s or ''))   # 10.239 = 10239
     if not m:
         return None
     ano = m.group(2) if len(m.group(2)) == 4 else '20' + m.group(2)

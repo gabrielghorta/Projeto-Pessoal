@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Avanço da obra Morro da Cruz · REV01</title>
+<title>Avanço da obra Morro da Cruz · __REV__</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -99,7 +99,7 @@ select { font: 500 13px var(--f-texto); background: var(--fundo); color: var(--t
   <header>
     <div>
       <h1>Avanço da obra Morro da Cruz</h1>
-      <p class="sub">CT 10.239/2026 · REV01 (30/10/2026), cenário B, 90 m/dia · a obra sai do reservatório da Zona 11 e sobe com a rede, para que cada trecho pronto já fique ligado a ele</p>
+      <p class="sub">CT 10.239/2026 · __REV__ (__REV_DATA__), cenário B, 90 m/dia · a obra sai do reservatório da Zona 11 e sobe com a rede, para que cada trecho pronto já fique ligado a ele</p>
     </div>
     <div class="chaves">
       <span class="rotulo">Cor</span>
@@ -407,7 +407,7 @@ function lerData() {
 }
 $('#dataRes').addEventListener('change', lerData);
 $('#limparRes').onclick = () => { $('#dataRes').value = ''; lerData(); };
-$('#notaCen').textContent = `REV01, cenário B: 90 m/dia · fim da obra em ${C.fim_txt}` + (C.fim <= DADOS.marcos.prazo + 1 ? ', no prazo.' : `, ${Math.round(C.fim - DADOS.marcos.prazo)} dias depois do prazo.`);
+$('#notaCen').textContent = `__REV__, cenário B: 90 m/dia · fim da obra em ${C.fim_txt}` + (C.fim <= DADOS.marcos.prazo + 1 ? ', no prazo.' : `, ${Math.round(C.fim - DADOS.marcos.prazo)} dias depois do prazo.`);
 new ResizeObserver(() => escala()).observe(svg);
 equipes();
 legenda();

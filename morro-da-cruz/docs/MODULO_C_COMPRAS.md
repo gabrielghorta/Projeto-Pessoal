@@ -163,3 +163,16 @@ Não muda o banco. Substitui o que vem acima sobre aprovar em Pedir material.
 - Quem abre Compras e notas (engenharia, administração e almoxarife) vê os pedidos da obra; os outros perfis veem só os seus. A foto do item continua só para quem pediu e quem aprova.
 - **Pedir material** ficou só para pedir e acompanhar os próprios pedidos; para quem aprova, mostra quantos esperam e o botão "Abrir os requerimentos".
 - **Transferência entre equipes, inventário e reservas vencidas** saíram de Compras e notas e foram para **Estoque e movimentos** (as regras são as da tabela acima). `/api/inventarios` e `/api/reservas-vencidas` servem a tela `almox`.
+
+
+## Revisão do código (30/10/2026, D-190 e D-191)
+
+- **Nota repetida:** além da chave, a mesma nota do mesmo fornecedor (número e série, sem os zeros da frente) é
+  recusada, digitada ou por XML. XML da NF-e só em UTF-8.
+- **Estorno:** transferência, ajuste de inventário, entrada de nota (inclusive tubo da Caesb) e retirada de check-in
+  encerrado não se estornam por fora; cada um tem o seu caminho. Devolução ao fornecedor estornada sai das contas.
+- **Quem digitou não confere** vale também nas rotas antigas de entrega e de inspeção.
+- **Corrigir** uma linha marcada como frete/serviço tira a marca; o fator da nota anterior do fornecedor só é
+  reaproveitado na mesma unidade. Contagem de inventário com data obrigatória e não futura.
+- **A comprar** mostra sempre as solicitações abertas e aprovadas, e o devolvido volta a faltar.
+- Detalhes: `CORRECOES_REVISAO_30-10-2026.md`.

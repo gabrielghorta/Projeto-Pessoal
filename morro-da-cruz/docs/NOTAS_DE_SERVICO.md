@@ -271,3 +271,12 @@ As regras não mudaram (o que cada NS grava, a ordem obrigatória, a medição);
 eles veem o resto do dia, sem a nota e o croqui. Os perfis Topografia e Cadastro (terceirizadas, só consulta) continuam
 vendo as notas do tipo deles, no resumo da aba.
 
+
+## 7. Revisão do código (30/10/2026, D-193)
+
+- O envio em lote registra as NS **da mais antiga para a mais nova** (pela data lida da nota).
+- Na leitura da NS de topografia, aviso quando parte do trecho já está liberada por NS de **data posterior**: a
+  liberação fica com a data da outra; para valer esta, anule a posterior e envie as duas na ordem.
+- "012" e "12" são o mesmo número de NS.
+- Pendência: a NS do dia mais antiga enviada depois de uma mais nova (o lote não sabe a data dela antes de enviar).
+- Detalhes: `CORRECOES_REVISAO_30-10-2026.md`.

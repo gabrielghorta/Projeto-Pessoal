@@ -6,7 +6,6 @@ Tudo em minutos úteis: seg a sex, 7h às 17h com 1 h de almoço (540 min por di
 import collections
 import datetime as dt
 import json
-import math
 import statistics
 
 import os
@@ -92,6 +91,33 @@ class Calendario:
 
 
 CAL = Calendario()
+
+
+def aplicar_chuva_e_recesso(dias_chuva=4, meses=(10, 11, 12, 1, 2, 3, 4), recesso=((12, 22), (1, 2))):
+    """REV02: tira do calendário o recesso de fim de ano e, em cada mês de chuva, `dias_chuva` dias úteis espalhados no
+    mês (o que a chuva para a obra, estimado). Muda FERIADOS e CAL no lugar: quem já importou os dois (motor_rev01,
+    faturamento, gerar_project) passa a usar o calendário novo, e o Project leva esses dias como não úteis. Rode antes de
+    programar. Devolve {data: motivo} do que saiu."""
+    import calendar
+    tirados = {}
+    for a in range(OS.year, 2031):
+        d, ate = dt.date(a, *recesso[0]), dt.date(a + 1, *recesso[1])
+        while d <= ate:
+            if d.weekday() < 5 and d not in FERIADOS:
+                tirados[d] = 'Recesso de fim de ano'
+            d += dt.timedelta(days=1)
+    FERIADOS.update(tirados)
+    for a in range(OS.year, 2031):
+        for m in meses:
+            uteis = [dt.date(a, m, k) for k in range(1, calendar.monthrange(a, m)[1] + 1)]
+            uteis = [d for d in uteis if d >= OS and d.weekday() < 5 and d not in FERIADOS]
+            if len(uteis) > dias_chuva:
+                for k in range(dias_chuva):                 # espalhados: um em cada quarto do mês
+                    d = uteis[(2 * k + 1) * len(uteis) // (2 * dias_chuva)]
+                    tirados[d] = FERIADOS[d] = 'Chuva (estimativa)'
+    novo = Calendario()
+    CAL.dias, CAL.idx = novo.dias, novo.idx
+    return tirados
 
 
 def meses_do_contrato(ultimo):
@@ -339,7 +365,8 @@ def programar(D, rede, p):
     fech['SUB'].update(ini=min(x['ini'] for x in sub_trs), fim=sub_fim, eq='ANK1',
                        cadastro=(min(x['fim'] for x in sub_trs) + CADASTRO_DEPOIS, sub_fim + CADASTRO_DEPOIS))
     ultimo = max([f['interlig'][1] for f in fech.values()] + [f['cadastro'][1] for f in fech.values()] +
-                 [b['fim'] + LIG_ATRASO for b in blocos] + [cx[j]['hid_fim'] for j in caixas])
+                 [b['fim'] + LIG_ATRASO for b in blocos if b['lig'] > 0.5] + [b['fim'] for b in blocos] +
+                 [cx[j]['hid_fim'] for j in caixas])          # as ligações só atrasam o bloco que tem ligação
     plano['fechamento'] = fech
     plano['zona_cx'] = zona_cx
     plano['desmob'] = (ultimo, ultimo + DESMOB_DIAS * DIA)
@@ -353,16 +380,19 @@ def programar(D, rede, p):
 def resolver_prazo(D, rede, alvo=PRAZO):
     """Menor produtividade (m/dia, de 0,5 em 0,5) que ainda termina a obra até o prazo."""
     lim = CAL.w(alvo + dt.timedelta(days=1))
-    lo, hi = 40.0, 200.0
-    if programar(D, rede, hi)['fim'] > lim:
+    cabe = lambda k: programar(D, rede, k / 2)['fim'] <= lim      # k em meios de m/dia: a busca anda só de 0,5 em 0,5
+    lo, hi = 80, 400                                              # 40 e 200 m/dia
+    if not cabe(hi):
         return None
-    while hi - lo > 0.5:
-        mid = (lo + hi) / 2
-        if programar(D, rede, mid)['fim'] <= lim:
+    if cabe(lo):
+        return lo / 2
+    while hi - lo > 1:                                            # cabe(hi) e não cabe(lo): hi é a menor que cabe
+        mid = (lo + hi) // 2
+        if cabe(mid):
             hi = mid
         else:
             lo = mid
-    return math.ceil(hi * 2) / 2
+    return hi / 2
 
 
 if __name__ == '__main__':

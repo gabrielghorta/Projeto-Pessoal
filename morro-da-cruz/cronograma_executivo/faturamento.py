@@ -132,7 +132,8 @@ def distribuir(plano, itens, D):
     inst_ini, inst_fim = plano['canteiro_inst']
     des_ini, des_fim = plano['desmob']
     # contêineres no canteiro por mês: chegam com as equipes e ficam até o fim da obra
-    nm_ = len(L.meses)
+    ult = L.mes(plano['fim'] - 1)                      # o mês em que a obra acaba: o canteiro não fatura depois dele
+    nm_ = len(L.meses) if ult is None else ult + 1
     no_canteiro = [0] * nm_
     chegadas = [(L.mes(CAL.w(d)), n) for d, n in motor.CONTEINERES]
     for k in range(nm_):
@@ -159,7 +160,7 @@ def distribuir(plano, itens, D):
                               f'({usado / q:.0%} do BM)')
             elif 'MES' in un or 'MÊS' in un or un in ('CHP', 'CHI'):
                 # o funcionamento do canteiro: igual em cada mês, de nov/2026 (em out só o alambrado, o portão e 2 contêineres)
-                n = len(L.meses) - 1
+                n = nm_ - 1
                 for k in range(1, n + 1):
                     L.q[('CANT', ch, k)] += q / n
                 origem[ch] = f'mensal: 1/{n} por mês, de nov/2026 ao fim da obra'
@@ -210,11 +211,17 @@ def distribuir(plano, itens, D):
             origem[ch] = 'interligação de cada zona e da Subadutora (partes iguais)'
         elif g in ('4.1', '4.2'):
             tot = sum(t['lig'] for t in T)
+            pela_equipe = False
             for t in T:
                 if t['lig']:
                     x = tr[t['i']]
-                    L.lancar(x['eq'], ch, q * t['lig'] / tot, x['ini'] + LIG_ATRASO, x['fim'] + LIG_ATRASO)
-            origem[ch] = 'ligações prediais: nos trechos de DE 63, 5 dias úteis atrás da rede'
+                    if 'lig_fim' in x:              # REV02: a própria equipe faz as ligações logo depois do trecho
+                        pela_equipe = True
+                        L.lancar(x['eq'], ch, q * t['lig'] / tot, x['fim'], x['lig_fim'])
+                    else:
+                        L.lancar(x['eq'], ch, q * t['lig'] / tot, x['ini'] + LIG_ATRASO, x['fim'] + LIG_ATRASO)
+            origem[ch] = ('ligações prediais: nos trechos de DE 63, feitas pela própria equipe logo depois do trecho'
+                          if pela_equipe else 'ligações prediais: nos trechos de DE 63, 5 dias úteis atrás da rede')
         elif g in ('5.1', '5.2'):
             pn, pcx = pecas_no.get(it['item'], {}), pecas_cx.get(it['item'], {})
             sn, sc = sum(pn.values()), sum(pcx.values())

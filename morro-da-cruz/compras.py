@@ -11,6 +11,7 @@ import hashlib
 import os
 import re
 import unicodedata
+from datetime import date
 
 import imagens
 import nfe
@@ -223,7 +224,7 @@ def situacao_pedido(conn, pedido_id):
                    JOIN nf_itens ni ON ni.id=ri.nf_item_id WHERE ni.pedido_item_id=?""")
         rec = q("""SELECT SUM(i.recusado) FROM inspecoes i JOIN recebimento_itens ri ON ri.id=i.recebimento_item_id
                    JOIN nf_itens ni ON ni.id=ri.nf_item_id WHERE ni.pedido_item_id=?""")
-        dev = q("SELECT SUM(d.quantidade) FROM devolucoes_fornecedor d JOIN nf_itens ni ON ni.id=d.nf_item_id WHERE ni.pedido_item_id=?")
+        dev = q("SELECT SUM(d.quantidade) FROM devolucoes_fornecedor d JOIN nf_itens ni ON ni.id=d.nf_item_id WHERE ni.pedido_item_id=? AND d.movimento_id NOT IN (SELECT movimento_id FROM estornos)")
         p["itens"].append({**it, "faturado": fat, "entregue": ent, "quarentena": quar, "aceito": ace, "recusado": rec,
                            "devolvido": dev, "pendente_entrega": round(max(it["quantidade"] - (ace - dev) - quar, 0), 6),
                            "a_faturar": round(_a_faturar(conn, it["id"]), 6)})
@@ -274,6 +275,8 @@ def importar_nfe_xml(conn, conteudo_b64, nome_arquivo, por, cadastrar=False):
     f = _one(conn, "SELECT * FROM fornecedores WHERE cnpj=?", re.sub(r"\D", "", n["emitente_cnpj"] or ""))
     if not f and not cadastrar:
         return {"fornecedor_novo": {"cnpj": n["emitente_cnpj"], "nome": n["emitente_nome"]}, "numero": n["numero"]}
+    if f and _nf_repetida(conn, f["id"], n["numero"], n.get("serie")):
+        raise RegraViolada(f"A NF {n['numero']} deste fornecedor já foi registrada (digitada ou por outro XML).")
     with transacao(conn):
         if not f:
             f = _one(conn, "SELECT * FROM fornecedores WHERE id=?", cadastrar_fornecedor(conn, n["emitente_cnpj"], n["emitente_nome"], por))
@@ -292,6 +295,24 @@ def importar_nfe_xml(conn, conteudo_b64, nome_arquivo, por, cadastrar=False):
             "fornecedor": f["nome"]}
 
 
+def _data_iso(data, o_que):
+    try:
+        return date.fromisoformat(str(data)[:10]).isoformat()
+    except ValueError:
+        raise RegraViolada(f"{o_que}: data inválida ({data}).") from None
+
+
+def _nf_repetida(conn, fornecedor_id, numero, serie):
+    """A mesma nota do mesmo fornecedor (número e série, sem os zeros da frente), mesmo sem a chave de acesso."""
+    def limpo(x):
+        return str(x or "").strip().lstrip("0") or "0"
+    for r in conn.execute("SELECT id, numero, serie FROM notas_fiscais WHERE fornecedor_id=? AND status<>'CANCELADA'",
+                          (fornecedor_id,)):
+        if limpo(r["numero"]) == limpo(numero) and (not r["serie"] or not serie or limpo(r["serie"]) == limpo(serie)):
+            return r["id"]
+    return None
+
+
 def registrar_nf_digitada(conn, numero, fornecedor_id, data_emissao, linhas, por, documento_b64, documento_tipo,
                           nome_arquivo=None, serie=None, chave=None, valor_total=None):
     """Dados digitados a partir do PDF/imagem da NF (anexo obrigatório). Fica A CONFERIR por OUTRA pessoa."""
@@ -305,6 +326,8 @@ def registrar_nf_digitada(conn, numero, fornecedor_id, data_emissao, linhas, por
             raise RegraViolada("Chave de acesso inválida.")
         if _one(conn, "SELECT 1 FROM notas_fiscais WHERE chave_nfe=? AND status<>'CANCELADA'", chave):
             raise RegraViolada("NF com esta chave já registrada.")
+    if _nf_repetida(conn, fornecedor_id, numero, serie):
+        raise RegraViolada(f"A NF {str(numero).strip()} deste fornecedor já está registrada (cancele a anterior para lançar de novo).")
     if documento_tipo not in ("NF_PDF", "NF_IMAGEM") or not documento_b64:
         raise RegraViolada("Anexe o PDF ou a imagem da nota fiscal: os dados digitados são conferidos contra ele.")
     if not linhas:
@@ -368,14 +391,14 @@ def sugerir_materiais(conn, nf_id):
     for m in mats.values():
         ps = _palavras(m["descricao"])
         cand.append((m["id"], {p for p in ps if not p.isdigit()}, _medidas(ps)))
-    hist_cod, hist_desc = {}, {}                       # (material, fator) da linha igual numa nota anterior
-    for cod, desc, mid, fat in conn.execute(
-            """SELECT l.codigo, l.descricao, l.material_id, l.fator FROM nf_linhas l JOIN notas_fiscais n ON n.id=l.nf_id
+    hist_cod, hist_desc = {}, {}                       # (material, fator, unidade) da linha igual numa nota anterior
+    for cod, desc, mid, fat, un in conn.execute(
+            """SELECT l.codigo, l.descricao, l.material_id, l.fator, l.unidade FROM nf_linhas l JOIN notas_fiscais n ON n.id=l.nf_id
                WHERE n.fornecedor_id=? AND n.id<>? AND n.status<>'CANCELADA' AND l.material_id IS NOT NULL AND l.id NOT IN (SELECT linha_id FROM nf_confirmacoes WHERE pendente=1) ORDER BY l.id""",
             (nf["fornecedor_id"], nf_id)):
         if cod:
-            hist_cod[cod] = (mid, fat)
-        hist_desc[" ".join(_palavras(desc))] = (mid, fat)
+            hist_cod[cod] = (mid, fat, un)
+        hist_desc[" ".join(_palavras(desc))] = (mid, fat, un)
     out = []
     for li in _rows(conn.execute("SELECT * FROM nf_linhas WHERE nf_id=? ORDER BY n_item", (nf_id,))):
         mid, motivo, desc = None, None, " ".join(_palavras(li["descricao"]))
@@ -388,7 +411,9 @@ def sugerir_materiais(conn, nf_id):
         elif li["codigo"] in mats:
             mid, motivo = li["codigo"], "código do produto"
         elif (hist_cod.get(li["codigo"]) or hist_desc.get(desc) or (None,))[0] in mats:
-            (mid, fator), motivo = hist_cod.get(li["codigo"]) or hist_desc[desc], "como na nota anterior deste fornecedor"
+            (mid, fator, un_ant), motivo = hist_cod.get(li["codigo"]) or hist_desc[desc], "como na nota anterior deste fornecedor"
+            if R.normalizar_unidade(un_ant) != R.normalizar_unidade(li["unidade"]):
+                fator = None                           # o fator da nota anterior era de outra unidade (ex.: M × BR)
         elif bitola and (nota_caesb or "caesb" in pal) and f"CAESB-PEAD-DE{bitola}" in mats:
             mid, motivo = f"CAESB-PEAD-DE{bitola}", "tubo da Caesb pela bitola"
         else:
@@ -459,7 +484,8 @@ def _a_faturar(conn, pedido_item_id, ignorar_nf=None):
         """SELECT COALESCE((SELECT SUM(i.recusado) FROM inspecoes i JOIN recebimento_itens ri ON ri.id=i.recebimento_item_id
                              JOIN nf_itens ni ON ni.id=ri.nf_item_id WHERE ni.pedido_item_id=?),0)
                 + COALESCE((SELECT SUM(d.quantidade) FROM devolucoes_fornecedor d JOIN nf_itens ni ON ni.id=d.nf_item_id
-                             WHERE ni.pedido_item_id=?),0)""", (pedido_item_id, pedido_item_id)).fetchone()[0]
+                             WHERE ni.pedido_item_id=? AND d.movimento_id NOT IN (SELECT movimento_id FROM estornos)),0)""",
+        (pedido_item_id, pedido_item_id)).fetchone()[0]
     return it["quantidade"] - ja + voltou
 
 
@@ -590,6 +616,7 @@ def receber(conn, nf_id, data, itens, por, documento=None, motivo=None):
     nf = _one(conn, "SELECT * FROM notas_fiscais WHERE id=?", nf_id)
     if not nf or nf["status"] != "CONFERIDA":
         raise RegraViolada("Só nota CONFERIDA recebe entregas (confira a nota antes).")
+    _quem_digitou_nao_confere(nf, por)
     if not data or (nf["data_emissao"] and data < nf["data_emissao"]):
         raise RegraViolada("Data da entrega ausente ou anterior à emissão da nota.")
     plano = []
@@ -658,6 +685,12 @@ def _encerrar_se_completa(conn, nf_id):
         conn.execute("UPDATE notas_fiscais SET status='ENCERRADA' WHERE id=?", (nf_id,))
 
 
+def _quem_digitou_nao_confere(nf, por):
+    """A mesma regra do recebimento num toque (D-171) vale nas rotas antigas de entrega e inspeção."""
+    if nf and nf["origem"] == "DIGITADA" and str(nf["registrada_por"] or "").lower() == str(por or "").lower():
+        raise RegraViolada("Quem digitou os dados da nota não pode conferi-los.")
+
+
 def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, motivo_recusa=None, documento_b64=None,
                 documento_nome=None):
     """Aceito + recusado = entregue. O aceito entra no estoque (novo ENTRADA_NF ACEITO); o recusado não entra. O laudo é
@@ -668,6 +701,7 @@ def inspecionar(conn, recebimento_item_id, aceito, recusado, laudo, por, data, m
               recebimento_item_id)
     if not ri:
         raise RegraViolada("Item de entrega não encontrado.")
+    _quem_digitou_nao_confere(_one(conn, "SELECT origem, registrada_por FROM notas_fiscais WHERE id=?", ri["nf_id"]), por)
     if _one(conn, "SELECT 1 FROM inspecoes WHERE recebimento_item_id=?", recebimento_item_id):
         raise RegraViolada("Item já inspecionado.")
     a, r = float(aceito or 0), float(recusado or 0)
@@ -744,7 +778,8 @@ def devolver_ao_fornecedor(conn, nf_item_id, data, quantidade, motivo, por, docu
     q = float(quantidade or 0)
     aceito = conn.execute("""SELECT COALESCE(SUM(i.aceito),0) FROM inspecoes i JOIN recebimento_itens ri ON ri.id=i.recebimento_item_id
                              WHERE ri.nf_item_id=?""", (nf_item_id,)).fetchone()[0]
-    dev = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM devolucoes_fornecedor WHERE nf_item_id=?", (nf_item_id,)).fetchone()[0]
+    dev = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM devolucoes_fornecedor WHERE nf_item_id=? "
+                       "AND movimento_id NOT IN (SELECT movimento_id FROM estornos)", (nf_item_id,)).fetchone()[0]
     if q <= 0 or q > aceito - dev + TOL:
         raise RegraViolada(f"Devolução deve ser > 0 e ≤ aceito ainda não devolvido ({aceito - dev:g}).")
     if not str(motivo or "").strip():
@@ -804,6 +839,10 @@ def transferir(conn, data, material_id, quantidade, de_equipe, para_equipe, auto
 
 def registrar_contagem(conn, data, itens, por, obs=None):
     """Contagem física do almoxarifado; guarda o saldo do sistema no momento para conferir no ajuste."""
+    if not str(data or "").strip():
+        raise RegraViolada("Informe a data da contagem.")
+    data = _data_iso(data, "Contagem")
+    S.exigir_data_ocorrida(data, "Contagem")
     if not itens:
         raise RegraViolada("Informe ao menos um material contado.")
     vistos = set()
@@ -898,7 +937,8 @@ def painel(conn):
             """SELECT ni.*, (SELECT COALESCE(SUM(quantidade),0) FROM recebimento_itens WHERE nf_item_id=ni.id) recebido,
                       (SELECT COALESCE(SUM(i.aceito),0) FROM inspecoes i JOIN recebimento_itens ri ON ri.id=i.recebimento_item_id
                         WHERE ri.nf_item_id=ni.id) aceito,
-                      (SELECT COALESCE(SUM(quantidade),0) FROM devolucoes_fornecedor WHERE nf_item_id=ni.id) devolvido
+                      (SELECT COALESCE(SUM(quantidade),0) FROM devolucoes_fornecedor WHERE nf_item_id=ni.id
+                       AND movimento_id NOT IN (SELECT movimento_id FROM estornos)) devolvido
                FROM nf_itens ni WHERE ni.nf_id=? ORDER BY ni.id""", (n["id"],)))
         n["a_inspecionar"] = _rows(conn.execute(
             """SELECT ri.id, ri.quantidade, ni.material_id, r.data FROM recebimento_itens ri JOIN recebimentos r ON r.id=ri.recebimento_id

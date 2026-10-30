@@ -6,10 +6,14 @@ mapa REV02 (`../mapa/`). Não fazem parte do web app.
 - **REV00 (29/10/2026):** os dois cenários (A: prazo; B: 90 m/dia), zonas pela distância ao canteiro.
 - **REV01 (30/10/2026):** só o cenário B; a obra sai do reservatório da Zona 11 e sobe com a rede (regra "ligado ao
   reservatório"). Todas as regras da REV00 continuam; muda só a ordem.
+- **REV02 (30/10/2026):** a REV01 com a análise crítica (`rev02.py`): 2º empreiteiro em março, chuva e recesso,
+  produtividade pelo diâmetro, entrada dos empreiteiros, deslocamento entre frentes, ligações pelas próprias equipes,
+  caixas do caminho da água antes e interligação pelo caminho. Fim em 10/01/2029 (−293 dias), a mostrar como está.
 
 ```bash
 bash gerar_tudo.sh            # REV00: os dois cenários e a animação em ./saida (fora do Git)
 MPXJ=1 bash gerar_rev01.sh    # REV01: xlsx, XML (regravado pelo MPXJ), Gantt em PDF, animação e as conferências
+bash gerar_rev02.sh           # REV02: os mesmos arquivos, com o quadro REV01 × REV02 e a cascata das mudanças
 ```
 
 | Arquivo | O que faz |
@@ -27,6 +31,7 @@ MPXJ=1 bash gerar_rev01.sh    # REV01: xlsx, XML (regravado pelo MPXJ), Gantt em
 | `paleta_rev01.py` | REV01: as cores (CIEDE2000 ≥ 20 em cada legenda, conferidas no validador da skill dataviz) |
 | `xlsx_rev01.py`, `projeto_rev01.py`, `gantt_rev01.py` | REV01: a planilha (data do reservatório, quadro REV00 × REV01, PROGRAMAÇÃO com a carga e a aba CARGA), o Project (marcos do reservatório, "ligada" e "em carga") e o Gantt |
 | `animacao_rev01.py`, `animacao_rev01_modelo.html` | REV01: a animação só do cenário B, com o reservatório e a situação de cada trecho na ligação |
+| `rev02.py`, `rev02_cascata.py`, `gerar_rev02.py`, `gerar_rev02.sh` | REV02: as premissas novas (opções do `motor_rev01.py` e o calendário com chuva e recesso de `motor.aplicar_chuva_e_recesso`), a cascata (uma mudança de cada vez, cada uma num processo) e a geração com os módulos da REV01 (`analise_rev01.REV` troca os rótulos) |
 | `gerar_rev01.py`, `gerar_rev01.sh`, `conferir_rev01.py` | Gera a REV01 e faz as conferências antes da entrega (BM em 100%, juntada, recálculo no LibreOffice com a data em branco e com data de teste, outubro, exceções) |
 
 Premissas, decisões, resultados e como abrir o XML no Project: `.claude/skills/sistema-morro-da-cruz/references/cronograma-executivo.md`

@@ -23,6 +23,8 @@ MAPA = motor.HTML
 g = MG.geometria(MAPA)
 D, rede, itens = motor.ler_dados()
 p_prazo = motor.resolver_prazo(D, rede)
+if p_prazo is None:
+    sys.exit('Nem com 200 m/dia a obra termina no prazo contratual: revise as premissas em motor.py.')
 
 dia = lambda d: round((d - dt.datetime.combine(OS, dt.time(0, 0))).total_seconds() / 86400, 3)
 idx_geo = {t['n']: k for k, t in enumerate(g['trechos'])}
@@ -78,6 +80,7 @@ for cid, p in (('A', p_prazo), ('B', 90.0)):
     saida['cenarios'][cid] = {'p': p, 'fim': dia(CAL.fim(pl['fim'])), 'fim_txt': f"{CAL.fim(pl['fim']):%d/%m/%Y}",
                               'trechos': tr, 'caixas': caixas, 'carga': carga, 'meses': meses, 'fat': val,
                               'canteiro': [dia(CAL.inicio(pl['canteiro'][0])), dia(CAL.fim(pl['canteiro_inst'][1]))]}
+    saida['marcos']['fim_eixo'] = max(saida['marcos']['fim_eixo'], dia(CAL.fim(pl['fim'])) + 30)   # obra além de mai/2028
     print(cid, p, len(tr), 'trechos', len(caixas), 'caixas', 'fim', CAL.fim(pl['fim']), 'fat', round(sum(val)))
 mos = MG.mosaico(MAPA)
 saida['mosaico'] = 'data:image/webp;base64,' + base64.b64encode(mos).decode()
