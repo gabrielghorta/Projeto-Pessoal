@@ -537,9 +537,20 @@
     <div id="solicitarConteudo"></div>
   </section>
   <section class="aba" id="aba-compras">
-    <header class="cab-tela"><h1>Compras e notas</h1><p>Cadastre a nota. O almoxarife confere e recebe a entrega.</p></header>
+    <header class="cab-tela"><h1>Compras e notas</h1><p>Os requerimentos de material a decidir e a comprar, e as notas. O almoxarife confere e recebe a entrega.</p></header>
     <p class="aviso info" style="margin-top:0">A nota não precisa de pedido nem de solicitação. O almoxarife confere e aceita a entrega no Estoque; a linha que o sistema não reconheceu entra no estoque quando a engenharia disser o que é. Material aceito vira estoque, <b>nunca</b> lançamento de medição. <button type="button" class="btn" data-tela="solicitar">Pedir material</button></p>
     <div class="grade">
+      <div class="painel" id="reqPainel">
+        <h3>Requerimentos de material</h3>
+        <p class="vazio" style="margin:0 0 8px">O que as equipes, o almoxarife e os encarregados pediram em <b>Pedir material</b>. A engenharia ou a administração aprova ou recusa; quem pediu não decide o próprio pedido.</p>
+        <div id="reqDecidir" class="vazio">Carregando os requerimentos…</div>
+        <details class="nota-mais"><summary>Os já decididos (<span id="reqDecididosN">0</span>)</summary><div id="reqDecididos"></div></details>
+      </div>
+      <div class="painel" id="reqComprarPainel">
+        <h3>A comprar</h3>
+        <p class="vazio" style="margin:0 0 8px">O aprovado que ainda não chegou, somado por material. Ligue a nota ao requerimento (em "Notas fiscais", abaixo): quando o almoxarife aceitar a entrega no Estoque, ele sai daqui.</p>
+        <div id="reqComprar" class="vazio">—</div>
+      </div>
       <div class="painel">
         <h3>Nota fiscal</h3>
         <details style="margin-top:8px"><summary>Cadastrar fornecedor</summary>
@@ -566,26 +577,6 @@
           </form>
         </details>
       </div>
-      <div class="painel">
-        <h3>Almoxarifado — transferência, inventário e reservas vencidas</h3>
-        <details open><summary>Transferência entre equipes em campo</summary>
-          <form id="fTransf" class="form" data-perm="almox">
-            <div class="linha"><label>De<select name="de_equipe" class="selEquipe" required></select></label><label>Para<select name="para_equipe" class="selEquipe" required></select></label></div>
-            <div class="linha"><label>Material<select name="material_id" class="selMaterialTodos" required></select></label><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label></div>
-            <div class="linha"><label>Quem autorizou<input name="autorizacao" required></label><label>Motivo<input name="motivo"></label></div>
-            <div class="acoes"><button class="btn">Transferir</button></div>
-          </form>
-        </details>
-        <details><summary>Inventário (contagem física)</summary>
-          <form id="fInv" class="form" data-perm="inventario_contar">
-            <div class="editor-itens" data-itens="inv"></div>
-            <button type="button" class="btn" data-mais-item="inv">+ material</button>
-            <div class="acoes"><button class="btn">Registrar contagem</button></div>
-          </form>
-          <div id="invLista"></div>
-        </details>
-        <details><summary>Reservas vencidas</summary><div id="vencidasLista"></div></details>
-      </div>
       <div class="painel" style="grid-column:1/-1">
         <h3>Notas fiscais — conferência, entregas, inspeção e devolução</h3>
         <div id="notasLista"></div>
@@ -595,7 +586,7 @@
 
   <!-- ======================================================= PLANEJAMENTO: ESTOQUE E MOVIMENTOS -->
   <section class="aba" id="aba-almox">
-    <header class="cab-tela"><h1>Estoque e movimentos</h1><p>As equipes do dia, o aceite ou a recusa do material que chegou, entradas, reservas, estoque e movimentos.</p></header>
+    <header class="cab-tela"><h1>Estoque e movimentos</h1><p>As equipes do dia, o aceite ou a recusa do material que chegou, entradas, reservas, transferências, inventário, estoque e movimentos.</p></header>
     <div class="grade">
       <div class="painel largo" id="almoxDiaPainel" hidden>
         <h3>Equipes programadas hoje</h3>
@@ -642,6 +633,26 @@
         <div id="reservasLista" style="margin-top:10px"></div>
       </div>
       <div class="painel">
+        <h3>Transferência, inventário e reservas vencidas</h3>
+        <details open><summary>Transferência entre equipes em campo</summary>
+          <form id="fTransf" class="form" data-perm="almox">
+            <div class="linha"><label>De<select name="de_equipe" class="selEquipe" required></select></label><label>Para<select name="para_equipe" class="selEquipe" required></select></label></div>
+            <div class="linha"><label>Material<select name="material_id" class="selMaterialTodos" required></select></label><label>Quantidade<input type="number" step="any" min="0" name="quantidade" required></label></div>
+            <div class="linha"><label>Quem autorizou<input name="autorizacao" required></label><label>Motivo<input name="motivo"></label></div>
+            <div class="acoes"><button class="btn">Transferir</button></div>
+          </form>
+        </details>
+        <details><summary>Inventário (contagem física)</summary>
+          <form id="fInv" class="form" data-perm="inventario_contar">
+            <div class="editor-itens" data-itens="inv"></div>
+            <button type="button" class="btn" data-mais-item="inv">+ material</button>
+            <div class="acoes"><button class="btn">Registrar contagem</button></div>
+          </form>
+          <div id="invLista"></div>
+        </details>
+        <details><summary>Reservas vencidas</summary><div id="vencidasLista"></div></details>
+      </div>
+      <div class="painel">
         <h3>Notas fiscais anteriores (registro direto)</h3>
         <p class="vazio" style="margin:0">Notas novas seguem a tela <b>Compras e notas</b>: XML da NF-e ou dados digitados com o PDF/imagem, conferência, entregas parciais e inspeção item a item. Aqui ficam só as notas registradas antes, para concluir o aceite.</p>
         <div id="nfLista" style="margin-top:12px"></div>
@@ -682,6 +693,8 @@
           <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pln-pop="zonas" aria-expanded="false">Zonas</button><div class="ilu-pop" id="plnPopZonas" hidden></div></div>
           <div class="ilu-bloco"><button type="button" class="ilu-bt" data-pln-pop="camadas" aria-expanded="false">Camadas</button><div class="ilu-pop" id="plnPopCamadas" hidden></div></div>
           <div class="busca pln-busca"><input id="plnBusca" placeholder="Achar trecho ou nó…" autocomplete="off" aria-label="Achar trecho ou nó no mapa"><ul hidden></ul></div>
+          <button type="button" class="ilu-bt" id="plnDesmarcar" aria-pressed="false" hidden title="Ligado: cada toque tira o trecho ou nó tocado. Toque de novo para voltar a escolher.">Desselecionar</button>
+          <button type="button" class="ilu-bt" id="plnLimpar" hidden>Limpar seleção</button>
         </div>
         <div class="ilu-zoom">
           <button type="button" class="ilu-bt quadrado" id="plnMais" aria-label="Aproximar">+</button>

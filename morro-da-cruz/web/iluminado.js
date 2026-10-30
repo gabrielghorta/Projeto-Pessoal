@@ -91,6 +91,17 @@ const SUBADUTORA_MM = 200;
 const ehSubadutora = t => t.tp === 'Adutora' || (t.de || 0) >= SUBADUTORA_MM;
 const ZONA_ADUTORA = 'Adutora';
 const zonaDoTrecho = t => ehSubadutora(t) ? ZONA_ADUTORA : t.z;
+// as frentes de cada nó ou caixa: as dos trechos que chegam nele; a caixa sem trecho (as da CH), a zona do nome
+function frentesDosNos(g) {
+  const idx = new Map(); g.els.forEach((e, i) => e.n.forEach(n => idx.set(n, i)));
+  const fr = g.els.map(() => new Set());
+  g.trechos.forEach(t => [t.a, t.b].forEach(n => { const i = n && idx.get(n); if (i != null) fr[i].add(zonaDoTrecho(t)); }));
+  g.els.forEach((e, i) => {
+    if (e.n.some(n => n.includes('_Adutora_'))) fr[i].add(ZONA_ADUTORA);
+    if (!fr[i].size) e.n.forEach(n => { const m = /^(Zona\d\d)_/.exec(n); if (m) fr[i].add(m[1]); });
+  });
+  return fr;
+}
 const nomeZona = z => z === ZONA_ADUTORA ? 'Subadutora' : String(z).replace(/^Zona(\d\d)$/, 'Zona $1');
 // onde o trecho fica (a zona da 06.1), que não muda com a frente: o de 225 da Zona 05 fica na Zona 05
 const localDoTrecho = t => t.tp === 'Adutora' ? 'Adutora' : nomeZona(t.z);
@@ -179,8 +190,12 @@ const nomeSituacao = (est, nome, s) => SITU_ID[s].nome + ((etapaDe(est, nome) ||
 const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
   vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true, nos: true }, fundo: 'escura',
   prefixo: 'ilu', svg: () => $('#iluSvg'), caixa: () => $('#ilu'), desenhar: desenharIlu, clique: cliqueNoMapa,
-  copia: (g, u) => copiaIlu(g, u), tocavel: t => !t.s || ILU.vis[t.s],     // situação escondida não se toca
-  copiaChave: () => [ILU.fundo, ILU.cam.zonas, SITU.map(s => +ILU.vis[s.id]).join(''), ILU.cores || 0, !!ILU.mosaico].join('|') };
+  copia: (g, u) => copiaIlu(g, u), tocavel: t => naFrenteIlu(t) && (!t.s || ILU.vis[t.s]),   // situação escondida e fora da zona não se tocam
+  copiaChave: () => [ILU.fundo, ILU.cam.zonas, SITU.map(s => +ILU.vis[s.id]).join(''), ILU.cores || 0, !!ILU.mosaico, ILU.zona].join('|') };
+// a zona em foco (D-185, como no HTML): só ela tem cor, trechos, nós e equipes; as outras ficam sem preenchimento, sem
+// trechos e sem toque, com o contorno e o satélite, até "Obra inteira" ou a troca de zona pela janela Zonas
+const naFrenteIlu = t => !ILU.zona || zonaDoTrecho(t) === ILU.zona;
+const opacidadeZonaIlu = id => !ILU.zona ? 0.26 : id === ILU.zona ? 0.36 : 0;
 // satélite escurecido por padrão: as cores da situação aparecem por cima, como no mapa do projeto. O escurecimento é um
 // véu preto por cima das fotos (opacidade): filtro CSS no satélite refazia a imagem inteira a cada quadro
 const FUNDOS = { escura: ['Escura', 0.58], clara: ['Clara', 0.15], sem: ['Sem satélite', 0] };
@@ -247,8 +262,8 @@ function copiaIlu(g, u) {
     g.globalAlpha = FUNDOS[ILU.fundo][1]; g.fillStyle = '#000'; g.fillRect(0, 0, GERAL.w, GERAL.h);
     g.restore();
   }
-  if (ILU.cam.zonas) zonasCopia(g, u, () => 0.26);         // sem a zona em foco: mudar o foco não refaz a cópia
-  linhasCopia(g, u, SITU.filter(s => ILU.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado ? '5 4' : null, trechos: GERAL.trechos.filter(t => t.s === s.id) })));
+  if (ILU.cam.zonas) zonasCopia(g, u, z => opacidadeZonaIlu(z.id));
+  linhasCopia(g, u, SITU.filter(s => ILU.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado ? '5 4' : null, trechos: GERAL.trechos.filter(t => t.s === s.id && naFrenteIlu(t)) })));
 }
 // as fotos em resolução cheia só são pedidas quando o mapa para (arrastar ou zoom): durante o gesto, fica o mosaico
 function satDepois(ctx, g, px) { clearTimeout(ctx.tSat); ctx.tSat = setTimeout(() => detalheSatelite(ctx, g, px), 180); }
@@ -275,7 +290,8 @@ function montarIluminado(g) {
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}"/>`).join('')
     + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
   svg.innerHTML = `${htmlSatelite(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluNos"></g>
-    <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="iluPins"></g>`;
+    <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="iluPins"></g>`;
+  ILU.frentesNo = frentesDosNos(g);
   ligarSatelite(ILU, g); carregarMosaicoCopia(g);
   ILU.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   ILU.vb = null; ajustarAspecto();
@@ -430,11 +446,12 @@ const NOS_DE_PERTO_PX = 1.2;               // unidades do mapa por pixel: abaixo
 function desenharNosIlu(px) {
   const caixa = $('#iluNos'); if (!caixa || !ILU.est || !ILU.vb) return;
   const perto = px < NOS_DE_PERTO_PX, [x, y, w, h] = ILU.vb;
-  const chave = `${ILU.cores}|${px.toPrecision(3)}|${perto ? ILU.vb.map(v => Math.round(v)).join(',') : ''}`;
+  const chave = `${ILU.cores}|${px.toPrecision(3)}|${perto ? ILU.vb.map(v => Math.round(v)).join(',') : ''}|${ILU.zona}`;
   if (caixa.dataset.chave === chave) return;
   caixa.dataset.chave = chave;
   const dentro = e => e.x > x - w / 2 && e.x < x + w * 1.5 && e.y > y - h / 2 && e.y < y + h * 1.5;
-  caixa.innerHTML = GERAL.els.map(e => {
+  caixa.innerHTML = GERAL.els.map((e, i) => {
+    if (ILU.zona && !(ILU.frentesNo[i] || new Set()).has(ILU.zona)) return '';
     const tp = tipoNo(e); if (tp === 'NÓ' && !(perto && dentro(e))) return '';
     const s = e.n.map(n => situacao(ILU.est, n)).find(v => v !== 'nao') || 'nao';
     return simboloNo(tp, e.x, e.y, px * (perto ? 1 : 0.8), `class="ilu-no" data-no="${esc(e.n[0])}" style="fill:${s === 'nao' ? '#101010' : SITU_ID[s].cor}"`)
@@ -581,21 +598,24 @@ function cliqueNoMapa(alvo, ev, i) {
   const no = alvo.closest && alvo.closest('.ilu-no');
   if (pin) return focarAlvo(pin.dataset.tipo, pin.dataset.alvo);
   if (no) return abrirFicha('ATIVIDADE', no.dataset.no);
-  // com uma frente em foco, o primeiro toque em outra zona (no polígono ou num trecho dela) troca o foco; o trecho da
-  // Subadutora que passa pela zona em foco não troca nada (fica onde está)
-  const t = i >= 0 ? GERAL.trechos[i] : null;
-  const outra = ILU.zona && (t ? (zonaDoTrecho(t) === ILU.zona || t.z === ILU.zona ? null : zonaDoTrecho(t)) : zona && zona.dataset.zona);
-  if (outra && outra !== ILU.zona) return focarZona(outra);
+  // com uma zona em foco, o resto do mapa não responde (D-185): só os trechos dela são achados (tocavel); a troca de zona
+  // é pela janela Zonas ou por "Obra inteira"
   if (i >= 0) return abrirFicha('TRECHO', GERAL.trechos[i].n);
-  if (zona) return focarZona(zona.dataset.zona);
+  if (zona && !ILU.zona) return focarZona(zona.dataset.zona);
 }
 function focarZona(z) {
   ILU.zona = z;
   const ts = GERAL.trechos.filter(t => zonaDoTrecho(t) === z), poli = GERAL.zonas.find(x => x.id === z);
   const b = limites([...(poli ? [poli.p] : []), ...ts.flatMap(t => t.p)], 0.06);
-  aplicarCamadas(); irPara(b);
+  recolorirIlu(); irPara(b);
 }
-function verTudo() { ILU.zona = null; aplicarCamadas(); irPara(ILU.base); }
+function verTudo() { ILU.zona = null; recolorirIlu(); irPara(ILU.base); }
+// o traçado e os nós da frente em foco; sem o estado do servidor, todos como não iniciados
+function recolorirIlu() {
+  if (!GERAL || !ILU.pronto) return;
+  if (ILU.est) return colorirIluminado();
+  ILU.est = {}; colorirIluminado(); ILU.est = null;
+}
 function focarAlvo(tipo, nome) {
   const pos = posicaoAlvo(GERAL, tipo, nome); if (!pos) return;
   const larg = (ILU.base[2] - ILU.base[0]) / 9, [x, y] = pos.xy;
@@ -605,7 +625,7 @@ function focarAlvo(tipo, nome) {
 
 function colorirIluminado() {
   const est = ILU.est, por = Object.fromEntries(SITU.map(s => [s.id, []]));
-  GERAL.trechos.forEach(t => { t.s = situacao(est, t.n); por[t.s].push(t); });
+  GERAL.trechos.forEach(t => { t.s = situacao(est, t.n); if (naFrenteIlu(t)) por[t.s].push(t); });
   ILU.cores = (ILU.cores || 0) + 1;
   $('#iluLinhas').innerHTML = SITU.map(s => s.tracejado
     ? linhasTracejadas(por[s.id], `class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}" stroke-dasharray="5 4"`)
@@ -615,21 +635,29 @@ function colorirIluminado() {
   if (ILU.pop) abrirPop(ILU.pop, true);
 }
 function desenharPins() {
-  $('#iluPins').innerHTML = (ILU.est.pins || []).map(p => {
+  $('#iluPins').innerHTML = (ILU.est.pins || []).filter(p => alvoNaFrenteIlu(p.alvo_tipo, p.alvo_id)).map(p => {
     const pos = posicaoAlvo(GERAL, p.alvo_tipo, p.alvo_id); if (!pos) return '';
     const [x, y] = pos.xy;
     return `<g class="ilu-pin" data-tipo="${esc(p.alvo_tipo)}" data-alvo="${esc(p.alvo_id)}"><title>${esc(equipeNome(p.equipe))} em ${esc(nomeCompleto(p.alvo_id))} (check-in de hoje)</title>
       <circle cx="${x}" cy="${y}"/><text x="${x}" y="${y}">${esc(rotuloEquipe(p.equipe))}</text></g>`;
   }).join('');
 }
+function alvoNaFrenteIlu(tipo, nome) {
+  if (!ILU.zona) return true;
+  const ix = indexar(GERAL);
+  if (tipo === 'TRECHO') { const t = ix.trecho.get(nome); return !t || naFrenteIlu(t); }
+  const i = GERAL.els.findIndex(e => e.n.includes(nome));
+  return i < 0 || (ILU.frentesNo[i] || new Set()).has(ILU.zona);
+}
 const equipeNome = id => ((RESUMO && RESUMO.equipes) || []).find(e => e.id === id)?.nome || id;
 function aplicarCamadas() {
   satDe(ILU).style.display = ILU.fundo === 'sem' ? 'none' : '';
   $('.sat-veu', satDe(ILU)).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]);
   $('#iluZonas').style.display = ILU.cam.zonas ? '' : 'none';
-  // a zona em foco um pouco mais forte; as outras com a cor delas (nunca cinza) e clicáveis
-  $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', ILU.zona ? (p.dataset.zona === ILU.zona ? 0.36 : 0.22) : 0.26));
+  // a zona em foco com a sua cor; as outras sem preenchimento (D-185), só com o contorno
+  $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', opacidadeZonaIlu(p.dataset.zona)));
   $('#iluNomes').style.display = ILU.cam.nomes ? '' : 'none';
+  $$('#iluNomes text').forEach(t => { t.style.display = !ILU.zona || t.dataset.zona === ILU.zona ? '' : 'none'; });
   $('#iluPins').style.display = ILU.cam.equipes ? '' : 'none';
   $('#iluNos').style.display = ILU.cam.nos ? '' : 'none';
   $$('#iluLinhas .ilu-tr').forEach(p => p.style.display = ILU.vis[p.dataset.situ] ? '' : 'none');

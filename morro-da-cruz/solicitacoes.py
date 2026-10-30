@@ -195,10 +195,11 @@ def decidir(conn, corpo, por):
 
 
 def listar(conn, usuario):
-    aprova = 'compras_aprovar' in usuario['permissoes']
+    # quem aprova e quem abre Compras e notas (os requerimentos, D-187) vê os pedidos da obra; os outros, só os seus
+    todos = 'compras_aprovar' in usuario['permissoes'] or 'compras' in usuario.get('telas', ())
     sql = 'SELECT s.*,d.frente_id FROM solicitacoes_compra s LEFT JOIN solicitacao_detalhes d ON d.solicitacao_id=s.id'
-    sql += '' if aprova else ' WHERE lower(s.solicitante)=lower(?)'
-    rows = _rows(conn.execute(sql + ' ORDER BY s.id DESC LIMIT 200', () if aprova else (usuario['login'],)))
+    sql += '' if todos else ' WHERE lower(s.solicitante)=lower(?)'
+    rows = _rows(conn.execute(sql + ' ORDER BY s.id DESC LIMIT 200', () if todos else (usuario['login'],)))
     nomes = {x['id']: x for x in catalogo(conn)}
     for s in rows:
         s['itens'] = _rows(conn.execute('SELECT material_id,quantidade FROM solicitacao_itens WHERE solicitacao_id=?', (s['id'],)))
@@ -214,6 +215,13 @@ def listar(conn, usuario):
             JOIN nf_itens ni ON ni.nf_id=sn.nf_id JOIN recebimento_itens ri ON ri.nf_item_id=ni.id
             JOIN inspecoes i ON i.recebimento_item_id=ri.id WHERE sn.solicitacao_id=? GROUP BY ni.material_id""", (s['id'],)))
         s['situacao'] = 'CHEGOU' if s['status'] == 'APROVADA' and necessario and all(mid and recebido.get(mid, 0) >= q - C.TOL for mid, q in necessario.items()) else s['status']
+        # Compras e notas (D-187): as notas ligadas e, do aprovado, o que ainda falta chegar (a lista "A comprar")
+        s['notas'] = [r[0] for r in conn.execute('''SELECT n.numero FROM solicitacao_notas sn JOIN notas_fiscais n ON n.id=sn.nf_id
+            WHERE sn.solicitacao_id=? ORDER BY n.id''', (s['id'],))]
+        s['falta'] = [{'material_id': mid, 'nome': nomes.get(mid, {}).get('nome') or mid,
+                       'unidade_nome': nomes.get(mid, {}).get('unidade_nome') or 'unidades',
+                       'quantidade': round(q - recebido.get(mid, 0), 6)}
+                      for mid, q in necessario.items() if mid and q - recebido.get(mid, 0) > C.TOL] if s['situacao'] == 'APROVADA' else []
     return rows
 
 

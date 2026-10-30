@@ -920,12 +920,12 @@ assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral", "/api/caminho"}
 _CAMPO = ("campo", "diario", "interferencias")
 _ALMOX = ("almox", "equipes", "mapa")                   # Equipes e o Dados da obra (liberar e devolver) também montam o almoxarifado
-TELA_GET = {"/api/solicitacoes": ("solicitar",), "/api/solicitacao/foto": ("solicitar",),
+TELA_GET = {"/api/solicitacoes": ("solicitar", "compras"), "/api/solicitacao/foto": ("solicitar", "compras"),
             "/api/equipe": ("equipes", "mapa") + _CAMPO, "/api/estoque": _ALMOX + ("compras",),
             "/api/campo/alvos-do-dia": ("campo",),
             "/api/compat-caesb": _ALMOX, "/api/nfs": _ALMOX, "/api/movimentos": _ALMOX, "/api/reservas": _ALMOX,
             "/api/consumo": _ALMOX, "/api/histograma": ("equipes",) + _CAMPO,
-            "/api/compras": ("compras",), "/api/inventarios": ("compras",), "/api/reservas-vencidas": ("compras",),
+            "/api/compras": ("compras",), "/api/inventarios": ("almox",), "/api/reservas-vencidas": ("almox",),
             "/api/ocorrencias": _CAMPO + ("mapa", "topografia", "cadastro_campo"),
             "/api/esteira": ("iluminado", "mapa"), "/api/verificacao/pendentes": ("iluminado", "mapa", "medicao"),
             "/api/medicao/caminho": ("medicao",), "/api/relatorios": ("relatorios",), "/api/medicoes": ("medicao",),
