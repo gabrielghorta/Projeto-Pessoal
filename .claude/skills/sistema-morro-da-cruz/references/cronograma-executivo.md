@@ -1,11 +1,62 @@
-# Cronograma físico executivo (REV00 de 29/10/2026 e REV01 de 30/10/2026)
+# Cronograma físico executivo (REV00 de 29/10/2026, REV01 e REV02 de 30/10/2026)
 
 Referência da skill `sistema-morro-da-cruz`. O cronograma foi feito para a reunião do responsável com a chefia em
 29/10/2026, como "norte" da obra. Ele **não** está no web app: é um conjunto de scripts em
 `morro-da-cruz/cronograma_executivo/`, que leem as planilhas oficiais e o REV02 e geram os arquivos.
 
-A **REV01** (30/10/2026) é a que vale: só o cenário B, com a obra saindo do reservatório da Zona 11. Ela mantém todas
-as regras da REV00 (seções depois da REV01, que continuam valendo) e muda só a ordem.
+A **REV02** (30/10/2026) é a mais nova: a REV01 com a análise crítica, a validar pelo responsável. A **REV01** (só o
+cenário B, a obra saindo do reservatório da Zona 11) continua guardada e gera igual; ela mantém todas as regras da REV00
+(seções depois da REV01, que continuam valendo) e muda só a ordem.
+
+## REV02 (30/10/2026): a REV01 com a análise crítica
+
+**Pedido.** Reformular a REV01 com a crítica, seguindo as regras: pé alto até o reajuste só com a equipe própria da
+Ankara (DE 160 da Zona 11, depois o DE 225 dela), começando perto do reservatório; Empreiteiro 1 com 2 equipes em
+04/01/2027; Empreiteiro 2 com 2 equipes em **01/03/2027** (antes era abril); antecipar as peças das caixas da Subadutora;
+as ligações pelas próprias equipes de empreiteiro, ~20 por dia; se passar de 23/03/2028, mostrar o atraso (a solução vem
+depois); aluguel de contêiner do que está no canteiro (82 % do item na REV01; 100 % na REV02, porque a obra fica mais
+longa).
+
+**O que muda (`rev02.py`; opções novas do `motor_rev01.py`, que com os padrões deixam a REV01 igual).**
+- Calendário: recesso de 22/12 a 02/01 e 4 dias úteis de chuva por mês de out a abr, um em cada quarto do mês
+  (`motor.aplicar_chuva_e_recesso`, que muda `FERIADOS` e `CAL` no processo: o Project leva os dias como não úteis).
+- `prod_por_de`: 90 m/dia até DE 160; 60 de DE 225 a 315; 45 de DE 355 a 500 (o pé alto continua a 60).
+- `entrada_meia_dias` = 5 (cada empreiteiro rende a metade na 1ª semana); `troca_frente_dias` = 0,5 dia por troca de zona.
+- `ligacoes_por_dia` = 20: a equipe que assenta o trecho de DE 63 faz as ligações dele logo depois (`lig_fim`), e só
+  então pega o próximo; a planilha fatura as ligações nesse intervalo.
+- `hidro_caminho_antes` e `interlig_por_caminho`: as caixas do caminho da água (Subadutora inclusive) montadas logo depois
+  da obra civil; a interligação de cada frente espera só o caminho até ela (o pedaço da Subadutora testado e as caixas
+  desse caminho), e não todas as caixas que encostam na frente. Na REV01, a Subadutora inteira esperava o MV-02 (entrada
+  da Zona 02, pronto em 10/11/2027), e por isso nenhuma zona podia receber água antes de 18/11/2027.
+- Teste hidrostático no fim da zona; a desinfecção vai para os dias antes da entrada em carga (que depende do
+  reservatório); marcos "pedir o reajuste" em 01/02/2027 e 01/02/2028 no Project.
+
+**A cascata (uma mudança de cada vez, acumulando; `rev02_cascata.py`).**
+
+| Mudança | Fim da obra | Folga |
+|---|---|---|
+| REV01 como está | 20/03/2028 | +3 |
+| + Empreiteiro 2 em 01/03/2027 | 07/03/2028 | +16 |
+| + recesso e chuva | 19/05/2028 | −57 |
+| + produtividade pelo diâmetro | 08/06/2028 | −77 |
+| + 1ª semana a meia produtividade | 13/06/2028 | −82 |
+| + meio dia por troca de frente | 20/06/2028 | −89 |
+| + ligações pelas equipes (20/dia) | 10/01/2029 | −293 |
+| + caixas do caminho antes e interligação pelo caminho (= REV02) | 10/01/2029 | −293 |
+
+**Resultado (REV01 → REV02).** Fim 20/03/2028 → **10/01/2029** (−293 dias; 28 medições); Subadutora até 06/07/2027 →
+16/11/2027; Zona 11 pronta para receber água 18/11/2027 → **28/07/2027**; faturado até jan/2027 R$ 2,85 mi → R$ 2,03 mi
+(4,1 %: a chuva e o recesso tiram dias do pé alto, que só faz o DE 160 e parte do DE 225 da Zona 11); outubro igual
+(R$ 102,8 mil); maior mês ago/2027, R$ 4,53 mi → R$ 3,28 mi; total R$ 49,79 mi → R$ 49,88 mi (o aluguel de contêiner
+chega a 100 % com a obra mais longa); prontos antes de ligados: 34 trechos (2,1 km) → 37 (3,0 km).
+
+**O que mais pesa:** as ligações pelas equipes de rede (11.894 a 20 por dia = 595 dias de equipe, ~7 meses) e a chuva
+com o recesso (~2,5 meses). Próximo passo sugerido: comparar com equipes só de ligação (a opção `ligacoes_por_dia`
+volta a `None` e as ligações viram recurso próprio).
+
+**Gerar:** `bash gerar_rev02.sh [pasta]` (~2 min; roda a cascata, a REV01 para o quadro, a REV02, a animação e
+`conferir_rev01.py PASTA REV02 REV01`). Conferido em 30/10/2026: nenhum erro de fórmula com a data em branco e com data
+de teste; juntada = soma das equipes nos 347 itens; outubro R$ 102.802,80; a REV01 continua gerando os mesmos números.
 
 Conteúdo: REV01 (a regra nova, decisões, resultado, arquivos, como gerar, pendências) · REV00: o que foi entregue ·
 como gerar de novo · resultado dos dois cenários · regras do responsável · decisões tomadas (e o porquê) · o que o

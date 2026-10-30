@@ -9,6 +9,14 @@ import motor_rev01 as M1
 import rede_agua as RA
 from motor import CAL, DIA, NOME
 
+# rótulos da revisão que os arquivos levam (a REV02 troca estes valores antes de gerar: gerar_rev02.py)
+REV = {'id': 'REV01', 'data': '30/10/2026', 'ant': 'REV00', 'ant_data': '29/10/2026',
+       'ant_txt': 'zonas pela distância ao canteiro', 'txt': 'a obra sai do reservatório (Zona 11)',
+       'pronto_txt': 'o caminho testado, desinfetado e interligado e as caixas do caminho montadas (teste e '
+                     'interligação por zona, como na REV00)',
+       'carga_txt': 'a zona do trecho testada e interligada (teste por zona, como na REV00)',
+       'col_teste': 'TESTE E DESINFECÇÃO (término)', 'leg_teste': 'teste hidrostático e desinfecção',
+       'calendario': 'seg a sex, 7h às 17h, sem feriados nacionais e do DF'}
 MES = {1: 'JAN', 2: 'FEV', 3: 'MAR', 4: 'ABR', 5: 'MAI', 6: 'JUN', 7: 'JUL', 8: 'AGO', 9: 'SET', 10: 'OUT', 11: 'NOV', 12: 'DEZ'}
 
 

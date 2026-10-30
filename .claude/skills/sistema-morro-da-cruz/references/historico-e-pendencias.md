@@ -26,7 +26,7 @@ responsável gosta de receber o trabalho. A lista completa e oficial das decisõ
 | #19 | 29/10 | claude/compras-requerimentos | Requerimentos em Compras; transferência, inventário e reservas vencidas no Estoque (D-187). Empilhado sobre o #18 | **aberto** |
 | #20 | 30/10 | claude/skill-continuidade | Esta skill reorganizada e o motor do cronograma no repositório. Empilhado sobre o #19 | **aberto** |
 | #21 | 30/10 | claude/cronograma-rev01 | REV01 do cronograma (só o cenário B): a obra sai do reservatório da Zona 11; grafo da água, carga, aba CARGA, marcos no Project, Gantt e animação novos. Empilhado sobre o #20 | **aberto** |
-| — | 30/10 | claude/pensive-lamport-szymez | Revisão do código inteiro e dos PRs #18 a #20: 69 correções (segurança do servidor, medição, compras e estoque, NS, campo, importação, telas, cronograma) e as regras D-188 a D-195 (`docs/CORRECOES_REVISAO_30-10-2026.md`). Empilhado sobre o #21 | PR novo |
+| — | 30/10 | claude/pensive-lamport-szymez | Revisão do código inteiro e dos PRs #18 a #20: 69 correções (segurança do servidor, medição, compras e estoque, NS, campo, importação, telas, cronograma) e as regras D-188 a D-195 (`docs/CORRECOES_REVISAO_30-10-2026.md`); e a REV02 do cronograma (a REV01 com a análise crítica, fim em 10/01/2029). Empilhado sobre o #21 | **aberto** (#22) |
 
 Os PRs empilhados devem ser mesclados na ordem (#18, #19, #20, #21, depois o da revisão). Fora do Git: em 29/10/2026, o
 cronograma físico executivo base (dois cenários) e a animação; em 30/10/2026, a REV01 (`cronograma-executivo.md`).
@@ -72,6 +72,8 @@ aviso · ADM congelada no fechamento · equipe do usuário preso à equipe sempr
 2. Cronograma REV01: confirmar as 4 saídas do reservatório com a Caesb e o engenheiro sênior, preencher a data de
    operação quando houver, decidir o aluguel de contêiner (82,1 % do item); depois, ligar o cronograma ao executado
    (% por trecho, linha de status, "REV nn - nª MEDIÇÃO").
+   REV02 (30/10): validar os tetos por diâmetro e os dias de chuva com o engenheiro sênior e decidir as equipes de
+   ligação (as ligações pelas equipes de rede, a 20/dia, levam a obra a 10/01/2029).
 3. Relatório mensal em Word (fase 2), com a tela "Dados do contrato", a presença diária e as imagens fixas.
 4. Documento da juntada (ordem das peças, folha de rosto, ofício): pedir de novo ao responsável.
 5. Decisões que liberam a medição oficial (D-30, D-31, D-50 a D-57) e a importação real (D-01).

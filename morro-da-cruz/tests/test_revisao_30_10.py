@@ -54,6 +54,23 @@ class TestRegrasPuras(unittest.TestCase):
             motor.programar = original
 
 
+class TestCronogramaRev02(unittest.TestCase):
+    """REV02 (30/10/2026): as opções novas do motor deixam a REV01 igual, e com elas a Zona 11 recebe água antes de
+    18/11/2027. Cada etapa roda num processo, porque o calendário com chuva muda o processo inteiro."""
+    def etapa(self, n):
+        import subprocess
+        pasta = os.path.join(os.path.dirname(AQUI), "cronograma_executivo")
+        r = subprocess.run([sys.executable, "rev02_cascata.py", str(n)], cwd=pasta, capture_output=True, text=True,
+                           check=True, timeout=600)
+        return r.stdout.strip().splitlines()[-1].split("|")
+
+    def test_rev01_igual_e_rev02_com_agua_antes(self):
+        rev01, rev02 = self.etapa(0), self.etapa(7)
+        self.assertEqual((rev01[2], rev01[5]), ("2028-03-20", "2027-11-18"))       # fim da obra e Zona 11 pronta
+        self.assertGreater(rev02[2], rev01[2])                                      # chuva, diâmetro e ligações atrasam
+        self.assertLess(rev02[5], "2027-11-18")                                     # a interligação pelo caminho adianta
+
+
 class TestEstornosComCaminhoProprio(BaseCompras):
     def entrada(self, q=50):
         S.entrada_material(self.c, D, TUBO_CAESB, q, "ROMANEIO_CAESB", "ROM-1", "almox1")

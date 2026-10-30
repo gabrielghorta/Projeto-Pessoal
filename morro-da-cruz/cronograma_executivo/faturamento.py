@@ -211,11 +211,17 @@ def distribuir(plano, itens, D):
             origem[ch] = 'interligação de cada zona e da Subadutora (partes iguais)'
         elif g in ('4.1', '4.2'):
             tot = sum(t['lig'] for t in T)
+            pela_equipe = False
             for t in T:
                 if t['lig']:
                     x = tr[t['i']]
-                    L.lancar(x['eq'], ch, q * t['lig'] / tot, x['ini'] + LIG_ATRASO, x['fim'] + LIG_ATRASO)
-            origem[ch] = 'ligações prediais: nos trechos de DE 63, 5 dias úteis atrás da rede'
+                    if 'lig_fim' in x:              # REV02: a própria equipe faz as ligações logo depois do trecho
+                        pela_equipe = True
+                        L.lancar(x['eq'], ch, q * t['lig'] / tot, x['fim'], x['lig_fim'])
+                    else:
+                        L.lancar(x['eq'], ch, q * t['lig'] / tot, x['ini'] + LIG_ATRASO, x['fim'] + LIG_ATRASO)
+            origem[ch] = ('ligações prediais: nos trechos de DE 63, feitas pela própria equipe logo depois do trecho'
+                          if pela_equipe else 'ligações prediais: nos trechos de DE 63, 5 dias úteis atrás da rede')
         elif g in ('5.1', '5.2'):
             pn, pcx = pecas_no.get(it['item'], {}), pecas_cx.get(it['item'], {})
             sn, sc = sum(pn.values()), sum(pcx.values())

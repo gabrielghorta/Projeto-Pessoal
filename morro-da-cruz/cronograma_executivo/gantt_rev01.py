@@ -27,6 +27,7 @@ def texto_sobre(cor):
 
 
 def svg_gantt(pl, A):
+    G0.FIM = G0._fim_do_eixo(pl)                      # o eixo vai além de mai/2028 se a obra passar disso
     T, tr = pl['T'], pl['trechos']
     cores = dict(PAL.EQUIPES, ANK2H=PAL.EQUIPES['ANK2'])
     linhas = []                       # (rótulo, [(cor, ini, fim, texto)], marcos)
@@ -50,7 +51,7 @@ def svg_gantt(pl, A):
                 rot = 'Subadutora'
             else:
                 rot = zc(T[i]['loc'])
-            segs.append((rot, x_['ini'], x_['fim']))
+            segs.append((rot, x_['ini'], x_.get('lig_fim', x_['fim'])))     # com as ligações que a equipe faz (REV02)
         linhas.append((NOME[eq], [(cores[eq], a, b, r) for r, a, b in segmentos(segs)], []))
     cx = pl['caixas']
     linhas.append(('Ankara 2 - caixas (obra civil)', [(cores['ANK2'], c['civ_ini'], c['civ_fim'], '') for c in cx.values()], []))
@@ -62,7 +63,7 @@ def svg_gantt(pl, A):
         zid = z['z']
         segs = collections.defaultdict(list)
         for i in pl['zinfo'][zid]['trechos']:
-            segs[tr[i]['eq']].append((tr[i]['eq'], tr[i]['ini'], tr[i]['fim']))
+            segs[tr[i]['eq']].append((tr[i]['eq'], tr[i]['ini'], tr[i].get('lig_fim', tr[i]['fim'])))
         # uma faixa por equipe dentro da linha da zona, na ordem em que cada uma entra (nenhuma esconde a outra)
         eqs = sorted(segs, key=lambda eq: min(a for _, a, _ in segs[eq]))
         partes = [(cores[eq], a, b, ('faixa', k, len(eqs))) for k, eq in enumerate(eqs) for _, a, b in segmentos(segs[eq])]
@@ -107,6 +108,17 @@ def svg_gantt(pl, A):
             if txt and xb - xa > 6.2 * len(txt) + 4:
                 o.append(f'<text x="{(xa + xb) / 2:.1f}" y="{cy + 4}" font-size="10" text-anchor="middle" fill="{texto_sobre(cor)}" font-weight="bold">{escape(txt)}</text>')
         ult_x = None
+        # saídas do reservatório próximas (menos de 75 px): um rótulo só, uma saída por linha (duas por linha se forem 3+)
+        grupos = []
+        for xc, b in sorted((x(CAL.fim(a)), b) for tipo, a, b in marcos if tipo == 'saida'):
+            if grupos and xc - grupos[-1][-1][0] < 75:
+                grupos[-1].append((xc, b))
+            else:
+                grupos.append([(xc, b)])
+        rotulos = {}
+        for g in grupos:
+            nomes = [b for _, b in g]
+            rotulos[g[0][1]] = (g[0][0], nomes if len(nomes) <= 2 else [' · '.join(nomes[k:k + 2]) for k in range(0, len(nomes), 2)])
         for tipo, a, b in marcos:
             if tipo == 'teste':
                 xa, xb = x(CAL.inicio(a)), x(CAL.fim(b))
@@ -122,7 +134,10 @@ def svg_gantt(pl, A):
             elif tipo == 'saida':
                 xc = x(CAL.fim(a))
                 o.append(f'<path d="M{xc - 6:.1f} {yy + 4} L{xc + 6:.1f} {yy + 4} L{xc:.1f} {yy + 14} Z" fill="{TINTA}"/>')
-                o.append(f'<text x="{xc + 8:.1f}" y="{yy + 13 + (8 if b.startswith("TR006") or b.startswith("TR080") else 0)}" font-size="8.5" fill="{TINTA}">{escape(b)}</text>')
+                if b in rotulos:
+                    x0, txts = rotulos[b]
+                    for k, t in enumerate(txts):
+                        o.append(f'<text x="{x0 + 8:.1f}" y="{yy + 13 + 8 * k}" font-size="8.5" fill="{TINTA}">{escape(t)}</text>')
                 ult_x = max(ult_x or 0, xc)
         if rot.startswith('Reservatório'):
             o.append(f'<text x="{(ult_x or X0) + 110:.1f}" y="{cy + 4}" font-size="10.5" font-weight="bold" fill="#B91C1C">'
@@ -147,7 +162,7 @@ def svg_gantt(pl, A):
     ly += 24
     o.append(f'<path d="M20 {ly - 10} L32 {ly - 10} L26 {ly} Z" fill="{TINTA}"/><text x="38" y="{ly}" font-size="11">saída do reservatório construída</text>')
     o.append(f'<circle cx="250" cy="{ly - 4}" r="6" fill="#fff" stroke="{TINTA}" stroke-width="2.2"/><circle cx="250" cy="{ly - 4}" r="2" fill="{TINTA}"/><text x="262" y="{ly}" font-size="11">zona toda ligada ao reservatório</text>')
-    o.append(f'<rect x="470" y="{ly - 9}" width="14" height="8" fill="{TINTA}"/><text x="490" y="{ly}" font-size="11">teste hidrostático e desinfecção</text>')
+    o.append(f'<rect x="470" y="{ly - 9}" width="14" height="8" fill="{TINTA}"/><text x="490" y="{ly}" font-size="11">{AN.REV["leg_teste"]}</text>')
     o.append(f'<path d="M703 {ly - 11} L710 {ly - 4} L703 {ly + 3} L696 {ly - 4} Z" fill="{TINTA}"/><text x="716" y="{ly}" font-size="11">interligação (a entrada em carga espera a operação do reservatório)</text>')
     o.append(f'<text x="1130" y="{ly}" font-size="11" fill="{APAGADO}">* medição depois do prazo contratual</text>')
     o.append(f'<text x="10" y="{TOPO - 52}" font-size="12" font-weight="bold" fill="{TINTA}">EQUIPES (o que cada uma faz, mês a mês) E A SAÍDA DO RESERVATÓRIO</text>')
@@ -159,16 +174,16 @@ def html(pl, cen, A, resumo):
     svg = svg_gantt(pl, A)
     linhas = ''.join(f'<tr><td>{escape(a)}</td><td>{escape(b)}</td></tr>' for a, b in resumo)
     ordem = ', '.join(AN.zona_txt(z['z']).replace('Zona ', '') for z in A['zonas'] if z['z'] != 'SUB')
-    return f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Cronograma REV01 - {escape(cen['titulo'])}</title>
+    return f'''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Cronograma {AN.REV['id']} - {escape(cen['titulo'])}</title>
 <style>@page {{ size: A3 landscape; margin: 9mm; }} body {{ font-family: Arial, Helvetica, sans-serif; color: {TINTA}; margin: 0; }}
 h1 {{ font-size: 19px; margin: 0 0 2px; }} h2 {{ font-size: 14px; margin: 0 0 6px; color: #B91C1C; }}
 .topo {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }}
 table {{ border-collapse: collapse; font-size: 10.5px; }} td {{ padding: 1px 6px; border-bottom: 1px solid #E5E7EB; }}
 svg {{ width: 100%; height: auto; display: block; }}
 td:last-child {{ font-weight: bold; text-align: right; }} .nota {{ font-size: 11px; color: #4B5563; margin-top: 4px; }}</style></head><body>
-<div class="topo"><div><h1>CT 10.239/2026 - Morro da Cruz - Cronograma físico executivo (REV01, 30/10/2026): a obra sai do reservatório (Zona 11)</h1>
+<div class="topo"><div><h1>CT 10.239/2026 - Morro da Cruz - Cronograma físico executivo ({AN.REV['id']}, {AN.REV['data']}): {escape(AN.REV['txt'])}</h1>
 <h2>{escape(cen['titulo'])}</h2>
-<div class="nota">OS em 01/10/2026 · prazo de 540 dias · seg a sex, 7h às 17h, sem feriados nacionais e do DF · 06.1 REV01, 06.2 REV08 e BM REV04.<br>
+<div class="nota">OS em 01/10/2026 · prazo de 540 dias · {escape(AN.REV['calendario'])} · 06.1 REV01, 06.2 REV08 e BM REV04.<br>
 A água sai do reservatório da Zona 11 por 4 saídas (TR005 e TR006, DE 500; TR080 e TR077, DE 225 - a corrigir no projeto com a Caesb).
 A Subadutora sai do TR005 para fora e as zonas seguem a ordem em que a água chega: {escape(ordem)}.<br>
 Em cima, o que cada equipe faz mês a mês (Z = zona). Embaixo, cada frente: a rede na cor da equipe, o teste, a interligação e quando a frente toda fica ligada ao reservatório.

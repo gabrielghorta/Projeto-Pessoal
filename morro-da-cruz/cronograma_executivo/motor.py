@@ -93,6 +93,33 @@ class Calendario:
 CAL = Calendario()
 
 
+def aplicar_chuva_e_recesso(dias_chuva=4, meses=(10, 11, 12, 1, 2, 3, 4), recesso=((12, 22), (1, 2))):
+    """REV02: tira do calendário o recesso de fim de ano e, em cada mês de chuva, `dias_chuva` dias úteis espalhados no
+    mês (o que a chuva para a obra, estimado). Muda FERIADOS e CAL no lugar: quem já importou os dois (motor_rev01,
+    faturamento, gerar_project) passa a usar o calendário novo, e o Project leva esses dias como não úteis. Rode antes de
+    programar. Devolve {data: motivo} do que saiu."""
+    import calendar
+    tirados = {}
+    for a in range(OS.year, 2031):
+        d, ate = dt.date(a, *recesso[0]), dt.date(a + 1, *recesso[1])
+        while d <= ate:
+            if d.weekday() < 5 and d not in FERIADOS:
+                tirados[d] = 'Recesso de fim de ano'
+            d += dt.timedelta(days=1)
+    FERIADOS.update(tirados)
+    for a in range(OS.year, 2031):
+        for m in meses:
+            uteis = [dt.date(a, m, k) for k in range(1, calendar.monthrange(a, m)[1] + 1)]
+            uteis = [d for d in uteis if d >= OS and d.weekday() < 5 and d not in FERIADOS]
+            if len(uteis) > dias_chuva:
+                for k in range(dias_chuva):                 # espalhados: um em cada quarto do mês
+                    d = uteis[(2 * k + 1) * len(uteis) // (2 * dias_chuva)]
+                    tirados[d] = FERIADOS[d] = 'Chuva (estimativa)'
+    novo = Calendario()
+    CAL.dias, CAL.idx = novo.dias, novo.idx
+    return tirados
+
+
 def meses_do_contrato(ultimo):
     """[(nº, início, fim)] de out/2026 até o mês da data `ultimo` (o 18º mês acaba em 23/03/2028)."""
     out, a, m, n = [], 2026, 10, 1

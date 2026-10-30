@@ -40,9 +40,13 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
   `morro-da-cruz/docs/CORRECOES_REVISAO_30-10-2026.md`).
 - **Fora do site, entregue em 29/10/2026:** cronograma físico executivo base, cenários A (95 m/dia, fim 23/03/2028) e
   B (90 m/dia, fim 12/04/2028), em xlsx, XML do Project e Gantt em PDF; animação do Mapa iluminado em HTML.
-- **REV01 do cronograma, 30/10/2026 (a que vale):** só o cenário B; a obra sai do reservatório da Zona 11 (4 saídas, a
+- **REV01 do cronograma, 30/10/2026:** só o cenário B; a obra sai do reservatório da Zona 11 (4 saídas, a
   confirmar com a Caesb); fim em 20/03/2028; reservatório sem data (célula amarela em branco). PR
   `claude/cronograma-rev01`, empilhado no da skill.
+- **REV02 do cronograma, 30/10/2026 (a mais nova, a validar):** a REV01 com a análise crítica (Empreiteiro 2 em março,
+  chuva e recesso, produtividade pelo diâmetro, ligações pelas próprias equipes a 20/dia, caixas do caminho antes e
+  interligação pelo caminho); fim em 10/01/2029 (−293 dias, a mostrar como está); Zona 11 pronta para água em
+  28/07/2027. No ramo `claude/pensive-lamport-szymez` (`cronograma-executivo.md`, seção REV02).
 - **Banco no site:** o de demonstração (`dados_demo/`, faixa DEMONSTRAÇÃO). A importação real espera a D-01.
 - **Medição:** só de TESTE (D-56). O pacote mensal no BM REV04 já é gerado com a marca "TESTE – NÃO OFICIAL".
 - **Próximos passos:** `references/historico-e-pendencias.md`.
