@@ -223,6 +223,17 @@ def _abrir_pdf(dados):
     return pypdf, r
 
 
+def _pdftotext():
+    """O pdftotext que vem no pacote do Windows (pasta poppler/ ao lado do programa, como o cloudflared) ou o do sistema
+    (PATH). Sem ele, a NS é lida só pelo pypdf."""
+    import caminhos
+    for nome in ('pdftotext.exe', 'pdftotext'):
+        p = os.path.join(caminhos.PASTA, 'poppler', nome)
+        if os.path.isfile(p):
+            return p
+    return shutil.which('pdftotext')
+
+
 def extrair_paginas(dados, extrator='auto'):
     """Texto de cada página do PDF (bytes) e de onde veio. 'auto' = pypdf; sem texto, pdftotext (se existir)."""
     meta = {'sha256': hashlib.sha256(dados).hexdigest(), 'bytes': len(dados)}
@@ -245,12 +256,13 @@ def extrair_paginas(dados, extrator='auto'):
         if any(p.strip() for p in paginas):
             return paginas, meta
         meta['aviso_extrator'] = 'pypdf não achou texto'
-    if extrator in ('auto', 'pdftotext') and shutil.which('pdftotext'):
+    exe = _pdftotext()
+    if extrator in ('auto', 'pdftotext') and exe:
         with tempfile.TemporaryDirectory(prefix='ns_') as tmp:
             caminho = os.path.join(tmp, 'ns.pdf')
             with open(caminho, 'wb') as f:
                 f.write(dados)
-            out = subprocess.run(['pdftotext', '-layout', '-enc', 'UTF-8', caminho, '-'], capture_output=True,
+            out = subprocess.run([exe, '-layout', '-enc', 'UTF-8', caminho, '-'], capture_output=True,
                                  text=True, timeout=60).stdout
         paginas = out.split('\f')
         if paginas and not paginas[-1].strip():
