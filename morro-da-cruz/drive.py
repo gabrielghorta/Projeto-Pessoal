@@ -318,8 +318,7 @@ def testar(conn):
     except SemConexao as e:
         raise RegraViolada(f"Sem acesso ao Google pelo servidor: {e}.") from None
     except ErroGoogle as e:
-        _tratar_desconexao(conn, e)
-        raise RegraViolada(str(e)) from None
+        raise _recusa_google(conn, e, str(e)) from None
     if r.get("mimeType") != PASTA_MIME:
         raise RegraViolada("O link da pasta da obra não é uma pasta do Drive.")
     return {"pasta": r.get("name"), "pasta_link": r.get("webViewLink"), "conta": _p(conn, "conta")}
@@ -335,8 +334,18 @@ def exportar_indice(conn, url_csv):
     except SemConexao as e:
         raise RegraViolada(f"Sem acesso ao Google pelo servidor: {e}.") from None
     except ErroGoogle as e:
-        _tratar_desconexao(conn, e)
-        raise RegraViolada(f"Não consegui ler a planilha-índice pelo Drive: {e}") from None
+        raise _recusa_google(conn, e, f"Não consegui ler a planilha-índice pelo Drive: {e}") from None
+
+
+def _recusa_google(conn, e, msg):
+    """A recusa desfaz a transação do pedido; a desconexão (autorização revogada) tem de ficar gravada mesmo assim."""
+    recusa = RegraViolada(msg)
+    if e.desconectar:
+        if conn.in_transaction:
+            recusa.depois_do_rollback = lambda c: _tratar_desconexao(c, e)
+        else:
+            _tratar_desconexao(conn, e)
+    return recusa
 
 
 def _tratar_desconexao(conn, e):

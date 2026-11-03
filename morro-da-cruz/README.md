@@ -146,8 +146,8 @@ concluído aguardando o OK interno, OK interno com o cadastro pendente e cadastr
 fica no alvo do check-in de hoje. Nada sem posição no projeto ganha coordenada; isso continua na bandeja do Dados da obra.
 Os nós e as caixas aparecem com a forma do tipo (nó em bola; DF, VTF, VM, VRP, MV e HID com forma própria) e a cor da
 situação. A **Subadutora** (adutora e redes de 200 mm pra cima, DE 225 e 250) é uma frente própria, da Equipe Adutora,
-nos dois mapas e no HTML base (D-182 a D-184). O Dados da obra usa o desenho do HTML: a planta clara, os trechos na cor
-do diâmetro e só a frente escolhida com cor.
+nos dois mapas e no HTML base (D-182 a D-184). O Dados da obra tem o fundo do Mapa iluminado, com os trechos na cor do
+diâmetro (D-186). Nos dois mapas, com uma zona em foco, só ela tem cor e trechos (D-185).
 
 ## Documentos oficiais
 

@@ -48,6 +48,8 @@ def ler(dados):
     """Dicionário com cabeçalho e itens da NF-e, ou RegraViolada com o motivo."""
     if not dados or len(dados) > LIMITE:
         raise R.RegraViolada("XML vazio ou maior que 5 MB.")
+    if b"\x00" in dados or dados[:2] in (b"\xff\xfe", b"\xfe\xff"):   # UTF-16/32 passaria pela busca abaixo
+        raise R.RegraViolada("XML da NF-e deve estar em UTF-8.")
     if b"<!DOCTYPE" in dados.upper() or b"<!ENTITY" in dados.upper():
         raise R.RegraViolada("XML com DOCTYPE/ENTITY não é aceito (NF-e não usa).")
     try:

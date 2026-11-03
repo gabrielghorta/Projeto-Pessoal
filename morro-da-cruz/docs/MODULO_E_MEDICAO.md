@@ -251,3 +251,13 @@ sessão e permissão.
 **Limitações:** no PDF gerado pelo LibreOffice, logos e fotos descem um pouco a cada folha (o modelo original tem o
 mesmo efeito); no Excel ficam no lugar — gere o PDF pelo Excel. O período no cabeçalho é o do modelo (data da OS);
 aviso se o do sistema for outro (D-155). Item novo (fora do BM) não cabe no modelo e fica de fora, com aviso.
+
+
+## Revisão do código (30/10/2026, D-188 e D-194)
+
+- **Apropriação no item da ADM (6.2_4.1.1):** recusada; a ADM é proporcional ao faturamento (D-141).
+- **ADM das medições anteriores no pacote:** a do fechamento (gravada no congelamento), não a recalculada.
+- O pacote avisa quando uma medição anterior fechou com outra revisão do BM e quando um item medido antes saiu do BM.
+- Total do BM e valor da apropriação pelo ROUND do Excel; "CT 10.239/2026" lido como 10239/2026.
+- Apropriação antiga num item retirado do BM não trava mais a sincronização.
+- Detalhes: `CORRECOES_REVISAO_30-10-2026.md`.
