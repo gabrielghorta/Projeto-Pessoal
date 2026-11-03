@@ -135,6 +135,7 @@ function desenharPln(px, zoom) {
     escalarEquipes($('#plnPins'), $('#plnHalo'), px, larg);
   }
   desenharNos(px, zoom < 3);
+  desviarEtiquetas(PLN);
   trilha($('#plnTrilha'), PLN.zona ? `<button type="button" data-pln-tudo>Obra inteira</button> › ${esc(nomeZona(PLN.zona))}`
     : zoom > 1.15 ? '<button type="button" data-pln-tudo>Ver a obra inteira</button>' : 'Obra inteira');
 }
@@ -522,7 +523,16 @@ function cabecalhoSel(r) {
     <div class="pln-chips">${r.fisicos.map(f => `<span class="chip" title="${esc(f.texto)}">${esc(f.membros.map(nomeCompleto).join(' + '))} · DE ${esc(f.de_mm)}</span>`).join('')}
       ${r.nos.map(n => `<span class="chip ${n.automatico ? 'azul' : 'laranja'}" title="${n.automatico ? 'Entrou sozinho: liga ' + esc(n.liga.join(' e ')) : 'Tocado no mapa'}">${esc(n.numero)}${n.automatico ? ' · liga ' + esc(n.liga.join(' e ')) : ''}</span>`).join('')}</div>
     ${r.avisos.map(a => `<div class="aviso sugestao">${esc(a)}</div>`).join('')}
+    ${coordSel(r)}
     ${r.linhas.length === 1 || (r.nos.length === 1 && !r.linhas.length) ? `<button type="button" class="btn" data-pln-ficha style="margin-top:8px">Ver a ficha completa</button>` : ''}`;
+}
+// um trecho ou um nó escolhido: as coordenadas reais (D-201), como na ficha
+function coordSel(r) {
+  const um = r.linhas.length === 1 ? r.linhas[0] : null, no = !r.linhas.length && r.nos.length === 1 ? r.nos[0] : null;
+  if (um && um.coordenadas) return `<dl class="pln-coord">${pontasTxt({ no_ini: um.coordenadas.inicio && um.coordenadas.inicio.no,
+    no_fim: um.coordenadas.fim && um.coordenadas.fim.no, coordenadas: um.coordenadas }, curto).map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+  if (no) return `<dl class="pln-coord"><dt>Coordenadas</dt><dd>${coordTxt(no.coordenadas)}</dd></dl>`;
+  return '';
 }
 function corpoAba() {
   const r = PLN.resp;

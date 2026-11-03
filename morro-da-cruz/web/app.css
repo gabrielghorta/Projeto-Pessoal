@@ -388,6 +388,10 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .ilu-ficha dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 14px 0; font-size: 14px; }
 .ilu-ficha dt { color: #A6A6A6; }
 .ilu-ficha dd { margin: 0; }
+.ilu-ficha dd a, .pln-coord a { color: var(--azul); }
+.pln-coord { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 8px 0; font-size: 14px; }
+.pln-coord dt { color: #A6A6A6; }
+.pln-coord dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .ilu-ficha .fechar { position: absolute; top: 12px; right: 12px; }
 .ilu-ficha .situ { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; }
 .ilu-ficha .situ i { width: 22px; border-top: 4px solid; border-radius: 2px; }

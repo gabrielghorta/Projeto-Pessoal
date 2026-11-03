@@ -26,7 +26,7 @@ caixas, ligações) · o BM REV04 por grupo · equipes e canteiro · glossário.
 | Rede | 1.436 trechos (linhas da 06.1), **110.686,03 m** de PEAD (1.400 Rede, 36 Adutora; 1.432 VCA, 4 MND); DE 63 a 500 |
 | Tubo PEAD da rede | **fornecido pela Caesb**, fora do BM (SL0327 §6): a Ankara guarda, aplica e responde por perda; os serviços são medidos |
 | Frentes | 13 no banco: Zona01 a Zona11, ADUTORA e CH (caixas hidráulicas). Nos mapas e no cronograma, a **Subadutora** (adutora + redes de DE ≥ 200 mm) é uma frente à parte (D-182) |
-| Pranchas | 25 PBs (PB20 desenhada girada 90°; o vetor da PB25 está deslocado ~37,6 m no HTML) |
+| Pranchas | 25 PBs (PB20 desenhada girada 90°; o vetor da PB25 está deslocado 37,68 m no HTML, e a tela corrige desde 03/11/2026, D-201) |
 | Elementos (06.2) | 1.191 elementos físicos (1.059 nós + 132 dispositivos), 1.242 atividades (elemento × frente), 6.539 itens |
 | BM REV04 | 347 itens na juntada, 432 no vertical |
 | Ligações prediais | item de código Caesb 8005508120013 |

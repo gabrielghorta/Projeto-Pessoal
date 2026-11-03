@@ -377,7 +377,10 @@ Ficha do trecho: caminho até a medição, verificação, fotos, esteira, histó
 supervisor, por zona, o mais perto primeiro. **Onde cada equipe está (D-200):** uma etiqueta por equipe ("01 · 22
 trechos e 3 nós", no alvo do dia mais perto do centro deles) e um contorno laranja claro nos trechos e nós do check-in
 do dia (`equipesDoDia`, `escalarEquipes`), no Mapa iluminado e na Programação; não é a posição real. No Mapa iluminado,
-o 1º toque na etiqueta aproxima a área e o 2º abre a lista; na Programação, abre o dia da equipe. Nada sem
+o 1º toque na etiqueta aproxima a área e o 2º abre a lista; na Programação, abre o dia da equipe. **Coordenadas reais (D-201):** a ficha do
+trecho (Mapa iluminado, painel da Programação e ficha completa) mostra as duas pontas com o nó, E e N da 06.1 e "abrir no
+mapa"; a do nó, E e N da 06.2 (`coordenadas.py`, `servicos.detalhe` → `coordenadas`). O vetor da PB25 é corrigido na
+tela (`mapa_geral.CORRECAO_VETOR_M`); conferência completa em `docs/MAPA_CONFERENCIA_03-11-2026.md`. Nada sem
 posição no projeto ganha coordenada (MV-11, VTF-12, VTF-16 na bandeja, D-03).
 
 **Subadutora (D-182):** adutora + redes de 200 mm pra cima (DE 225 e 250) = 132 trechos (~10,5 km), executados pela
