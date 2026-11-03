@@ -767,7 +767,7 @@ def r_reservas_vencidas(q, c):
 
 ROTAS_COMPRAS = {
     "/api/fornecedor": ("fornecedores", ("por",), _c(lambda b, c: C.cadastrar_fornecedor(c, b.get("cnpj"), b.get("nome"), b["por"], b.get("contato")))),
-    "/api/solicitacao/decidir": ("compras_aprovar", ("por",), lambda b, c: SOL.decidir(c, b, b["por"])),
+    "/api/solicitacao/identificar": ("nf_confirmar", ("por",), lambda b, c: SOL.identificar(c, b, b["por"])),
     "/api/solicitacao/vincular": ("nf_confirmar", ("por",), lambda b, c: SOL.vincular(c, b, b["por"])),
     "/api/nf/corrigir-linha": ("receber", ("por",), lambda b, c: REC.corrigir(c, int(b["nf_id"]), int(b["linha_id"]), b["por"])),
     "/api/nf/importar-xml": ("receber", ("por",), lambda b, c: C.importar_nfe_xml(c, b.get("conteudo_b64"), b.get("nome"), b["por"],
@@ -800,7 +800,9 @@ ROTAS_COMPRAS = {
         b["por"], b.get("motivo")))),
     "/api/inventario/contagem": ("inventario_contar", ("por",), _c(lambda b, c: C.registrar_contagem(
         c, b.get("data"), b.get("itens") or [], b["por"], b.get("obs")))),
-    "/api/inventario/decidir": ("inventario_ajustar", ("por",), lambda b, c: (C.decidir_inventario(
+    "/api/inventario/ciencia": ("inventario_ciencia", ("por",), lambda b, c: (C.dar_ciencia_inventario(
+        c, int(b["inventario_id"]), b["por"], b.get("obs")), {"ok": True})[1]),
+    "/api/inventario/decidir": ("inventario_ciencia", ("por",), lambda b, c: (C.decidir_inventario(
         c, int(b["inventario_id"]), bool(b.get("aprovar")), b.get("motivo"), b["por"]), {"ok": True})[1]),
     "/api/reservas/liberar-vencidas": ("almox", ("por",), lambda b, c: {"liberadas": C.liberar_reservas_vencidas(
         c, [int(x) for x in b.get("ids") or []], b.get("motivo"), b["por"], b.get("hoje") or relogio.hoje().isoformat())}),
@@ -888,10 +890,11 @@ POST.update({"/api/medicao/conferir": p_medicao_conferir, "/api/medicao/folha": 
 POST.update({rota: fn for rota, (_, fn) in ROTAS_PLANEJAMENTO.items()})
 POST.update({rota: fn for rota, (_, fn) in ROTAS_APROPRIACAO.items()})
 POST_USUARIO = {"/api/solicitacao": lambda b, c, u: SOL.abrir(c, b, u),
+                "/api/solicitacao/cancelar": lambda b, c, u: SOL.cancelar(c, b, u),     # a própria ou, com permissão, qualquer uma
                 "/api/usuarios": p_usuarios, "/api/senha": p_senha, "/api/clima": p_clima, **ROTAS_NS,
                 **{rota: fn for rota, (_, fn) in ROTAS_NS_DIA.items()}}
 # permissão exigida por rota de gravação (config/perfis.json; None = basta estar logado)
-PERMISSAO = {"/api/solicitacao": "compras_solicitar", "/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
+PERMISSAO = {"/api/solicitacao": "compras_solicitar", "/api/solicitacao/cancelar": "compras_solicitar", "/api/funcionario": "equipes", "/api/maquina": "equipes", "/api/movimento": "almox",
              "/api/nf/aceitar": "receber", "/api/checkout": "almox", "/api/clima": "campo",
              "/api/apontamento": "campo", "/api/foto": "campo", "/api/ok-fiscal": "ok_interno", "/api/recomposicao": "ok_interno",
              "/api/cadastro": "cadastro", "/api/medicao": "medicao", "/api/medicao/fechar": "medicao", "/api/estorno": "almox",

@@ -1,7 +1,7 @@
 /* Traçado real da rede para a tela inicial e para o Mapa iluminado.
  * A geometria vem da visão geral do HTML REV02 (/api/mapa/geral: satélite das PBs, zonas oficiais, trechos, nós) e a situação
  * de cada trecho vem só dos registros do banco (/api/mapa/estado). Nenhuma coordenada é criada aqui: o que não tem
- * posição no projeto não aparece no mapa (continua na bandeja do Dados da obra). */
+ * posição no projeto não aparece no mapa (continua na bandeja da Programação). */
 
 /* ---------------------------------------------------------------- dados compartilhados */
 let GERAL = null, GERAL_P = null, ESTADO_MAPA = null, ESTADO_EM = 0, ESTADO_P = null;
@@ -9,7 +9,7 @@ function obterGeral() {
   if (!GERAL_P) GERAL_P = api('/api/mapa/geral').then(g => (GERAL = g)).catch(e => { GERAL_P = null; throw e; });
   return GERAL_P;
 }
-// a situação do mapa é lida uma vez por pedido: telas que pedem juntas (Dados da obra) dividem a mesma resposta. O dia é
+// a situação do mapa é lida uma vez por pedido: telas que pedem juntas (Programação) dividem a mesma resposta. O dia é
 // o da tela (Brasília, no navegador): o servidor no PythonAnywhere roda em UTC
 async function estadoMapa(novo) {
   if (novo || !ESTADO_MAPA || Date.now() - ESTADO_EM > 30000) {
@@ -90,6 +90,38 @@ function posicaoAlvo(g, tipo, nome) {
   const e = ix.el.get(nome); return e ? { xy: [e.x, e.y] } : null;
 }
 const rotuloEquipe = id => /^Zona(\d\d)$/.test(id) ? id.slice(4) : id === 'ADUTORA' ? 'AD' : String(id || '?').slice(0, 2).toUpperCase();
+/* onde cada equipe está hoje (D-200): uma etiqueta por equipe ("01 · 25 trechos"), no alvo do dia mais perto do centro
+   deles, e um contorno largo e claro por baixo dos trechos e nós do dia. Antes era um pino em cada alvo: uma equipe com
+   25 alvos punha 25 bolinhas no mapa. porEquipe: Map(equipe → [{ tipo, nome }]) */
+function equipesDoDia(g, porEquipe) {
+  const halo = [], etiquetas = [];
+  porEquipe.forEach((alvos, equipe) => {
+    const ps = alvos.map(a => ({ a, p: posicaoAlvo(g, a.tipo, a.nome) })).filter(x => x.p);
+    if (!ps.length) return;
+    const trechos = ps.filter(x => x.p.trecho).map(x => x.p.trecho), nos = ps.filter(x => !x.p.trecho);
+    if (trechos.length) halo.push(`<path class="eq-halo" d="${caminho(trechos.flatMap(t => t.p))}"/>`);
+    nos.forEach(x => halo.push(`<circle class="eq-halo-no" cx="${x.p.xy[0]}" cy="${x.p.xy[1]}"/>`));
+    const cx = ps.reduce((s, x) => s + x.p.xy[0], 0) / ps.length, cy = ps.reduce((s, x) => s + x.p.xy[1], 0) / ps.length;
+    const d = x => Math.hypot(x.p.xy[0] - cx, x.p.xy[1] - cy), c = ps.reduce((m, x) => d(x) < d(m) ? x : m);
+    const conta = (n, um, varios) => n ? `${n} ${n > 1 ? varios : um}` : '';
+    const txt = `${rotuloEquipe(equipe)} · ${[conta(trechos.length, 'trecho', 'trechos'), conta(nos.length, 'nó', 'nós')].filter(Boolean).join(' e ')}`;
+    const [x, y] = c.p.xy;
+    etiquetas.push(`<g class="ilu-pin eq-etq" data-equipe="${esc(equipe)}" data-tipo="${esc(c.a.tipo)}" data-alvo="${esc(c.a.nome)}" data-x="${x}" data-y="${y}" data-n="${txt.length}">`
+      + `<title>${esc(equipeNome(equipe))}: ${esc(ps.map(z => nomeCompleto(z.a.nome)).join(', '))}</title><rect/><text x="${x}" y="${y}">${esc(txt)}</text></g>`);
+  });
+  return { halo: halo.join(''), etiquetas: etiquetas.join('') };
+}
+// o tamanho da etiqueta e a largura do contorno ficam iguais na tela em qualquer zoom (px: unidades do mapa por pixel)
+function escalarEquipes(grupoEtq, grupoHalo, px, larg) {
+  $$('.eq-etq', grupoEtq).forEach(e => {
+    const h = 26 * px, w = (+e.dataset.n * 7.4 + 22) * px, x = +e.dataset.x, y = +e.dataset.y, r = $('rect', e);
+    r.setAttribute('x', x - w / 2); r.setAttribute('y', y - h / 2); r.setAttribute('width', w); r.setAttribute('height', h);
+    r.setAttribute('rx', h / 2); r.setAttribute('stroke-width', 2.5 * px);
+    $('text', e).setAttribute('font-size', 13 * px);
+  });
+  espessura(grupoHalo, larg + 9);
+  $$('.eq-halo-no', grupoHalo).forEach(c => c.setAttribute('r', 9 * px));
+}
 // Subadutora (D-182): a adutora e todo trecho de 200 mm pra cima (os de 225 e 250 que passam nas zonas inclusive) são uma
 // frente só, da equipe da adutora (ADUTORA); a zona fica com a rede abaixo de 200 mm. ZONA_ADUTORA é o id interno da
 // frente (fica guardado na vista da sessão); na tela, o nome é Subadutora
@@ -112,7 +144,7 @@ const nomeZona = z => z === ZONA_ADUTORA ? 'Subadutora' : String(z).replace(/^Zo
 // onde o trecho fica (a zona da 06.1), que não muda com a frente: o de 225 da Zona 05 fica na Zona 05
 const localDoTrecho = t => t.tp === 'Adutora' ? 'Adutora' : nomeZona(t.z);
 
-/* ---- nós e caixas (D-183): o nó é bola e cada caixa tem a sua forma, no Mapa iluminado e no Dados da obra. O desenho é
+/* ---- nós e caixas (D-183): o nó é bola e cada caixa tem a sua forma, no Mapa iluminado e na Programação. O desenho é
    em pixels da tela (scale pelo tamanho do pixel no mapa); a cor vem de quem desenha */
 const TIPOS_NO = {
   'NÓ': { nome: 'Nó', cor: '#111827', d: 'M0 -4.5A4.5 4.5 0 1 1 0 4.5A4.5 4.5 0 1 1 0 -4.5Z' },
@@ -153,7 +185,8 @@ async function desenharRede() {
   const est = await estadoMapa().catch(() => null);
   if (!est) return;
   const vb = svg.viewBox.baseVal, r = vb.width / 42;
-  $('#redePins').innerHTML = est.pins.map(p => {
+  const umaPorEquipe = new Map(); est.pins.forEach(p => { if (!umaPorEquipe.has(p.equipe)) umaPorEquipe.set(p.equipe, p); });   // D-200
+  $('#redePins').innerHTML = [...umaPorEquipe.values()].map(p => {
     const pos = posicaoAlvo(g, p.alvo_tipo, p.alvo_id); if (!pos) return '';
     const [x, y] = pos.xy;
     return `<g><title>${esc(p.equipe)} em ${esc(nomeCompleto(p.alvo_id))} (check-in de hoje)</title><circle cx="${x}" cy="${y}" r="${r}" fill="#F15922" stroke="#101010" stroke-width="${r / 5}"/>
@@ -191,7 +224,7 @@ function situacao(est, nome) {
 }
 // "parcial" quando a execução ainda não cobre o trecho inteiro
 const nomeSituacao = (est, nome, s) => SITU_ID[s].nome + ((etapaDe(est, nome) || {}).parcial && ['executado', 'verificado', 'campo'].includes(s) ? ' (parcial)' : '');
-// o visor (arrastar, aproximar, clique) serve a este mapa e ao do Dados da obra (planejamento.js): cada um passa o seu
+// o visor (arrastar, aproximar, clique) serve a este mapa e ao da Programação (planejamento.js): cada um passa o seu
 // contexto com svg(), caixa(), desenhar(px, zoom) e clique(alvo, ev)
 const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
   vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true, nos: true }, fundo: 'escura',
@@ -212,7 +245,7 @@ try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') |
 // quadro). Aproximando, as PBs à vista entram em resolução cheia por cima. Tudo cortado no limite das zonas: fora delas
 // não há nada (pedido do responsável em 21/10/2026). Onde nenhuma PB tem foto (~3 % da área, na borda das zonas), fica escuro.
 const SAT_DETALHE_PX = 0.7, SAT_DETALHE_MAX = 6;     // unidades do mapa por pixel da tela; PBs carregadas ao mesmo tempo
-// corte: 'zonas' (Mapa iluminado: fora das zonas não há nada) ou 'quadros' (Dados da obra: a planta inteira de cada PB,
+// corte: 'zonas' (Mapa iluminado: fora das zonas não há nada) ou 'quadros' (Programação: a planta inteira de cada PB,
 // como no HTML do projeto)
 function htmlSatelite(g, p, corte = 'zonas') {
   const polis = corte === 'quadros' ? g.quadros.map(q => q.p) : g.zonas.map(z => z.p);
@@ -295,7 +328,7 @@ function montarIluminado(g) {
   const svg = iluSvg();
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}"/>`).join('')
     + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
-  svg.innerHTML = `${htmlSatelite(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluNos"></g>
+  svg.innerHTML = `${htmlSatelite(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluHalo"></g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluNos"></g>
     <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="iluPins"></g>`;
   ILU.frentesNo = frentesDosNos(g);
   ligarSatelite(ILU, g); carregarMosaicoCopia(g);
@@ -436,10 +469,7 @@ function desenharIlu(px, zoom) {
     $('#iluZonas').style.setProperty('--k', 1 / px);   // só no grupo do contorno: na raiz, refazia o estilo do mapa inteiro
     espessura($('#iluLinhas'), larguraTrecho(zoom, 1.1));       // finas como no HTML: a rede não polui o mapa
     $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
-    $$('#iluPins .ilu-pin').forEach(p => {
-      const c = p.querySelector('circle'), tx = p.querySelector('text');
-      c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
-    });
+    escalarEquipes($('#iluPins'), $('#iluHalo'), px, larguraTrecho(zoom, 1.1));
     espessura($('#iluSel'), Math.min(8, 4 * Math.pow(Math.max(zoom, 1), 0.4)));
   }
   desenharNosIlu(px);
@@ -447,7 +477,7 @@ function desenharIlu(px, zoom) {
 }
 // a escala só muda com o zoom (2 % de folga); ctx.ultPx = 0 força o redesenho (pinos novos, cores novas)
 // os nós e as caixas (D-183): a forma diz o que é e a cor, a situação, como nos trechos (preto = não iniciado). As caixas
-// (umas 130) sempre; os 1.188 nós só de perto e só os da área visível, refeitos a cada desenho como no Dados da obra
+// (umas 130) sempre; os 1.188 nós só de perto e só os da área visível, refeitos a cada desenho como na Programação
 const NOS_DE_PERTO_PX = 1.2;               // unidades do mapa por pixel: abaixo disso (zona aberta no computador), os nós
 function desenharNosIlu(px) {
   const caixa = $('#iluNos'); if (!caixa || !ILU.est || !ILU.vb) return;
@@ -602,7 +632,7 @@ function cliqueNoMapa(alvo, ev, i) {
   fecharPop();
   const pin = alvo.closest && alvo.closest('.ilu-pin'), zona = alvo.closest && alvo.closest('.ilu-zf');
   const no = alvo.closest && alvo.closest('.ilu-no');
-  if (pin) return focarAlvo(pin.dataset.tipo, pin.dataset.alvo);
+  if (pin) return pin.dataset.equipe ? focarEquipe(pin.dataset.equipe) : focarAlvo(pin.dataset.tipo, pin.dataset.alvo);
   if (no) return abrirFicha('ATIVIDADE', no.dataset.no);
   // com uma zona em foco, o resto do mapa não responde (D-185): só os trechos dela são achados (tocavel); a troca de zona
   // é pela janela Zonas ou por "Obra inteira"
@@ -642,12 +672,25 @@ function colorirIluminado() {
   if (ILU.pop) abrirPop(ILU.pop, true);
 }
 function desenharPins() {
-  $('#iluPins').innerHTML = (ILU.est.pins || []).filter(p => alvoNaFrenteIlu(p.alvo_tipo, p.alvo_id)).map(p => {
-    const pos = posicaoAlvo(GERAL, p.alvo_tipo, p.alvo_id); if (!pos) return '';
-    const [x, y] = pos.xy;
-    return `<g class="ilu-pin" data-tipo="${esc(p.alvo_tipo)}" data-alvo="${esc(p.alvo_id)}"><title>${esc(equipeNome(p.equipe))} em ${esc(nomeCompleto(p.alvo_id))} (check-in de hoje)</title>
-      <circle cx="${x}" cy="${y}"/><text x="${x}" y="${y}">${esc(rotuloEquipe(p.equipe))}</text></g>`;
-  }).join('');
+  const por = new Map();
+  (ILU.est.pins || []).filter(p => alvoNaFrenteIlu(p.alvo_tipo, p.alvo_id)).forEach(p => {
+    if (!por.has(p.equipe)) por.set(p.equipe, []);
+    por.get(p.equipe).push({ tipo: p.alvo_tipo, nome: p.alvo_id });
+  });
+  const { halo, etiquetas } = equipesDoDia(GERAL, por);
+  $('#iluHalo').innerHTML = halo; $('#iluPins').innerHTML = etiquetas;
+}
+// tocar na etiqueta: o mapa mostra tudo o que a equipe faz hoje; tocar de novo abre a lista dela na janela Equipes
+function focarEquipe(eq) {
+  if (ILU.equipeFocada === eq) { ILU.equipeFocada = null; ILU.equipePop = eq; return abrirPop('equipes', true); }
+  ILU.equipeFocada = eq;
+  const ps = (ILU.est.pins || []).filter(p => p.equipe === eq).map(p => posicaoAlvo(GERAL, p.alvo_tipo, p.alvo_id)).filter(Boolean);
+  if (!ps.length) return;
+  const b = limites(ps.flatMap(x => x.trecho ? x.trecho.p : [[x.xy[0], x.xy[1], x.xy[0], x.xy[1]]]), 0.25);
+  const min = (ILU.base[2] - ILU.base[0]) / 9, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2;
+  const w = Math.max(b[2] - b[0], min), h = Math.max(b[3] - b[1], min);
+  irPara([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]);
+  toast(`${equipeNome(eq)}: toque de novo na etiqueta para ver a lista do dia.`);
 }
 function alvoNaFrenteIlu(tipo, nome) {
   if (!ILU.zona) return true;
@@ -665,7 +708,7 @@ function aplicarCamadas() {
   $$('#iluZonas .ilu-zf').forEach(p => p.setAttribute('fill-opacity', opacidadeZonaIlu(p.dataset.zona)));
   $('#iluNomes').style.display = ILU.cam.nomes ? '' : 'none';
   $$('#iluNomes text').forEach(t => { t.style.display = !ILU.zona || t.dataset.zona === ILU.zona ? '' : 'none'; });
-  $('#iluPins').style.display = ILU.cam.equipes ? '' : 'none';
+  $('#iluPins').style.display = $('#iluHalo').style.display = ILU.cam.equipes ? '' : 'none';
   $('#iluNos').style.display = ILU.cam.nos ? '' : 'none';
   $$('#iluLinhas .ilu-tr').forEach(p => p.style.display = ILU.vis[p.dataset.situ] ? '' : 'none');
   try { localStorage.setItem('mc-ilu-camadas', JSON.stringify(ILU.cam)); localStorage.setItem('mc-ilu-fundo', ILU.fundo); } catch (_) { /* sem storage */ }
@@ -698,15 +741,19 @@ function abrirPop(nome, recarregar) {
           <span class="fim">${nf(l.length, 0)} trechos · ${km(l.reduce((a, t) => a + (t.L || 0), 0))}</span></button>`; }).join('');
   }
   if (nome === 'equipes') {
-    const pins = Object.fromEntries((ILU.est.pins || []).map(p => [p.equipe, p]));
+    const pins = {}, todos = {};
+    (ILU.est.pins || []).forEach(p => { pins[p.equipe] = pins[p.equipe] || p; (todos[p.equipe] = todos[p.equipe] || []).push(p); });
     const plan = {};
     Object.entries((ILU.est.camadas || {}).planejado || {}).forEach(([n, p]) => p.hoje && p.equipes.forEach(e => (plan[e] = plan[e] || []).push(n)));
     pop.innerHTML = '<h3>Equipes hoje</h3>' + ((RESUMO && RESUMO.equipes) || []).map(e => {
       const p = pins[e.id], pl = plan[e.id] || [];
-      const txt = p ? `em ${esc(nomeCompleto(p.alvo_id))}, check-in de hoje` : pl.length ? `programada para ${esc(pl.slice(0, 3).map(nomeCompleto).join(', '))}${pl.length > 3 ? '…' : ''}; sem check-in` : 'sem check-in hoje';
+      const n = (todos[e.id] || []).length;
+      const txt = p ? `${n > 1 ? `${n} alvos: ${esc(nomeCompleto(p.alvo_id))} e mais ${n - 1}` : `em ${esc(nomeCompleto(p.alvo_id))}`}, check-in de hoje` : pl.length ? `programada para ${esc(pl.slice(0, 3).map(nomeCompleto).join(', '))}${pl.length > 3 ? '…' : ''}; sem check-in` : 'sem check-in hoje';
       return `<button type="button" class="ilu-linha" ${p ? `data-ir-tipo="${esc(p.alvo_tipo)}" data-ir="${esc(p.alvo_id)}"` : pl.length ? `data-ir-tipo="TRECHO" data-ir="${esc(pl[0])}"` : 'disabled'}>
-        <span class="num${p ? '' : ' sem'}">${esc(rotuloEquipe(e.id))}</span><span>${esc(e.nome)}<small>${txt}</small></span></button>`;
-    }).join('') + '<p>O pino aparece onde a equipe fez o check-in hoje. Equipe sem check-in não tem pino.</p>';
+        <span class="num${p ? '' : ' sem'}">${esc(rotuloEquipe(e.id))}</span><span>${esc(e.nome)}<small>${txt}</small></span></button>`
+        + (ILU.equipePop === e.id ? (todos[e.id] || []).map(x => `<button type="button" class="ilu-linha sub" data-ir-tipo="${esc(x.alvo_tipo)}" data-ir="${esc(x.alvo_id)}"><span>${esc(nomeCompleto(x.alvo_id))}</span></button>`).join('') : '');
+    }).join('') + '<p>A etiqueta da equipe fica no meio do que ela faz hoje (o check-in), e os trechos e nós do dia ganham o contorno laranja. Toque na etiqueta para ver a lista. Equipe sem check-in não tem etiqueta.</p>';
+    ILU.equipePop = null;
   }
   if (nome === 'lista') listaIlu(pop);
   if (nome === 'camadas') {
@@ -821,7 +868,7 @@ async function abrirFicha(tipo, nome) {
 $('#iluFicha').addEventListener('click', async ev => {
   const f = $('#iluFicha');
   if (ev.target.closest('.fechar')) return fecharFicha();
-  if (ev.target.closest('[data-ficha-completa]')) { await abrirAba('mapa'); return mostrarFiscal(f.dataset.tipo, f.dataset.id); }
+  if (ev.target.closest('[data-ficha-completa]')) { await abrirAba('mapa/programar'); return mostrarFiscal(f.dataset.tipo, f.dataset.id); }
   if (ev.target.closest('[data-ficha-campo]')) {               // Lançamento do dia: o apontamento sem NS ou as fotos e soldas
     abrirAba('campo/' + (pode('lancar_sem_ns') ? 'apontamento' : 'fotos'));
     const inp = $('#fApont input[name=alvo_txt]'); inp.value = nomeCompleto(ILU.sel.nome); inp.dataset.tipo = f.dataset.tipo; inp.dataset.id = f.dataset.id;

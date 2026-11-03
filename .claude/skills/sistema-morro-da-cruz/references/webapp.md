@@ -174,32 +174,43 @@ semicírculo é o mesmo trecho"**. A 06.1 continua intacta para o BM e a mediç�
 
 ## Perfis, telas, permissões e segregação
 
-Menu principal: **Mapa iluminado · Execução · Planejamento · Administrativo** (D-67, D-75).
-- Execução: Lançamento do dia, Notas de serviço, Topografia, Cadastro de campo, Interferências e ocorrências, Diário de obra.
-- Planejamento: Dados da obra, Cronograma da obra, Estoque e movimentos, Pedir material, Compras e notas.
-- Administrativo: Equipes, Relatórios, Usuários e histórico, LEV, Medição.
-- Links antigos redirecionam: `#prog` e `#ponto` → Dados da obra; `#esteira` → Mapa iluminado.
+Menu principal (D-199, 03/11/2026): **Mapa iluminado · Execução · Almoxarifado · Administrativo**, 11 subabas e páginas
+(chips) dentro delas. Cada coisa tem um lugar só: *aba › subaba › página* (endereço `#subaba/pagina`).
+- Execução: Lançamento do dia (Apropriação direta, Apontamento sem NS, Fotos e soldas, Clima do dia, Interferência) ·
+  Notas de serviço (NS do dia, Serviço de obra, Topografia, Cadastro) · Diário de obra (Resumo do dia, Programação e
+  check-in, Ocorrências).
+- Almoxarifado (era Planejamento): Programação (era Dados da obra: Programar o dia, Conciliar) · Estoque (Dia, Receber,
+  Saldo e movimentos, Inventário e transferência, Tubos Caesb) · Compras (Requisições, Notas fiscais, Fornecedores).
+- Administrativo: Medição (Medição do mês, Conferência, Teto e restrição, Base de custo) · Equipes (Integrantes e
+  máquinas, Histograma) · Relatórios (Avanço, Pendências, Ciclo do material) · Projeto e cronograma (Planilhas (LEV),
+  Cronograma (Project)) · Usuários e histórico (Usuários e link, Histórico, Google Drive).
+- As "telas" do `perfis.json` continuam sendo a permissão de leitura (o servidor confere igual). `TELAS[x].inclui` diz
+  quais telas viraram página da subaba (`podeAba`); cada página de `PAGINAS` diz quem a usa.
+- Links antigos redirecionam com aviso (`TELAS_ANTIGAS`): `#prog` e `#ponto` → Programação; `#esteira` → Mapa
+  iluminado; `#topografia` e `#cadastro_campo` → Notas de serviço; `#interferencias` → Lançamento do dia; `#solicitar`
+  → Compras › Requisições; `#cronograma` → Projeto e cronograma.
 
 | Perfil | Telas | Permissões |
 |---|---|---|
 | ADMINISTRACAO, ENGENHARIA | todas | todas (26), inclusive usuários |
-| ALMOXARIFADO | Mapa iluminado, Lançamento do dia, Diário, Interferências, Dados da obra, Estoque, Pedir material, Compras | `almox`, `receber`, `inventario_contar`, `compras_solicitar`, `campo` |
-| SUPERVISOR | Mapa iluminado, Lançamento do dia, Notas de serviço (consulta), Diário, Interferências, Pedir material | `campo`, `verificar`, `compras_solicitar` |
-| EQUIPE (encarregado, preso à equipe) | Mapa iluminado, Lançamento do dia, Diário, Interferências, Pedir material | `campo`, `compras_solicitar` |
+| ALMOXARIFADO | Mapa iluminado, Lançamento do dia (+ Interferência), Diário, Programação, Estoque, Compras | `almox`, `receber`, `inventario_contar`, `compras_solicitar`, `nf_confirmar`, `campo` |
+| SUPERVISOR | Mapa iluminado, Lançamento do dia (+ Interferência), Notas de serviço (consulta), Diário, Compras › Requisições | `campo`, `verificar`, `compras_solicitar` |
+| EQUIPE (encarregado, preso à equipe) | Mapa iluminado, Lançamento do dia (+ Interferência), Diário, Compras › Requisições | `campo`, `compras_solicitar` |
 | RH | Mapa iluminado, Notas de serviço (consulta) | — |
-| TOPOGRAFIA (consulta) | Mapa iluminado, Topografia | — |
-| CADASTRO | Mapa iluminado, Cadastro de campo | `cadastro` |
+| TOPOGRAFIA (consulta) | Mapa iluminado, Notas de serviço › Topografia | — |
+| CADASTRO | Mapa iluminado, Notas de serviço › Cadastro | `cadastro` |
 
-Permissões: `usuarios`, `auditoria`, `equipes`, `almox`, `receber`, `compras_solicitar`, `compras_aprovar`,
-`fornecedores`, `nf_confirmar`, `inventario_contar`, `inventario_ajustar`, `campo`, `topografia`, `cadastro_campo`, `verificar`,
+Permissões: `usuarios`, `auditoria`, `equipes`, `almox`, `receber`, `compras_solicitar`, `requisicoes_cancelar`,
+`fornecedores`, `nf_confirmar`, `inventario_contar`, `inventario_ciencia`, `campo`, `topografia`, `cadastro_campo`, `verificar`,
 `retificar_campo`, `ok_interno`, `cadastro`, `conferir_cadastro`, `planejar`, `medicao`, `documentos`, `notas_servico`,
 `lancar_sem_ns`, `ns_dia`, `apropriacao`. A matriz é provisória (D-10) e mora em `config/perfis.json`.
 
 **Segregação de funções (sempre pela identidade da sessão; o nome digitado é ignorado):**
 - quem informa não verifica (intervalos, soldas: nem o soldador nem quem informou);
-- quem pede material não aprova o próprio pedido;
-- quem digita a NF não a confere;
-- quem conta o inventário não aprova o ajuste;
+- a requisição de material não tem aprovação (D-196); quem pediu cancela a própria, a engenharia e a administração
+  qualquer uma, sempre com o motivo;
+- quem digita a NF não a confere (nem confirma a linha não reconhecida);
+- o ajuste de inventário entra na hora da contagem; quem contou não dá a ciência (D-197);
 - a engenharia envia as NS (inclusive a do dia, em nome da equipe); o supervisor verifica.
 
 **Quem vê as notas de serviço (D-134):** Administração, Engenharia, RH e Supervisor. Equipes e almoxarifado não veem
@@ -316,11 +327,12 @@ ficam). Tela **Pedir material** (`compras_solicitar`: almoxarifado, supervisor, 
 engenharia, administração): tipo, tamanho e nome curto sem código, tirados da descrição (`solicitacoes.catalogo`;
 ajuste em `config/materiais_pedido.json`), busca, "Não achei: escrever ou tirar foto", quantidade no − e no +, zona por
 toque. **Meus pedidos** com cor e texto. A solicitação nunca trava nota nem estoque; ligar a nota a ela (`nf_confirmar`)
-só marca "Chegou". **Requerimentos em Compras e notas (D-187):** os pedidos aguardando decisão, onde engenharia e
-administração (`compras_aprovar`) aprovam num toque ou recusam com motivo (nunca o próprio) e identificam o item escrito
-ou fotografado antes de aprovar; **A comprar** soma por material o aprovado que ainda não chegou (pedido − aceito das
-notas ligadas, `solicitacoes.listar` → `falta`, `notas`); quem abre Compras vê os pedidos da obra. Pedir material só
-aponta para lá. Transferência entre equipes, inventário e reservas vencidas ficam em **Estoque e movimentos**.
+só marca "Chegou". **Requisições (D-196, 03/11/2026; substitui a aprovação da D-187):** em Compras › Requisições, sem aprovação. Aberta
+→ **aguardando a entrega** (nota ligada; a nota que traz só uma parte deixa o resto "sem nota ainda",
+`solicitacoes._cobertura`) → **recebida** (entrega aceita); ou **cancelada** com o motivo (a própria, ou qualquer uma
+com `requisicoes_cancelar`). O item escrito ou fotografado é identificado no cartão (`nf_confirmar`). Quem abre Compras
+vê as da obra (lista primeiro, formulário em "Nova requisição"); os outros, as suas. Transferência entre equipes,
+inventário (ajuste na hora e ciência depois, D-197) e reservas vencidas ficam em **Estoque**.
 
 **Compras e notas:** NF por XML (biblioteca padrão; só UTF-8; DOCTYPE recusado; modelo 55; chave com dígito; repetida
 recusada pela chave ou pelo fornecedor, número e série, D-190;
@@ -362,7 +374,10 @@ zonas oficiais e o traçado dos 1.436 trechos, cor só pelo que foi gravado (`re
 | Cadastro aprovado pela Caesb (ESET) | verde `#82E4B6` |
 
 Ficha do trecho: caminho até a medição, verificação, fotos, esteira, histórico. Lista "Aguardando verificação" para o
-supervisor, por zona, o mais perto primeiro. O pino diz "programado" (do check-in), não a posição real. Nada sem
+supervisor, por zona, o mais perto primeiro. **Onde cada equipe está (D-200):** uma etiqueta por equipe ("01 · 22
+trechos e 3 nós", no alvo do dia mais perto do centro deles) e um contorno laranja claro nos trechos e nós do check-in
+do dia (`equipesDoDia`, `escalarEquipes`), no Mapa iluminado e na Programação; não é a posição real. No Mapa iluminado,
+o 1º toque na etiqueta aproxima a área e o 2º abre a lista; na Programação, abre o dia da equipe. Nada sem
 posição no projeto ganha coordenada (MV-11, VTF-12, VTF-16 na bandeja, D-03).
 
 **Subadutora (D-182):** adutora + redes de 200 mm pra cima (DE 225 e 250) = 132 trechos (~10,5 km), executados pela

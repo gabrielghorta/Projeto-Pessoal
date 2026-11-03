@@ -4,7 +4,7 @@ A entrega e a identificação por linha estão em recebimento.py; solicitar/deci
 Funções antigas de pedido/conferência permanecem para compatibilidade do histórico, sem rotas de criação.
 Nota reconhecida e conferida pelo almoxarife não precisa de aprovação global. Desconhecida/corrigida
 pode chegar antes de ser identificada pela engenharia; só entra no saldo depois da identificação.
-Material recebido não é lançamento de medição. Quem digita não confere; quem pede não aprova.
+Material recebido não é lançamento de medição. Quem digita não confere. A requisição não tem aprovação (D-196).
 """
 import base64
 import hashlib
@@ -136,24 +136,13 @@ def abrir_solicitacao(conn, data, itens, motivo, solicitante, alvo_tipo=None, al
     return sid
 
 
-def decidir_solicitacao(conn, solicitacao_id, aprovar, motivo, por):
-    s_ = _one(conn, "SELECT * FROM solicitacoes_compra WHERE id=?", solicitacao_id)
-    if not s_:
-        raise RegraViolada("Solicitação não encontrada.")
-    if s_["status"] != "ABERTA":
-        raise RegraViolada(f"Solicitação já {s_['status'].lower()}.")
-    if s_["solicitante"].lower() == str(por).lower():
-        raise RegraViolada("Quem solicitou não aprova a própria solicitação.")
-    if not aprovar and not str(motivo or "").strip():
-        raise RegraViolada("Informe o motivo da recusa.")
-    conn.execute("UPDATE solicitacoes_compra SET status=?, decidida_por=?, decidida_em=?, decisao_motivo=? WHERE id=?",
-                 ("APROVADA" if aprovar else "RECUSADA", por, _agora(), (motivo or "").strip() or None, solicitacao_id))
+REQ_ABERTA = ("ABERTA", "APROVADA")       # D-196: a requisição não é aprovada; a APROVADA de antes vale como aberta
 
 
 def cancelar_solicitacao(conn, solicitacao_id, motivo, por):
     s_ = _one(conn, "SELECT * FROM solicitacoes_compra WHERE id=?", solicitacao_id)
-    if not s_ or s_["status"] not in ("ABERTA", "APROVADA"):
-        raise RegraViolada("Só solicitação aberta ou aprovada pode ser cancelada.")
+    if not s_ or s_["status"] not in REQ_ABERTA:
+        raise RegraViolada("Só requisição aberta pode ser cancelada.")
     if _one(conn, "SELECT 1 FROM pedidos_compra WHERE solicitacao_id=? AND status<>'CANCELADO'", solicitacao_id):
         raise RegraViolada("A solicitação já tem pedido: cancele o pedido antes.")
     if not str(motivo or "").strip():
@@ -163,7 +152,7 @@ def cancelar_solicitacao(conn, solicitacao_id, motivo, por):
 
 
 def emitir_pedido(conn, numero, data, fornecedor_id, solicitacao_id, itens, por, prazo=None, faturamento_etapas=False):
-    """Pedido a partir de solicitação APROVADA, sem pedir mais do que foi aprovado. Não altera nenhum saldo."""
+    """Pedido (rota antiga, sem tela) a partir de requisição aberta, sem pedir mais do que foi requisitado. Não altera saldo."""
     if not str(numero or "").strip():
         raise RegraViolada("Informe o número do pedido.")
     if _one(conn, "SELECT 1 FROM pedidos_compra WHERE numero=?", numero.strip()):
@@ -171,8 +160,8 @@ def emitir_pedido(conn, numero, data, fornecedor_id, solicitacao_id, itens, por,
     if not _one(conn, "SELECT 1 FROM fornecedores WHERE id=?", fornecedor_id):
         raise RegraViolada("Fornecedor não cadastrado.")
     s_ = _one(conn, "SELECT * FROM solicitacoes_compra WHERE id=?", solicitacao_id)
-    if not s_ or s_["status"] != "APROVADA":
-        raise RegraViolada("O pedido precisa de uma solicitação APROVADA.")
+    if not s_ or s_["status"] not in REQ_ABERTA:
+        raise RegraViolada("O pedido precisa de uma requisição aberta.")
     aprovado = {r["material_id"]: r["q"] for r in _rows(conn.execute(
         "SELECT material_id, SUM(quantidade) q FROM solicitacao_itens WHERE solicitacao_id=? GROUP BY material_id", (solicitacao_id,)))}
     ja = {r["material_id"]: r["q"] for r in _rows(conn.execute(
@@ -188,9 +177,9 @@ def emitir_pedido(conn, numero, data, fornecedor_id, solicitacao_id, itens, por,
         soma[it["material_id"]] = soma.get(it["material_id"], 0) + q
     for m, q in soma.items():
         if m not in aprovado:
-            raise RegraViolada(f"{m} não está na solicitação aprovada.")
+            raise RegraViolada(f"{m} não está na requisição.")
         if q + ja.get(m, 0) > aprovado[m] + TOL:
-            raise RegraViolada(f"{m}: o pedido ({q:g}) excede o saldo aprovado na solicitação ({aprovado[m] - ja.get(m, 0):g}).")
+            raise RegraViolada(f"{m}: o pedido ({q:g}) excede o saldo da requisição ({aprovado[m] - ja.get(m, 0):g}).")
     with transacao(conn):
         pid = conn.execute(
             """INSERT INTO pedidos_compra(numero,data,fornecedor_id,solicitacao_id,prazo,faturamento_etapas,emitido_por,emitido_em)
@@ -838,16 +827,18 @@ def transferir(conn, data, material_id, quantidade, de_equipe, para_equipe, auto
 
 
 def registrar_contagem(conn, data, itens, por, obs=None):
-    """Contagem física do almoxarifado; guarda o saldo do sistema no momento para conferir no ajuste."""
+    """Contagem física do almoxarifado (D-197): o ajuste entra no saldo na hora. A engenharia ou a administração só dá
+    ciência depois (dar_ciencia_inventario), sem travar nada. Guarda o saldo do sistema no momento da contagem."""
     if not str(data or "").strip():
         raise RegraViolada("Informe a data da contagem.")
     data = _data_iso(data, "Contagem")
     S.exigir_data_ocorrida(data, "Contagem")
     if not itens:
         raise RegraViolada("Informe ao menos um material contado.")
+    obs = str(obs or "").strip() or None
     vistos = set()
     with transacao(conn):
-        iid = conn.execute("INSERT INTO inventarios(data,contado_por,contado_em,obs) VALUES (?,?,?,?)",
+        iid = conn.execute("INSERT INTO inventarios(data,contado_por,contado_em,obs,status) VALUES (?,?,?,?,'AJUSTADO')",
                            (data, por, _agora(), obs)).lastrowid
         for it in itens:
             m = _one(conn, "SELECT * FROM materiais WHERE id=?", it.get("material_id"))
@@ -857,14 +848,39 @@ def registrar_contagem(conn, data, itens, por, obs=None):
             c = float(it.get("contado") if it.get("contado") not in (None, "") else -1)
             if c < 0:
                 raise RegraViolada(f"{m['id']}: informe a quantidade contada (≥ 0).")
-            conn.execute("INSERT INTO inventario_itens(inventario_id,material_id,saldo_sistema,contado) VALUES (?,?,?,?)",
-                         (iid, m["id"], S.saldo_almox(conn, m["id"])[0], c))
+            saldo = S.saldo_almox(conn, m["id"])[0]
+            item_id = conn.execute("INSERT INTO inventario_itens(inventario_id,material_id,saldo_sistema,contado) VALUES (?,?,?,?)",
+                                   (iid, m["id"], saldo, c)).lastrowid
+            dif = round(c - saldo, 6)
+            if abs(dif) <= TOL:
+                continue
+            if dif < 0 and S.disponivel(conn, m["id"]) + dif < -TOL:
+                raise RegraViolada(f"{m['id']}: o ajuste de {dif:g} deixaria reservas sem cobertura. Cancele ou reduza "
+                                   "reservas antes.")
+            mid = conn.execute(
+                """INSERT INTO movimentos(data,material_id,tipo,quantidade,documento,motivo,responsavel,ref_tipo,ref_id)
+                   VALUES (?,?,?,?,?,?,?, 'INVENTARIO', ?)""",
+                (data, m["id"], "AJUSTE_INVENTARIO_ENTRADA" if dif > 0 else "AJUSTE_INVENTARIO_SAIDA", abs(dif),
+                 f"Inventário #{iid}", obs or "Diferença na contagem de inventário", por, iid)).lastrowid
+            conn.execute("UPDATE inventario_itens SET movimento_id=? WHERE id=?", (mid, item_id))
     return iid
 
 
+def dar_ciencia_inventario(conn, inventario_id, por, obs=None):
+    """A engenharia ou a administração viu o ajuste (D-197). Não muda saldo nem trava nada; quem contou não dá ciência
+    do próprio ajuste."""
+    inv = _one(conn, "SELECT * FROM inventarios WHERE id=?", inventario_id)
+    if not inv or inv["status"] != "AJUSTADO" or inv["decidido_por"]:
+        raise RegraViolada("Só ajuste de inventário ainda sem ciência.")
+    if inv["contado_por"].lower() == str(por).lower():
+        raise RegraViolada("Quem contou não dá ciência do próprio ajuste.")
+    conn.execute("UPDATE inventarios SET decidido_por=?, decidido_em=?, decisao_motivo=? WHERE id=?",
+                 (por, _agora(), str(obs or "").strip() or None, inventario_id))
+
+
 def decidir_inventario(conn, inventario_id, aprovar, motivo, por):
-    """Ajuste aprovado por OUTRA pessoa. Recusa se o saldo mudou desde a contagem (recontar) ou se o ajuste negativo
-    deixaria reservas sem cobertura."""
+    """Contagem de antes da D-197, que esperava a aprovação: outra pessoa aplica ou descarta. Recusa se o saldo mudou
+    desde a contagem (recontar) ou se o ajuste negativo deixaria reservas sem cobertura."""
     inv = _one(conn, "SELECT * FROM inventarios WHERE id=?", inventario_id)
     if not inv or inv["status"] != "CONTADO":
         raise RegraViolada("Só inventário contado e ainda não decidido.")
@@ -946,10 +962,10 @@ def painel(conn):
                AND """ + _SEM_ROMANEIO + " ORDER BY ri.id", (n["id"],)))
     return {
         "fornecedores": _rows(conn.execute("SELECT * FROM fornecedores ORDER BY nome")),
-        # as aprovadas, para ligar a nota a uma delas (D-172: só marca "Chegou")
+        # as requisições não canceladas, para ligar a nota a uma delas (D-172, D-196: a ligada fica aguardando a entrega)
         "solicitacoes": _rows(conn.execute("""SELECT s.id, s.data, s.solicitante, d.frente_id FROM solicitacoes_compra s
                                               LEFT JOIN solicitacao_detalhes d ON d.solicitacao_id=s.id
-                                              WHERE s.status='APROVADA' ORDER BY s.id DESC LIMIT 200""")),
+                                              WHERE s.status IN ('ABERTA','APROVADA') ORDER BY s.id DESC LIMIT 200""")),
         "notas": nfs,
     }
 

@@ -22,6 +22,17 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install openpyxl pillow "pypdf>=6,<7"
+      - name: Baixar o pdftotext do poppler (a 2ª leitura das NS, nos testes e no programa)
+        shell: pwsh
+        run: |
+          # poppler para Windows, versão fixa (oschwartz10612/poppler-windows): só o pdftotext.exe e as DLLs dele
+          Invoke-WebRequest https://github.com/oschwartz10612/poppler-windows/releases/download/v24.08.0-0/Release-24.08.0-0.zip -OutFile "$env:RUNNER_TEMP\poppler.zip"
+          Expand-Archive "$env:RUNNER_TEMP\poppler.zip" -DestinationPath "$env:RUNNER_TEMP\poppler_zip"
+          $bin = (Get-ChildItem -Recurse -Filter pdftotext.exe "$env:RUNNER_TEMP\poppler_zip" | Select-Object -First 1).DirectoryName
+          if (-not $bin) { throw "pdftotext.exe não veio no pacote do poppler." }
+          New-Item -ItemType Directory -Force poppler | Out-Null
+          Copy-Item "$bin\pdftotext.exe", "$bin\*.dll" poppler\
+          & .\poppler\pdftotext.exe -v
       - name: Testes (inclui os da base real e o ciclo da Zona01, com as planilhas do repositório)
         run: python -m unittest discover -s tests
 
@@ -39,13 +50,24 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install pyinstaller==6.22.3 openpyxl pillow "pypdf>=6,<7"
       - run: python -m PyInstaller MorroDaCruz.spec --noconfirm
+      - name: Baixar o pdftotext do poppler (a 2ª leitura das NS, nos testes e no programa)
+        shell: pwsh
+        run: |
+          # poppler para Windows, versão fixa (oschwartz10612/poppler-windows): só o pdftotext.exe e as DLLs dele
+          Invoke-WebRequest https://github.com/oschwartz10612/poppler-windows/releases/download/v24.08.0-0/Release-24.08.0-0.zip -OutFile "$env:RUNNER_TEMP\poppler.zip"
+          Expand-Archive "$env:RUNNER_TEMP\poppler.zip" -DestinationPath "$env:RUNNER_TEMP\poppler_zip"
+          $bin = (Get-ChildItem -Recurse -Filter pdftotext.exe "$env:RUNNER_TEMP\poppler_zip" | Select-Object -First 1).DirectoryName
+          if (-not $bin) { throw "pdftotext.exe não veio no pacote do poppler." }
+          New-Item -ItemType Directory -Force poppler | Out-Null
+          Copy-Item "$bin\pdftotext.exe", "$bin\*.dll" poppler\
+          & .\poppler\pdftotext.exe -v
       - name: Baixar o cloudflared (túnel do link para a equipe)
         run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
-      - name: Montar o pacote (programa + planilhas + mapa + túnel)
+      - name: Montar o pacote (programa + planilhas + mapa + túnel + pdftotext)
         run: |
           New-Item -ItemType Directory -Force pacote\MorroDaCruz | Out-Null
           Copy-Item dist\MorroDaCruz.exe, cloudflared.exe pacote\MorroDaCruz\
-          Copy-Item -Recurse planilhas, mapa pacote\MorroDaCruz\
+          Copy-Item -Recurse planilhas, mapa, poppler pacote\MorroDaCruz\
           Copy-Item LEIA-ME-WINDOWS.txt pacote\MorroDaCruz\LEIA-ME.txt
       - name: Teste do pacote pelo link da equipe (abre, monta a obra, cria o administrador, entra pelo endereço público)
         run: |

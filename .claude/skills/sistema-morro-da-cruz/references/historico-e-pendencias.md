@@ -59,7 +59,8 @@ novo · e as provisórias de campo e almoxarifado (D-12 a D-18, D-21, D-22, D-40
 | D-176 a D-181 | Fundo do Dados da obra; vários trechos; nó de fim de rua; equipe já escolhida; apontamento sem NS com os trechos do dia; lançar vários a 100 % (proposta) |
 | D-182 a D-184 | DE 225 e 250 com a Equipe Adutora (frente Subadutora); nós e caixas com forma; desenho do Dados da obra (a parte visual revogada pela D-186) |
 | D-185, D-186 | Foco por zona nos dois mapas; Dados da obra igual ao Mapa iluminado, seleção só na zona, Desselecionar e Limpar seleção |
-| D-187 | Requerimentos de material em Compras e notas (A comprar); transferência, inventário e reservas vencidas no Estoque |
+| D-187 | Requerimentos de material em Compras e notas (A comprar); transferência, inventário e reservas vencidas no Estoque (a aprovação e o "A comprar" saíram na D-196) |
+| D-196 a D-200 | (03/11/2026) Requisição sem aprovação (aberta → aguardando a entrega → recebida, ou cancelada com motivo) · inventário ajusta na hora, outro dá ciência · o almoxarife também identifica a linha da nota · menu novo: 4 abas, 11 subabas com páginas · no mapa, uma etiqueta por equipe e o contorno dos trechos do dia |
 
 **Revisão do código (30/10/2026, D-188 a D-195):** apropriação no item da ADM recusada · OK interno não antes do
 serviço · nota repetida pelo fornecedor, número e série · estorno só pelo caminho de cada movimento (transferência,
@@ -78,7 +79,11 @@ aviso · ADM congelada no fechamento · equipe do usuário preso à equipe sempr
 4. Documento da juntada (ordem das peças, folha de rosto, ofício): pedir de novo ao responsável.
 5. Decisões que liberam a medição oficial (D-30, D-31, D-50 a D-57) e a importação real (D-01).
 6. Primeiras NS reais (formato da NS do dia, nós na NS do dia) para ajustar tolerâncias e leitura.
-7. Ideia oferecida e não respondida: contador de pedidos aguardando decisão no menu.
+7. Fluxo de informação (combinado em 03/11/2026, 2º PR): "O que espera por mim" no Início com contadores na aba, na
+   subaba e na página; "preciso até" na requisição e "Pedir o que falta" na ficha da equipe; recado no cartão
+   (requisição, nota, dia da equipe); linha do tempo da requisição; programação de amanhã com corte às 17h (o que
+   mudar depois aparece destacado ao almoxarife); "Mandar no WhatsApp"; Fechamento do dia no Diário. Aviso no celular
+   fica para depois.
 8. Da revisão de 30/10 (`docs/CORRECOES_REVISAO_30-10-2026.md`, Pendências): NS do dia mais antiga enviada depois de
    uma mais nova; chamadas ao Google dentro da trava (Testar, Desconectar, Sincronizar documentos); no cronograma, a
    zona entra em carga antes da Subadutora (validar se ela deve esperar a interligação da Subadutora).

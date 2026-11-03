@@ -40,6 +40,20 @@ class TestRegrasPuras(unittest.TestCase):
         self.assertNotIn("capturada_em", S.exif_jpeg(jpeg_bytes("0000:00:00 00:00:00")))
         self.assertEqual(S.exif_jpeg(jpeg_bytes("2026-10-20T08:30:00"))["capturada_em"], "2026-10-20T08:30:00")
 
+    def test_pdftotext_do_pacote_do_windows_vem_antes_do_sistema(self):
+        """O pacote do .exe leva o pdftotext na pasta poppler/ ao lado do programa (como o cloudflared)."""
+        import tempfile
+        import caminhos
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "poppler"))
+            exe = os.path.join(d, "poppler", "pdftotext.exe")
+            open(exe, "wb").close()
+            antes, caminhos.PASTA = caminhos.PASTA, d
+            try:
+                self.assertEqual(ns_leitura._pdftotext(), exe)
+            finally:
+                caminhos.PASTA = antes
+
     def test_bisseccao_da_produtividade_anda_de_meio_em_meio(self):
         import motor
         lim = motor.CAL.w(motor.PRAZO + timedelta(days=1))
@@ -87,8 +101,7 @@ class TestEstornosComCaminhoProprio(BaseCompras):
 
     def test_ajuste_de_inventario_nao_se_estorna(self):
         self.entrada()
-        inv = C.registrar_contagem(self.c, D, [{"material_id": TUBO_CAESB, "contado": 48}], "almox1")
-        C.decidir_inventario(self.c, inv, True, "diferença aceita", "almox2")
+        C.registrar_contagem(self.c, D, [{"material_id": TUBO_CAESB, "contado": 48}], "almox1")      # D-197: ajusta na hora
         mid = self.q("SELECT id FROM movimentos WHERE tipo LIKE 'AJUSTE_INVENTARIO_%'")[0][0]
         with self.assertRaisesRegex(S.RegraViolada, "nova contagem"):
             S.estornar(self.c, mid, "contagem errada", "almox1")

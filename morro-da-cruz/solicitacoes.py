@@ -1,4 +1,5 @@
-"""Necessidade de material por frente. Solicitar ou aprovar nunca bloqueia nota, entrega ou estoque."""
+"""Requisição de material por frente (D-196: sem aprovação). Ela nasce aberta; com a nota fiscal ligada fica aguardando
+a entrega; com a entrega aceita, recebida. Ou é cancelada, com o motivo. Requisitar nunca bloqueia nota, entrega ou estoque."""
 import base64
 import json
 import os
@@ -172,34 +173,77 @@ def abrir(conn, corpo, usuario):
     return {'id': sid}
 
 
-def decidir(conn, corpo, por):
+def identificar(conn, corpo, por):
+    """O material de cada item pedido por foto ou descrição, dito por quem compra (D-196: sem aprovação)."""
     sid = int(corpo.get('solicitacao_id') or 0)
-    aprovar = corpo.get('aprovar') is True
+    s_ = _one(conn, 'SELECT status FROM solicitacoes_compra WHERE id=?', sid)
+    if not s_ or s_['status'] not in C.REQ_ABERTA:
+        raise RegraViolada('Só requisição aberta tem item a identificar.')
+    escolhas = {int(x.get('id') or 0): x for x in corpo.get('avulsos') or []}
+    if not escolhas:
+        raise RegraViolada('Escolha o material de ao menos um item.')
     with transacao(conn):
-        if aprovar:
-            escolhas = {int(x.get('id') or 0): x for x in corpo.get('avulsos') or []}
-            for it in _rows(conn.execute('SELECT * FROM solicitacao_avulsos WHERE solicitacao_id=?', (sid,))):
-                esc = escolhas.get(it['id'], {})
-                mid = esc.get('material_id') or it['material_id']
-                m = _one(conn, 'SELECT unidade FROM materiais WHERE id=?', mid)
-                if not m:
-                    raise RegraViolada('Identifique o material descrito ou fotografado antes de aprovar.')
-                q = numero(esc.get('quantidade', it['quantidade']))
-                if not q:
-                    raise RegraViolada('Informe a quantidade na unidade do material.')
-                if m['unidade'] != it['unidade'] and 'quantidade' not in esc:
-                    raise RegraViolada('Confira a quantidade na unidade do material escolhido.')
-                conn.execute('UPDATE solicitacao_avulsos SET material_id=?,unidade=?,quantidade=? WHERE id=?', (mid, m['unidade'], q, it['id']))
-        C.decidir_solicitacao(conn, sid, aprovar, corpo.get('motivo'), por)
+        for it in _rows(conn.execute('SELECT * FROM solicitacao_avulsos WHERE solicitacao_id=?', (sid,))):
+            esc = escolhas.pop(it['id'], None)
+            if esc is None or not esc.get('material_id'):
+                continue
+            m = _one(conn, 'SELECT unidade FROM materiais WHERE id=?', esc['material_id'])
+            if not m:
+                raise RegraViolada('Material não encontrado.')
+            q = numero(esc.get('quantidade', it['quantidade']))
+            if not q:
+                raise RegraViolada('Informe a quantidade na unidade do material.')
+            if m['unidade'] != it['unidade'] and 'quantidade' not in esc:
+                raise RegraViolada('Confira a quantidade na unidade do material escolhido.')
+            conn.execute('UPDATE solicitacao_avulsos SET material_id=?,unidade=?,quantidade=? WHERE id=?',
+                         (esc['material_id'], m['unidade'], q, it['id']))
+        if escolhas:
+            raise RegraViolada('Item fora desta requisição.')
+    return {'ok': True, 'por': por}
+
+
+def cancelar(conn, corpo, usuario):
+    """Cancela com o motivo: quem pediu cancela a própria; a engenharia e a administração, qualquer uma (D-196)."""
+    sid = int(corpo.get('solicitacao_id') or 0)
+    s_ = _one(conn, 'SELECT solicitante FROM solicitacoes_compra WHERE id=?', sid)
+    if not s_:
+        raise RegraViolada('Requisição não encontrada.')
+    if s_['solicitante'].lower() != usuario['login'].lower() and 'requisicoes_cancelar' not in usuario['permissoes']:
+        raise RegraViolada('Só quem pediu, a engenharia ou a administração cancela a requisição.')
+    with transacao(conn):
+        C.cancelar_solicitacao(conn, sid, corpo.get('motivo'), usuario['login'])
     return {'ok': True}
 
 
+def _cobertura(conn, sid):
+    """O que as notas ligadas trazem de cada material (na unidade do material, com o material confirmado ou reconhecido
+    pelo sistema), sem o recusado na entrega e o devolvido ao fornecedor; e se alguma linha dessas notas ainda não tem
+    material (aí não dá para saber o que ela cobre)."""
+    cobre, sem_material = {}, False
+    for (nf_id,) in conn.execute("""SELECT sn.nf_id FROM solicitacao_notas sn JOIN notas_fiscais n ON n.id=sn.nf_id
+                                    WHERE sn.solicitacao_id=? AND n.status<>'CANCELADA'""", (sid,)).fetchall():
+        linhas = {li['id']: li for li in _rows(conn.execute('SELECT id,quantidade FROM nf_linhas WHERE nf_id=?', (nf_id,)))}
+        for sug in C.sugerir_materiais(conn, nf_id):
+            if sug['fora_do_estoque']:
+                continue
+            if not sug['material_id'] or not sug['fator']:
+                sem_material = True
+                continue
+            lid, fator = sug['linha_id'], sug['fator']
+            recusado = conn.execute('SELECT COALESCE(SUM(recusado),0) FROM nf_entregas_linhas WHERE linha_id=?', (lid,)).fetchone()[0]
+            devolvido = conn.execute("""SELECT COALESCE(SUM(d.quantidade),0) FROM devolucoes_fornecedor d JOIN nf_itens ni ON ni.id=d.nf_item_id
+                WHERE ni.linha_id=? AND d.movimento_id NOT IN (SELECT movimento_id FROM estornos)""", (lid,)).fetchone()[0]
+            mid = sug['material_id']
+            cobre[mid] = cobre.get(mid, 0) + (linhas[lid]['quantidade'] - recusado) * fator - devolvido
+    return cobre, sem_material
+
+
 def listar(conn, usuario):
-    # quem aprova e quem abre Compras e notas (os requerimentos, D-187) vê os pedidos da obra; os outros, só os seus
-    todos = 'compras_aprovar' in usuario['permissoes'] or 'compras' in usuario.get('telas', ())
+    # quem abre Compras (engenharia, administração e almoxarifado) vê as requisições da obra; os outros, só as suas
+    todos = 'compras' in usuario.get('telas', ()) or 'requisicoes_cancelar' in usuario['permissoes']
     sql = 'SELECT s.*,d.frente_id FROM solicitacoes_compra s LEFT JOIN solicitacao_detalhes d ON d.solicitacao_id=s.id'
     sql += '' if todos else ' WHERE lower(s.solicitante)=lower(?)'
-    # as 200 mais novas e, sempre, as abertas e aprovadas: um pedido antigo que ainda falta chegar não sai de "A comprar"
+    # as 200 mais novas e, sempre, as que não foram canceladas: uma requisição antiga que ainda falta chegar não some
     sql += (' WHERE ' if todos else ' AND (') + ("s.status IN ('ABERTA','APROVADA') OR s.id IN (SELECT id FROM solicitacoes_compra"
                                                  + ('' if todos else ' WHERE lower(solicitante)=lower(?)') + ' ORDER BY id DESC LIMIT 200)') + ('' if todos else ')')
     rows = _rows(conn.execute(sql + ' ORDER BY s.id DESC', () if todos else (usuario['login'], usuario['login'])))
@@ -221,15 +265,31 @@ def listar(conn, usuario):
                 JOIN nf_itens ni ON ni.nf_id=sn.nf_id JOIN devolucoes_fornecedor d ON d.nf_item_id=ni.id
                 WHERE sn.solicitacao_id=? AND d.movimento_id NOT IN (SELECT movimento_id FROM estornos)
                 GROUP BY ni.material_id""", (s['id'],)):
-            recebido[mid] = recebido.get(mid, 0) - dev          # devolvido ao fornecedor volta para "A comprar"
-        s['situacao'] = 'CHEGOU' if s['status'] == 'APROVADA' and necessario and all(mid and recebido.get(mid, 0) >= q - C.TOL for mid, q in necessario.items()) else s['status']
-        # Compras e notas (D-187): as notas ligadas e, do aprovado, o que ainda falta chegar (a lista "A comprar")
-        s['notas'] = [r[0] for r in conn.execute('''SELECT n.numero FROM solicitacao_notas sn JOIN notas_fiscais n ON n.id=sn.nf_id
-            WHERE sn.solicitacao_id=? ORDER BY n.id''', (s['id'],))]
-        s['falta'] = [{'material_id': mid, 'nome': nomes.get(mid, {}).get('nome') or mid,
-                       'unidade_nome': nomes.get(mid, {}).get('unidade_nome') or 'unidades',
-                       'quantidade': round(q - recebido.get(mid, 0), 6)}
-                      for mid, q in necessario.items() if mid and q - recebido.get(mid, 0) > C.TOL] if s['situacao'] == 'APROVADA' else []
+            recebido[mid] = recebido.get(mid, 0) - dev          # devolvido ao fornecedor volta a faltar
+        s['notas'] = [r[0] for r in conn.execute("""SELECT n.numero FROM solicitacao_notas sn JOIN notas_fiscais n ON n.id=sn.nf_id
+            WHERE sn.solicitacao_id=? AND n.status<>'CANCELADA' ORDER BY n.id""", (s['id'],))]
+        # D-196: aberta (sem nota) → aguardando (a nota ligada traz tudo, ou tem linha a identificar) → recebida; ou
+        # cancelada. A nota que traz só uma parte deixa a requisição aberta, com o resto "sem nota"
+        sem_nota = {}
+        if s['status'] not in C.REQ_ABERTA:
+            s['situacao'] = 'CANCELADA'
+        elif necessario and all(mid and recebido.get(mid, 0) >= q - C.TOL for mid, q in necessario.items()):
+            s['situacao'] = 'RECEBIDA'
+        elif not s['notas']:
+            s['situacao'] = 'ABERTA'
+        else:
+            cobre, linha_sem_material = _cobertura(conn, s['id'])          # só a aberta com nota: reconhece as linhas
+            sem_nota = {mid: q - cobre.get(mid, 0) for mid, q in necessario.items() if not mid or q - cobre.get(mid, 0) > C.TOL}
+            s['situacao'] = 'ABERTA' if sem_nota and not linha_sem_material else 'AGUARDANDO'
+        aberta = s['situacao'] in ('ABERTA', 'AGUARDANDO')
+
+        def info(mid, q):
+            return {'material_id': mid, 'nome': nomes.get(mid, {}).get('nome') or mid,
+                    'unidade_nome': nomes.get(mid, {}).get('unidade_nome') or 'unidades', 'quantidade': round(q, 6)}
+        s['falta'] = [info(mid, q - recebido.get(mid, 0)) for mid, q in necessario.items()
+                      if mid and aberta and q - recebido.get(mid, 0) > C.TOL]
+        s['sem_nota'] = [info(mid, q) for mid, q in sem_nota.items() if mid and s['notas'] and aberta]
+        s['a_identificar'] = sum(1 for a in s['avulsos'] if not a['material_id']) if aberta else 0
     return rows
 
 
@@ -237,8 +297,8 @@ def vincular(conn, corpo, por):
     nf, sid = int(corpo.get('nf_id') or 0), int(corpo.get('solicitacao_id') or 0)
     if not _one(conn, "SELECT 1 FROM notas_fiscais WHERE id=? AND status<>'CANCELADA'", nf):
         raise RegraViolada('Nota não encontrada.')
-    if not _one(conn, "SELECT 1 FROM solicitacoes_compra WHERE id=? AND status='APROVADA'", sid):
-        raise RegraViolada('Escolha uma solicitação aprovada.')
+    if not _one(conn, "SELECT 1 FROM solicitacoes_compra WHERE id=? AND status IN ('ABERTA','APROVADA')", sid):
+        raise RegraViolada('Escolha uma requisição aberta.')
     atual = _one(conn, 'SELECT solicitacao_id FROM solicitacao_notas WHERE nf_id=?', nf)
     if atual and atual['solicitacao_id'] != sid:
         raise RegraViolada('Esta nota já está vinculada a outra solicitação.')
@@ -249,7 +309,7 @@ def vincular(conn, corpo, por):
 def foto(conn, avulso_id, usuario):
     x = _one(conn, '''SELECT a.documento_id,s.solicitante FROM solicitacao_avulsos a
         JOIN solicitacoes_compra s ON s.id=a.solicitacao_id WHERE a.id=?''', avulso_id)
-    if not x or not x['documento_id'] or (x['solicitante'] != usuario['login'] and 'compras_aprovar' not in usuario['permissoes']):
+    if not x or not x['documento_id'] or (x['solicitante'].lower() != usuario['login'].lower() and 'compras' not in usuario.get('telas', ())):
         raise RegraViolada('Foto não disponível para este usuário.')
     d = _one(conn, 'SELECT arquivo,mime FROM documentos WHERE id=?', x['documento_id'])
     with open(os.path.join(C.documento_dir(conn), d['arquivo']), 'rb') as f:

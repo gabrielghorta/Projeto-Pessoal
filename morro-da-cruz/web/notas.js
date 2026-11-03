@@ -42,7 +42,7 @@ async function nsForaDeOrdem() {
 }
 // depois de registrar ou anular uma NS: a aba aberta se refaz, e os mapas também
 function recarregarTelaNs() {
-  if (TELA === 'notas') carregarNotas(); else if (TELA === 'topografia') carregarTopografia(); else if (TELA === 'cadastro_campo') carregarCadCampo();
+  if (TELA === 'notas') TELAS.notas.carregar();                 // a página aberta: NS do dia, serviço, topografia ou cadastro
   recarregarCamadaMapa(); driveEmSegundoPlano();
 }
 function nsLimpar() {

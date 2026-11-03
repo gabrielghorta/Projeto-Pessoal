@@ -25,7 +25,7 @@ def ler_web(nome):
         return f.read()
 
 
-def paginas_abertas(permissoes):
+def paginas_abertas(permissoes, telas=("*",)):
     """{tela: [páginas que o perfil usa]} e a que abre primeiro, pelo próprio código da tela (app.js e notas.js)."""
     node = shutil.which("node")
     if not node:
@@ -39,6 +39,8 @@ def paginas_abertas(permissoes):
     roteiro = f"""
 const PERMS = {json.dumps(permissoes)};
 const pode = p => PERMS.includes(p);
+const TELAS_U = {json.dumps(list(telas))};
+const podeTela = t => TELAS_U.includes('*') || TELAS_U.includes(t);
 const sessionStorage = {{ getItem: () => null }};
 {codigo}
 const r = {{}};
@@ -60,7 +62,7 @@ class TestNotasDaObra(BaseDia):
         sessao = self.ok(enc.get("/api/sessao"))["usuario"]
         self.assertNotIn("notas", sessao["telas"])
         self.assertEqual(sessao["permissoes"], ["campo", "compras_solicitar"])
-        self.assertEqual(paginas_abertas(sessao["permissoes"])["campo"]["usa"], ["fotos", "clima"])   # o Lançamento do dia
+        self.assertEqual(paginas_abertas(sessao["permissoes"], sessao["telas"])["campo"]["usa"], ["fotos", "clima", "interferencia"])   # o Lançamento do dia
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
         self.assertEqual(self.enviar("enc3", pdf_dia(g))[0], 403)
         r = self.ok(self.enviar("eng1", pdf_dia(g)))                                         # a engenharia envia pela equipe
@@ -83,14 +85,14 @@ class TestNotasDaObra(BaseDia):
             u = self.ok(self.cli(login).get("/api/sessao"))["usuario"]
             self.assertEqual(u["telas"], telas, login)
             self.assertNotIn("ns_dia", u["permissoes"])
-            self.assertEqual(paginas_abertas(u["permissoes"])["notas"]["usa"], ["dia"], login)          # a NS do dia, para consultar
+            self.assertEqual(paginas_abertas(u["permissoes"], u["telas"])["notas"]["usa"], ["dia"], login)          # a NS do dia, para consultar
             self.assertEqual([n["id"] for n in self.ok(self.cli(login).get("/api/ns/dia?equipe=Zona04"))], [r["id"]], login)
             self.assertEqual(self.enviar(login, pdf_dia(g, numero="016"))[0], 403, login)
             self.assertEqual(self.cli(login).get("/api/ns/fora-de-ordem")[0], 403, login)                 # o legado: a engenharia
         eng = self.ok(self.cli("eng1").get("/api/sessao"))["usuario"]
-        p = paginas_abertas(eng["permissoes"])
-        self.assertEqual(p["notas"]["usa"], ["dia", "servico"])
-        self.assertEqual(p["campo"]["usa"], ["apropriacao", "apontamento", "fotos", "clima"])
+        p = paginas_abertas(eng["permissoes"], eng["telas"])
+        self.assertEqual(p["notas"]["usa"], ["dia", "servico", "topografia", "cadastro"])        # D-199
+        self.assertEqual(p["campo"]["usa"], ["apropriacao", "apontamento", "fotos", "clima", "interferencia"])
         self.assertEqual(self.ok(self.cli("eng1").get("/api/ns/fora-de-ordem")), [])
 
     def test_almoxarifado_nao_envia_nem_ve_as_notas(self):
@@ -151,9 +153,10 @@ class TestTopografia(BaseReal):
         topo = self.cli("topo1")
         sessao = self.ok(topo.get("/api/sessao"))["usuario"]
         self.assertEqual(sessao["telas"], ["iluminado", "topografia"])
-        p = paginas_abertas(sessao["permissoes"])["topografia"]
-        self.assertEqual(p, {"usa": ["resumo"], "abre": "resumo", "pedida": "resumo"})   # #topografia/enviar abre o resumo
-        self.assertEqual(paginas_abertas(self.ok(self.cli("eng1").get("/api/sessao"))["usuario"]["permissoes"])["topografia"]["abre"], "enviar")
+        p = paginas_abertas(sessao["permissoes"], sessao["telas"])["notas"]           # D-199: a Topografia é página de Notas de serviço
+        self.assertEqual(p, {"usa": ["topografia"], "abre": "topografia", "pedida": "topografia"})
+        eng = self.ok(self.cli("eng1").get("/api/sessao"))["usuario"]
+        self.assertEqual(paginas_abertas(eng["permissoes"], eng["telas"])["notas"]["abre"], "dia")
         # o resumo: os indicadores, as listas e as NS de topografia, só para consultar
         self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns()))
         self.assertEqual(topo.get("/api/topografia")[0], 200)
@@ -187,7 +190,7 @@ class TestCadastroDeCampo(BaseReal):
         # o perfil Cadastro vê a nota e o que foi feito, abre na página "O que foi feito" e não registra
         cad = self.cli("cad1")
         sessao = self.ok(cad.get("/api/sessao"))["usuario"]
-        self.assertEqual(paginas_abertas(sessao["permissoes"])["cadastro_campo"], {"usa": ["feito"], "abre": "feito", "pedida": "feito"})
+        self.assertEqual(paginas_abertas(sessao["permissoes"], sessao["telas"])["notas"], {"usa": ["cadastro"], "abre": "cadastro", "pedida": "cadastro"})
         self.assertEqual([n["id"] for n in self.ok(cad.get("/api/ns?tipo=CADASTRO"))], [r["id"]])
         self.assertEqual(cad.get("/api/cadastro-campo")[0], 200)
         self.assertEqual(cad.post("/api/ns", {"tipo": "CADASTRO", "pdf_b64": b64(pdf_ns(numero="015", bloco="CADASTRO"))})[0], 403)

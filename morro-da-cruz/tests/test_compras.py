@@ -33,7 +33,6 @@ class BaseCompras(Base):
 
     def pedido(self, qtd=100, mat=MAT, numero="PC-001"):
         sid = C.abrir_solicitacao(self.c, D, [{"material_id": mat, "quantidade": qtd}], "Frente Zona01", "eng1")
-        C.decidir_solicitacao(self.c, sid, True, None, "eng2")
         return C.emitir_pedido(self.c, numero, D, self.forn, sid, [{"material_id": mat, "quantidade": qtd, "valor_unitario": 10}], "comprador")
 
     def importar(self, numero, itens):
@@ -66,14 +65,14 @@ class TestNfeXml(unittest.TestCase):
 
 
 class TestFluxoDeCompra(BaseCompras):
-    def test_pedido_nao_vira_estoque_e_segregacao_na_aprovacao(self):
+    def test_pedido_nao_vira_estoque_e_requisicao_sem_aprovacao(self):
+        """D-196: a requisição não é aprovada; o pedido (rota antiga) sai dela aberta, e não da cancelada."""
+        cancelada = C.abrir_solicitacao(self.c, D, [{"material_id": MAT, "quantidade": 5}], "Zona01", "eng1")
+        C.cancelar_solicitacao(self.c, cancelada, "pedido em dobro", "eng1")
+        with self.assertRaisesRegex(S.RegraViolada, "requisição aberta"):
+            C.emitir_pedido(self.c, "PC-0", D, self.forn, cancelada, [{"material_id": MAT, "quantidade": 1, "valor_unitario": 1}], "comprador")
         sid = C.abrir_solicitacao(self.c, D, [{"material_id": MAT, "quantidade": 100}], "Zona01", "eng1")
-        with self.assertRaisesRegex(S.RegraViolada, "não aprova a própria"):
-            C.decidir_solicitacao(self.c, sid, True, None, "eng1")
-        with self.assertRaisesRegex(S.RegraViolada, "solicitação APROVADA"):
-            C.emitir_pedido(self.c, "PC-1", D, self.forn, sid, [{"material_id": MAT, "quantidade": 10, "valor_unitario": 1}], "comprador")
-        C.decidir_solicitacao(self.c, sid, True, None, "eng2")
-        with self.assertRaisesRegex(S.RegraViolada, "excede o saldo aprovado"):
+        with self.assertRaisesRegex(S.RegraViolada, "excede o saldo da requisição"):
             C.emitir_pedido(self.c, "PC-1", D, self.forn, sid, [{"material_id": MAT, "quantidade": 101, "valor_unitario": 1}], "comprador")
         with self.assertRaisesRegex(S.RegraViolada, "fornecido pela Caesb"):
             C.abrir_solicitacao(self.c, D, [{"material_id": "CAESB-PEAD-DE63", "quantidade": 1}], "x", "eng1")
@@ -519,20 +518,35 @@ class TestTransferenciaInventarioReservas(BaseCompras):
         S.checkout(self.c, c2, [{"material_id": "CAESB-PEAD-DE63", "aplicado": 6, "sobra": 2}])
         self.assertEqual(self.saldo("CAESB-PEAD-DE63"), (32, 0))
 
-    def test_inventario_com_aprovacao_de_outra_pessoa_e_saldo_mudado(self):
+    def test_inventario_ajusta_na_hora_e_outra_pessoa_da_ciencia(self):
+        """D-197: o ajuste entra no saldo na contagem; a ciência é de outra pessoa e não muda nada."""
         self.entrada(50)
-        inv = C.registrar_contagem(self.c, D, [{"material_id": "CAESB-PEAD-DE63", "contado": 48}], "almox1")
-        with self.assertRaisesRegex(S.RegraViolada, "Quem contou"):
-            C.decidir_inventario(self.c, inv, True, "diferença aceita", "almox1")
-        inv2 = C.registrar_contagem(self.c, D, [{"material_id": "CAESB-PEAD-DE63", "contado": 47}], "almox1")
-        C.decidir_inventario(self.c, inv, True, "perda por corte não registrada", "eng1")
+        inv = C.registrar_contagem(self.c, D, [{"material_id": "CAESB-PEAD-DE63", "contado": 48}], "almox1", "perda no corte")
         self.assertEqual(self.saldo("CAESB-PEAD-DE63"), (48, 0))
-        self.assertEqual(self.q("SELECT tipo, quantidade, ref_tipo FROM movimentos WHERE ref_tipo='INVENTARIO'"),
-                         [("AJUSTE_INVENTARIO_SAIDA", 2.0, "INVENTARIO")])
-        with self.assertRaisesRegex(S.RegraViolada, "saldo mudou desde a contagem"):
-            C.decidir_inventario(self.c, inv2, True, "x", "eng1")                      # contada antes do ajuste
-        C.decidir_inventario(self.c, inv2, False, "recontar amanhã", "eng1")
-        self.assertEqual([i["status"] for i in C.inventarios(self.c)], ["DESCARTADO", "AJUSTADO"])
+        self.assertEqual(self.q("SELECT tipo, quantidade, motivo, responsavel FROM movimentos WHERE ref_tipo='INVENTARIO'"),
+                         [("AJUSTE_INVENTARIO_SAIDA", 2.0, "perda no corte", "almox1")])
+        with self.assertRaisesRegex(S.RegraViolada, "Quem contou"):
+            C.dar_ciencia_inventario(self.c, inv, "almox1")
+        C.dar_ciencia_inventario(self.c, inv, "eng1", "ok")
+        with self.assertRaisesRegex(S.RegraViolada, "sem ciência"):
+            C.dar_ciencia_inventario(self.c, inv, "eng2")
+        igual = C.registrar_contagem(self.c, D, [{"material_id": "CAESB-PEAD-DE63", "contado": 48}], "almox1")
+        self.assertEqual(self.q("SELECT COUNT(*) FROM movimentos WHERE ref_tipo='INVENTARIO'")[0][0], 1)   # sem diferença
+        self.assertEqual([(i["id"], i["status"], i["decidido_por"]) for i in C.inventarios(self.c)],
+                         [(igual, "AJUSTADO", None), (inv, "AJUSTADO", "eng1")])
+        S.reservar(self.c, D, "Zona01", "CAESB-PEAD-DE63", 40)
+        with self.assertRaisesRegex(S.RegraViolada, "reservas sem cobertura"):
+            C.registrar_contagem(self.c, D, [{"material_id": "CAESB-PEAD-DE63", "contado": 30}], "almox1")
+        self.assertEqual(self.saldo("CAESB-PEAD-DE63"), (48, 0))
+
+    def test_contagem_de_antes_da_d197_ainda_se_aplica(self):
+        self.entrada(50)
+        self.c.execute("INSERT INTO inventarios(id,data,contado_por,contado_em) VALUES (9,?, 'almox1', ?)", (D, D))
+        self.c.execute("INSERT INTO inventario_itens(inventario_id,material_id,saldo_sistema,contado) VALUES (9,'CAESB-PEAD-DE63',50,47)")
+        with self.assertRaisesRegex(S.RegraViolada, "Quem contou"):
+            C.decidir_inventario(self.c, 9, True, "x", "almox1")
+        C.decidir_inventario(self.c, 9, True, "perda por corte não registrada", "eng1")
+        self.assertEqual(self.saldo("CAESB-PEAD-DE63"), (47, 0))
 
     def test_reservas_vencidas_liberadas_com_motivo(self):
         self.entrada(50)
@@ -553,9 +567,7 @@ class TestComprasPeloHTTP(BaseHTTP):
         st, r = eng1.post("/api/solicitacao", {"data": D, "frente_id": "Zona01", "itens": [{"material_id": MAT, "quantidade": 10}]})
         self.assertEqual(st, 200, r)
         self.assertEqual(self.q("SELECT solicitante FROM solicitacoes_compra"), [("eng1",)])
-        self.assertEqual(eng1.post("/api/solicitacao/decidir", {"solicitacao_id": r["id"], "aprovar": True})[0], 422)   # própria
-        self.assertEqual(almox.post("/api/solicitacao/decidir", {"solicitacao_id": r["id"], "aprovar": True})[0], 403)  # perfil
-        self.assertEqual(eng2.post("/api/solicitacao/decidir", {"solicitacao_id": r["id"], "aprovar": True})[0], 200)
+        self.assertEqual(eng2.post("/api/solicitacao/decidir", {"solicitacao_id": r["id"], "aprovar": True})[0], 404)   # D-196
         import server
         self.assertNotIn("/api/pedido", server.POST)
         st, n = almox.post("/api/nf/importar-xml", {"conteudo_b64": NT.b64(NT.xml(901, [("L", "Luva", "UN", 10, 2.0)])), "nome": "n.xml"})

@@ -16,3 +16,4 @@ mapa/cache/
 
 # saída do cronograma executivo (refeita por cronograma_executivo/gerar_tudo.sh)
 cronograma_executivo/saida/
+poppler/

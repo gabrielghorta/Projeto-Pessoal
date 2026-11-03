@@ -134,45 +134,65 @@ aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escur
 
 /* ---------------------------------------------------------------- navegação: tela inicial, menu lateral e telas */
 // cada tela é uma <section id="aba-…">; as dos grupos (Campo, Almoxarifado, Administrativo) aparecem como subitens no menu lateral
+// o menu (D-199): 4 abas (Mapa iluminado, Execução, Almoxarifado, Administrativo), 11 subabas e as páginas de cada uma.
+// "inclui": telas de permissão (config/perfis.json) que viraram página desta subaba; quem abre uma delas abre a subaba
 const TELAS = {
   inicio: { titulo: 'Início', carregar: () => renderInicio() },
   iluminado: { titulo: 'Mapa iluminado', carregar: () => carregarIluminado() },
-  campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', carregar: () => carregarLancamentoDia() },
-  notas: { titulo: 'Notas de serviço', grupo: 'grupo-campo', carregar: () => carregarNotas() },
-  topografia: { titulo: 'Topografia', grupo: 'grupo-campo', carregar: () => carregarTopografia() },
-  cadastro_campo: { titulo: 'Cadastro de campo', grupo: 'grupo-campo', carregar: () => carregarCadCampo() },
-  interferencias: { titulo: 'Interferências e ocorrências', grupo: 'grupo-campo', carregar: () => carregarInterferencias() },
+  campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', inclui: ['interferencias'],
+    carregar: () => PAGINA.campo === 'interferencia' ? carregarInterferencias() : carregarLancamentoDia() },
+  notas: { titulo: 'Notas de serviço', grupo: 'grupo-campo', inclui: ['topografia', 'cadastro_campo'],
+    carregar: () => ({ topografia: carregarTopografia, cadastro: carregarCadCampo }[PAGINA.notas] || carregarNotas)() },
   diario: { titulo: 'Diário de obra', grupo: 'grupo-campo', carregar: () => carregarDiario() },
-  mapa: { titulo: 'Dados da obra', grupo: 'planejamento', carregar: () => carregarDadosObra() },
-  cronograma: { titulo: 'Cronograma da obra', grupo: 'planejamento', carregar: () => carregarCronograma() },
-  almox: { titulo: 'Estoque e movimentos', grupo: 'planejamento', carregar: () => carregarAlmox() },
-  solicitar: { titulo: 'Pedir material', grupo: 'planejamento', carregar: () => carregarSolicitacoes() },
-  compras: { titulo: 'Compras e notas', grupo: 'planejamento', carregar: () => carregarCompras() },
+  mapa: { titulo: 'Programação', grupo: 'planejamento', carregar: () => carregarDadosObra() },
+  almox: { titulo: 'Estoque', grupo: 'planejamento', carregar: () => carregarAlmox() },
+  compras: { titulo: 'Compras', grupo: 'planejamento', inclui: ['solicitar'],
+    carregar: () => PAGINA.compras === 'requisicoes' ? carregarSolicitacoes() : carregarCompras() },
+  medicao: { titulo: 'Medição', grupo: 'administrativo', carregar: () => carregarMedicoes() },
   equipes: { titulo: 'Equipes', grupo: 'administrativo', carregar: () => carregarAlmox() },
   relatorios: { titulo: 'Relatórios', grupo: 'administrativo', carregar: () => carregarRelatorios() },
+  lev: { titulo: 'Projeto e cronograma', grupo: 'administrativo', inclui: ['cronograma'],
+    carregar: () => PAGINA.lev === 'cronograma' ? carregarCronograma() : carregarLev() },
   admin: { titulo: 'Usuários e histórico', grupo: 'administrativo', carregar: () => carregarAdmin() },
-  lev: { titulo: 'LEV', grupo: 'administrativo', carregar: () => carregarLev() },
-  medicao: { titulo: 'Medição', grupo: 'administrativo', carregar: () => carregarMedicoes() },
 };
-const GRUPOS = { 'grupo-campo': 'Execução', planejamento: 'Planejamento', administrativo: 'Administrativo' };
+const GRUPOS = { 'grupo-campo': 'Execução', planejamento: 'Almoxarifado', administrativo: 'Administrativo' };
 // telas que o perfil abre (config/perfis.json); o servidor confere de novo em cada consulta
 const podeTela = id => id === 'inicio' || !!(USUARIO && USUARIO.telas.includes(id));
-const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeTela(t));
+// a subaba abre para quem abre ela ou uma das telas que viraram página dela
+const podeAba = id => podeTela(id) || ((TELAS[id] || {}).inclui || []).some(podeTela);
+const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeAba(t));
 let TELA = null;
-// telas que saíram (link salvo): abrem a tela nova certa, com um aviso curto
+// telas que saíram (link salvo): abrem o lugar novo certo (subaba/página), com um aviso curto
 const TELAS_ANTIGAS = {
-  prog: ['mapa', 'A programação das equipes agora é feita no Dados da obra: o dia de cada equipe.'],
-  ponto: ['mapa', 'O check-in e o check-out agora são a liberação e a devolução, no Dados da obra.'],
+  prog: ['mapa/programar', 'A programação das equipes agora é feita em Almoxarifado › Programação: o dia de cada equipe.'],
+  ponto: ['mapa/programar', 'O check-in e o check-out agora são a liberação e a devolução, em Almoxarifado › Programação.'],
   esteira: ['iluminado', 'A esteira do cadastro agora fica na ficha do trecho, no Mapa iluminado.'],
+  topografia: ['notas/topografia', 'A Topografia agora é uma página de Execução › Notas de serviço.'],
+  cadastro_campo: ['notas/cadastro', 'O Cadastro de campo agora é uma página de Execução › Notas de serviço.'],
+  interferencias: ['campo/interferencia', 'As interferências agora são uma página de Execução › Lançamento do dia.'],
+  solicitar: ['compras/requisicoes', 'Pedir material agora é a página Requisições, em Almoxarifado › Compras.'],
+  cronograma: ['lev/cronograma', 'O cronograma agora fica em Administrativo › Projeto e cronograma.'],
 };
-// páginas dentro de uma aba (Execução): chips no topo, a página no endereço (#topografia/resumo), com voltar e avançar,
-// e lembrada por aba na sessão. Cada página diz quem a usa; a aba abre na pedida, na lembrada ou na primeira que o perfil usa
+// páginas dentro de uma subaba: chips no topo, a página no endereço (#notas/topografia), com voltar e avançar, e
+// lembrada por subaba na sessão. Cada página diz quem a usa; a subaba abre na pedida, na lembrada ou na primeira do perfil
 const PAGINAS = {
   campo: [['apropriacao', 'Apropriação direta', () => pode('apropriacao')], ['apontamento', 'Apontamento sem NS', () => pode('lancar_sem_ns')],
-    ['fotos', 'Fotos e soldas', () => pode('campo')], ['clima', 'Clima do dia', () => pode('campo')]],
-  notas: [['dia', 'NS do dia', () => true], ['servico', 'Serviço de obra', () => pode('notas_servico')]],      // a NS do dia: quem não envia, consulta
-  topografia: [['enviar', 'Enviar NS de topografia', () => podeNs('TOPOGRAFIA')], ['resumo', 'Resumo', () => true]],
-  cadastro_campo: [['enviar', 'Enviar NS de cadastro', () => podeNs('CADASTRO')], ['feito', 'O que foi feito', () => true]],
+    ['fotos', 'Fotos e soldas', () => podeTela('campo') && pode('campo')], ['clima', 'Clima do dia', () => podeTela('campo') && pode('campo')],
+    ['interferencia', 'Interferência', () => podeTela('interferencias')]],
+  notas: [['dia', 'NS do dia', () => podeTela('notas')], ['servico', 'Serviço de obra', () => podeTela('notas') && pode('notas_servico')],
+    ['topografia', 'Topografia', () => podeTela('topografia')], ['cadastro', 'Cadastro', () => podeTela('cadastro_campo')]],
+  diario: [['resumo', 'Resumo do dia', () => true], ['programacao', 'Programação e check-in', () => true], ['ocorrencias', 'Ocorrências', () => true]],
+  mapa: [['programar', 'Programar o dia', () => true], ['conciliar', 'Conciliar', () => pode('retificar_campo')]],
+  almox: [['dia', 'Dia', () => true], ['receber', 'Receber', () => true], ['saldo', 'Saldo e movimentos', () => true],
+    ['inventario', 'Inventário e transferência', () => true], ['tubos', 'Tubos Caesb', () => true]],
+  compras: [['requisicoes', 'Requisições', () => podeTela('solicitar') || podeTela('compras')], ['notas', 'Notas fiscais', () => podeTela('compras')],
+    ['fornecedores', 'Fornecedores', () => podeTela('compras')]],
+  medicao: [['mes', 'Medição do mês', () => true], ['conferencia', 'Conferência', () => true], ['teto', 'Teto e restrição', () => true],
+    ['base', 'Base de custo', () => true]],
+  equipes: [['integrantes', 'Integrantes e máquinas', () => true], ['histograma', 'Histograma', () => true]],
+  relatorios: [['avanco', 'Avanço', () => true], ['pendencias', 'Pendências', () => true], ['ciclo', 'Ciclo do material', () => true]],
+  lev: [['lev', 'Planilhas (LEV)', () => podeTela('lev')], ['cronograma', 'Cronograma (Project)', () => podeTela('cronograma')]],
+  admin: [['usuarios', 'Usuários e link', () => true], ['historico', 'Histórico', () => true], ['drive', 'Google Drive', () => true]],
 };
 const PAGINA = {};                                     // a página aberta em cada aba
 const paginasDe = tela => (PAGINAS[tela] || []).filter(([, , usa]) => usa());
@@ -196,9 +216,9 @@ document.addEventListener('click', ev => {
 function abrirAba(id, opcoes = {}) {
   let [base, pedida] = String(id).split('/');
   id = base;
-  if (TELAS_ANTIGAS[id]) { toast(TELAS_ANTIGAS[id][1]); id = TELAS_ANTIGAS[id][0]; opcoes = { ...opcoes, substituir: true }; }
-  if (GRUPOS[id]) id = telasDoGrupo(id)[0];          // o grupo abre a primeira tela dele que o perfil usa
-  if (!TELAS[id] || !podeTela(id)) id = 'inicio';
+  if (TELAS_ANTIGAS[id]) { toast(TELAS_ANTIGAS[id][1]); [id, pedida] = TELAS_ANTIGAS[id][0].split('/'); opcoes = { ...opcoes, substituir: true }; }
+  if (GRUPOS[id]) id = telasDoGrupo(id)[0];          // o grupo abre a primeira subaba dele que o perfil usa
+  if (!TELAS[id] || !podeAba(id)) id = 'inicio';
   TELA = id;
   document.body.classList.toggle('no-inicio', id === 'inicio');
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
@@ -252,9 +272,9 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
-  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: o lançamento do dia sem nota, as notas de serviço da obra (a NS do dia e a de serviço), a topografia e o cadastro de campo (cada um com o envio das NS e o resumo), as interferências e o diário de obra.' },
-  planejamento: { nome: 'Planejamento', desc: 'O dia de cada equipe no mapa do Dados da obra (programar, liberar o material e receber a devolução), o cronograma do Project (os 18 meses), o estoque com as notas a receber e o aceite do material, e compras.' },
-  administrativo: { nome: 'Administrativo', desc: 'Equipes, cadastro, relatórios, usuários, LEV (cronograma, BM, redes e conexões) e medição de teste.' },
+  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: o lançamento do dia (apropriação, apontamento, fotos, clima e interferência), as notas de serviço (a NS do dia, a de serviço de obra, a de topografia e a de cadastro) e o diário de obra.' },
+  planejamento: { nome: 'Almoxarifado', desc: 'A programação do dia de cada equipe no mapa (programar, liberar o material e receber a devolução), o estoque (o dia, receber, saldo, inventário e tubos da Caesb) e as compras (requisições, notas fiscais e fornecedores).' },
+  administrativo: { nome: 'Administrativo', desc: 'Medição de teste, equipes, relatórios, o projeto e o cronograma (planilhas do LEV e o MS Project) e os usuários com o histórico.' },
 };
 // a ordem do Menu segue o trabalho de cada perfil; o que o perfil não abre fica de fora
 const MENU_PERFIL = {
@@ -414,9 +434,9 @@ async function mostrarFiscal(tipo, id) {
     await acao(() => api('/api/recomposicao', { alvo_tipo: tipo, alvo_id: id, tipo: $('#recTipo').value, quantidade: $('#recQtd').value, data: hoje() }), 'Recomposição lançada (gaveta 4).');
     mostrarFiscal(tipo, id);
   });
-  if (TELA === 'mapa') plnFocar(tipo, d.nome);                    // o mapa do Dados da obra vai até o trecho
+  if (TELA === 'mapa') plnFocar(tipo, d.nome);                    // o mapa da Programação vai até o trecho
 }
-// depois de um registro (OK interno, liberação, devolução, NS…) o mapa do Dados da obra, o Mapa iluminado e o mapa da tela
+// depois de um registro (OK interno, liberação, devolução, NS…) o mapa da Programação, o Mapa iluminado e o mapa da tela
 // Início relêem a situação na hora (sem esperar os 30 s da leitura guardada), e o mapa REV02 aberto noutra aba também
 let CANAL_MAPA = null;
 try { CANAL_MAPA = new BroadcastChannel('mc-mapa'); } catch (_) { /* navegador antigo: o REV02 relê a cada minuto */ }
@@ -462,7 +482,7 @@ async function carregarAlmox() {
   if (!$('#hIni').value) { $('#hIni').value = hoje().slice(0, 8) + '01'; $('#hFim').value = hoje(); }
   carregarHistograma();
 }
-/* ---- Notas a receber (Estoque e movimentos): a nota vem de Compras e notas; aqui, o aceite ou a recusa da entrega.
+/* ---- Notas a receber (Estoque): a nota vem de Compras; aqui, o aceite ou a recusa da entrega.
    Na lateral de cada nota (D-170): Aceitar a entrega, Recusar a entrega (com o porquê) e Aceite ou recusa parcial.
    Conferir é marcar (D-171): cada linha mostra o material que o sistema reconheceu e o almoxarife marca a que conferiu
    no caminhão; ninguém escolhe material nem pedido aqui. O verde só libera com todas marcadas. */
@@ -474,7 +494,7 @@ function renderNotasReceber(notas) {
   if (!notas.length) { box.textContent = 'Nenhuma nota a receber.'; return; }
   box.innerHTML = notas.map(n => {
     const st = ST_NOTA[n.status] || [n.status.toLowerCase(), ''], sug = Object.fromEntries((n.sugestoes || []).map(x => [x.linha_id, x]));
-    let corpo = n.linhas.some(l => l.aguardando_identificacao) ? '<div class="aviso info">Já chegou material que o sistema não reconheceu: ele entra no estoque quando a engenharia disser o que é, em <b>Compras e notas</b>.</div>' : '', lado = '', paineis = '';
+    let corpo = n.linhas.some(l => l.aguardando_identificacao) ? '<div class="aviso info">Já chegou material que o sistema não reconheceu: ele entra no estoque quando a engenharia disser o que é, em <b>Compras</b>.</div>' : '', lado = '', paineis = '';
     // o que falta receber de cada linha (na unidade da nota) e o material de cada uma; o frete só aparece antes da
     // primeira entrega (ele não "chega": depois dela, a nota espera só o material que falta ou a engenharia)
     const falta = n.linhas.map(l => ({ l, resta: Math.max(0, l.quantidade - (l.entregue || 0)), s: sug[l.id] || {} }))
@@ -495,7 +515,7 @@ function renderNotasReceber(notas) {
       corpo += `<div class="nota-linhas">${falta.map(linha).join('')}</div>
         ${mats.length ? `<div class="nota-marcar"><button type="button" class="btn" data-marcar-todas>Marcar todas</button>
           <span data-contagem>0 de ${mats.length} conferida${mats.length > 1 ? 's' : ''}</span></div>` : ''}
-        ${sem.length ? `<div class="aviso info">${sem.length} linha${sem.length > 1 ? 's' : ''} que o sistema não reconheceu. Pode aceitar a entrega: ${sem.length > 1 ? 'elas entram' : 'ela entra'} no estoque quando a engenharia disser o que ${sem.length > 1 ? 'são' : 'é'}, em <b>Compras e notas</b>.</div>` : ''}
+        ${sem.length ? `<div class="aviso info">${sem.length} linha${sem.length > 1 ? 's' : ''} que o sistema não reconheceu. Pode aceitar a entrega: ${sem.length > 1 ? 'elas entram' : 'ela entra'} no estoque quando a engenharia disser o que ${sem.length > 1 ? 'são' : 'é'}, em <b>Compras</b>.</div>` : ''}
         ${!mats.length && !sem.length && fora.length ? '<div class="aviso info">Nota só de frete ou serviço: nada entra no estoque. "Aceitar a entrega" a encerra.</div>' : ''}`;
       lado = `<button type="button" class="btn ok grande" data-nota-ok${mats.length ? ' disabled' : ''}>Aceitar a entrega</button>
         <button type="button" class="btn recusar grande" data-nota-recusar aria-expanded="false">Recusar a entrega</button>
@@ -540,7 +560,7 @@ function contarConferidas(card) {
 }
 $('#notasReceber').addEventListener('change', ev => { if (ev.target.matches('[data-confere]')) contarConferidas(ev.target.closest('.nota-card')); });
 // vários XML de uma vez; o fornecedor que falta é cadastrado pelo próprio XML, com confirmação.
-// A nota sobe só em Compras e notas (D-170); o recebimento é em Estoque e movimentos › Notas a receber.
+// A nota sobe só em Compras (D-170); o recebimento é em Estoque › Receber.
 async function importarNotasXml(form, depois) {
   const arqs = [...form.arquivos.files], feitas = [], erros = [];
   for (const arq of arqs) {
@@ -555,7 +575,7 @@ async function importarNotasXml(form, depois) {
       feitas.push(`NF ${r.numero}`);
     } catch (e) { erros.push(`${arq.name}: ${e.message}`); }
   }
-  if (feitas.length) toast(`Importada${feitas.length > 1 ? 's' : ''}: ${feitas.join(', ')}. Quando o material chegar, receba em Estoque e movimentos › Notas a receber.`, 'ok');
+  if (feitas.length) toast(`Importada${feitas.length > 1 ? 's' : ''}: ${feitas.join(', ')}. Quando o material chegar, receba em Estoque › Receber.`, 'ok');
   if (erros.length) toast(erros.join(' · '), 'erro');
   form.reset(); depois(); driveEmSegundoPlano(depois);
 }
@@ -693,9 +713,16 @@ async function carregarCompras() {
   $$('.selForn').forEach(x => x.innerHTML = fs);
   const e = $('.editor-itens[data-itens=nfdig]'); if (!e.children.length) e.innerHTML = LINHA_ITEM.nfdig();
   renderNotas();
-  await carregarRequerimentos();
+  renderFornecedores();
 }
-/* Estoque e movimentos (D-187): a transferência entre equipes, o inventário e as reservas vencidas são do almoxarifado */
+// Compras › Fornecedores: os cadastrados, para conferir antes de digitar uma nota
+function renderFornecedores() {
+  const fs = COMPRAS.fornecedores;
+  $('#fornLista').className = fs.length ? '' : 'vazio';
+  $('#fornLista').innerHTML = fs.length ? `<div class="tabela"><table><thead><tr><th>Razão social</th><th>CNPJ</th><th>Contato</th></tr></thead><tbody>
+    ${fs.map(f => `<tr><td>${esc(f.nome)}</td><td>${esc(f.cnpj)}</td><td>${esc(f.contato || '')}</td></tr>`).join('')}</tbody></table></div>` : 'Nenhum fornecedor cadastrado.';
+}
+/* Estoque (D-187): a transferência entre equipes, o inventário e as reservas vencidas são do almoxarifado */
 async function carregarInventarioEVencidas() {
   // recarrega a lista sem perder o material já escolhido no formulário (ex.: transferência entre equipes)
   $$('.selMaterialTodos').forEach(x => { const v = x.value; x.innerHTML = opMat(() => true); if (v) x.value = v; });
@@ -703,17 +730,19 @@ async function carregarInventarioEVencidas() {
   const invs = await api('/api/inventarios');
   $('#invLista').innerHTML = invs.map(v => `<div class="registro"><div><b>Inventário #${v.id} · ${esc(v.data)} · ${esc(v.contado_por)}</b> <span class="chip ${v.status === 'AJUSTADO' ? 'azul' : v.status === 'CONTADO' ? 'amarelo' : ''}">${esc(v.status.toLowerCase())}</span></div>
     ${v.itens.map(i => `<div><small>${esc(i.material_id)}: sistema ${nf(i.saldo_sistema, 3)} · contado ${nf(i.contado, 3)} · diferença <b>${nf(i.diferenca, 3)}</b></small></div>`).join('')}
-    ${v.status === 'CONTADO' && pode('inventario_ajustar') && v.contado_por !== USUARIO.login ? `<button type="button" class="btn" data-inv="${v.id}" data-ap="1">Aprovar ajuste</button> <button type="button" class="btn" data-inv="${v.id}" data-ap="0">Descartar</button>` : ''}
-    ${v.decidido_por ? `<div><small>${esc(v.decidido_por)}: ${esc(v.decisao_motivo || '')}</small></div>` : ''}</div>`).join('');
+    ${v.status === 'AJUSTADO' && !v.decidido_por && pode('inventario_ciencia') && v.contado_por !== USUARIO.login ? '<button type="button" class="btn" data-inv-ciencia="' + v.id + '">Dar ciência</button>' : ''}
+    ${v.status === 'CONTADO' && pode('inventario_ciencia') && v.contado_por !== USUARIO.login ? `<button type="button" class="btn" data-inv="${v.id}" data-ap="1">Aplicar a contagem antiga</button> <button type="button" class="btn" data-inv="${v.id}" data-ap="0">Descartar</button>` : ''}
+    ${v.decidido_por ? `<div><small>Visto por ${esc(v.decidido_por)}${v.decisao_motivo ? ': ' + esc(v.decisao_motivo) : ''}</small></div>`
+      : v.status === 'AJUSTADO' ? '<div><small>Ajuste já no saldo; falta a ciência da engenharia ou da administração.</small></div>' : ''}</div>`).join('');
   const venc = await api('/api/reservas-vencidas?hoje=' + hoje());
   const desmarcadas = new Set($$('#vencidasLista input[data-venc]').filter(x => !x.checked).map(x => x.dataset.venc));
   const motivo = ($('#vencMotivo') || {}).value || '';
   $('#vencidasLista').innerHTML = venc.length ? `${venc.map(r => `<label class="check"><input type="checkbox" data-venc="${r.id}" ${desmarcadas.has(String(r.id)) ? '' : 'checked'}> #${r.id} · ${esc(r.data)} · ${esc(r.equipe_id)} · ${esc(r.material_id)} ${nf(r.quantidade, 3)}</label>`).join('')}
     <div class="linha"><input id="vencMotivo" placeholder="motivo (ex.: equipe não compareceu)" value="${esc(motivo)}"><button type="button" class="btn" id="vencBtn">Liberar selecionadas</button></div>` : '<div class="vazio">Nenhuma reserva vencida.</div>';
 }
-/* Compras e notas (D-171): a nota sobe aqui e o sistema reconhece o material de cada linha. A linha que ele não
-   reconheceu fica "faltando a confirmação": a engenharia ou a administração marca um dos
-   candidatos, outro material ou frete/serviço. O almoxarife só confere e aceita, em Estoque e movimentos. */
+/* Compras › Notas fiscais (D-171, D-198): a nota sobe aqui e o sistema reconhece o material de cada linha. A linha que
+   ele não reconheceu fica "faltando a confirmação": a engenharia, a administração ou o almoxarife (menos quem digitou a
+   nota) marca um dos candidatos, outro material ou frete/serviço. A entrega é aceita em Estoque › Receber. */
 const unidade = u => String(u || '').trim().toUpperCase().replace(/\./g, '');   // como regras.normalizar_unidade
 function linhaConfirmar(l, cands, marcado, todos) {
   const nome = `cf${l.id}`, pre = marcado && cands[0], difere = pre && unidade(pre.unidade) !== unidade(l.unidade);
@@ -728,7 +757,7 @@ function linhaConfirmar(l, cands, marcado, todos) {
 }
 function renderNotas() {
   const conf = pode('nf_confirmar'), rec = pode('receber'), todos = opMat(() => true);
-  const solics = COMPRAS.solicitacoes.map(x => `<option value="${x.id}">Solicitação ${x.id} · ${esc(dataBR(x.data))}${x.frente_id ? ' · ' + esc(nomeZona(x.frente_id)) : ''} · ${esc(x.solicitante)}</option>`).join('');
+  const solics = COMPRAS.solicitacoes.map(x => `<option value="${x.id}">Requisição ${x.id} · ${esc(dataBR(x.data))}${x.frente_id ? ' · ' + esc(nomeZona(x.frente_id)) : ''} · ${esc(x.solicitante)}</option>`).join('');
   $('#notasLista').innerHTML = COMPRAS.notas.filter(n => n.origem !== 'DIRETA').map(n => {
     const st = STATUS_NF[n.status] || [n.status, ''], aberta = ['A_CONFERIR', 'CONFERIDA'].includes(n.status);
     let corpo = '';
@@ -737,13 +766,13 @@ function renderNotas() {
       const sem = n.linhas.filter(l => sug[l.id] && !sug[l.id].material_id && !sug[l.id].fora_do_estoque), ok = n.linhas.filter(l => !sem.includes(l));
       const falta = ok.some(l => !(sug[l.id] || {}).fora_do_estoque && l.quantidade - (l.entregue || 0) > 1e-9);
       corpo = !sem.length ? (!falta ? '' : n.status === 'CONFERIDA'
-          ? '<div class="aviso info">Falta receber: o almoxarife recebe em <b>Estoque e movimentos › Notas a receber</b>.</div>'
-          : '<div class="aviso ok">Pronta para receber: o almoxarife confere e aceita em <b>Estoque e movimentos › Notas a receber</b>.</div>')
+          ? '<div class="aviso info">Falta receber: o almoxarife recebe em <b>Estoque › Receber</b>.</div>'
+          : '<div class="aviso ok">Pronta para receber: o almoxarife confere e aceita em <b>Estoque › Receber</b>.</div>')
         : conf ? `<div class="nf-confirmar"><b>Faltando a confirmação · ${sem.length} linha${sem.length > 1 ? 's' : ''}</b>
             <p class="vazio" style="margin:2px 0 6px">O sistema não reconheceu o que ${sem.length > 1 ? 'são estas linhas' : 'é esta linha'}. Marque o material (os mais parecidos vêm primeiro) ou frete/serviço. O que já chegou entra no estoque ao confirmar; o resto o almoxarife aceita no Estoque, e a próxima nota deste fornecedor já vem reconhecida.</p>
             ${sem.map(l => linhaConfirmar(l, sug[l.id].candidatos || [], (sug[l.id].motivo || '').startsWith('unidade'), todos)).join('')}
             <div class="acoes"><button type="button" class="btn prim" data-confirmar-linhas>Confirmar</button></div></div>`
-        : `<div class="aviso info">Faltando a confirmação de ${sem.length} linha${sem.length > 1 ? 's' : ''}: a engenharia confirma o que ${sem.length > 1 ? 'são' : 'é'}.</div>`;
+        : `<div class="aviso info">Faltando a confirmação de ${sem.length} linha${sem.length > 1 ? 's' : ''}: a engenharia ou o almoxarife confirma o que ${sem.length > 1 ? 'são' : 'é'}.</div>`;
       if (ok.length) corpo += `<details class="nota-mais"><summary>Linhas reconhecidas (${ok.length})</summary><ul class="nf-reconhecidas">${ok.map(l => {
         const s = sug[l.id] || {};
         return `<li data-l="${l.id}"><span>${l.n_item}. ${esc(l.descricao)} <small>· ${nf(l.quantidade, 4)} ${esc(l.unidade)}</small><br>→ ${s.material_id ? esc(nomeMaterial(s.material_id)) + (s.caesb ? ' (Caesb)' : '') : 'frete ou serviço (fora do estoque)'}
@@ -752,12 +781,12 @@ function renderNotas() {
     if (n.itens.length) corpo += `<div class="tabela"><table><thead><tr><th>Material</th><th class="n">Na nota</th><th class="n">Entregue</th><th class="n">Aceito</th><th class="n">Devolvido</th><th></th></tr></thead><tbody>${n.itens.map(i => `<tr>
         <td>${esc(nomeMaterial(i.material_id))}</td><td class="n">${nf(i.quantidade, 3)}</td><td class="n">${nf(i.recebido, 3)}</td><td class="n">${nf(i.aceito, 3)}</td><td class="n">${nf(i.devolvido, 3)}</td>
         <td>${rec && i.aceito - i.devolvido > 1e-9 ? `<button type="button" class="btn" data-devolver="${i.id}">Devolver</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
-    // ligar a nota a uma solicitação de material aprovada só marca "Chegou" nela (D-172); não trava nada
-    if (n.solicitacao_id) corpo += `<p class="vazio" style="margin:6px 0 0">Ligada à solicitação de material ${n.solicitacao_id}.</p>`;
-    else if (conf && n.status !== 'CANCELADA' && solics) corpo += `<details class="nota-mais"><summary>Ligar a uma solicitação de material (opcional)</summary>
-      <div class="linha"><label>Solicitação aprovada<select data-nf-solic><option value="">Escolher</option>${solics}</select></label>
+    // ligar a nota a uma requisição deixa a requisição "aguardando a entrega" (D-172, D-196); não trava nada
+    if (n.solicitacao_id) corpo += `<p class="vazio" style="margin:6px 0 0">Ligada à requisição ${n.solicitacao_id} (Compras › Requisições).</p>`;
+    else if (conf && n.status !== 'CANCELADA' && solics) corpo += `<details class="nota-mais"><summary>Ligar a uma requisição (opcional)</summary>
+      <div class="linha"><label>Requisição<select data-nf-solic><option value="">Escolher</option>${solics}</select></label>
         <button type="button" class="btn" data-nf-vincular>Ligar</button></div>
-      <p class="vazio" style="margin:4px 0 0">Só marca "Chegou" na solicitação. Não muda o recebimento nem o estoque.</p></details>`;
+      <p class="vazio" style="margin:4px 0 0">A requisição passa a "aguardando a entrega" e, com a entrega aceita, a "recebida". Não muda o recebimento nem o estoque.</p></details>`;
     return `<div class="registro" data-nf="${n.id}"><div><b>NF ${esc(n.numero)}${n.serie ? '/' + esc(n.serie) : ''} · ${esc(n.fornecedor || '')}</b>
       <span><span class="chip ${st[1]}">${esc(st[0])}</span> <small>${esc(n.origem)} · emissão ${esc(n.data_emissao || '')} · ${brl(n.valor_total)} · reg. ${esc(n.registrada_por || '')}${n.conferida_por ? ' · conf. ' + esc(n.conferida_por) : ''}</small>
       ${aberta && rec && !n.itens.length && !n.linhas.some(l => l.entregue > 0) ? ` <button type="button" class="btn" data-cancelar-nf="${n.id}">Cancelar</button>` : ''}</span></div>
@@ -793,7 +822,7 @@ $('#fTransf').addEventListener('submit', async ev => {
 });
 $('#fInv').addEventListener('submit', async ev => {
   ev.preventDefault();
-  if (await acao(() => api('/api/inventario/contagem', { data: hoje(), itens: lerItens(ev.target, 'inv') }), 'Contagem registrada (o ajuste precisa da aprovação de outra pessoa).').catch(() => null)) carregarAlmox();
+  if (await acao(() => api('/api/inventario/contagem', { data: hoje(), itens: lerItens(ev.target, 'inv'), obs: ev.target.obs.value }), 'Contagem registrada: a diferença já entrou no saldo.').catch(() => null)) carregarAlmox();
 });
 document.addEventListener('click', async ev => {
   const t = ev.target, q = s => t.closest(s);
@@ -822,6 +851,8 @@ document.addEventListener('click', async ev => {
     r = await acao(() => api('/api/devolucao-fornecedor', { nf_item_id: q('[data-devolver]').dataset.devolver, data: hoje(), quantidade: qt, motivo, documento: doc }), 'Devolução registrada (saiu do estoque).').catch(() => null); }
   else if (q('[data-cancelar-nf]')) { const motivo = prompt('Motivo do cancelamento da nota:'); if (!motivo) return;
     r = await acao(() => api('/api/nf/cancelar', { nf_id: q('[data-cancelar-nf]').dataset.cancelarNf, motivo }), 'Nota cancelada.').catch(() => null); }
+  else if (q('[data-inv-ciencia]')) { const obs = prompt('Ciência do ajuste (comentário opcional):', ''); if (obs === null) return;
+    if (await acao(() => api('/api/inventario/ciencia', { inventario_id: q('[data-inv-ciencia]').dataset.invCiencia, obs }), 'Ciência registrada.').catch(() => null)) carregarAlmox(); return; }
   else if (q('[data-inv]')) { const b = q('[data-inv]'), motivo = prompt(b.dataset.ap === '1' ? 'Motivo do ajuste:' : 'Motivo do descarte:'); if (!motivo) return;
     if (await acao(() => api('/api/inventario/decidir', { inventario_id: b.dataset.inv, aprovar: b.dataset.ap === '1', motivo }), 'Inventário decidido.').catch(() => null)) carregarAlmox(); return; }
   else if (t.id === 'vencBtn') { const ids = $$('[data-venc]:checked').map(i => +i.dataset.venc);
@@ -933,14 +964,14 @@ document.addEventListener('click', async ev => {
   const a = ev.target.closest('[data-anular-etapa]'), r = ev.target.closest('[data-resolver-ocorrencia]');
   if (a) { const motivo = prompt('Motivo da anulação (o registro fica no histórico):'); if (!motivo) return;
     const ok = await acao(() => api('/api/etapa-complementar/anular', { registro_id: a.dataset.anularEtapa, motivo }), 'Registro anulado.').catch(() => null);
-    if (ok && TELA === 'topografia') { if (TOP) selecionarTop(TOP.id); carregarTopografia(); recarregarCamadaMapa(); }
+    if (ok && TELA === 'notas' && PAGINA.notas === 'topografia') { if (TOP) selecionarTop(TOP.id); carregarTopografia(); recarregarCamadaMapa(); }
     else if (ok && CAMPO) selecionarCampo(CAMPO.tipo, CAMPO.id); }
   if (r) { const resolucao = prompt('Resolução / correção feita:'); if (!resolucao) return;
     const ok = await acao(() => api('/api/ocorrencia/resolver', { ocorrencia_id: r.dataset.resolverOcorrencia, resolucao }), 'Ocorrência resolvida.').catch(() => null);
     if (ok && CAMPO) selecionarCampo(CAMPO.tipo, CAMPO.id); }
 });
-// retificação de intervalos: no Lançamento do dia (CAMPO) ou na aba Cadastro de campo (CADC)
-const ctxRetif = el => el.closest('#aba-cadastro_campo') ? (CADC && { d: CADC.d, box: $('#cadRetif'), depois: () => selecionarCad(CADC.id) })
+// retificação de intervalos: no Lançamento do dia (CAMPO) ou em Notas de serviço › Cadastro (CADC)
+const ctxRetif = el => el.closest('#aba-notas [data-pagina="cadastro"]') ? (CADC && { d: CADC.d, box: $('#cadRetif'), depois: () => selecionarCad(CADC.id) })
   : CAMPO && { d: CAMPO.d, box: $('#retifBox'), depois: () => selecionarCampo(CAMPO.tipo, CAMPO.id) };
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-retificar-ref]'), c = b && ctxRetif(b); if (!c) return;
@@ -966,7 +997,7 @@ document.addEventListener('click', async ev => {
   const corpo = { ref_tipo, ref_id, intervalos: lerLinhas($('.editor', box)), motivo: r.motivo, data: r.data, simular: b.dataset.retifAcao === 'previa' };
   const p = await acao(() => api('/api/intervalos/retificar', corpo), corpo.simular ? null : 'Retificação aplicada — original preservado no histórico.').catch(() => null);
   if (!p) return;
-  if (!corpo.simular) { const c = ctxRetif(b); if (c) c.depois(); if (TELA === 'cadastro_campo') carregarCadCampo(); recarregarCamadaMapa(); return; }
+  if (!corpo.simular) { const c = ctxRetif(b); if (c) c.depois(); if (TELA === 'notas' && PAGINA.notas === 'cadastro') carregarCadCampo(); recarregarCamadaMapa(); return; }
   const lin = l => l.map(i => `${esc(i.etapa)} ${nf(i.ini_m)}–${nf(i.fim_m)} m (${esc(i.data)})`).join('<br>') || '—';
   const qs = (p.quantidades_depois || []).map(q => [q, (p.quantidades_antes || []).find(a => a.servico === q.servico && a.unidade === q.unidade)])
     .filter(([q, a]) => !a || a.confirmado !== q.confirmado).concat((p.quantidades_antes || []).filter(a => p.quantidades_depois && !p.quantidades_depois.some(q => q.servico === a.servico && q.unidade === a.unidade)).map(a => [null, a]));
@@ -1074,7 +1105,7 @@ $('#fFoto').addEventListener('submit', async ev => {
 /* ---------------------------------------------------------------- 4. caminho até a medição (ficha do trecho) */
 // O que já foi feito e o que falta para o trecho entrar na medição, cada item com quem faz e onde, e a ação ali mesmo
 // para quem pode: Verificar (com as fotos que faltam), OK interno e a esteira do cadastro. Serve à ficha do Mapa
-// iluminado e à do Dados da obra.
+// iluminado e à da Programação.
 const CAMPOS_ETAPA = {
   '1_PRONTO': [['2_ENVIADO', 'Enviar dados p/ empresa', [['empresa', 'Empresa'], ['data_envio', 'Data', 'date']]]],
   '2_ENVIADO': [['3_RECEBIDO', 'Cadastro recebido', [['arquivos', 'Arquivos DWG/PDF/BIM']]]],
@@ -1354,7 +1385,7 @@ async function carregarElegibilidade(id) {
 $('#medEleg').addEventListener('click', ev => {
   const a = ev.target.closest('[data-abrir]'); if (!a) return;
   ev.preventDefault(); const [tipo, id] = a.dataset.abrir.split('|');
-  abrirAba('mapa'); mostrarFiscal(tipo, id);
+  abrirAba('mapa/programar'); mostrarFiscal(tipo, id);
 });
 $('#fMedConf').addEventListener('submit', async ev => {
   ev.preventDefault();
@@ -1711,7 +1742,7 @@ let TOP_LISTA = 'programados', TOP = null, TOP_DADOS = null;
 const fTop = $('#fTop');
 async function carregarTopografia() {
   if (!fTop.data.value) fTop.data.value = hoje();
-  if (PAGINA.topografia === 'enviar') { prepararEnvioNs('TOPOGRAFIA'); $('#topExcecao').hidden = !pode('topografia'); return; }
+  prepararEnvioNs('TOPOGRAFIA'); $('#topExcecao').hidden = !pode('topografia');      // o envio em cima e o resumo embaixo (D-199)
   opcoesFrente($('#topFrente'));
   $$('#topLista button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.topLista === TOP_LISTA)));
   const f = $('#topFrente').value;
@@ -1787,7 +1818,7 @@ let CAD_LISTA = 'aberta', CADC = null, CAD_DADOS = null;
 const fCad = $('#fCad');
 async function carregarCadCampo() {
   if (!fCad.data.value) fCad.data.value = hoje();
-  if (PAGINA.cadastro_campo === 'enviar') { prepararEnvioNs('CADASTRO'); $('#cadExcecao').hidden = !pode('cadastro_campo'); return; }
+  prepararEnvioNs('CADASTRO'); $('#cadExcecao').hidden = !pode('cadastro_campo');   // o envio em cima e o que foi feito embaixo
   opcoesFrente($('#cadFrente'));
   $$('#cadLista button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.cadLista === CAD_LISTA)));
   const f = $('#cadFrente').value;
@@ -2002,8 +2033,8 @@ function aplicarPermissoes() {
   $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO;
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
-  // o menu mostra só as telas do perfil: o encarregado vê Mapa e Execução (sem as notas de serviço); o almoxarife, também o Planejamento
-  $$('.rail-item[data-tela]').forEach(b => { b.hidden = !podeTela(b.dataset.tela); });
+  // o menu mostra só as subabas do perfil: o encarregado vê Mapa, Execução e Compras › Requisições; o almoxarife, também o Almoxarifado
+  $$('.rail-item[data-tela]').forEach(b => { b.hidden = !podeAba(b.dataset.tela); });
   $$('button.rail-grupo').forEach(b => { b.hidden = $(`.rail-sub[data-grupo="${b.dataset.grupo}"]`).hidden = !telasDoGrupo(b.dataset.grupo).length; });
   $$('.rail-itens .rail-div').forEach(d => {                    // divisória sem nada visível depois dela some
     let x = d.nextElementSibling, algo = false;

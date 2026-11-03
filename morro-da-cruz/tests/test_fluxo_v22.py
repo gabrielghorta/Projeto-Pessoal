@@ -157,7 +157,7 @@ class TestCatalogoDoPedido(BaseCompras):
 class TestSolicitacoesHTTP(BaseHTTP):
     usuarios = BaseHTTP.usuarios + (('sup', 'SUPERVISOR', None),)
 
-    def test_perfis_pedem_sem_ver_notas_e_somente_engenharia_decide(self):
+    def test_perfis_pedem_sem_ver_notas_e_ninguem_aprova(self):
         for login in ('almox1', 'enc1', 'sup', 'eng1', 'adm'):
             cl = self.cliente(login)
             st, r = cl.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'material_id': MAT, 'quantidade': 2}]})
@@ -166,50 +166,68 @@ class TestSolicitacoesHTTP(BaseHTTP):
         for login in ('enc1', 'sup'):
             for rota in ('/api/compras', '/api/almox/notas', '/api/nfs'):
                 self.assertEqual(self.cliente(login).get(rota)[0], 403, (login, rota))
-        self.assertEqual(self.cliente('eng1').post('/api/solicitacao/decidir', {'solicitacao_id': 4, 'aprovar': True})[0], 422)
-        self.assertEqual(self.cliente('almox1').post('/api/solicitacao/decidir', {'solicitacao_id': 1, 'aprovar': True})[0], 403)
-        self.assertEqual(self.cliente('eng2').post('/api/solicitacao/decidir', {'solicitacao_id': 1, 'aprovar': True})[0], 200)
+        # D-196: não há aprovação; a requisição nasce aberta
+        self.assertEqual(self.cliente('eng2').post('/api/solicitacao/decidir', {'solicitacao_id': 1, 'aprovar': True})[0], 404)
+        self.assertEqual({x['situacao'] for x in self.cliente('eng1').get('/api/solicitacoes')[1]['solicitacoes']}, {'ABERTA'})
         self.assertEqual([x['id'] for x in self.cliente('enc1').get('/api/solicitacoes')[1]['solicitacoes']], [2])
+        # cancelar: a própria, ou qualquer uma pela engenharia e pela administração; sempre com o motivo
+        cancelar = lambda login, sid, motivo='pedido em dobro': self.cliente(login).post('/api/solicitacao/cancelar', {'solicitacao_id': sid, 'motivo': motivo})[0]
+        self.assertEqual(cancelar('enc1', 3), 422)                     # a do supervisor
+        self.assertEqual(cancelar('almox1', 2), 422)                   # o almoxarife só cancela a própria
+        self.assertEqual(cancelar('enc1', 2, ''), 422)                 # sem motivo
+        self.assertEqual(cancelar('enc1', 2), 200)
+        self.assertEqual(cancelar('adm', 3), 200)
+        self.assertEqual(cancelar('adm', 3), 422)                      # já cancelada
+        s = {x['id']: x for x in self.cliente('eng1').get('/api/solicitacoes')[1]['solicitacoes']}
+        self.assertEqual((s[2]['situacao'], s[2]['decisao_motivo'], s[3]['decidida_por']), ('CANCELADA', 'pedido em dobro', 'adm'))
 
-    def test_nao_achei_foto_e_texto_identificacao_recusa_e_chegou(self):
+    def test_nao_achei_foto_e_texto_identificacao_aguardando_e_recebida(self):
         almox, eng = self.cliente('almox1'), self.cliente('eng1')
         st, s = almox.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'descricao': 'A peça da foto', 'foto_b64': jpeg(), 'quantidade': 2}]})
         self.assertEqual(st, 200, s)
         aid = self.q('SELECT id FROM solicitacao_avulsos')[0][0]
         self.assertEqual(almox.get(f'/api/solicitacao/foto?id={aid}')[0], 200)
         self.assertEqual(self.cliente('enc1').get(f'/api/solicitacao/foto?id={aid}')[0], 422)
-        corpo = {'solicitacao_id': s['id'], 'aprovar': True}
-        self.assertEqual(eng.post('/api/solicitacao/decidir', corpo)[0], 422)
-        self.assertEqual(eng.post('/api/solicitacao/decidir', {**corpo, 'avulsos': [{'id': aid, 'material_id': MAT}]})[0], 200)
+        ver = lambda: {x['id']: x for x in almox.get('/api/solicitacoes')[1]['solicitacoes']}[s['id']]
+        self.assertEqual((ver()['situacao'], ver()['a_identificar']), ('ABERTA', 1))
+        corpo = {'solicitacao_id': s['id'], 'avulsos': [{'id': aid, 'material_id': MAT}]}
+        self.assertEqual(self.cliente('enc1').post('/api/solicitacao/identificar', corpo)[0], 403)
+        self.assertEqual(eng.post('/api/solicitacao/identificar', {**corpo, 'avulsos': [{'id': aid + 99, 'material_id': MAT}]})[0], 422)
+        self.assertEqual(almox.post('/api/solicitacao/identificar', corpo)[0], 200)      # D-198: o almoxarife também identifica
+        self.assertEqual(ver()['a_identificar'], 0)
         import nfe_teste as NT
         nf = C.importar_nfe_xml(self.c, NT.b64(NT.xml(8004, [(MAT, 'Peça', 'UN', 2, 10)])), 'n.xml', 'almox1', cadastrar=True)['nf_id']
-        self.assertEqual([x['id'] for x in eng.get('/api/compras')[1]['solicitacoes']], [s['id']])   # só as aprovadas
+        self.assertEqual([x['id'] for x in eng.get('/api/compras')[1]['solicitacoes']], [s['id']])   # as não canceladas
         self.assertEqual(eng.post('/api/solicitacao/vincular', {'nf_id': nf, 'solicitacao_id': s['id']})[0], 200)
         self.assertEqual({n['id']: n['solicitacao_id'] for n in eng.get('/api/compras')[1]['notas']}[nf], s['id'])
+        self.assertEqual(ver()['situacao'], 'AGUARDANDO')                                # a nota subiu: aguarda a entrega
         C.receber_nota(self.c, nf, 'almox1', D2)
-        self.assertEqual(almox.get('/api/solicitacoes')[1]['solicitacoes'][0]['situacao'], 'CHEGOU')
+        self.assertEqual((ver()['situacao'], ver()['falta']), ('RECEBIDA', []))
         st, s2 = almox.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'descricao': 'Outra peça', 'quantidade': 1}]})
         self.assertEqual(st, 200, s2)
-        self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s2['id'], 'aprovar': False})[0], 422)
-        self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s2['id'], 'aprovar': False, 'motivo': 'Já tem na obra'})[0], 200)
+        self.assertEqual(eng.post('/api/solicitacao/cancelar', {'solicitacao_id': s2['id']})[0], 422)
+        self.assertEqual(eng.post('/api/solicitacao/cancelar', {'solicitacao_id': s2['id'], 'motivo': 'Já tem na obra'})[0], 200)
+        self.assertEqual(eng.post('/api/solicitacao/vincular', {'nf_id': nf, 'solicitacao_id': s2['id']})[0], 422)
 
-    def test_requerimentos_em_compras_falta_chegar_e_nota_ligada(self):
-        """D-187: quem abre Compras e notas vê os pedidos da obra; o aprovado traz o que falta chegar e as notas ligadas."""
+    def test_requisicoes_em_compras_parte_sem_nota_e_falta_chegar(self):
+        """D-187/D-196: quem abre Compras vê as requisições da obra; a nota que traz só uma parte deixa a requisição aberta,
+        com o resto "sem nota"; a entrega parcial deixa o que falta chegar."""
         almox, eng, enc = self.cliente('almox1'), self.cliente('eng1'), self.cliente('enc1')
         s1 = enc.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'material_id': MAT, 'quantidade': 3}]})[1]
         s2 = eng.post('/api/solicitacao', {'frente_id': 'Zona01', 'itens': [{'material_id': MAT, 'quantidade': 1}]})[1]
         self.assertEqual({x['id'] for x in almox.get('/api/solicitacoes')[1]['solicitacoes']}, {s1['id'], s2['id']})
         self.assertEqual([x['id'] for x in enc.get('/api/solicitacoes')[1]['solicitacoes']], [s1['id']])
-        self.assertEqual(eng.post('/api/solicitacao/decidir', {'solicitacao_id': s1['id'], 'aprovar': True})[0], 200)
         ver = lambda: {x['id']: x for x in eng.get('/api/solicitacoes')[1]['solicitacoes']}[s1['id']]
         self.assertEqual([(f['material_id'], f['quantidade']) for f in ver()['falta']], [(MAT, 3)])
-        self.assertEqual(ver()['notas'], [])
+        self.assertEqual((ver()['notas'], ver()['sem_nota']), ([], []))
         import nfe_teste as NT
         nf = C.importar_nfe_xml(self.c, NT.b64(NT.xml(8007, [(MAT, 'Peça', 'UN', 2, 10)])), 'n.xml', 'almox1', cadastrar=True)['nf_id']
         self.assertEqual(eng.post('/api/solicitacao/vincular', {'nf_id': nf, 'solicitacao_id': s1['id']})[0], 200)
+        s = ver()
+        self.assertEqual((s['situacao'], s['notas'], [f['quantidade'] for f in s['sem_nota']]), ('ABERTA', ['8007'], [1]))
         C.receber_nota(self.c, nf, 'almox1', D2)
         s = ver()
-        self.assertEqual((s['situacao'], s['notas'], [f['quantidade'] for f in s['falta']]), ('APROVADA', ['8007'], [1]))
+        self.assertEqual((s['situacao'], [f['quantidade'] for f in s['falta']]), ('ABERTA', [1]))
         self.assertEqual(ver()['falta'][0]['nome'], SOL.catalogo(self.c)[[m['id'] for m in SOL.catalogo(self.c)].index(MAT)]['nome'])
         # o inventário e as reservas vencidas servem o Estoque; quem só pede material não os lê
         for rota in ('/api/inventarios', '/api/reservas-vencidas?hoje=' + D2):
@@ -220,7 +238,9 @@ class TestSolicitacoesHTTP(BaseHTTP):
         import server
         for rota in ('/api/pedido', '/api/pedido/cancelar', '/api/nf/aprovar'):
             self.assertNotIn(rota, server.POST)
-        self.assertEqual(self.cliente('almox1').post('/api/nf/confirmar-linhas', {'nf_id': 1, 'linhas': []})[0], 403)
+        self.assertEqual(self.cliente('enc1').post('/api/nf/confirmar-linhas', {'nf_id': 1, 'linhas': []})[0], 403)
+        for rota in ('/api/solicitacao/decidir', '/api/inventario/aprovar'):
+            self.assertNotIn(rota, server.POST)
 
 
 class TestAlvosDoDia(BaseHTTP):

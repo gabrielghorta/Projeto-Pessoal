@@ -1,4 +1,4 @@
-/* Planejamento: o mapa do Dados da obra e o cronograma do MS Project.
+/* Planejamento: o mapa da Programação e o cronograma do MS Project.
  * O mapa é o Mapa iluminado (iluminado.js: traçado do REV02, o mesmo fundo escuro de satélite e o visor de arrastar e
  * aproximar, D-186) com os trechos na cor do diâmetro do projeto, finos (a Subadutora, de 200 mm pra cima, mais grossa;
  * MND tracejado) ou, à escolha, na cor da programação do dia; os nós em bola e as caixas com a sua forma (D-183). A frente
@@ -82,7 +82,7 @@ async function carregarDadosObra() {
 }
 function avisoPln(msg) { const a = $('#plnAviso'); a.textContent = msg; a.hidden = !msg; }
 
-// depois de qualquer registro que muda o mapa: a próxima leitura do Mapa iluminado vem nova e, com o Dados da obra
+// depois de qualquer registro que muda o mapa: a próxima leitura do Mapa iluminado vem nova e, com a Programação
 // aberto, a seleção e as cores se refazem
 function plnRecarregar() {
   ESTADO_EM = 0;
@@ -104,7 +104,7 @@ function montarPln(g) {
   PLN.frentesNo = frentesDosNos(g);
   // o mesmo fundo do Mapa iluminado (D-186): o satélite cortado nas zonas, escurecido pelo fundo escolhido lá
   svg.innerHTML = `${htmlSatelite(g, 'pln')}<g id="plnZonas">${zonas}</g>
-    <g id="plnSelB"></g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnSelC"></g><g id="plnNos" class="longe"></g>
+    <g id="plnHalo"></g><g id="plnSelB"></g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnSelC"></g><g id="plnNos" class="longe"></g>
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
   aplicarCamadasPln();
   ligarSatelite(PLN, g); carregarMosaicoCopia(g, PLN);
@@ -132,10 +132,7 @@ function desenharPln(px, zoom) {
     const sel = Math.min(9, 4 * Math.pow(Math.max(zoom, 1), 0.45));
     espessura($('#plnSelG'), sel); espessura($('#plnSelB'), sel + 3);
     $$('#plnNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
-    $$('#plnPins .ilu-pin').forEach(p => {
-      const c = p.querySelector('circle'), tx = p.querySelector('text');
-      c.setAttribute('r', 15 * px); c.setAttribute('stroke-width', 3 * px); tx.setAttribute('font-size', 13 * px);
-    });
+    escalarEquipes($('#plnPins'), $('#plnHalo'), px, larg);
   }
   desenharNos(px, zoom < 3);
   trilha($('#plnTrilha'), PLN.zona ? `<button type="button" data-pln-tudo>Obra inteira</button> › ${esc(nomeZona(PLN.zona))}`
@@ -189,12 +186,11 @@ function colorirPln() {
     $$('#plnLinhas .ilu-tr').forEach(p => p.style.display = PLN.vis[p.dataset.situ] ? '' : 'none');
   }
   const doDia = ((PLN.est || {}).checkins || []).filter(c => c.data === PLN.dia);
-  $('#plnPins').innerHTML = doDia.flatMap(c => c.alvos.map(n => {        // o pino da equipe em cada trecho e nó do dia
-    const tipo = indexar(GERAL).trecho.has(n) ? 'TRECHO' : 'ATIVIDADE', pos = posicaoAlvo(GERAL, tipo, n);
-    if (!pos) return '';
-    return `<g class="ilu-pin" data-alvo="${esc(n)}"><title>${esc(equipeNome(c.equipe_id))}: ${esc(c.alvos.map(nomeCompleto).join(', '))} (check-in de ${dataBR(c.data)})</title>
-      <circle cx="${pos.xy[0]}" cy="${pos.xy[1]}"/><text x="${pos.xy[0]}" y="${pos.xy[1]}">${esc(rotuloEquipe(c.equipe_id))}</text></g>`;
-  })).join('');
+  const porEquipe = new Map();                 // a etiqueta da equipe e o contorno dos trechos e nós do dia (D-200)
+  doDia.forEach(c => { if (!porEquipe.has(c.equipe_id)) porEquipe.set(c.equipe_id, []);
+    c.alvos.forEach(n => porEquipe.get(c.equipe_id).push({ tipo: indexar(GERAL).trecho.has(n) ? 'TRECHO' : 'ATIVIDADE', nome: n })); });
+  const eqs = equipesDoDia(GERAL, porEquipe);
+  $('#plnHalo').innerHTML = eqs.halo; $('#plnPins').innerHTML = eqs.etiquetas;
   PLN.ultPx = 0; desenharVista(PLN); marcarSelPln(); agendarCopia(PLN);
   if (PLN.pop) abrirPopPln(PLN.pop, true);
 }
@@ -305,6 +301,8 @@ async function buscarSelecao() {
 function cliquePln(alvo, ev, i) {
   fecharPopPln();
   const perto = s => alvo.closest && alvo.closest(s);
+  const etq = perto('.eq-etq');                // a etiqueta da equipe: o dia dela (os trechos marcados e o painel)
+  if (etq) return escolherEquipeDoDia(etq.dataset.equipe);
   const no = perto('.pln-no'), pin = perto('.ilu-pin'), zona = perto('.ilu-zf');
   const noPerto = no && (!$('#plnNos').classList.contains('longe') || no.classList.contains('pln-cx'));   // a caixa, até de longe
   if (!PLN.zona) {
@@ -656,8 +654,8 @@ function escolherEquipeDoDia(eq, aba) {
   if (alvos.length) focarNomes(alvos);
   atualizarSelecao();
 }
-// Estoque e movimentos › "Equipes programadas hoje": cada equipe com os trechos do dia (nome completo) e as peças
-// sugeridas pelo projeto; "Liberar" abre o Dados da obra com o dia da equipe escolhido, na aba Liberar material
+// Estoque › "Equipes programadas hoje": cada equipe com os trechos do dia (nome completo) e as peças
+// sugeridas pelo projeto; "Liberar" abre a Programação com o dia da equipe escolhido, na aba Liberar material
 async function almoxEquipesDoDia() {
   const box = $('#almoxDia'), dia = hoje();
   $('#almoxDiaPainel').hidden = false;
@@ -667,7 +665,7 @@ async function almoxEquipesDoDia() {
     const x = eqs[p.equipe] = eqs[p.equipe] || { linhas: new Set(), nos: new Set() }; (p.tipo === 'TRECHO' ? x.linhas : x.nos).add(n);
   }));
   const ids = Object.keys(eqs).sort();
-  if (!ids.length) { box.className = 'vazio'; box.textContent = 'Nenhuma equipe programada para hoje (programe no Dados da obra).'; return; }
+  if (!ids.length) { box.className = 'vazio'; box.textContent = 'Nenhuma equipe programada para hoje (programe na Programação).'; return; }
   const sels = await Promise.all(ids.map(eq => api('/api/dados-obra/selecao?' + new URLSearchParams({ linhas: [...eqs[eq].linhas].join(','),
     nos: [...eqs[eq].nos].join(','), data: dia, equipe: eq })).catch(() => null)));
   box.className = '';
@@ -677,14 +675,14 @@ async function almoxEquipesDoDia() {
     return `<div class="registro"><div><b>${esc(equipeNome(eq))}</b> ${ja ? '<span class="chip laranja">material liberado · em campo</span>' : '<span class="chip amarelo">aguardando a liberação</span>'}</div>
       <small>${alvos.map(n => esc(nomeCompleto(n))).join(' · ')}</small>
       ${mats.length ? `<div><small>Peças sugeridas: ${mats.slice(0, 8).map(m => `${esc(m.material_id)} ${nf(m.liberavel, 3)} ${esc(m.unidade)}${m.falta_no_almox > 0 ? ` (faltam ${nf(m.falta_no_almox, 3)})` : ''}`).join(' · ')}${mats.length > 8 ? ' …' : ''}</small></div>` : ''}
-      <div class="acoes"><button type="button" class="btn prim" data-almox-liberar="${esc(eq)}">${ja ? 'Somar material no Dados da obra' : 'Liberar o material do dia'}</button></div></div>`;
+      <div class="acoes"><button type="button" class="btn prim" data-almox-liberar="${esc(eq)}">${ja ? 'Somar material na Programação' : 'Liberar o material do dia'}</button></div></div>`;
   }).join('');
 }
 document.addEventListener('click', ev => {
   const b = ev.target.closest('[data-almox-liberar]'); if (!b) return;
   PLN.dia = hoje(); if ($('#plnDia')) $('#plnDia').value = PLN.dia;
   PLN.abrir = { equipe: b.dataset.almoxLiberar, aba: 'liberar' };
-  abrirAba('mapa');
+  abrirAba('mapa/programar');
 });
 
 /* ---------------------------------------------------------------- ações do painel */
