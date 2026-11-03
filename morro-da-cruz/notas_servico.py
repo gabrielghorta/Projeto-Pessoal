@@ -105,7 +105,7 @@ def indice(conn):
     """Onde cada elemento da rede aparece num trecho físico: {"chaves": {chave: [ponto]}, "meio": {fisico_id: [(pos, nó)]}},
     com a posição em metros (0 no no_ini do trecho físico) e o papel: PONTA (conexão real), JUNCAO (cruzamento, passagem,
     divisa, limite de MND: não é conexão) ou MEIO (conexão no meio de uma linha que a 06.1 não cortou, da pendência da
-    topologia)."""
+    topologia). "mnd": {fisico_id: [(pos, trecho físico do outro lado, pos nele)]}, os limites da travessia MND (D-202)."""
     fis = TP.trechos_fisicos(conn)
     por_ponto = {m["ponto"]: (F, m) for F in fis for m in F["membros"]}
     idx, meio = {}, {}
@@ -127,7 +127,12 @@ def indice(conn):
             F, m = por_ponto[p["trecho"]]
             add(F, TP.para_fisico(F, m["trecho_id"], p["posicao_m"], p["posicao_m"])[0], p["no"], "MEIO", linha=p["trecho"],
                 pos_linha=p["posicao_m"])
-    return {"chaves": idx, "meio": meio}
+    por_id, mnd = {F["id"]: F for F in fis}, {}
+    for lim in TP.limites_mnd(conn):                  # D-202: o VCA e o MND são trechos físicos separados, o tubo continua
+        (fa, xa), (fb, xb) = lim["pontas"]
+        mnd.setdefault(fa, []).append((xa, por_id[fb], xb))
+        mnd.setdefault(fb, []).append((xb, por_id[fa], xa))
+    return {"chaves": idx, "meio": meio, "mnd": mnd}
 
 
 def _no_contexto(pt, ctx):
@@ -145,6 +150,62 @@ def _vaos(ind, ka, kb, ctx):
     pb = [p for p in ind["chaves"].get(kb, ()) if _no_contexto(p, ctx)]
     return [{"F": a["F"], "a": a, "b": b, "meio": ind["meio"].get(a["F"]["id"], ())} for a in pa for b in pb
             if a["F"] is b["F"] and abs(a["pos"] - b["pos"]) > R.TOL_M]
+
+
+LIMITE_MND = "LIMITE DA TRAVESSIA MND"
+
+
+def _rotas_mnd(ind, ka, kb, ctx):
+    """A NS vai de ka a kb passando pelo limite da travessia MND: o VCA e o MND são trechos físicos separados (D-202), e o
+    caminho passa de um para o outro no limite. [[{"F", "a", "b", "meio"}, ...]]: uma perna por trecho físico."""
+    pa = [p for p in ind["chaves"].get(ka, ()) if _no_contexto(p, ctx)]
+    pb = [p for p in ind["chaves"].get(kb, ()) if _no_contexto(p, ctx)]
+    lims, rotas = ind.get("mnd") or {}, []
+
+    def andar(F, ent, pernas, vistos):
+        perna = lambda b: {"F": F, "a": ent, "b": b, "meio": ind["meio"].get(F["id"], ())}
+        rotas.extend(pernas + [perna(b)] for b in pb if pernas and b["F"] is F and abs(b["pos"] - ent["pos"]) > R.TOL_M)
+        for x, G, xg in lims.get(F["id"], ()):
+            if abs(x - ent["pos"]) > R.TOL_M and G["id"] not in vistos and len(vistos) < 5:
+                andar(G, {"F": G, "pos": xg, "nome": LIMITE_MND, "papel": "LIMITE_MND"},
+                      pernas + [perna({"F": F, "pos": x, "nome": LIMITE_MND, "papel": "LIMITE_MND"})], vistos | {G["id"]})
+
+    for a in pa:
+        andar(a["F"], a, [], {a["F"]["id"]})
+    return rotas
+
+
+def _dividir_mnd(s, ls, ind, parcial):
+    """Segmento sem trecho físico que ligue as duas pontas, mas com um caminho só pelo limite do MND: vira um segmento por
+    trecho físico. A distância da NS é dividida na proporção do projeto; na NS do dia, se a NS for mais curta (execução
+    parcial), ela enche as pernas na ordem e para onde a execução parou."""
+    rotas = _rotas_mnd(ind, s["ka"], s["kb"], s["ctx"])
+    if len(rotas) != 1:
+        return [s]
+    rota = rotas[0]
+    ext = [abs(p["b"]["pos"] - p["a"]["pos"]) for p in rota]
+    tot = sum(ext)
+    x0, x1 = ls[s["i"]].get("dist_acumulada"), ls[s["j"]].get("dist_acumulada")
+    ns_m = None if None in (x0, x1) else x1 - x0
+    em_ordem = parcial and ns_m is not None and ns_m < tot and not _diferenca_ok(ns_m, tot)
+    aviso = (f"passa pelo limite da travessia MND: dividido em {len(rota)} segmentos, um por trecho físico (o VCA e o MND "
+             "são trechos separados)")
+    out, acc = [], 0.0
+    for k, (p, e) in enumerate(zip(rota, ext)):
+        if ns_m is None:
+            ini = fim = None
+        elif em_ordem:
+            ini, fim = x0 + min(acc, ns_m), x0 + min(acc + e, ns_m)
+            if fim - ini <= R.TOL_M:
+                break
+        else:
+            ini, fim = x0 + ns_m * acc / tot, x0 + ns_m * (acc + e) / tot
+        acc += e
+        parte = {"ini_ns_m": None if ini is None else round(ini, 3), "fim_ns_m": None if fim is None else round(fim, 3),
+                 "de": ls[s["i"]].get("elemento") if k == 0 else LIMITE_MND,
+                 "para": ls[s["j"]].get("elemento") if k == len(rota) - 1 else LIMITE_MND}
+        out.append(dict(s, cands=[p], parte=parte, avisos=(list(s["avisos"]) if k == 0 else []) + [aviso]))
+    return out
 
 
 def _entre(c):
@@ -205,7 +266,8 @@ def _segmentos_grupo(g, gi, ind, ctx, soltas=False):
     """Segmentos de um grupo: de um elemento reconhecido ao seguinte; linhas sem elemento reconhecido no meio viram
     ponto intermediário (aviso). Depois, segmentos que se encontram numa junção do mesmo trecho físico (cruzamento,
     divisa…) são juntados: a NS vai de conexão a conexão. Com `soltas` (NS do dia), a linha sem elemento no fim (parada)
-    ou no começo (continuação) vira segmento de uma ponta só (_soltas)."""
+    ou no começo (continuação) vira segmento de uma ponta só (_soltas). Segmento que passa pelo limite da travessia MND
+    vira um por trecho físico (_dividir_mnd, D-202)."""
     ls = g["linhas"]
     ctx_g = dict(ctx)
     cg = L.contexto_zona_pb(g.get("titulo"))
@@ -240,6 +302,7 @@ def _segmentos_grupo(g, gi, ind, ctx, soltas=False):
                 del segs[n + 1]
                 mudou = True
                 break
+    segs = [x for s in segs for x in (_dividir_mnd(s, ls, ind, soltas) if not s["cands"] else [s])]
     return [p for p in pontas if p["solta"] == "inicio"] + segs + [p for p in pontas if p["solta"] == "fim"]
 
 
@@ -285,11 +348,13 @@ def _avaliar(s, ls, ns, conferir=_conferir):
     """Situação do segmento e o candidato escolhido (quando há um só). Cada candidato leva a própria situação: a pessoa
     só pode escolher um que não seja ERRO. `conferir`: a regra de distância (a NS do dia aceita execução parcial)."""
     a, b = ls[s["i"]], ls[s["j"]]
-    ns_m = None if None in (a.get("dist_acumulada"), b.get("dist_acumulada")) else round(b["dist_acumulada"] - a["dist_acumulada"], 3)
+    pt = s.get("parte") or {"ini_ns_m": a.get("dist_acumulada"), "fim_ns_m": b.get("dist_acumulada"), "de": a.get("elemento"),
+                            "para": b.get("elemento")}
+    ns_m = None if None in (pt["ini_ns_m"], pt["fim_ns_m"]) else round(pt["fim_ns_m"] - pt["ini_ns_m"], 3)
     de_mm = b.get("dn_mm") or a.get("dn_mm")
-    metodo = b.get("metodo")
-    out = {"grupo": s["grupo"], "de": a.get("elemento"), "para": b.get("elemento"), "metros_ns": ns_m,
-           "ini_ns_m": a.get("dist_acumulada"), "fim_ns_m": b.get("dist_acumulada"), "de_mm": de_mm, "metodo": metodo,
+    metodo = None if s.get("parte") else b.get("metodo")     # dividido no limite do MND: o método é o do projeto em cada parte
+    out = {"grupo": s["grupo"], "de": pt["de"], "para": pt["para"], "metros_ns": ns_m,
+           "ini_ns_m": pt["ini_ns_m"], "fim_ns_m": pt["fim_ns_m"], "de_mm": de_mm, "metodo": metodo,
            "avisos": list(s["avisos"]), "candidatos": [], "escolhido": None}
     cands = s["cands"]
     if not cands:

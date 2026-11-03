@@ -19,6 +19,7 @@ Conversão de metros (0 do trecho físico no seu no_ini; 0 de cada linha no no_i
 * para_linhas(fisico, ini_m, fim_m) / para_fisico(fisico, trecho_id, ini_m, fim_m) → conversão de intervalos
 * pendencias(conn) → pontas fora do nó, nós inexistentes, decisões em DUVIDA e decisões que não batem com o banco
 * consulta(conn, trecho_id) → resposta de GET /api/topologia;  pontas_nao_conexao() → pontas que o desenho não encaixa
+* limites_mnd(conn) → onde o trecho físico em MND encosta no VCA ao lado (a NS passa de um para o outro, D-202)
 """
 import hashlib
 import json
@@ -292,6 +293,28 @@ def trechos_fisicos(conn):
 def fisico_do_trecho(conn, trecho_id):
     """O trecho físico que contém essa linha da 06.1 (ou None)."""
     return _estado(conn)["de_trecho"].get(trecho_id)
+
+
+def limites_mnd(conn):
+    """Onde o pedaço em MND encosta no VCA ao lado (junção LIMITE_MND em NAO_JUNTAR, D-202): o tubo continua, mas são
+    trechos físicos separados. [{"juncao": "J-…", "pontas": [(fisico_id, posicao_m), (fisico_id, posicao_m)]}]."""
+    est = _estado(conn)
+    por_ponto = {t["ponto"]: t for t in est["trechos"]}
+    out = []
+    for j in est["cfg"].get("juncoes") or []:
+        if not isinstance(j, dict) or j.get("tipo") != "LIMITE_MND" or j.get("decisao") != NAO_JUNTAR:
+            continue
+        pontas, motivo = _validar(j, por_ponto)
+        if motivo:
+            continue
+        lados = []
+        for t, lado in pontas:
+            F = est["de_trecho"].get(t["id"])
+            pos = 0.0 if lado == "ini" else _f(t["extensao_m"])
+            lados.append((F["id"], para_fisico(F, t["id"], pos, pos)[0]) if F else None)
+        if None not in lados and lados[0][0] != lados[1][0]:
+            out.append({"juncao": j.get("id"), "pontas": lados})
+    return out
 
 
 def para_linhas(fisico, ini_m, fim_m):

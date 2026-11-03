@@ -341,6 +341,18 @@ class TestCasamento(BaseReal):
         s = self.ler_direto(pdf_grupo(["NÓ9.1", "NÓ77.7"], [10.0]))["segmentos"][0]
         self.assertEqual(s["situacao"], "SEM_CORRESPONDENCIA")
 
+    def test_ns_que_passa_pelo_limite_do_mnd_vira_um_segmento_por_trecho(self):
+        # D-202: VCA e MND são trechos físicos separados; a distância da NS é dividida na proporção do projeto
+        pdf = pdf_grupo(["NÓ59.1", "NÓ1.1"], [570.0], grupo="REDE ZONA 09 - PB16", material="PEAD-63",
+                        titulo='"REDE DE ÁGUA" - ZONA 09 - PB16 - VER CROQUI ANEXO')
+        segs = self.ler_direto(pdf)["segmentos"]
+        self.assertEqual([(s["situacao"], s["escolhido"]["fisico_id"], s["escolhido"]["metodologias"]) for s in segs],
+                         [("AUTOMATICO", "TF-01017", ["VCA"]), ("AUTOMATICO", "TF-01016", ["MND"]),
+                          ("AUTOMATICO", "TF-01025", ["VCA"])])
+        self.assertAlmostEqual(sum(s["metros_ns"] for s in segs), 570.0, places=2)
+        self.assertEqual((segs[0]["ini_ns_m"], segs[-1]["fim_ns_m"]), (0.0, 570.0))
+        self.assertEqual([p["ponto"] for p in segs[1]["plano"]], ["Zona09_PB16_Rede_TR002"])
+
     def test_registrar_exige_a_conferencia_de_cada_segmento(self):
         tres = pdf_grupo(["NÓ6.1 - TÊ 160x110", "NÓ9.1 - TÊ 160x160", "CH_VRP-15"], [277.99, round(295.98 * 1.03, 2)])
         self.recusa(self.registrar("eng1", "TOPOGRAFIA", tres), 422, "Confira os segmentos 2")

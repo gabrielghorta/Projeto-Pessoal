@@ -62,6 +62,7 @@ novo · e as provisórias de campo e almoxarifado (D-12 a D-18, D-21, D-22, D-40
 | D-187 | Requerimentos de material em Compras e notas (A comprar); transferência, inventário e reservas vencidas no Estoque (a aprovação e o "A comprar" saíram na D-196) |
 | D-196 a D-200 | (03/11/2026) Requisição sem aprovação (aberta → aguardando a entrega → recebida, ou cancelada com motivo) · inventário ajusta na hora, outro dá ciência · o almoxarife também identifica a linha da nota · menu novo: 4 abas, 11 subabas com páginas · no mapa, uma etiqueta por equipe e o contorno dos trechos do dia |
 | D-201 | (03/11/2026) Mapa conferido com a 06.1, a 06.2 e o BM: o vetor da PB25 corrigido na tela (as cópias de 3 trechos saíram); coordenadas reais na ficha do trecho e do nó; pendentes os 78,25 m de DE 160 do quadro e o DE 125 no item 5.8.37 |
+| D-202 | (03/11/2026) VCA e MND são trechos físicos separados, mesmo sem nó entre eles (as 4 travessias da 06.1, 291,26 m); a NS que atravessa vira um segmento por trecho. O projeto só marca essas 4: os outros 6.687,69 m de MND do BM não têm lugar no desenho (pendente) |
 
 **Revisão do código (30/10/2026, D-188 a D-195):** apropriação no item da ADM recusada · OK interno não antes do
 serviço · nota repetida pelo fornecedor, número e série · estorno só pelo caminho de cada movimento (transferência,
