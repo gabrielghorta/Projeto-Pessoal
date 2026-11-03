@@ -247,13 +247,14 @@ def _candidato(c, ns_m, de_mm):
     F = c["F"]
     x, y = c["a"]["pos"], c["b"]["pos"]
     proj = round(abs(y - x), 3)
+    # pontos_no_meio.posicao_m: a partir do 1º elemento da NS (ponta a), no sentido em que a nota vai
     return {"fisico_id": F["id"], "ini_m": round(min(x, y), 3), "fim_m": round(max(x, y), 3), "sentido": 1 if y > x else -1,
             "extensao_m": proj, "extensao_fisico_m": F["extensao_m"], "de_mm": F["de_mm"], "metodologias": F["metodologias"],
             "diferenca_m": None if ns_m is None else round(ns_m - proj, 3), "de": c["a"]["nome"], "para": c["b"]["nome"],
             "texto": F["texto"], "linhas": [m["ponto"] for m in F["membros"]],
             "ponta_a": {k: c["a"].get(k) for k in ("nome", "papel", "linha", "pos_linha")},
             "ponta_b": {k: c["b"].get(k) for k in ("nome", "papel", "linha", "pos_linha")},
-            "pontos_no_meio": [{"posicao_m": round(p - min(x, y), 3), "no": n, "papel": pp, "tipo": t} for p, n, pp, t in _entre(c)]}
+            "pontos_no_meio": [{"posicao_m": round(abs(p - x), 3), "no": n, "papel": pp, "tipo": t} for p, n, pp, t in _entre(c)]}
 
 
 def _conferir(c, ns_m, de_mm, metodo):
@@ -382,9 +383,14 @@ def plano(conn, tipo, fisico, ini_m, fim_m, data, seg_id=None):
         faixa = (p["ini_m"], p["fim_m"])
         item = dict(p, gravar=[], ja_m=0.0, pendente=[])
         if tipo == "TOPOGRAFIA":
-            cob = _cobertura_compl(conn, p["trecho_id"], "LIBERACAO_TOPOGRAFICA") + _historico(conn, seg_id, p["trecho_id"],
-                                                                                              "LIBERACAO_TOPOGRAFICA")
+            libs = S.etapas_complementares(conn, p["trecho_id"], "LIBERACAO_TOPOGRAFICA")
+            cob = [(e["ini_m"], e["fim_m"]) for e in libs] + _historico(conn, seg_id, p["trecho_id"], "LIBERACAO_TOPOGRAFICA")
             item["gravar"] = _faixas(R.fora_da_cobertura(faixa, R.unir_intervalos(cob)))
+            # já liberado, mas só por NS de data posterior a esta: a liberação fica com a data da outra
+            depois = R.unir_intervalos([(max(e["ini_m"], faixa[0]), min(e["fim_m"], faixa[1])) for e in libs
+                                        if data and str(e["data"])[:10] > str(data)[:10] and min(e["fim_m"], faixa[1]) > max(e["ini_m"], faixa[0])])
+            antes = R.unir_intervalos([(e["ini_m"], e["fim_m"]) for e in libs if not data or str(e["data"])[:10] <= str(data)[:10]])
+            item["posterior"] = _faixas([x for d in depois for x in R.fora_da_cobertura(d, antes)])
         elif tipo == "CADASTRO":
             ass = S._cobertura(conn, p["trecho_id"], "ASSENTADO", ate_data=data)
             cad = R.unir_intervalos(S._cobertura(conn, p["trecho_id"], "CADASTRO_CAMPO")
@@ -451,7 +457,7 @@ def _ja_registrada(conn, ns, tipo, sha_pdf, equipe_id=None):
     com_arquivo = [r[0] for r in conn.execute("SELECT n.id FROM notas_servico n JOIN documentos d ON d.id = n.pdf_id "
                                               "WHERE d.sha256=? ORDER BY n.id DESC", (sha_pdf,))]
     por_arquivo = next((c for c in (_cabeca(conn, i) for i in com_arquivo) if c and c["status"] == "REGISTRADA"), None)
-    sql = ("SELECT * FROM notas_servico WHERE contrato=? AND tipo=? AND numero=? AND status='REGISTRADA'"
+    sql = ("SELECT * FROM notas_servico WHERE contrato=? AND tipo=? AND ltrim(numero,'0')=ltrim(?,'0') AND status='REGISTRADA'"   # 012 = 12
            + (" AND equipe_id=? AND data=?" if tipo == "EXECUCAO" else ""))
     args = [L.norm_contrato(cab.get("contrato")) or "", tipo, str(cab.get("numero") or "")]
     mesma = _one(conn, sql, *(args + ([equipe_id, cab.get("data")] if tipo == "EXECUCAO" else [])))
@@ -484,6 +490,11 @@ def ler(conn, tipo, pdf_b64, planilha_b64=None, zona=None, pb=None, hoje=None, c
             c["plano"] = plano(conn, tipo, _fisico_por_id(conn, c["fisico_id"]), c["ini_m"], c["fim_m"], data) \
                 if tipo in PERMISSAO_TIPO and data else []
         s["plano"] = s["escolhido"]["plano"] if s["escolhido"] else []
+        post = sum(R.comprimento(i.get("posterior") or []) for i in s["plano"])
+        if post > R.TOL_M:
+            s["avisos"] = list(s.get("avisos") or []) + [
+                f"{_m(post)} m já estão liberados por NS de data posterior a esta: a liberação fica com a data da outra. Para "
+                "valer a data desta, anule a NS posterior e envie as duas na ordem das datas."]
     por_arquivo, mesma = _ja_registrada(conn, ns, tipo, hashlib.sha256(pdf).hexdigest())
     aviso_tipo = None
     bloco = L.norm_txt(ns["cabecalho"].get("bloco"))

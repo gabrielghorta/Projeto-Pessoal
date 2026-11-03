@@ -13,8 +13,14 @@ function obterGeral() {
 // o da tela (Brasília, no navegador): o servidor no PythonAnywhere roda em UTC
 async function estadoMapa(novo) {
   if (novo || !ESTADO_MAPA || Date.now() - ESTADO_EM > 30000) {
-    if (!ESTADO_P) ESTADO_P = api('/api/mapa/estado?data=' + hoje() + (MEDICAO_ATUAL ? '&medicao=' + MEDICAO_ATUAL : ''))
-      .then(e => { ESTADO_MAPA = e; ESTADO_EM = Date.now(); return e; }).finally(() => { ESTADO_P = null; });
+    if (!ESTADO_P || novo) {
+      // a leitura em curso pode ter saído antes da gravação que pediu esta: lê de novo depois que ela terminar
+      const antes = ESTADO_P;
+      const p = (antes ? antes.catch(() => null) : Promise.resolve())
+        .then(() => api('/api/mapa/estado?data=' + hoje() + (MEDICAO_ATUAL ? '&medicao=' + MEDICAO_ATUAL : '')))
+        .then(e => { ESTADO_MAPA = e; ESTADO_EM = Date.now(); return e; }).finally(() => { if (ESTADO_P === p) ESTADO_P = null; });
+      ESTADO_P = p;
+    }
     return ESTADO_P;
   }
   return ESTADO_MAPA;
@@ -618,6 +624,7 @@ function recolorirIlu() {
 }
 function focarAlvo(tipo, nome) {
   const pos = posicaoAlvo(GERAL, tipo, nome); if (!pos) return;
+  if (ILU.zona && !alvoNaFrenteIlu(tipo, nome)) { ILU.zona = null; recolorirIlu(); }   // alvo de outra zona: volta à obra inteira
   const larg = (ILU.base[2] - ILU.base[0]) / 9, [x, y] = pos.xy;
   irPara([x - larg / 2, y - larg / 2, x + larg / 2, y + larg / 2]);
   abrirFicha(tipo, nome);

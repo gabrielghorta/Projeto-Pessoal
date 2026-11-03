@@ -112,8 +112,15 @@ class transacao:
             if tipo:
                 self.conn.execute(f"ROLLBACK TO {self.ponto}")
             self.conn.execute(f"RELEASE {self.ponto}")
+        elif tipo:
+            self.conn.execute("ROLLBACK")
         else:
-            self.conn.execute("ROLLBACK" if tipo else "COMMIT")
+            try:
+                self.conn.execute("COMMIT")
+            except Exception:                         # COMMIT recusado (banco ocupado): não deixa a conexão presa na transação
+                if self.conn.in_transaction:
+                    self.conn.execute("ROLLBACK")
+                raise
         return False
 
 
@@ -571,8 +578,16 @@ def estornar(conn, movimento_id, motivo, responsavel, ajustar_reservas=False):
         raise RegraViolada("Movimento já estornado.")
     if not (motivo or "").strip() or not (responsavel or "").strip():
         raise RegraViolada("Estorno exige motivo e responsável.")
-    if mv["tipo"] == "ENTRADA_NF":
+    if mv["tipo"] == "ENTRADA_NF" or (mv["tipo"] == "ROMANEIO_CAESB" and mv["nf_id"]):
         raise RegraViolada("Entrada por NF não é estornada aqui: trate pela nota fiscal (devolução/recusa).")
+    if mv["tipo"] in ("TRANSF_SAIDA", "TRANSF_ENTRADA"):
+        raise RegraViolada("Transferência entre equipes não se estorna pela metade: registre a transferência de volta.")
+    if mv["tipo"] in ("AJUSTE_INVENTARIO_ENTRADA", "AJUSTE_INVENTARIO_SAIDA"):
+        raise RegraViolada("Ajuste de inventário não se estorna: faça nova contagem, que gera o ajuste com aprovação.")
+    if mv["tipo"] == "CUSTODIA" and mv["checkin_id"] and (_one(conn, "SELECT encerrado FROM checkins WHERE id=?",
+                                                                 mv["checkin_id"]) or {}).get("encerrado"):
+        raise RegraViolada("Retirada de um check-in já encerrado: a custódia da equipe ficaria negativa naquela sessão "
+                           "(o fechamento já distribuiu o material). Corrija pela retificação do fechamento.")
     if mv["tipo"] in ("APLICADO", "SOBRA", "PERDA") and mv["checkin_id"]:
         raise RegraViolada("Aplicado/sobra/perda de um check-out encerrado: use a retificação do fechamento, que "
                            "estorna e redistribui a mesma quantidade no mesmo dia, com motivo.")
@@ -1356,7 +1371,7 @@ def retificar_intervalos(conn, ref_tipo, ref_id, novos, motivo, responsavel, dat
         padrao = {}
         for i in originais:
             padrao.setdefault(i["etapa"], i["data"])
-        lista = _posicoes_legado(novos, _datas_legado(aps, mnd), padrao)
+        lista = [dict(n, origem="LEGADO") for n in _posicoes_legado(novos, _datas_legado(aps, mnd), padrao)]   # como na conciliação
         _exigir_mesmos_metros(lista, reg["metros_assentado"], reg["metros_reaterrado"], f"a conciliação #{reg['id']}")
         d = None
     chave = lambda i: (i["etapa"], round(float(i["ini_m"]), 6), round(float(i["fim_m"]), 6), i["data"])
@@ -1797,9 +1812,12 @@ def exif_jpeg(dados):
             if marcador == 0xDA:
                 break
             i += 2 + tam
-    except (struct.error, IndexError, ValueError, ZeroDivisionError):
+    except _EXIF_RUIM:
         pass
     return {}
+
+
+_EXIF_RUIM = (struct.error, IndexError, ValueError, ZeroDivisionError, TypeError, AttributeError, UnicodeError)
 
 
 def _ler_tiff(t):
@@ -1828,18 +1846,25 @@ def _ler_tiff(t):
 
     out = {}
     ifd0 = ifd(u32(4))
-    if 0x8769 in ifd0:
-        ex = ifd(valor(ifd0[0x8769]))
-        if 0x9003 in ex:
-            d = valor(ex[0x9003])                                   # "AAAA:MM:DD HH:MM:SS"
-            out["capturada_em"] = d[:10].replace(":", "-") + "T" + d[11:19]
-    if 0x8825 in ifd0:
-        g = ifd(valor(ifd0[0x8825]))
-        if all(k in g for k in (1, 2, 3, 4)):
-            dms = lambda v: v[0] + v[1] / 60 + v[2] / 3600
-            lat, lon = dms(valor(g[2])), dms(valor(g[4]))
-            out["lat"] = -lat if valor(g[1]).startswith("S") else lat
-            out["lon"] = -lon if valor(g[3]).startswith("W") else lon
+    try:                                                            # data e GPS lidos à parte: um ruim não leva o outro
+        if 0x8769 in ifd0:
+            ex = ifd(valor(ifd0[0x8769]))
+            if 0x9003 in ex:
+                d = valor(ex[0x9003])                               # "AAAA:MM:DD HH:MM:SS"; "0000:00:00 …" = sem data
+                out["capturada_em"] = datetime.datetime.strptime(d[:19], "%Y:%m:%d %H:%M:%S").strftime("%Y-%m-%dT%H:%M:%S")
+    except _EXIF_RUIM:
+        out.pop("capturada_em", None)
+    try:
+        if 0x8825 in ifd0:
+            g = ifd(valor(ifd0[0x8825]))
+            if all(k in g for k in (1, 2, 3, 4)):
+                dms = lambda v: v[0] + v[1] / 60 + v[2] / 3600
+                lat, lon = dms(valor(g[2])), dms(valor(g[4]))
+                out["lat"] = -lat if valor(g[1]).startswith("S") else lat
+                out["lon"] = -lon if valor(g[3]).startswith("W") else lon
+    except _EXIF_RUIM:
+        out.pop("lat", None)
+        out.pop("lon", None)
     return out
 
 
@@ -2020,6 +2045,13 @@ def ok_fiscalizacao(conn, alvo_tipo, ref, usuario, data=None):
             lista = ", ".join(f"{i['etapa'].lower()} {i['ini_m']:g}–{i['fim_m']:g} m" for i in falta[:4]) + ("…" if len(falta) > 4 else "")
             raise RegraViolada(f"OK interno exige a verificação do supervisor: {len(falta)} intervalo(s) sem verificação "
                                f"({lista}). Verifique na ficha do trecho.")
+    if tipo == "TRECHO":
+        ultima = conn.execute(f"SELECT MAX(data) FROM intervalos_execucao WHERE trecho_id=? AND {EFETIVO}", (aid,)).fetchone()[0]
+    else:
+        ultima = conn.execute("SELECT MAX(data) FROM apontamentos WHERE alvo_tipo=? AND alvo_id=? AND anulado_por IS NULL",
+                              (tipo, aid)).fetchone()[0]
+    if ultima and str(data)[:10] < str(ultima)[:10]:      # a data escolhe a medição: não pode ser antes do serviço
+        raise RegraViolada(f"OK interno em {str(data)[:10]}, antes do último serviço registrado ({str(ultima)[:10]}).")
     med = medicao_do_ok(conn, data)
     with transacao(conn):
         conn.execute("UPDATE execucao SET ok_fiscal_em=?, ok_fiscal_por=?, medicao_id=? WHERE alvo_tipo=? AND alvo_id=?",
@@ -2076,11 +2108,14 @@ def _lancar_ok(conn, a, medicao_id):
                 obs = "rateio pela proporção contratual (estimativa)" if len(itens) > 1 else None
                 _lancar(conn, medicao_id, 1, s["servico"], bm, s["unidade"], s["qtd"] * frac, tipo, aid, obs=obs)
     else:
-        codigos = {}
+        codigos, por_nome = {}, {}                   # o serviço é a peça + DE; a unidade separa dois itens da mesma peça
         for i in itens_atividade(conn, aid):
-            codigos.setdefault(R.quantidades_previstas_elemento([i])[0]["servico"], i["codigo_bm"])
+            nome = i["descricao"] + (f" DE{i['diametro']}" if i.get("diametro") not in (None, "", "N/A") else "")
+            codigos.setdefault((nome, R.normalizar_unidade(i["unidade"])), i["codigo_bm"])
+            por_nome.setdefault(nome, i["codigo_bm"])
         for s in servs:
-            bm, motivo = _vertical_por_codigo(conn, codigos.get(s["servico"]))
+            bm, motivo = _vertical_por_codigo(conn, codigos.get((s["servico"], R.normalizar_unidade(s["unidade"])))
+                                              or por_nome.get(s["servico"]))
             restricao = None
             if bm and str(bm["classificacao"]).upper().startswith("MATERIAL"):     # o item fica, para mostrar o valor parado
                 motivo, restricao = "material: regime de faturamento pendente (matriz de regimes não aprovada)", "MATERIAL_SEM_REGIME"
@@ -2449,10 +2484,21 @@ def congelar_medicao(conn, medicao_id, origem):
     bdi_m, bdi_s, k = _fatores(conn)
     r["congelamento"] = {"em": _agora(), "origem": origem,
                          "fatores": {"bdi_material": bdi_m, "bdi_servico": bdi_s, "coef_k": k},
-                         "bm_fonte": _one(conn, "SELECT nome, sha256 FROM fontes_arquivo WHERE chave='bm' ORDER BY id DESC LIMIT 1")}
+                         "bm_fonte": _one(conn, "SELECT nome, sha256 FROM fontes_arquivo WHERE chave='bm' ORDER BY id DESC LIMIT 1"),
+                         "adm_quantidade": _adm_do_fechamento(conn, medicao_id)}
     r["medicao"].pop("resumo_congelado", None)
     conn.execute("UPDATE medicoes SET congelada_em=?, resumo_congelado=? WHERE id=?",
                  (r["congelamento"]["em"], json.dumps(r, ensure_ascii=False, default=str), medicao_id))
+
+
+def _adm_do_fechamento(conn, medicao_id):
+    """Quantidade da administração local do mês no fechamento (D-152: os pacotes seguintes usam esta, não a recalculada)."""
+    import pacote_medicao as PM                  # importado aqui: o pacote depende deste módulo
+    try:
+        med = PM._medicao(conn, medicao_id)
+        return PM.adm_local(conn, PM.quantidades(conn, med)[med["numero"]])["quantidade"]
+    except RegraViolada:
+        return None                              # BM sem o item da ADM (ou medição fora do modelo): nada a congelar
 
 
 def indices_reajuste(conn):

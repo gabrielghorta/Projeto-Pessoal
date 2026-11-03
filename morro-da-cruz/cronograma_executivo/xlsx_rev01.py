@@ -73,11 +73,12 @@ def altura(texto, largura):
 # ---------------------------------------------------------------- PREMISSAS
 def aba_premissas(wb, cen, quadro, textos):
     ws = wb.create_sheet('PREMISSAS', 0)
-    ws['A1'] = 'CRONOGRAMA FÍSICO EXECUTIVO - REV01 - CT 10.239/2026 - MORRO DA CRUZ'
+    ws['A1'] = f"CRONOGRAMA FÍSICO EXECUTIVO - {AN.REV['id']} - CT 10.239/2026 - MORRO DA CRUZ"
     ws['A1'].font = f(True, 16)
     ws['A2'] = cen['titulo']
     ws['A2'].font = f(True, 12, 'C00000')
-    ws['A3'] = (f'REV01 de 30/10/2026, que substitui a REV00 de 29/10/2026 · só o cenário B · OS em 01/10/2026 · '
+    ws['A3'] = (f"{AN.REV['id']} de {AN.REV['data']}, que substitui a {AN.REV['ant']} de {AN.REV['ant_data']} · só o "
+                f'cenário B · OS em 01/10/2026 · '
                 f'prazo de 540 dias (término contratual em {PRAZO:%d/%m/%Y}) · BM REV04, 06.1 REV01 e 06.2 REV08')
     ws['A3'].font = f(False, 10)
     ws['A5'] = 'PARÂMETROS DO CONTRATO E DO RESERVATÓRIO (as células amarelas alimentam as fórmulas)'
@@ -107,10 +108,10 @@ def aba_premissas(wb, cen, quadro, textos):
         ws.cell(r, 4).alignment = quebra
     ws.row_dimensions[13].height = 52
     r = 15
-    ws.cell(r, 1, 'REV00 × REV01 (CENÁRIO B, 90 m/dia)').font = f(True, 11)
+    ws.cell(r, 1, f"{AN.REV['ant']} × {AN.REV['id']} (CENÁRIO B, 90 m/dia)").font = f(True, 11)
     r += 1
-    for c, t in enumerate(['', 'REV00 (29/10/2026): zonas pela distância ao canteiro',
-                           'REV01 (30/10/2026): a obra sai do reservatório (Zona 11)'], 2):
+    for c, t in enumerate(['', f"{AN.REV['ant']} ({AN.REV['ant_data']}): {AN.REV['ant_txt']}",
+                           f"{AN.REV['id']} ({AN.REV['data']}): {AN.REV['txt']}"], 2):
         ws.cell(r, c, t).font = f(True)
         ws.cell(r, c).fill = fill(CREME)
         ws.cell(r, c).alignment = centro
@@ -160,11 +161,10 @@ def aba_programacao(wb, pl, livro, A):
     ws = wb.create_sheet('PROGRAMAÇÃO')
     T, E, tr = pl['T'], pl['E'], pl['trechos']
     det, mot, lig = A['det'], A['mot'], pl['ligado']
-    ws['A1'] = 'PROGRAMAÇÃO TRECHO A TRECHO (NOMES DA 06.1 REV01) E CAIXA A CAIXA (06.2 REV08) - REV01'
+    ws['A1'] = f"PROGRAMAÇÃO TRECHO A TRECHO (NOMES DA 06.1 REV01) E CAIXA A CAIXA (06.2 REV08) - {AN.REV['id']}"
     ws['A1'].font = f(True, 12)
     ws['A2'] = ('LIGADO AO RESERVATÓRIO EM: quando fica pronto o último trecho do caminho até a saída do reservatório. '
-                'PRONTO PARA CARGA: o caminho testado, desinfetado e interligado e as caixas do caminho montadas (teste e '
-                'interligação por zona, como na REV00). ENTRADA EM CARGA = a maior entre a data do reservatório '
+                f"PRONTO PARA CARGA: {AN.REV['pronto_txt']}. ENTRADA EM CARGA = a maior entre a data do reservatório "
                 '(PREMISSAS!C13) e o PRONTO PARA CARGA. DIAS SEM CARGA = ENTRADA EM CARGA − TÉRMINO (dias corridos).')
     ws['A2'].font = f(False, 9, '595959', True)
     cab = ['ORDEM NA EQUIPE', 'EQUIPE', 'FASE', 'ZONA / FRENTE', 'PB', 'TRECHO (06.1)', 'CLASSIFICAÇÃO', 'DE (mm)',
@@ -239,11 +239,11 @@ def aba_carga(wb, pl, A, prog):
     r0, r1 = prog['r0'], prog['r1']
     Q = f'{PROG}!$Q${r0}:$Q${r1}'
     J = f'{PROG}!$J${r0}:$J${r1}'
-    ws['A1'] = 'CARGA - A ÁGUA SAI DO RESERVATÓRIO DA ZONA 11 (REV01)'
+    ws['A1'] = f"CARGA - A ÁGUA SAI DO RESERVATÓRIO DA ZONA 11 ({AN.REV['id']})"
     ws['A1'].font = f(True, 14)
     ws['A2'] = ('Um trecho entra em carga na maior entre: a operação do reservatório; o caminho até a saída do reservatório '
                 'pronto, testado e desinfetado; as VRPs, registros (VM), ventosas (VTF), descargas (DF) e demais caixas do '
-                'caminho montadas; a zona do trecho testada e interligada (teste por zona, como na REV00). Ligado ao '
+                f"caminho montadas; {AN.REV['carga_txt']}. Ligado ao "
                 'reservatório = todo o caminho até a saída construído.')
     ws['A2'].font = f(False, 9, '595959', True)
     ws['A3'] = 'DATA DE OPERAÇÃO DO RESERVATÓRIO (PREMISSAS!C13):'
@@ -259,7 +259,7 @@ def aba_carga(wb, pl, A, prog):
            'PEÇA DE ENTRADA', 'DISTÂNCIA DA SAÍDA PELO TUBO (km)', 'PONTOS DE ENTRADA DA ÁGUA NA ZONA',
            'CAMINHO FORA DA ZONA (trechos / km)', 'SUBADUTORA NO CAMINHO (km)', 'CAMINHO PRONTO EM',
            'CAIXAS DO CAMINHO ATÉ A ENTRADA', 'CAIXAS DO CAMINHO MONTADAS EM', 'INÍCIO DA REDE DA ZONA',
-           'REDE DA ZONA PRONTA EM', 'ZONA TODA LIGADA AO RESERVATÓRIO EM', 'TESTE E DESINFECÇÃO (término)',
+           'REDE DA ZONA PRONTA EM', 'ZONA TODA LIGADA AO RESERVATÓRIO EM', AN.REV['col_teste'],
            'INTERLIGAÇÃO (término)', 'OUTRAS FRENTES QUE A ZONA ESPERA (teste e interligação)',
            'PRONTA PARA CARGA (sem o reservatório)', 'ENTRADA EM CARGA', 'DIAS ENTRE A REDE PRONTA E A CARGA']
     cabecalho(ws, r, cab, altura=56)
@@ -474,7 +474,7 @@ def graficos_resumo(wb, livro, res):
     ch.grouping = 'stacked'
     ch.overlap = 100
     ch.gapWidth = 40
-    ch.title = 'Faturamento programado por mês e por equipe (R$, P0) - REV01'
+    ch.title = f"Faturamento programado por mês e por equipe (R$, P0) - {AN.REV['id']}"
     ch.y_axis.title = 'R$'
     ch.y_axis.numFmt = '#,##0'
     ch.y_axis.majorGridlines.spPr = GraphicalProperties(ln=LineProperties(solidFill='E0E0E0'))
@@ -487,7 +487,7 @@ def graficos_resumo(wb, livro, res):
     ch.height, ch.width = 11, 30
     ws.add_chart(ch, f'A{r + 2}')
     ln = LineChart()
-    ln.title = 'Faturamento acumulado programado (% do contrato, P0) - REV01'
+    ln.title = f"Faturamento acumulado programado (% do contrato, P0) - {AN.REV['id']}"
     ln.y_axis.numFmt = '0%'
     ln.y_axis.scaling.min = 0
     ln.y_axis.scaling.max = 1

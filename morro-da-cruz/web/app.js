@@ -213,7 +213,11 @@ function abrirAba(id, opcoes = {}) {
   if (location.hash !== endereco) history[opcoes.substituir || (pag && location.hash === '#' + id) ? 'replaceState' : 'pushState'](null, '', endereco);
   fecharMenuMovel();
   if (!opcoes.manterRolagem) window.scrollTo(0, 0);
-  return TELAS[id].carregar();
+  // falha ao carregar a tela (rede, erro do servidor) aparece no aviso em vez de deixar a tela em branco, calada
+  return Promise.resolve().then(() => TELAS[id].carregar()).catch(e => {
+    if (!e || e.exibido || !$('#login').hidden) return;
+    toast('Não consegui carregar a tela: ' + (e.message || e) + '. Tente de novo.', 'erro');
+  });
 }
 window.addEventListener('popstate', () => USUARIO && abrirAba(location.hash.slice(1) || 'inicio', { substituir: true }));
 document.addEventListener('click', ev => {
@@ -431,7 +435,7 @@ async function carregarAlmox() {
   $$('.selMaterialReserva').forEach(s => s.innerHTML = MATERIAIS.filter(m => m.propriedade !== 'CONSUMO' && m.disponivel > 0).map(m => `<option value="${esc(m.id)}">${esc(m.id)} (disponível ${nf(m.disponivel)} ${esc(m.unidade)})</option>`).join('') || '<option value="">nada disponível</option>');
   renderEstoque();
   if (TELA === 'almox' && pode('almox') && podeTela('mapa')) almoxEquipesDoDia();
-  if (podeTela('almox')) carregarInventarioEVencidas();
+  if (podeTela('almox')) carregarInventarioEVencidas().catch(e => { if (!e.exibido) toast('Inventário e reservas vencidas: ' + e.message, 'erro'); });
   if (podeTela('almox') || podeTela('compras')) {
     // "Nenhuma nota a receber" só depois da resposta: enquanto carrega, ou se a consulta falha, o painel diz isso
     const box = $('#notasReceber');
@@ -635,11 +639,17 @@ document.addEventListener('click', async ev => {
   }
   const rt = ev.target.closest('[data-retificar]');
   if (rt) {
-    const q = +rt.dataset.q, n = s => +(prompt(`${s} (total ${q}):`, '0') || 0);
+    const q = +rt.dataset.q, n = s => Number(String(prompt(`${s} (total ${q}):`, '0') ?? '0').trim().replace(',', '.') || 0);
     const destino = { aplicado: n('Aplicado'), sobra: n('Sobra devolvida'), perda: n('Perda'), fica_com_equipe: n('Fica com a equipe') };
+    if (Object.values(destino).some(v => !Number.isFinite(v))) return toast('Digite só números (ex.: 10,5).', 'erro');
     if (destino.perda) destino.motivo_perda = prompt('Motivo da perda:') || '';
     const motivo = prompt('Motivo da retificação:'); if (!motivo) return;
-    await acao(() => api('/api/retificar', { movimento_id: rt.dataset.retificar, destino, motivo }), 'Fechamento retificado (o lançamento original fica no histórico).');
+    const corpo = { movimento_id: rt.dataset.retificar, destino, motivo }, ok = 'Fechamento retificado (o lançamento original fica no histórico).';
+    try { await api('/api/retificar', corpo); toast(ok, 'ok'); }
+    catch (err) {                            // como no estorno: reservas sem cobertura pedem a confirmação do ajuste
+      if (!/sem cobertura/.test(err.message) || !confirm(err.message + '\n\nReduzir/cancelar as reservas mais recentes (registrado com esta retificação)?')) { toast(err.message, 'erro'); return; }
+      await acao(() => api('/api/retificar', { ...corpo, ajustar_reservas: true }), ok + ' Reservas ajustadas e registradas.');
+    }
     carregarAlmox();
   }
 });
@@ -687,7 +697,8 @@ async function carregarCompras() {
 }
 /* Estoque e movimentos (D-187): a transferência entre equipes, o inventário e as reservas vencidas são do almoxarifado */
 async function carregarInventarioEVencidas() {
-  $$('.selMaterialTodos').forEach(x => x.innerHTML = opMat(() => true));
+  // recarrega a lista sem perder o material já escolhido no formulário (ex.: transferência entre equipes)
+  $$('.selMaterialTodos').forEach(x => { const v = x.value; x.innerHTML = opMat(() => true); if (v) x.value = v; });
   const e = $('.editor-itens[data-itens=inv]'); if (!e.children.length) e.innerHTML = LINHA_ITEM.inv();
   const invs = await api('/api/inventarios');
   $('#invLista').innerHTML = invs.map(v => `<div class="registro"><div><b>Inventário #${v.id} · ${esc(v.data)} · ${esc(v.contado_por)}</b> <span class="chip ${v.status === 'AJUSTADO' ? 'azul' : v.status === 'CONTADO' ? 'amarelo' : ''}">${esc(v.status.toLowerCase())}</span></div>
@@ -695,8 +706,10 @@ async function carregarInventarioEVencidas() {
     ${v.status === 'CONTADO' && pode('inventario_ajustar') && v.contado_por !== USUARIO.login ? `<button type="button" class="btn" data-inv="${v.id}" data-ap="1">Aprovar ajuste</button> <button type="button" class="btn" data-inv="${v.id}" data-ap="0">Descartar</button>` : ''}
     ${v.decidido_por ? `<div><small>${esc(v.decidido_por)}: ${esc(v.decisao_motivo || '')}</small></div>` : ''}</div>`).join('');
   const venc = await api('/api/reservas-vencidas?hoje=' + hoje());
-  $('#vencidasLista').innerHTML = venc.length ? `${venc.map(r => `<label class="check"><input type="checkbox" data-venc="${r.id}" checked> #${r.id} · ${esc(r.data)} · ${esc(r.equipe_id)} · ${esc(r.material_id)} ${nf(r.quantidade, 3)}</label>`).join('')}
-    <div class="linha"><input id="vencMotivo" placeholder="motivo (ex.: equipe não compareceu)"><button type="button" class="btn" id="vencBtn">Liberar selecionadas</button></div>` : '<div class="vazio">Nenhuma reserva vencida.</div>';
+  const desmarcadas = new Set($$('#vencidasLista input[data-venc]').filter(x => !x.checked).map(x => x.dataset.venc));
+  const motivo = ($('#vencMotivo') || {}).value || '';
+  $('#vencidasLista').innerHTML = venc.length ? `${venc.map(r => `<label class="check"><input type="checkbox" data-venc="${r.id}" ${desmarcadas.has(String(r.id)) ? '' : 'checked'}> #${r.id} · ${esc(r.data)} · ${esc(r.equipe_id)} · ${esc(r.material_id)} ${nf(r.quantidade, 3)}</label>`).join('')}
+    <div class="linha"><input id="vencMotivo" placeholder="motivo (ex.: equipe não compareceu)" value="${esc(motivo)}"><button type="button" class="btn" id="vencBtn">Liberar selecionadas</button></div>` : '<div class="vazio">Nenhuma reserva vencida.</div>';
 }
 /* Compras e notas (D-171): a nota sobe aqui e o sistema reconhece o material de cada linha. A linha que ele não
    reconheceu fica "faltando a confirmação": a engenharia ou a administração marca um dos
@@ -1052,7 +1065,8 @@ $('#fFoto').addEventListener('submit', async ev => {
   const f = ev.target, arq = f.arquivo.files[0], cat = f.categoria.value;
   const pos = await gps(), quando = new Date(arq.lastModified || Date.now()), dh = new Date(quando - quando.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
   const b64 = await lerOriginal(arq);
-  await acao(() => api('/api/foto', { alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id, categoria: cat, conteudo_b64: b64, data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon }), 'Foto original enviada (hash registrado).').catch(() => null);
+  const ok = await acao(() => api('/api/foto', { alvo_tipo: CAMPO.tipo, alvo_id: CAMPO.id, categoria: cat, conteudo_b64: b64, data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon }), 'Foto original enviada (hash registrado).').catch(() => null);
+  if (!ok) return;                           // falhou: a foto escolhida continua no formulário para tentar de novo
   f.reset(); selecionarCampo(CAMPO.tipo, CAMPO.id);
   driveEmSegundoPlano(() => CAMPO && selecionarCampo(CAMPO.tipo, CAMPO.id));
 });
@@ -1118,6 +1132,7 @@ async function enviarFotosCaminho(box) {
     const pos = await gps(), quando = new Date(arq.lastModified || Date.now()), dh = new Date(quando - quando.getTimezoneOffset() * 60000).toISOString().slice(0, 19);
     await api('/api/foto', { alvo_tipo: 'TRECHO', alvo_id: box.dataset.trecho, categoria: inp.dataset.foto, conteudo_b64: await lerOriginal(arq),
       data_hora: dh, lat: pos && pos.lat, lon: pos && pos.lon });
+    inp.value = '';                          // já enviada: se o resto falhar, tentar de novo não manda a mesma foto
     n++;
   }
   return n;
@@ -1164,7 +1179,7 @@ async function carregarMedicoes() {
   const ms = await api('/api/medicoes');
   if (!ms.length) carregarCaminhoMedicao(null);
   const sel = $('#medSel'), atual = sel.value;
-  sel.innerHTML = ms.map(m => `<option value="${m.id}">${m.numero}ª — ${m.periodo_ini} a ${m.periodo_fim} (${m.status})</option>`).join('');
+  sel.innerHTML = ms.map(m => `<option value="${esc(m.id)}">${esc(m.numero)}ª — ${esc(m.periodo_ini)} a ${esc(m.periodo_fim)} (${esc(m.status)})</option>`).join('');
   if (ms.length) {
     sel.value = atual && ms.some(m => String(m.id) === atual) ? atual : ms.find(m => m.status === 'ABERTA')?.id ?? ms[ms.length - 1].id;
     const f = $('#fMed'), ult = ms[ms.length - 1], ini = new Date(ult.periodo_fim + 'T12:00:00');
@@ -1181,7 +1196,7 @@ const CAMINHO_NUM = [['ok_nesta', 'Com OK interno nesta medição'], ['ok_sem_me
 let MED_CAMINHO = null;
 async function carregarCaminhoMedicao(id) {
   const r = await api('/api/medicao/caminho' + (id ? '?id=' + id : '')).catch(() => null), box = $('#medCaminho');
-  if (!r) return;
+  if (!r || (id && String(id) !== $('#medSel').value)) return;          // resposta de outra medição (troca rápida)
   MED_CAMINHO = r; box.className = 'numeros-caminho';
   box.innerHTML = CAMINHO_NUM.filter(([k]) => k !== 'ok_sem_medicao' || r[k].length).map(([k, rot]) =>
     `<button type="button" class="numero-caminho" data-med-lista="${k}" ${r[k].length ? '' : 'disabled'}><b>${nf(r[k].length, 0)}</b><span>${esc(rot)}</span></button>`).join('');
@@ -1954,11 +1969,19 @@ function mostrarLogin(msg) {
 }
 $('#fLogin').addEventListener('submit', async ev => {
   ev.preventDefault();
-  try { const r = await api('/api/login', formObj(ev.target)); USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; ev.target.reset(); $('#login').hidden = true; iniciar(); }
+  try {
+    const r = await api('/api/login', formObj(ev.target));
+    if (INICIADO) return location.reload();  // a sessão caiu no meio do uso: recomeça limpo (sem o carrinho e a tela do usuário anterior)
+    USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; ev.target.reset(); $('#login').hidden = true; iniciar();
+  }
   catch (e) { const m = $('#loginMsg'); m.hidden = false; m.textContent = e.message; }
 });
 $('#entrarLocal').addEventListener('click', async () => {
-  try { const r = await api('/api/entrar-local', {}); USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; $('#login').hidden = true; iniciar(); }
+  try {
+    const r = await api('/api/entrar-local', {});
+    if (INICIADO) return location.reload();
+    USUARIO = r.usuario; DEMONSTRACAO = !!r.demonstracao; $('#login').hidden = true; iniciar();
+  }
   catch (e) { if (/administrador/.test(e.message)) location.href = '/configurar'; else { const m = $('#loginMsg'); m.hidden = false; m.textContent = e.message; } }
 });
 const sair = async () => { await api('/api/logout', {}).catch(() => null); location.hash = ''; location.reload(); };

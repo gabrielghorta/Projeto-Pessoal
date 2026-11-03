@@ -24,8 +24,14 @@ from motor import CAL, OS, PRAZO, REAJUSTE  # noqa: E402
 
 MAPA = motor.HTML
 g = MG.geometria(MAPA)
+OPCOES = None
+if len(sys.argv) > 2 and sys.argv[2] == 'REV02':    # python3 animacao_rev01.py SAIDA.html REV02
+    import rev02
+    rev02.preparar()
+    AN.REV.update(rev02.ROTULOS)
+    OPCOES = rev02.OPCOES
 D, rede, itens = motor.ler_dados()
-pl = M1.programar(D, rede)
+pl = M1.programar(D, rede, 90.0, OPCOES)
 livro, origem, val = AN.faturamento_mensal(pl, itens, D)
 A = AN.analisar(pl, livro)
 T, E = pl['T'], pl['E']
@@ -63,7 +69,7 @@ saida = {
     'nomes': [{'id': n['id'], 'x': n['x'], 'y': n['y'], 'ordem': ordem.get(n['id'])} for n in g['nomes']],
     'trechos': [{'n': t['n'], 'de': t['de'], 'z': t['z'], 'L': t['L'], 'p': t['p']} for t in g['trechos']],
     'marcos': {'reajuste': dia(dt.datetime.combine(REAJUSTE, dt.time(0))),
-               'prazo': dia(dt.datetime.combine(PRAZO, dt.time(17))), 'fim_eixo': dia(dt.datetime(2028, 5, 1))},
+               'prazo': dia(dt.datetime.combine(PRAZO, dt.time(17))), 'fim_eixo': max(dia(dt.datetime(2028, 5, 1)), dia(CAL.fim(pl['fim'])) + 30)},   # obra além de mai/2028
     'equipes': [{'id': k, 'nome': motor.NOME[k], 'cor': PAL.EQUIPES[k]} for k in ['ANK1', 'E1A', 'E1B', 'E2C', 'E2D', 'ANK2']],
     'situacoes': [{'id': k, 'nome': PAL.NOME_SITUACAO[k], 'cor': PAL.SITUACOES[k]} for k in PAL.SITUACOES],
     'linhas': {'reajuste': PAL.REAJUSTE, 'termino': PAL.TERMINO, 'cursor': PAL.CURSOR},
@@ -92,6 +98,7 @@ saida['cen'] = {'p': 90.0, 'fim': dia(CAL.fim(pl['fim'])), 'fim_txt': f"{CAL.fim
                 'canteiro': [dia(CAL.inicio(pl['canteiro'][0])), dia(CAL.fim(pl['canteiro_inst'][1]))]}
 saida['mosaico'] = 'data:image/webp;base64,' + base64.b64encode(MG.mosaico(MAPA)).decode()
 modelo = open(os.path.join(AQUI, 'animacao_rev01_modelo.html'), encoding='utf-8').read()
+modelo = modelo.replace('__REV_DATA__', AN.REV['data']).replace('__REV__', AN.REV['id'])
 assert modelo.count('__DADOS__') == 1
 open(sys.argv[1], 'w', encoding='utf-8').write(modelo.replace('__DADOS__', json.dumps(saida, ensure_ascii=False, separators=(',', ':'))))
 print('ok', sys.argv[1], len(tr), 'trechos', len(caixas), 'caixas', 'fim', saida['cen']['fim_txt'],

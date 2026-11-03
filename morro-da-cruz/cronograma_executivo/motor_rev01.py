@@ -38,6 +38,14 @@ OPCOES = {
     'pe_alto_resto': 'zona11_menor',  # acabou o DE 160 da Zona 11: 'zona11_menor' (DE 90 e 110 dela) | 'de160_outras'
     'hidro_caminho_antes': False,   # montar as caixas do caminho logo depois da obra civil (peças compradas antes)
     'teste_por_setor': False,       # só na análise (carga(pl, por_setor=True)): teste e interligação por setor
+    # REV02 (30/10/2026); os padrões deixam a REV01 como era
+    'prod_por_de': (),              # ((DE mínimo, m/dia), ...), do maior DE para o menor: teto da produtividade pelo diâmetro
+    'entrada_meia_dias': 0,         # dias úteis iniciais de cada equipe de empreiteiro a meia produtividade
+    'troca_frente_dias': 0.0,       # dias úteis que a equipe perde ao mudar de frente (deslocamento e mobilização)
+    'ligacoes_por_dia': None,       # ligações prediais por dia feitas pela própria equipe, logo depois do trecho; None:
+                                    # as ligações não tomam tempo da rede (REV00 e REV01)
+    'interlig_por_caminho': False,  # a interligação de cada frente espera só as caixas do caminho da água até ela (e a
+                                    # Subadutora, só as caixas dela), e não todas as caixas que encostam na frente
 }
 
 
@@ -57,11 +65,23 @@ def programar(D, rede, p=90.0, opcoes=None):
     plano = {'p': p, 'opcoes': o, 'trechos': {}, 'blocos': [], 'fila': collections.defaultdict(list), 'rede': R,
              'agua': {i: agua(i) for i in range(len(T))}}
     dur = lambda L, prod: max(30, round(L / prod * DIA))
+    meia = {k: ent_w[k] + o['entrada_meia_dias'] * DIA for k in ('E1A', 'E1B', 'E2C', 'E2D')}
+
+    def produtividade(eq, i, w0, prod):
+        for de_min, teto in o['prod_por_de']:
+            if T[i]['de'] >= de_min:
+                prod = min(prod, teto)
+                break
+        return prod / 2 if w0 < meia.get(eq, -1) else prod
 
     def fazer(eq, i, w0, prod, fase):
-        w1 = w0 + dur(T[i]['L'], prod)
+        """Assenta o trecho; devolve quando a equipe fica livre (com 'ligacoes_por_dia', depois das ligações dele)."""
+        w1 = w0 + dur(T[i]['L'], produtividade(eq, i, w0, prod))
         plano['trechos'][i] = {'eq': eq, 'ini': w0, 'fim': w1, 'fase': fase}
         plano['fila'][eq].append(i)
+        if o['ligacoes_por_dia'] and T[i]['lig'] > 0 and fase == 'Rede da zona':
+            plano['trechos'][i]['lig_fim'] = w1 + round(T[i]['lig'] / o['ligacoes_por_dia'] * DIA)
+            return plano['trechos'][i]['lig_fim']
         return w1
 
     # ---- zonas: a ordem em que a água chega ao começo de cada uma
@@ -227,7 +247,7 @@ def programar(D, rede, p=90.0, opcoes=None):
     livre = {k: ent_w[k] for k in ('E1A', 'E1B', 'E2C', 'E2D')}
     livre['ANK1'] = plano['fim_subadutora']
     rede_eqs = ['E1A', 'E1B', 'E2C', 'E2D', 'ANK1']
-    ultima = {}
+    ultima = {'ANK1': 'SUB'} if o['troca_frente_dias'] else {}
     pendentes = list(blocos)
     while pendentes:
         eq = min(rede_eqs, key=lambda k: (livre[k], rede_eqs.index(k)))
@@ -244,6 +264,8 @@ def programar(D, rede, p=90.0, opcoes=None):
         b['pronto'] = pronto(b)
         pendentes.remove(b)
         b['trechos'] = ordem_no_bloco(b, melhor)
+        if o['troca_frente_dias'] and ultima.get(eq) not in (None, b['zona']):
+            w += round(o['troca_frente_dias'] * DIA)                          # deslocamento para a outra frente
         for i in b['trechos']:
             w = fazer(eq, i, w, p, 'Rede da zona')
             fim[i] = plano['trechos'][i]['fim']
@@ -334,17 +356,33 @@ def programar(D, rede, p=90.0, opcoes=None):
             z = 'SUB'
         zona_cx[z].append(j)
     fech = {}
+
+    def teste_do_caminho(cam):
+        """Teste hidrostático do pedaço da Subadutora que está no caminho (entre registros), e não da Subadutora toda."""
+        sub_cam = [plano['trechos'][k]['fim'] for k in cam if T[k]['sub']]
+        return max(sub_cam) + TESTE_DIAS * DIA if sub_cam else 0
+    plano['teste_do_caminho'] = teste_do_caminho
     sub_trs = [plano['trechos'][i] for i in range(len(T)) if T[i]['sub']]
     sub_fim = max(x['fim'] for x in sub_trs)
     fech['SUB'] = {'teste': (sub_fim, sub_fim + TESTE_DIAS * DIA)}
-    hid_sub = max((cx[j]['hid_fim'] for j in zona_cx['SUB']), default=0)
+    if o['interlig_por_caminho']:      # só as caixas da própria Subadutora (a de entrada de uma zona fica com a zona)
+        hid_sub = max((cx[j]['hid_fim'] for j in zona_cx['SUB'] if all(T[i]['sub'] for i in E[j]['tr'])), default=0)
+    else:
+        hid_sub = max((cx[j]['hid_fim'] for j in zona_cx['SUB']), default=0)
     a = max(fech['SUB']['teste'][1], hid_sub)
     fech['SUB']['interlig'] = (a, a + INTERLIG_DIAS * DIA)
     for z in zonas:
         trs = [plano['trechos'][i] for i in zonas_trs[z]]
         ini, fim_z = min(x['ini'] for x in trs), max(x['fim'] for x in trs)
         teste = (fim_z, fim_z + TESTE_DIAS * DIA)
-        a = max(teste[1], fech['SUB']['teste'][1], max((cx[j]['hid_fim'] for j in zona_cx[z]), default=0))
+        if o['interlig_por_caminho']:  # as caixas do caminho da água até a entrada da zona e o teste do que vem antes
+            entra = min((i for i in zonas_trs[z] if i in ent), key=lambda i: (agua(i), i))
+            cam = RA.Rede.caminho(entra, ent, pai)
+            cxs = {j for k in cam for j in R.pecas_do_trecho(k) if j in cx}
+            sub_antes = teste_do_caminho(cam)
+            a = max(teste[1], sub_antes, max((cx[j]['hid_fim'] for j in cxs), default=0))
+        else:
+            a = max(teste[1], fech['SUB']['teste'][1], max((cx[j]['hid_fim'] for j in zona_cx[z]), default=0))
         prim = min(x['fim'] for x in trs)
         fech[z] = {'ini': ini, 'fim': fim_z, 'teste': teste, 'interlig': (a, a + INTERLIG_DIAS * DIA),
                    'cadastro': (prim + CADASTRO_DEPOIS, fim_z + CADASTRO_DEPOIS),
@@ -450,9 +488,17 @@ def carga_detalhe(pl):
             if k not in caixas_do:
                 caixas_do[k] = R.pecas_do_trecho(k)
             caixas += [j for j in caixas_do[k] if j in cx and j not in caixas]
-        teste = max(f[z]['teste'][1] for z in frentes)
-        interlig = max(f[z]['interlig'][1] for z in frentes)
         montagem = max([cx[j]['hid_fim'] for j in caixas], default=0)
+        if pl['opcoes'].get('interlig_por_caminho'):
+            # REV02: a Subadutora conta pelo pedaço do caminho (testado e com as caixas dele); cada zona do caminho,
+            # pela interligação dela (que já é pelo caminho até a entrada)
+            parte = pl['teste_do_caminho'](cam)
+            zs = [z for z in frentes if z != 'SUB']
+            teste = max([parte] + [f[z]['teste'][1] for z in zs])
+            interlig = max([parte + INTERLIG_DIAS * DIA if parte else 0] + [f[z]['interlig'][1] for z in zs])
+        else:
+            teste = max(f[z]['teste'][1] for z in frentes)
+            interlig = max(f[z]['interlig'][1] for z in frentes)
         out[i] = {'caminho': cam, 'frentes': frentes, 'teste': teste, 'interlig': interlig, 'caixas': caixas,
                   'montagem': montagem, 'pronto': max(interlig, montagem)}
     return out

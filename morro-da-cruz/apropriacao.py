@@ -191,12 +191,14 @@ def publico(it):
     return {k: v for k, v in it.items() if not k.startswith("_")}
 
 
-def item(conn, ref):
-    """Um item pela referência ('BM:675', 'NOVO:3') ou pelo item da Vertical ('5.1_1.14.27')."""
+def item(conn, ref, so_vigente=True):
+    """Um item pela referência ('BM:675', 'NOVO:3') ou pelo item da Vertical ('5.1_1.14.27').
+    so_vigente=False acha também o item que uma revisão do BM retirou (apropriação antiga continua legível)."""
     ref = str(ref or "").strip()
     m = re.fullmatch(r"(BM|NOVO):(\d+)", ref)
     if m and m.group(1) == "BM":
-        b = _one(conn, "SELECT * FROM bm_itens WHERE id=? AND planilha='VERTICAL' AND vigente=1", int(m.group(2)))
+        b = _one(conn, "SELECT * FROM bm_itens WHERE id=? AND planilha='VERTICAL'" + (" AND vigente=1" if so_vigente else ""),
+                 int(m.group(2)))
     elif m:
         n = _one(conn, "SELECT * FROM itens_novos_base WHERE id=?", int(m.group(2)))
         if not n:
@@ -207,6 +209,9 @@ def item(conn, ref):
     if not b:
         raise RegraViolada(f"Item '{ref}' não encontrado no BM Vertical vigente.")
     return _item_bm(b, S.codigo_oficial(conn, b["item"]), _rev_bm(conn))
+
+
+CHAVE_ADM = "6.2_4.1.1"                                # administração local (a mesma chave do pacote_medicao)
 
 
 # ------------------------------------------------------------------ busca e cascata
@@ -367,6 +372,9 @@ def _evidencias(conn, lista, por, dir_docs):
 def apropriar(conn, d, por, dir_docs):
     """Grava a apropriação direta e propõe na gaveta 5 o que puder entrar. Devolve a apropriação com a situação."""
     it = item(conn, d.get("item_ref"))
+    if it["tipo_ref"] == "BM" and it["item"] == CHAVE_ADM:
+        raise RegraViolada("A administração local não se apropria: ela entra na medição proporcional ao faturamento do "
+                           "mês, pela folha da ADM (D-141).")
     if it["situacao"] == "REPROVADO":
         raise RegraViolada(f"O item {it['item']} foi reprovado pela Caesb ({it['novo']['motivo']}): escolha outro item.")
     data = _data(d.get("data"), "Apropriação")
@@ -420,11 +428,17 @@ def _propor(conn, ap, it=None):
     com medição de teste aberta. Devolve o id do lançamento (ou None)."""
     if ap["estornado_em"]:
         return None
-    it = it or item(conn, f"BM:{ap['bm_item_id']}" if ap["bm_item_id"] else f"NOVO:{ap['item_novo_id']}")
-    if it["situacao"] != "APROVADO" or it["classificacao"] != "SERVIÇO":
-        return None
     lanc = _lancamentos(conn, ap["id"])
     resta = ap["quantidade"] - sum(l["quantidade"] for l in lanc if l["status"] == "PROPOSTO")
+    if resta <= TOL:
+        return None                                    # já está toda proposta (o item pode até ter saído do BM)
+    if it is None:
+        try:
+            it = item(conn, f"BM:{ap['bm_item_id']}" if ap["bm_item_id"] else f"NOVO:{ap['item_novo_id']}")
+        except RegraViolada:
+            return None                                # o item saiu do BM vigente: o resto fica parado
+    if it["situacao"] != "APROVADO" or it["classificacao"] != "SERVIÇO":
+        return None
     disp = _disponivel(conn, it)
     pode = resta if disp is None else min(resta, disp)
     med = _medicao_aberta(conn, ap["data"])
@@ -476,7 +490,7 @@ def resumo(conn, aid, cat=None):
     it = None
     if cat is not None:
         it = cat.get(ap["item"])
-    it = it or item(conn, f"BM:{ap['bm_item_id']}" if ap["bm_item_id"] else f"NOVO:{ap['item_novo_id']}")
+    it = it or item(conn, f"BM:{ap['bm_item_id']}" if ap["bm_item_id"] else f"NOVO:{ap['item_novo_id']}", so_vigente=False)
     lanc = _lancamentos(conn, ap["id"])
     proposto = round(sum(l["quantidade"] for l in lanc if l["status"] == "PROPOSTO"), 4)
     ap["item_info"] = {k: it.get(k) for k in ("ref", "item", "item_bm", "codigo", "descricao", "resumida", "unidade", "preco",
@@ -490,7 +504,7 @@ def resumo(conn, aid, cat=None):
                                             "motivo")} for l in lanc]
     ap["proposto"] = proposto
     ap["parado"] = 0.0 if ap["estornado_em"] else round(ap["quantidade"] - proposto, 4)
-    ap["valor"] = round(ap["quantidade"] * (it.get("preco") or 0), 2)
+    ap["valor"] = float(R.produto_excel(ap["quantidade"], it.get("preco") or 0))
     ap["situacao"] = ("ESTORNADA" if ap["estornado_em"] else "PROPOSTA" if ap["parado"] <= TOL
                       else "PARCIAL" if proposto > TOL else "PARADA")
     return ap
@@ -515,6 +529,12 @@ def arquivo(conn, documento_id):
     if not ligado:
         raise RegraViolada("Documento não encontrado.")
     return doc, doc["nome_original"] or doc["arquivo"]
+
+
+def documento_da_equipe(conn, documento_id, equipe_id):
+    """A evidência é de uma apropriação da equipe (o encarregado vê só as da equipe dele)."""
+    return bool(_one(conn, "SELECT 1 AS ok FROM apropriacao_documentos d JOIN apropriacoes a ON a.id=d.apropriacao_id "
+                           "WHERE d.documento_id=? AND a.equipe_id=?", int(documento_id), equipe_id))
 
 
 # ------------------------------------------------------------------ itens a aprovar: item novo, decisão e código oficial
@@ -720,7 +740,7 @@ def restricoes(conn, medicao_id=None, hoje=None):
         preco = it.get("preco") or 0
         return {"item": it["item"], "item_bm": it.get("item_bm"), "descricao": it.get("resumida") or it["descricao"],
                 "grupo": it["grupo"], "unidade": it["unidade"], "quantidade": round(qtd, 4), "preco": preco,
-                "valor": round(qtd * preco, 2), "estimado": bool(it.get("preco_estimado")), "situacao_item": it["situacao"]}
+                "valor": float(R.produto_excel(qtd, preco)), "estimado": bool(it.get("preco_estimado")), "situacao_item": it["situacao"]}
 
     # apropriações: o que ainda não foi proposto, pela restrição (no mesmo item, a primeira apropriação usa o saldo antes)
     disp = {}

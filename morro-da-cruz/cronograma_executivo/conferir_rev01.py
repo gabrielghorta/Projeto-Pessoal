@@ -19,7 +19,8 @@ import tempfile
 import openpyxl
 
 PASTA = sys.argv[1]
-ARQ = glob.glob(os.path.join(PASTA, 'CRONOGRAMA_MORRO_DA_CRUZ_REV01_*.xlsx'))[0]
+REV, ANT = (sys.argv[2], sys.argv[3]) if len(sys.argv) > 3 else ('REV01', 'REV00')   # conferir_rev01.py PASTA REV02 REV01
+ARQ = glob.glob(os.path.join(PASTA, f'CRONOGRAMA_MORRO_DA_CRUZ_{REV}_*.xlsx'))[0]
 DATA_TESTE = dt.datetime(2027, 12, 1)
 ERROS = ('#VALUE!', '#NAME?', '#REF!', '#DIV/0!', '#N/A', '#NUM!', '#NULL!')
 problemas = []
@@ -90,10 +91,10 @@ wb0 = openpyxl.load_workbook(ARQ)
 P = wb0['PREMISSAS']
 if P['C13'].value is not None:
     problemas.append('a data do reservatório (PREMISSAS!C13) não está em branco')
-quadro = any(P.cell(r, 1).value == 'REV00 × REV01 (CENÁRIO B, 90 m/dia)' for r in range(1, 40))
-print('PREMISSAS: data do reservatório em branco:', P['C13'].value is None, '| quadro REV00 × REV01:', quadro)
+quadro = any(P.cell(r, 1).value == f'{ANT} × {REV} (CENÁRIO B, 90 m/dia)' for r in range(1, 40))
+print('PREMISSAS: data do reservatório em branco:', P['C13'].value is None, f'| quadro {ANT} × {REV}:', quadro)
 if not quadro:
-    problemas.append('falta o quadro REV00 × REV01 nas PREMISSAS')
+    problemas.append(f'falta o quadro {ANT} × {REV} nas PREMISSAS')
 pr = wb0['PROGRAMAÇÃO']
 cats = collections.Counter()
 for row in pr.iter_rows(min_row=4, max_col=20):

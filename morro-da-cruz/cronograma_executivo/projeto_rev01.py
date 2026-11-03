@@ -29,7 +29,7 @@ def caminho_ligacao(pl, i):
 def montar(pl, cen, A):
     P = GP.montar(pl, cen)
     T, E, tr = pl['T'], pl['E'], pl['trechos']
-    P.tarefas[0]['nome'] = f"CT 10.239/2026 - MORRO DA CRUZ - REV01 - {cen['titulo']}"
+    P.tarefas[0]['nome'] = f"CT 10.239/2026 - MORRO DA CRUZ - {AN.REV['id']} - {cen['titulo']}"
     novo_nome = {
         'REDES DE 160 mm - PÉ ALTO ATÉ O REAJUSTE':
             'PÉ ALTO ATÉ O REAJUSTE - ZONA 11, JUNTO DA SAÍDA DO RESERVATÓRIO (DE 160; DEPOIS DE 225 E DE 90/110)',
@@ -53,7 +53,7 @@ def montar(pl, cen, A):
     uid_teste = {z: por_nome[f'TESTE HIDROSTÁTICO E DESINFECÇÃO - {rot(z)}'] for z in ['SUB'] + pl['zonas']}
     uid_int = {z: por_nome[f'INTERLIGAÇÃO - {rot(z)}'] for z in ['SUB'] + pl['zonas']}
     n0 = len(P.tarefas)
-    P.add('LIGAÇÃO AO RESERVATÓRIO E ENTRADA EM CARGA (REGRA DA REV01)', 2, resumo=True)
+    P.add(f"LIGAÇÃO AO RESERVATÓRIO E ENTRADA EM CARGA (REGRA DA {AN.REV['id']})", 2, resumo=True)
     res = P.add('RESERVATÓRIO EM OPERAÇÃO - DATA A DEFINIR (licitação do reservatório)', 3, marco=True, notas=NOTA_RES)
     res['manual'] = 'a definir'
     for z in A['zonas']:

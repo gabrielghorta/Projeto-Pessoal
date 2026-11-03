@@ -35,7 +35,16 @@ def segmentos(lista):
     return out
 
 
+def _fim_do_eixo(plano):
+    """O eixo vai até 01/05/2028 ou, se a obra passar disso, até o 1º dia do mês seguinte ao fim (nada fica cortado)."""
+    f = CAL.fim(plano['fim']).date()
+    seguinte = dt.date(f.year + (f.month == 12), f.month % 12 + 1, 1)
+    return max(dt.date(2028, 5, 1), seguinte)
+
+
 def svg_gantt(plano, cen):
+    global FIM
+    FIM = _fim_do_eixo(plano)
     T = plano['T']
     tr = plano['trechos']
     y = 0

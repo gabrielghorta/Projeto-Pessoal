@@ -15,7 +15,7 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
 2. Para o assunto do pedido, abra a referência certa (tabela abaixo). Esta página é o resumo; os detalhes estão nelas.
 3. Trabalhe pelas regras do §6 e entregue como o responsável gosta (§7).
 
-**A fonte de verdade é o repositório:** `morro-da-cruz/docs/DECISOES_PENDENTES.md` (todas as decisões, D-01 a D-187),
+**A fonte de verdade é o repositório:** `morro-da-cruz/docs/DECISOES_PENDENTES.md` (todas as decisões, D-01 a D-195),
 `docs/MODULO_*.md`, `docs/NOTAS_DE_SERVICO.md`, `docs/TOPOLOGIA_TRECHOS.md`, `docs/MATRIZ_REGIMES_FATURAMENTO.md`,
 `config/*.json` e o código. Se algo aqui divergir deles, vale o repositório, e esta skill deve ser corrigida.
 
@@ -34,13 +34,19 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
 - **Mesclado no ramo do site:** até o PR #17 (v22 com pedir material e entrega por linha; Subadutora; trechos
   finos). O site só muda depois que o responsável roda o comando de atualização (§8).
 - **Abertos, empilhados (mesclar nesta ordem):** #18 foco por zona e Dados da obra igual ao Mapa iluminado
-  (D-185, D-186) → #19 requerimentos de material em Compras e almoxarifado no Estoque (D-187) → o PR desta skill
-  (`claude/skill-continuidade`: skill reorganizada e o motor do cronograma em `morro-da-cruz/cronograma_executivo/`).
+  (D-185, D-186) → #19 requerimentos de material em Compras e almoxarifado no Estoque (D-187) → #20 esta skill
+  (`claude/skill-continuidade`: skill reorganizada e o motor do cronograma em `morro-da-cruz/cronograma_executivo/`) →
+  #21 a REV01 do cronograma (`claude/cronograma-rev01`) → a revisão do código (`claude/pensive-lamport-szymez`: 69 correções e as regras D-188 a D-195;
+  `morro-da-cruz/docs/CORRECOES_REVISAO_30-10-2026.md`).
 - **Fora do site, entregue em 29/10/2026:** cronograma físico executivo base, cenários A (95 m/dia, fim 23/03/2028) e
   B (90 m/dia, fim 12/04/2028), em xlsx, XML do Project e Gantt em PDF; animação do Mapa iluminado em HTML.
-- **REV01 do cronograma, 30/10/2026 (a que vale):** só o cenário B; a obra sai do reservatório da Zona 11 (4 saídas, a
+- **REV01 do cronograma, 30/10/2026:** só o cenário B; a obra sai do reservatório da Zona 11 (4 saídas, a
   confirmar com a Caesb); fim em 20/03/2028; reservatório sem data (célula amarela em branco). PR
   `claude/cronograma-rev01`, empilhado no da skill.
+- **REV02 do cronograma, 30/10/2026 (a mais nova, a validar):** a REV01 com a análise crítica (Empreiteiro 2 em março,
+  chuva e recesso, produtividade pelo diâmetro, ligações pelas próprias equipes a 20/dia, caixas do caminho antes e
+  interligação pelo caminho); fim em 10/01/2029 (−293 dias, a mostrar como está); Zona 11 pronta para água em
+  28/07/2027. No ramo `claude/pensive-lamport-szymez` (`cronograma-executivo.md`, seção REV02).
 - **Banco no site:** o de demonstração (`dados_demo/`, faixa DEMONSTRAÇÃO). A importação real espera a D-01.
 - **Medição:** só de TESTE (D-56). O pacote mensal no BM REV04 já é gerado com a marca "TESTE – NÃO OFICIAL".
 - **Próximos passos:** `references/historico-e-pendencias.md`.
