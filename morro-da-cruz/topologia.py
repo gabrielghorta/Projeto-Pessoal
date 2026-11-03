@@ -62,6 +62,14 @@ def _arquivo(caminho=None):
     return CONFIG_PROGRAMA if not os.path.exists(CONFIG) and os.path.exists(CONFIG_PROGRAMA) else CONFIG
 
 
+def _relativo(caminho):
+    # No Windows, relpath falha quando o arquivo está em outro disco (C: × D:); mostra o caminho inteiro.
+    try:
+        return os.path.relpath(caminho, caminhos.PASTA)
+    except ValueError:
+        return caminho
+
+
 def _ler_config(caminho=None):
     """config/topologia.json (ou vazio, se não existir): {"juncoes": [...], "pendencias": [...], ...}.
     O arquivo é editado à mão: se não abrir (vírgula sobrando, lista trocada), vale a última versão boa lida neste
@@ -373,7 +381,7 @@ def resumo(conn):
             "linhas_em_cadeias": sum(len(f["membros"]) for f in multi),
             "extensao_m": _mm(sum(f["extensao_m"] for f in fis)), "juncoes_por_tipo": por_tipo,
             "juncoes_por_decisao": por_decisao, "juncoes_aplicadas": len(est["usadas"]),
-            "arquivo": os.path.relpath(_arquivo(), caminhos.PASTA), "gerado_em": est["cfg"].get("gerado_em")}
+            "arquivo": _relativo(_arquivo()), "gerado_em": est["cfg"].get("gerado_em")}
 
 
 def consulta(conn, trecho_id=None):
