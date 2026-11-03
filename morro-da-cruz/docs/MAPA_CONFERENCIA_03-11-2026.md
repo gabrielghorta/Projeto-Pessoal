@@ -110,8 +110,20 @@ Como no HTML do projeto, a ficha mostra as coordenadas reais (UTM, SIRGAS 2000, 
 - `tests/test_topologia.py`, `test_coordenadas_reais_nas_fichas` e `test_metros_por_diametro_sistema_igual_a_06_1`;
 - `tests/test_telas.py`, `test_coordenadas_reais_nas_tres_fichas`.
 
-## 6. Pendências
+## 6. Trechos com parte em VCA e parte em MND (D-202)
+
+- **O que o projeto marca:** nas 25 PBs foram procurados os rótulos "MND L=…" (leitura das plantas, só os traços pretos) e o símbolo do MND, que é o contorno preto duplo em volta do tubo, medido ao longo de cada trecho. Aparecem só 4 travessias, as mesmas que a 06.1 já separa no "LIMITE DA TRAVESSIA MND":
+  - Zona02_PB04_Rede_TR036: 17,95 m;
+  - Zona09_PB13_Rede_TR012: 110,83 m (rótulo "MND L=110,6m", o caso do print do responsável);
+  - Zona09_PB16_Rede_TR002: 54,36 m;
+  - Zona09_PB16_Rede_TR021: 108,12 m (rótulo "L=107,9m").
+  Ao todo, 291,26 m, todos de DE 63. Nenhum trecho VCA tem o símbolo: o máximo foi 1,5 m, que é ruído do desenho.
+- **O que estava errado:** o sistema juntava cada travessia com o VCA ao lado num só trecho físico (decisão 9.1 de 20/10/2026). Agora são trechos separados (as 5 junções LIMITE_MND passam a NAO_JUNTAR).
+- **O que fica em aberto:** o BM tem 6.978,95 m de MND, em 7 diâmetros (DE 63 a 315). Fora esses 291,26 m, os 6.687,69 m restantes não têm lugar no desenho: são quantidade de orçamento.
+
+## 7. Pendências
 
 1. **DE 160:** os 78,25 m do quadro sem desenho. Confirmar com o projetista qual vale.
 2. **DE 125 no item 5.8.37:** validar a equivalência com a Caesb.
 3. **Os três desenhos incompletos** (TR001 da PB25, TR081 da PB23 e TR019 da PB19). O vetor do HTML não tem esses pedaços. A planta (imagem do DWG) mostra a linha, e a 06.1 dá a ponta certa. Fica como está até uma nova revisão do HTML.
+4. **MND do BM sem lugar no desenho:** 6.687,69 m. Decidir com a Caesb onde entram, ou se o lugar vem da NS de campo.
