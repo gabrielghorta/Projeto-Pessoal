@@ -2528,8 +2528,8 @@
      "extensao_m": 205.73
     }
    ],
-   "decisao": "JUNTAR",
-   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 223,68 m)",
+   "decisao": "NAO_JUNTAR",
+   "motivo": "D-202 (03/11/2026): o pedaço em MND e o pedaço em VCA são trechos separados, mesmo sem nó entre eles — o método, a equipe e os itens do BM mudam. Antes (decisão de 20/10/2026) juntavam: a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 223,68 m)",
    "sinais": {
     "geometria": {
      "folga_entre_pontas_m": 0.0,
@@ -2554,7 +2554,10 @@
     }
    },
    "id": "J-039",
-   "revisao": null
+   "revisao": {
+    "por": "responsável pela obra",
+    "em": "2026-11-03"
+   }
   },
   {
    "tipo": "LIMITE_MND",
@@ -2577,8 +2580,8 @@
      "extensao_m": 110.83
     }
    ],
-   "decisao": "JUNTAR",
-   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 123,99 m)",
+   "decisao": "NAO_JUNTAR",
+   "motivo": "D-202 (03/11/2026): o pedaço em MND e o pedaço em VCA são trechos separados, mesmo sem nó entre eles — o método, a equipe e os itens do BM mudam. Antes (decisão de 20/10/2026) juntavam: a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 123,99 m)",
    "sinais": {
     "geometria": {
      "folga_entre_pontas_m": 0.0,
@@ -2603,7 +2606,10 @@
     }
    },
    "id": "J-040",
-   "revisao": null
+   "revisao": {
+    "por": "responsável pela obra",
+    "em": "2026-11-03"
+   }
   },
   {
    "tipo": "LIMITE_MND",
@@ -2626,8 +2632,8 @@
      "extensao_m": 114.0
     }
    ],
-   "decisao": "JUNTAR",
-   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 434,19 m)",
+   "decisao": "NAO_JUNTAR",
+   "motivo": "D-202 (03/11/2026): o pedaço em MND e o pedaço em VCA são trechos separados, mesmo sem nó entre eles — o método, a equipe e os itens do BM mudam. Antes (decisão de 20/10/2026) juntavam: a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 434,19 m)",
    "sinais": {
     "geometria": {
      "folga_entre_pontas_m": 0.0,
@@ -2652,7 +2658,10 @@
     }
    },
    "id": "J-041",
-   "revisao": null
+   "revisao": {
+    "por": "responsável pela obra",
+    "em": "2026-11-03"
+   }
   },
   {
    "tipo": "LIMITE_MND",
@@ -2675,8 +2684,8 @@
      "extensao_m": 265.83
     }
    ],
-   "decisao": "JUNTAR",
-   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 434,19 m)",
+   "decisao": "NAO_JUNTAR",
+   "motivo": "D-202 (03/11/2026): o pedaço em MND e o pedaço em VCA são trechos separados, mesmo sem nó entre eles — o método, a equipe e os itens do BM mudam. Antes (decisão de 20/10/2026) juntavam: a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 434,19 m)",
    "sinais": {
     "geometria": {
      "folga_entre_pontas_m": 0.0,
@@ -2701,7 +2710,10 @@
     }
    },
    "id": "J-042",
-   "revisao": null
+   "revisao": {
+    "por": "responsável pela obra",
+    "em": "2026-11-03"
+   }
   },
   {
    "tipo": "LIMITE_MND",
@@ -2724,8 +2736,8 @@
      "extensao_m": 293.92
     }
    ],
-   "decisao": "JUNTAR",
-   "motivo": "a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 402,04 m)",
+   "decisao": "NAO_JUNTAR",
+   "motivo": "D-202 (03/11/2026): o pedaço em MND e o pedaço em VCA são trechos separados, mesmo sem nó entre eles — o método, a equipe e os itens do BM mudam. Antes (decisão de 20/10/2026) juntavam: a 06.1 dividiu o tubo no limite da travessia MND: muda só o método (trecho original entre pontos da rede: 402,04 m)",
    "sinais": {
     "geometria": {
      "folga_entre_pontas_m": 0.0,
@@ -2750,7 +2762,10 @@
     }
    },
    "id": "J-043",
-   "revisao": null
+   "revisao": {
+    "por": "responsável pela obra",
+    "em": "2026-11-03"
+   }
   },
   {
    "tipo": "DIVISA_ZONA",
@@ -6063,7 +6078,7 @@
   {
    "tipo": "PRANCHA_DESLOCADA",
    "prancha": "PB25",
-   "detalhe": "o desenho vetorial da PB25 no HTML está deslocado 37,8 m dos nós (o quadro e a imagem estão certos); na visão geral aparecem cópias fora do lugar de Zona11_PB22_Rede_TR031, Zona11_PB22_Rede_TR032, Zona11_PB25_Rede_TR001"
+   "detalhe": "o desenho vetorial da PB25 no HTML está deslocado 37,8 m dos nós (o quadro e a imagem estão certos); na visão geral aparecem cópias fora do lugar de Zona11_PB22_Rede_TR031, Zona11_PB22_Rede_TR032, Zona11_PB25_Rede_TR001. Desde 03/11/2026 (D-201) a tela corrige o vetor da PB25 (1,81 m para leste e 37,68 m para sul) e as cópias saíram da visão geral; o HTML continua como está."
   },
   {
    "tipo": "TRECHO_ISOLADO",

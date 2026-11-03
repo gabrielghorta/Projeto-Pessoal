@@ -356,7 +356,8 @@ def pendencias(conn):
         for lado in ("ini", "fim"):
             no = t["no_" + lado]
             if no in SEM_NO:
-                if (t["id"], lado) in livres and (t["id"], lado) not in est["cortadas"]:
+                # no limite da travessia MND o trecho físico termina sem conexão de propósito (D-202): não é pendência
+                if (t["id"], lado) in livres and (t["id"], lado) not in est["cortadas"] and SEM_NO[no] != "LIMITE_MND":
                     out.append({"tipo": "PONTA_SEM_CONEXAO", "trecho": t["ponto"], "lado": lado, "no": no,
                                 "detalhe": f"o trecho físico termina em '{no}' (a 06.2 não tem conexão nesse ponto)"})
             elif no and no not in nomes:

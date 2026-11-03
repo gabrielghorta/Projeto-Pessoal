@@ -300,6 +300,7 @@ Pontas **sem nó** na 06.1:
 ## 9. Decisões do responsável pela obra (20/10/2026)
 
 1. **Divisa de zona e limite MND formam um só trecho físico: sim** (aplicado nas 36 + 5 junções).
+   * **Atualização de 03/11/2026 (D-202):** no limite MND, não mais. O pedaço MND e o pedaço VCA são trechos separados (as 5 junções LIMITE_MND passam a NAO_JUNTAR). A divisa de zona continua juntando.
    * Ali não há peça: o tubo segue, e o trecho só termina em conexão. A NS também vai de conexão a conexão, por cima desses pontos.
    * Continuam como estão:
      * o BM e a medição, por linha da 06.1, porque o MND usa outros itens;

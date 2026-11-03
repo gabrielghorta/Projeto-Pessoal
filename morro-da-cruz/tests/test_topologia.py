@@ -369,6 +369,17 @@ class TopologiaReal(unittest.TestCase):
             longe = max(min(dseg(q, pb22[i], pb22[i + 1]) for i in range(len(pb22) - 1)) for q in pb25)
             self.assertLess(longe, 0.3, nome)
 
+    def test_mnd_e_vca_sao_trechos_fisicos_separados(self):
+        """D-202: no limite da travessia MND não há nó, mas o pedaço MND e o VCA são trechos separados (método, equipe e
+        itens do BM mudam). As 4 travessias da 06.1 (291,26 m, DE 63) ficam sozinhas no trecho físico."""
+        fis = {m["trecho_id"]: f for f in TP.trechos_fisicos(self.c) for m in f["membros"]}
+        for mnd in ("Zona02_PB04_Rede_TR036", "Zona09_PB13_Rede_TR012", "Zona09_PB16_Rede_TR002", "Zona09_PB16_Rede_TR021"):
+            self.assertEqual([m["ponto"] for m in fis[self.id[mnd]]["membros"]], [mnd])
+        cfg = _cfg()
+        self.assertEqual({j["decisao"] for j in cfg["juncoes"] if j["tipo"] == "LIMITE_MND"}, {"NAO_JUNTAR"})
+        mnd = dict(self.c.execute("SELECT ponto, extensao_m FROM trechos WHERE vigente=1 AND metodologia='MND'"))
+        self.assertAlmostEqual(sum(mnd.values()), 291.26, places=2)
+
     def test_coordenadas_reais_nas_fichas(self):
         """A ficha do trecho traz as duas pontas da 06.1 e a do nó, a coordenada da 06.2, com latitude e longitude."""
         import dados_obra as DO
@@ -412,12 +423,12 @@ class TopologiaReal(unittest.TestCase):
         self.assertEqual(sorted((p["trecho"], p["lado"]) for p in pontas if p["classe"] == "LONGE_DO_NO"),
                          [("Zona11_PB23_Rede_TR081", "ini"), ("Zona11_PB25_Rede_TR001", "fim")])
         cfg = _cfg()
-        self.assertEqual(dict(Counter(j["decisao"] for j in cfg["juncoes"])), {"JUNTAR": 78, "NAO_JUNTAR": 30, "DUVIDA": 2})
+        self.assertEqual(dict(Counter(j["decisao"] for j in cfg["juncoes"])), {"JUNTAR": 73, "NAO_JUNTAR": 35, "DUVIDA": 2})
         self.assertEqual(dict(Counter(j["tipo"] for j in cfg["juncoes"] if j["decisao"] == "JUNTAR")),
-                         {"CRUZAMENTO": 2, "PASSAGEM": 8, "DIVISA_ZONA": 36, "LIMITE_MND": 5, "PONTA_SEM_NO": 27})
+                         {"CRUZAMENTO": 2, "PASSAGEM": 8, "DIVISA_ZONA": 36, "PONTA_SEM_NO": 27})      # D-202: MND e VCA separados
         r = TP.resumo(self.c)
         self.assertEqual((r["linhas_06_1"], r["trechos_fisicos"], r["com_mais_de_uma_linha"], r["linhas_em_cadeias"],
-                          r["juncoes_aplicadas"]), (1436, 1358, 48, 126, 78))
+                          r["juncoes_aplicadas"]), (1436, 1363, 46, 119, 73))
         fis = TP.trechos_fisicos(self.c)
         ids = Counter(m["trecho_id"] for f in fis for m in f["membros"])
         self.assertEqual((len(ids), set(ids.values())), (1436, {1}))      # toda linha em exatamente um trecho físico
