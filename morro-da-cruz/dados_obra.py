@@ -20,6 +20,7 @@ item do BM Vertical. É sugestão: quem libera confere e muda a quantidade. Nada
 """
 from datetime import date, timedelta
 
+import coordenadas as K
 import planejamento as P
 import regras as R
 import relogio as RL
@@ -249,6 +250,7 @@ def selecao(conn, linhas, nos=(), data=None, equipe=None):
     for t in sel["linhas"]:
         t.update(exe[t["id"]], falta_assentar_m=round(max(float(t["extensao_m"]) - exe[t["id"]]["assentado_m"], 0), 2))
     sel["materiais"], sel["sem_material"] = _sugestao(conn, sel, exe, equipe, hoje)
+    _coordenadas(conn, sel)
     nomes = P.nomes_vigentes(conn)
     alvos = set(_alvos(sel))
     rows = []
@@ -263,6 +265,25 @@ def selecao(conn, linhas, nos=(), data=None, equipe=None):
                      "extensao_m": round(sum(float(t["extensao_m"]) for t in sel["linhas"]), 2),
                      "falta_assentar_m": round(sum(t["falta_assentar_m"] for t in sel["linhas"]), 2)}
     return sel
+
+
+def _coordenadas(conn, sel):
+    """As coordenadas reais de cada linha (as duas pontas, 06.1) e de cada nó (06.2), para o painel do mapa."""
+    ids = [t["id"] for t in sel["linhas"]]
+    if ids:
+        ph = ",".join("?" * len(ids))
+        tr = {r["id"]: r for r in _rows(conn.execute(f"SELECT id, utm_ini, utm_fim, no_ini, no_fim FROM trechos WHERE id IN ({ph})", ids))}
+        for t in sel["linhas"]:
+            r = tr.get(t["id"]) or {}
+            t["coordenadas"] = K.do_trecho(r.get("utm_ini"), r.get("utm_fim"), r.get("no_ini"), r.get("no_fim"))
+    ats = [n["atividade_id"] for n in sel["nos"]]
+    if ats:
+        ph = ",".join("?" * len(ats))
+        el = {r["id"]: r for r in _rows(conn.execute(f"""SELECT a.id, e.utm_e, e.utm_n, e.lat, e.lon FROM atividades a
+            JOIN elementos e ON e.id=a.elemento_id WHERE a.id IN ({ph})""", ats))}
+        for n in sel["nos"]:
+            r = el.get(n["atividade_id"]) or {}
+            n["coordenadas"] = K.ponto(r.get("utm_e"), r.get("utm_n"), r.get("lat"), r.get("lon"))
 
 
 # ------------------------------------------------------------------ programar, liberar, reservar

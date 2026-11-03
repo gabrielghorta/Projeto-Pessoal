@@ -42,7 +42,7 @@ A transformação afim UTM → desenho foi ajustada por mínimos quadrados nos n
 
 * **Visão geral:** 0,700 unidade por metro, sem rotação, 1.188 nós. Resíduo: mediana 5,7 mm, p95 8,4 mm, máximo 1,04 cm.
 * **Pranchas PB01–PB24:** 2,834645 unidades por metro (1:1000 em pontos). Resíduo máximo de 2,6 mm. A PB20 é desenhada girada 90°.
-* **PB25:** tem só 2 nós. A transformação composta (visão geral ∘ matriz da imagem) erra 37,8 m nesses nós. O quadro e a imagem da PB25 estão no lugar certo, mas o **desenho vetorial da PB25 no HTML está deslocado ~37,6 m**. Por isso aparecem cópias fora do lugar de 3 trechos na visão geral: Zona11_PB22_Rede_TR031, TR032 e Zona11_PB25_Rede_TR001. Isso foi registrado como pendência e o HTML não foi alterado.
+* **PB25:** tem só 2 nós. A transformação composta (visão geral ∘ matriz da imagem) erra 37,8 m nesses nós. O quadro e a imagem da PB25 estão no lugar certo, mas o **desenho vetorial da PB25 no HTML está deslocado ~37,6 m**. Por isso aparecem cópias fora do lugar de 3 trechos na visão geral: Zona11_PB22_Rede_TR031, TR032 e Zona11_PB25_Rede_TR001. Isso foi registrado como pendência e o HTML não foi alterado. **Atualização de 03/11/2026 (D-201):** a tela corrige o vetor da PB25 (1,81 m para leste e 37,68 m para sul) e as cópias saíram da visão geral; ver `MAPA_CONFERENCIA_03-11-2026.md`.
 
 ### 2.3 Pontas (5.2)
 

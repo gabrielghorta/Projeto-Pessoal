@@ -19,6 +19,7 @@ import sqlite3
 
 
 import caminhos
+import coordenadas as K
 import imagens
 import regras as R
 from regras import RegraViolada
@@ -173,8 +174,8 @@ def alvo(conn, alvo_tipo, ref, operacao=False):
         if a:
             a["nome"] = a["ponto"]
     else:
-        sql = """SELECT a.*, e.numero, e.tipo AS tipo_elemento, e.pb, e.lat, e.lon, e.handle, e.status_posicao,
-                        e.zona
+        sql = """SELECT a.*, e.numero, e.tipo AS tipo_elemento, e.pb, e.lat, e.lon, e.utm_e, e.utm_n, e.handle,
+                        e.status_posicao, e.zona
                  FROM atividades a JOIN elementos e ON e.id=a.elemento_id WHERE """
         sql = sql.replace("e.zona", "e.zona, e.vigente AS elemento_vigente")
         a = _one(conn, sql + "a.id=?", ref) or _one(conn, sql + "a.nomenclatura=? AND a.vigente=1", ref)
@@ -2665,6 +2666,9 @@ def detalhe(conn, alvo_tipo, ref):
              """SELECT p.aba, p.linha, f.nome, f.revisao, substr(f.sha256,1,16) sha FROM proveniencia p
                 JOIN fontes_arquivo f ON f.id=p.fonte_id WHERE p.entidade=? AND p.entidade_id=?""",
              ("trecho" if tipo == "TRECHO" else "atividade", aid)))}
+    # as coordenadas reais, como no HTML do projeto: as duas pontas do trecho (06.1) ou o nó (06.2)
+    d["coordenadas"] = (K.do_trecho(a.get("utm_ini"), a.get("utm_fim"), a.get("no_ini"), a.get("no_fim")) if tipo == "TRECHO"
+                        else {"no": K.ponto(a.get("utm_e"), a.get("utm_n"), a.get("lat"), a.get("lon"))})
     if tipo == "TRECHO":
         d["quantidades"] = json.loads(a["quantidades"])
         d["cadastro"] = _one(conn, "SELECT * FROM cadastro WHERE trecho_id=?", aid)

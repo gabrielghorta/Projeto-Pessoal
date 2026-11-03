@@ -865,12 +865,12 @@ async function abrirFicha(tipo, nome) {
   const linhas = tipo === 'TRECHO' ? [
     ['Zona e planta', `${esc(t ? localDoTrecho(t) : nomeZona(d.frente_id))} · ${esc(d.pb || (t && t.pb) || '')}${t && ehSubadutora(t) ? ' · frente Subadutora' : ''}`],
     ['Extensão', `${nf(d.extensao_m)} m`], ['Tubo', `DE ${esc(d.de_mm)} · ${esc(d.material || '')} · ${esc(d.metodologia || '')}`],
-    ['Pontas', `${esc(curto(d.no_ini))} → ${esc(curto(d.no_fim))}`],
+    ...pontasTxt(d, curto),
     ...(fis ? [['Trecho físico', esc(fis.texto.replace(/^Trecho físico:\s*/, ''))]] : []),
     ['Executado', ex ? `${nf(ex.metros_executados)} m assentados · ${nf(ex.metros_reaterrados)} m reaterrados` : 'nada lançado'],
     ['Fotos', faltam.length ? `faltam ${faltam.map(c => FOTO_NOME[c] || esc(c)).join(', ')}` : ex ? 'completas' : '—'],
     ['Pendências', pend ? `${pend} aberta${pend > 1 ? 's' : ''}` : 'nenhuma'],
-  ] : [['Elemento', `${esc(d.numero)} · ${esc(d.tipo_elemento || '')} · ${esc(d.pb || '')}`], ['Frente', esc(d.frente_id)], ['Pendências', pend ? `${pend} aberta${pend > 1 ? 's' : ''}` : 'nenhuma']];
+  ] : [['Elemento', `${esc(d.numero)} · ${esc(d.tipo_elemento || '')} · ${esc(d.pb || '')}`], ['Coordenadas', coordTxt((d.coordenadas || {}).no)], ['Frente', esc(d.frente_id)], ['Pendências', pend ? `${pend} aberta${pend > 1 ? 's' : ''}` : 'nenhuma']];
   const prox = (d.programacoes || []).find(p => p.status === 'PLANEJADA');
   if (prox) linhas.push(['Programado', `${esc(prox.data.split('-').reverse().join('/'))} · ${esc(equipeNome(prox.equipe_id))}`]);
   f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button>

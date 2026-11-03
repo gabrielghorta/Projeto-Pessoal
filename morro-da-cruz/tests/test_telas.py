@@ -386,6 +386,17 @@ console.log(JSON.stringify(r));
             self.assertIn(texto, app)
         self.assertIn(".nota-lado", ler("app.css"))
 
+    def test_coordenadas_reais_nas_tres_fichas(self):
+        """D-201: a ficha do Mapa iluminado, o painel da Programação e a ficha completa mostram E, N e o link do mapa."""
+        app, ilu, pln = ler("app.js"), ler("iluminado.js"), ler("planejamento.js")
+        self.assertIn("https://www.google.com/maps/search/?api=1&query=", app)
+        self.assertEqual(app.count("const coordTxt = "), 1)
+        self.assertIn("...pontasTxt(d, curto)", app.split("async function mostrarFiscal", 1)[1].split("\n}\n", 1)[0])
+        self.assertIn("['Coordenadas', coordTxt((d.coordenadas || {}).no)]", app)
+        self.assertIn("...pontasTxt(d, curto)", ilu.split("async function abrirFicha", 1)[1].split("\n}\n", 1)[0])
+        self.assertIn("['Coordenadas', coordTxt((d.coordenadas || {}).no)]", ilu)
+        self.assertIn("${coordSel(r)}", pln)
+
     def test_requisicoes_em_compras_e_estoque_em_paginas(self):
         """D-196 e D-199 (03/11/2026): Compras tem Requisições (pedir e acompanhar, sem aprovação), Notas fiscais e
         Fornecedores; a transferência, o inventário e as reservas vencidas ficam no Estoque."""

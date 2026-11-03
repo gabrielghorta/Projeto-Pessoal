@@ -349,6 +349,51 @@ class TopologiaReal(unittest.TestCase):
             ancora = min(f["membros"], key=lambda m: m["trecho_id"])
             self.assertEqual((ancora["sentido"], f["id"]), (1, "TF-" + ancora["trecho_id"].split("-")[1]))
 
+    # ---------------------------------------------------------------- conferência de 03/11/2026 (D-201)
+    def test_pb25_vetor_corrigido_cai_em_cima_da_pb22(self):
+        """O vetor da PB25 caía 37,68 m ao norte: os 3 trechos dela apareciam duas vezes na visão geral. Corrigido, cada
+        parte da PB25 fica sobre a da PB22 do mesmo trecho (até 0,3 m)."""
+        corr = MG._ler(MAPA)["dados"]["vetores_corrigidos"]
+        self.assertEqual(sorted(i for _, i, ok in corr if ok), [1305, 1306, 1435])
+        self.assertTrue(all(ok for *_, ok in corr))
+        inv = MG.desenhos(MAPA)["GERAL"]["inv"]
+        geo = {t["n"]: t for t in MG.geometria(MAPA)["trechos"]}
+
+        def dseg(p, a, b):
+            vx, vy = b[0] - a[0], b[1] - a[1]
+            L2 = vx * vx + vy * vy
+            t = 0 if not L2 else max(0, min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2))
+            return math.hypot(p[0] - a[0] - t * vx, p[1] - a[1] - t * vy)
+        for nome in ("Zona11_PB22_Rede_TR031", "Zona11_PB22_Rede_TR032", "Zona11_PB25_Rede_TR001"):
+            pb22, pb25 = ([MG.aplicar(inv, p[k], p[k + 1]) for k in range(0, len(p), 2)] for p in geo[nome]["p"])
+            longe = max(min(dseg(q, pb22[i], pb22[i + 1]) for i in range(len(pb22) - 1)) for q in pb25)
+            self.assertLess(longe, 0.3, nome)
+
+    def test_coordenadas_reais_nas_fichas(self):
+        """A ficha do trecho traz as duas pontas da 06.1 e a do nó, a coordenada da 06.2, com latitude e longitude."""
+        import dados_obra as DO
+        import servicos as S
+        self.c.row_factory = sqlite3.Row
+        try:
+            d = S.detalhe(self.c, "TRECHO", "Zona01_PB01_Rede_TR001")["coordenadas"]
+            self.assertEqual(d["inicio"], {"e": 203552.494, "n": 8239199.097, "lat": -15.9087023, "lon": -47.7685795,
+                                           "no": "Zona01_PB01_Rede_NÓ1.8"})
+            self.assertEqual((d["fim"]["e"], d["fim"]["n"], d["fim"]["no"]), (203492.052, 8239246.068, "Zona01_PB01_Rede_NÓ2.7"))
+            no = S.detalhe(self.c, "ATIVIDADE", "Zona01_PB01_Rede_NÓ1.8")["coordenadas"]["no"]
+            self.assertEqual((no["e"], no["n"]), (203552.494, 8239199.097))      # o nó e a ponta do trecho: o mesmo ponto
+            sel = DO.selecao(self.c, ["Zona01_PB01_Rede_TR001"], ["Zona01_PB01_Rede_NÓ1.8"])
+            self.assertEqual(sel["linhas"][0]["coordenadas"], S.detalhe(self.c, "TRECHO", "Zona01_PB01_Rede_TR001")["coordenadas"])
+            self.assertEqual(sel["nos"][0]["coordenadas"]["e"], 203552.494)
+        finally:
+            self.c.row_factory = None
+
+    def test_metros_por_diametro_sistema_igual_a_06_1(self):
+        """Conferência por DE: o sistema tem os 1.436 trechos da 06.1, com os mesmos metros (110.686,03 m)."""
+        por_de = dict(self.c.execute("SELECT CAST(de_mm AS INT), ROUND(SUM(extensao_m), 2) FROM trechos WHERE vigente=1 GROUP BY 1"))
+        self.assertEqual(por_de, {63: 70439.31, 90: 7877.16, 110: 8529.34, 125: 881.67, 160: 12495.17, 225: 4097.25,
+                                  250: 1001.08, 280: 463.85, 315: 2173.44, 355: 683.91, 400: 608.93, 500: 1434.92})
+        self.assertAlmostEqual(sum(por_de.values()), 110686.03, places=2)
+
     # ---------------------------------------------------------------- números do diagnóstico (fixados)
     def test_numeros_do_diagnostico(self):
         from collections import Counter

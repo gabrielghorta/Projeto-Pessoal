@@ -4,6 +4,13 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = (v, c = 2) => v == null ? '—' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: c });
+// a coordenada real (D-201), como no HTML do projeto: "E 203.552,494 · N 8.239.199,097 · abrir no mapa"
+const mm3 = v => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const coordTxt = c => c ? `E ${mm3(c.e)} · N ${mm3(c.n)} · <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat + ',' + c.lon)}" target="_blank" rel="noopener">abrir no mapa</a>`
+  : '<span class="chip vermelho">sem coordenada no projeto</span>';
+// as duas pontas do trecho: o nó e, embaixo, a coordenada real
+const pontasTxt = (d, curtoFn) => [['Início', d.no_ini, (d.coordenadas || {}).inicio], ['Fim', d.no_fim, (d.coordenadas || {}).fim]]
+  .map(([k, no, c]) => [k, `${esc(no ? nomeCompleto(no) : 'ponta sem nó')}<br><small>${coordTxt(c)}</small>`]);
 const brl = v => v == null ? 'PENDENTE' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const curto = id => String(id ?? '').replace(/^Zona\d\d_PB\d\d_|^ADUTORA_PB\d\d_/, '');
@@ -376,12 +383,12 @@ async function mostrarFiscal(tipo, id) {
   const ex = d.execucao, st = d.fotos_faltando;
   const linhas = tipo === 'TRECHO' ? [
     ['Frente / equipe', `${esc(d.frente_id)} · ${esc(d.equipe)}`], ['Extensão', nf(d.extensao_m) + ' m'], ['DE', `${d.de_mm} mm · ${esc(d.material)} · ${esc(d.metodologia)}`],
-    ['Pontas', `${esc(curto(d.no_ini))} → ${esc(curto(d.no_fim))}`], ['Item BM', d.mnd ? `<span class="chip vermelho">MND — item a definir</span> <small>06.1 traz ${esc(d.codigo_bm)}</small>` : '2.2_' + esc(d.codigo_bm)],
+    ...pontasTxt(d, curto), ['Item BM', d.mnd ? `<span class="chip vermelho">MND — item a definir</span> <small>06.1 traz ${esc(d.codigo_bm)}</small>` : '2.2_' + esc(d.codigo_bm)],
     ['Executado / reaterrado', ex ? `${nf(ex.metros_executados)} m / ${nf(ex.metros_reaterrados)} m` : '—'],
   ] : [
     ['Elemento', `${esc(d.numero)} · ${esc(d.tipo_elemento)} · ${esc(d.pb)}`], ['Frente', esc(d.frente_id)],
     ['Itens (06.2)', esc(d.texto)], ['Outras frentes do elemento', (d.outras_atividades || []).map(o => esc(o.nomenclatura)).join(', ') || '—'], ['Trechos ligados', d.trechos_ligados.map(t => esc(curto(t.ponto))).join(', ') || '—'],
-    ['Posição', d.lat ? `${d.lat}, ${d.lon}` : '<span class="chip vermelho">sem posição</span>'],
+    ['Coordenadas', coordTxt((d.coordenadas || {}).no)],
   ];
   const decs = Object.fromEntries([...(d.decisoes || []), ...(d.decisoes_sugeridas || [])].map(x => [x.id, x]));
   const avisos = (d.avisos || []).map(a => `<div class="aviso ${a.tipo === 'PROBLEMA' ? 'problema' : 'sugestao'}"><b>${a.tipo === 'PROBLEMA' ? 'Problema (AA)' : 'Sugestão (AB)'}</b>

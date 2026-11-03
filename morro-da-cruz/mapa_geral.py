@@ -41,6 +41,12 @@ ALCANCE_ARCO_M = 3.0       # trecho perto da ponta onde se procura o arco do pul
 VERSAO_MOSAICO = 2          # muda quando a montagem do mosaico muda (o guardado em mapa/cache/ é refeito)
 SEM_NO = {"DIVISA DE ZONA": "DIVISA_ZONA", "LIMITE DA TRAVESSIA MND": "LIMITE_MND",
           "PONTA SEM NÓ NA TABELA": "PONTA_SEM_NO", "JUNÇÃO SEM NÓ NA TABELA": "JUNCAO_SEM_NO"}
+# Desenho vetorial de prancha fora do lugar no HTML REV02: (ΔE, ΔN) em metros, somados ao que a prancha desenha na
+# visão geral. A foto e o quadro da PB25 estão certos, mas o vetor dela caía 37,68 m ao norte e 1,81 m a oeste, e a
+# visão geral mostrava cópias fora do lugar de 3 trechos (Zona11_PB22_Rede_TR031 e TR032, Zona11_PB25_Rede_TR001).
+# Medido em 03/11/2026 contra o traçado das PBs vizinhas nos mesmos trechos: resíduo médio de 3 cm depois da correção
+# (docs/MAPA_CONFERENCIA_03-11-2026.md). O HTML não é alterado; a correção vale só para o que a tela desenha.
+CORRECAO_VETOR_M = {"PB25": (1.81, -37.68)}
 
 
 def _ler(caminho):
@@ -60,9 +66,45 @@ def _ler(caminho):
                      "els": [{"noms": e.get("noms") or [], "E": e.get("E"), "N": e.get("N")} for e in dados.get("els") or []],
                      "pbs": [{"id": p["id"], "tr": [{"i": t["i"], "p": t["p"]} for t in p.get("tr") or []],
                               "el": p.get("el") or []} for p in dados.get("pbs") or []]}
+            dados["vetores_corrigidos"] = _corrigir_vetores(dados)
             _CACHE.clear()
             _CACHE.update(chave=chave, dados=dados, imagens=imagens)
         return _CACHE
+
+
+def _corrigir_vetores(dados):
+    """Leva para o lugar certo, na visão geral, as partes de trecho que vêm das pranchas de CORRECAO_VETOR_M. Cada parte
+    da visão geral é a parte da prancha passada pela matriz da imagem: acha-se a igual (mesmos pontos, até 0,5 unidade)
+    e soma-se o deslocamento, convertido de metros para a visão geral pelos nós. Devolve [(prancha, trecho, achou)]."""
+    vg, els = dados.get("visaoGeral") or {}, dados.get("els") or []
+    pares = [((els[j]["E"], els[j]["N"]), (x, y)) for j, x, y in vg.get("el") or []
+             if j < len(els) and els[j].get("E") is not None]
+    t = ajuste_afim(pares)
+    matriz = {im["id"]: im["matrix"] for im in vg.get("images") or []}
+    por_i = {tr["i"]: tr for tr in vg.get("tr") or []}
+    feitos = []
+    if t is None:
+        return feitos
+    for pb in dados.get("pbs") or []:
+        if pb["id"] not in CORRECAO_VETOR_M or pb["id"] not in matriz:
+            continue
+        de, dn = CORRECAO_VETOR_M[pb["id"]]
+        dx, dy = t[0] * de + t[1] * dn, t[3] * de + t[4] * dn
+        a, b, c, d, e, f = matriz[pb["id"]]                 # SVG: x = a·u + c·v + e; y = b·u + d·v + f
+        for tr in pb["tr"]:
+            alvo = por_i.get(tr["i"])
+            for p in tr["p"]:
+                q = []
+                for k in range(0, len(p) - 1, 2):
+                    q += [a * p[k] + c * p[k + 1] + e, b * p[k] + d * p[k + 1] + f]
+                achou = False
+                for n, r in enumerate(alvo["p"] if alvo else []):
+                    if len(r) == len(q) and max(abs(u - v) for u, v in zip(r, q)) < 0.5:
+                        alvo["p"][n] = [v + (dx if k % 2 == 0 else dy) for k, v in enumerate(r)]
+                        achou = True
+                        break
+                feitos.append((pb["id"], tr["i"], achou))
+    return feitos
 
 
 def _r(v):
