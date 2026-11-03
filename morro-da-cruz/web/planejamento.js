@@ -135,6 +135,7 @@ function desenharPln(px, zoom) {
     escalarEquipes($('#plnPins'), $('#plnHalo'), px, larg);
   }
   desenharNos(px, zoom < 3);
+  desviarEtiquetas(PLN);
   trilha($('#plnTrilha'), PLN.zona ? `<button type="button" data-pln-tudo>Obra inteira</button> › ${esc(nomeZona(PLN.zona))}`
     : zoom > 1.15 ? '<button type="button" data-pln-tudo>Ver a obra inteira</button>' : 'Obra inteira');
 }

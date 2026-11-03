@@ -111,6 +111,25 @@ function equipesDoDia(g, porEquipe) {
   });
   return { halo: halo.join(''), etiquetas: etiquetas.join('') };
 }
+// a etiqueta da equipe não fica embaixo dos botões do mapa (Dia, busca, zoom, trilha): desce (ou sobe, perto da trilha)
+// só o necessário para ficar à vista e tocável. Refeito a cada desenho do mapa, a partir do lugar dela
+function desviarEtiquetas(ctx) {
+  const caixa = ctx.caixa(), rc = caixa.getBoundingClientRect(), px = ctx.vb[2] / (rc.width || 1);
+  const etqs = $$('.eq-etq', ctx.svg()); if (!etqs.length) return;
+  etqs.forEach(e => e.setAttribute('transform', ''));
+  const botoes = $$('.ilu-ferr > :not(.ilu-bloco), .ilu-bloco > .ilu-bt, .ilu-zoom > *, .ilu-trilha', caixa)
+    .filter(b => !b.hidden && b.offsetParent).map(b => b.getBoundingClientRect()).filter(r => r.width && r.height);
+  const meio = rc.top + rc.height / 2;
+  etqs.forEach(e => {
+    const r0 = e.getBoundingClientRect(); let dy = 0;
+    for (let k = 0; k < 6; k++) {
+      const t = r0.top + dy - 4, b = r0.bottom + dy + 4;
+      const c = botoes.find(x => x.left < r0.right && x.right > r0.left && x.top < b && x.bottom > t); if (!c) break;
+      dy += (c.top + c.bottom) / 2 < meio ? c.bottom + 6 - (r0.top + dy) : c.top - 6 - (r0.bottom + dy);
+    }
+    if (dy) e.setAttribute('transform', `translate(0 ${dy * px})`);
+  });
+}
 // o tamanho da etiqueta e a largura do contorno ficam iguais na tela em qualquer zoom (px: unidades do mapa por pixel)
 function escalarEquipes(grupoEtq, grupoHalo, px, larg) {
   $$('.eq-etq', grupoEtq).forEach(e => {
@@ -473,6 +492,7 @@ function desenharIlu(px, zoom) {
     espessura($('#iluSel'), Math.min(8, 4 * Math.pow(Math.max(zoom, 1), 0.4)));
   }
   desenharNosIlu(px);
+  desviarEtiquetas(ILU);
   trilha($('#iluTrilha'), ILU.zona ? `<button type="button" data-ilu-tudo>Obra inteira</button> › ${esc(nomeZona(ILU.zona))}` : zoom > 1.15 ? '<button type="button" data-ilu-tudo>Ver a obra inteira</button>' : 'Obra inteira');
 }
 // a escala só muda com o zoom (2 % de folga); ctx.ultPx = 0 força o redesenho (pinos novos, cores novas)
