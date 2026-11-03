@@ -255,7 +255,8 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertNotIn("0.08", re.search(r"function aplicarCamadas\(\).*?\n\}", ilu, re.S).group(0))
         self.assertIn("if (zona && !ILU.zona) return focarZona(zona.dataset.zona);", ilu)
         self.assertNotIn("if (outra && outra !== ILU.zona)", ilu)
-        self.assertIn("return z ? focarZonaPln(z) : undefined;", pln)
+        self.assertIn("return focarZonaPln(z);", pln)                  # obra inteira: o toque abre a zona do trecho
+        self.assertIn("&& !selecaoNaZona(z)", pln)                       # revisão de 30/10: a seleção da própria zona fica
         self.assertRegex(css, r"\.ilu-ferr \{ pointer-events: none; \}")
         self.assertIn(".rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }", css)
         self.assertIn("::-webkit-scrollbar { display: none; }", css)
@@ -411,7 +412,7 @@ console.log(JSON.stringify(r));
         corpo = lambda f, fonte: fonte.split(f"async function {f}()", 1)[1].split("\n}\n", 1)[0]
         self.assertIn("await carregarRequerimentos();", corpo("carregarCompras", app))
         self.assertNotIn("/api/inventarios", corpo("carregarCompras", app))
-        self.assertIn("if (podeTela('almox')) carregarInventarioEVencidas();", corpo("carregarAlmox", app))
+        self.assertIn("if (podeTela('almox')) carregarInventarioEVencidas().catch(", corpo("carregarAlmox", app))
         req = corpo("carregarRequerimentos", sol)
         for texto in ("solCard(s, decide && !solMeu(s), true)", "s.situacao === 'APROVADA'", "s.falta", "Falta chegar"):
             self.assertIn(texto, req)

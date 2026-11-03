@@ -40,7 +40,8 @@ liberação já usada pela execução não é anulada; o legado fora de ordem é
 apagado. A apropriação direta fica fora da regra.
 
 **Caminho até a medição** (ficha do trecho, bloco "Para entrar na medição", `servicos.caminho_medicao`): liberação →
-executado 100 % (assentado e reaterrado) → verificado → 3 fotos → cadastro de campo → OK interno. O OK interno exige
+executado 100 % (assentado e reaterrado) → verificado → 3 fotos → cadastro de campo → OK interno (data não anterior ao
+último serviço registrado, D-189). O OK interno exige
 execução 100 %, as fotos obrigatórias e **todos os intervalos efetivos verificados** (D-112); não depende de medição
 aberta (D-113: os lançamentos esperam em `SEM_MEDICAO_ABERTA` e entram quando a medição do período abre).
 
@@ -302,7 +303,9 @@ BM vertical, limitada ao que há no almoxarifado), o que abre o check-in com tod
 com motivo, fica com a equipe). Dia futuro vira reserva. **Cronograma da obra** = XML do MS Project (ou .xlsx/.csv;
 `.mpp` recusado), o macro de 18 meses, com tarefas ligadas a trechos citados no nome.
 
-**Estoque:** disponível = físico − reservas; reserva por equipe e dia; uma sessão aberta por equipe, fechamentos em
+**Estoque:** disponível = físico − reservas; reserva por equipe e dia (no Dados da obra, só para dia futuro, D-192);
+estorno só do que não tem caminho próprio (transferência volta por outra transferência, ajuste por nova contagem, nota
+pela nota, retirada de check-in encerrado pela retificação, D-191); uma sessão aberta por equipe, fechamentos em
 ordem, sem check-in retroativo; o que fica com a equipe é declarado e volta no dia seguinte; correção só por estorno
 (com motivo, nunca deixando reserva descoberta) ou retificação do fechamento (mesma quantidade e data); empréstimo só
 com documento, responsável e autorização; transferência entre equipes com as duas sessões abertas; inventário com
@@ -319,7 +322,8 @@ ou fotografado antes de aprovar; **A comprar** soma por material o aprovado que 
 notas ligadas, `solicitacoes.listar` → `falta`, `notas`); quem abre Compras vê os pedidos da obra. Pedir material só
 aponta para lá. Transferência entre equipes, inventário e reservas vencidas ficam em **Estoque e movimentos**.
 
-**Compras e notas:** NF por XML (biblioteca padrão; DOCTYPE recusado; modelo 55; chave com dígito; repetida recusada;
+**Compras e notas:** NF por XML (biblioteca padrão; só UTF-8; DOCTYPE recusado; modelo 55; chave com dígito; repetida
+recusada pela chave ou pelo fornecedor, número e série, D-190;
 emitente cadastrado na hora pelo CNPJ do XML) ou digitada do PDF/imagem (anexo obrigatório; quem digitou não confere);
 o fornecedor é cadastrado junto (`fornecedores`). **A nota sobe só em Compras e notas (D-170);** em Estoque › Notas a
 receber, cada nota tem na lateral **Aceitar a entrega**, **Recusar a entrega** (o porquê é obrigatório; nada entra no

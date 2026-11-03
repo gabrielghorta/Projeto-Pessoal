@@ -37,9 +37,18 @@ const nomeAlvoCurto = n => nomeCurto(n).replace(/^NÓ/, 'NÓ ');
 // a frente em foco (PLN.zona: uma zona, a Subadutora ou nenhuma = obra inteira) e o que pertence a ela
 const naFrente = t => !PLN.zona || zonaDoTrecho(t) === PLN.zona;
 // trechos e nós escolhidos por fora do toque (equipe do dia, lote, ficha): a frente em foco não pode escondê-los
+// (a seleção fica dentro de uma zona sempre que der: com a obra inteira em foco, o primeiro toque abriria a zona e a limparia)
 function mostrarNaFrente(nomes) {
+  const ix = indexar(GERAL), zs = new Set(nomes.map(n => ix.trecho.get(n)).filter(Boolean).map(zonaDoTrecho));
+  const z = zs.size === 1 ? [...zs][0] : null;
+  if (z && PLN.zona !== z) { PLN.zona = z; zonasPln(); colorirPln(); }
+  else if (!z && PLN.zona && nomes.some(n => { const t = ix.trecho.get(n); return t && !naFrente(t); })) { PLN.zona = null; zonasPln(); colorirPln(); }
+}
+// tudo o que está escolhido é da zona z (trechos pela zona; nós pelas frentes deles)
+function selecaoNaZona(z) {
   const ix = indexar(GERAL);
-  if (PLN.zona && nomes.some(n => { const t = ix.trecho.get(n); return t && !naFrente(t); })) { PLN.zona = null; zonasPln(); colorirPln(); }
+  return PLN.sel.every(n => { const t = ix.trecho.get(n); return t && zonaDoTrecho(t) === z; })
+    && PLN.nos.every(n => ((PLN.frentesNo || [])[PLN.noIdx.get(n)] || new Set()).has(z));
 }
 
 function planSitu(nome, mapa) {
@@ -301,7 +310,10 @@ function cliquePln(alvo, ev, i) {
   if (!PLN.zona) {
     const t = i >= 0 ? GERAL.trechos[i] : null;
     const z = t ? zonaDoTrecho(t) : noPerto ? [...(PLN.frentesNo[+no.dataset.i] || [])][0] : zona && zona.dataset.zona;
-    return z ? focarZonaPln(z) : undefined;
+    if (!z) return;
+    if ((PLN.sel.length || PLN.nos.length) && !selecaoNaZona(z)
+        && !confirm('A seleção atual tem trechos de mais de uma zona. Abrir esta zona tira a seleção. Continuar?')) return;
+    return focarZonaPln(z);
   }
   if (noPerto) return marcarNo(no.dataset.n);
   const tp = pin && indexar(GERAL).trecho.get(pin.dataset.alvo);
@@ -309,7 +321,8 @@ function cliquePln(alvo, ev, i) {
   if (i >= 0) return marcarTrecho(GERAL.trechos[i].n);
 }
 function focarZonaPln(z) {
-  if (PLN.zona !== z) { limparSelecao(); modoDesmarcar(false); }
+  const manter = (PLN.sel.length || PLN.nos.length) && selecaoNaZona(z);    // o dia da equipe já é desta zona: fica
+  if (PLN.zona !== z && !manter) { limparSelecao(); modoDesmarcar(false); }
   PLN.zona = z; zonasPln(); colorirPln();
   const ts = GERAL.trechos.filter(t => zonaDoTrecho(t) === z), poli = GERAL.zonas.find(x => x.id === z);
   irPara(limites([...(poli && z !== ZONA_ADUTORA ? [poli.p] : []), ...ts.flatMap(t => t.p)], 0.06), true, PLN);
@@ -350,7 +363,10 @@ function aplicarFoco() {
   if (!f || !GERAL) return;
   const t = f.tipo === 'TRECHO' && indexar(GERAL).trecho.get(f.nome);
   if (!t) { mostrarNaFrente([f.nome]); return focarNomes([f.nome]); }
-  if (PLN.zona !== zonaDoTrecho(t)) { modoDesmarcar(false); PLN.zona = zonaDoTrecho(t); zonasPln(); colorirPln(); }   // escolher é dentro da zona
+  if (PLN.zona !== zonaDoTrecho(t)) {           // escolher é dentro da zona; a equipe da outra zona não vem junto
+    if (!(PLN.sel.includes(f.nome) && selecaoNaZona(zonaDoTrecho(t)))) limparSelecao();
+    modoDesmarcar(false); PLN.zona = zonaDoTrecho(t); zonasPln(); colorirPln();
+  }
   focarNomes([f.nome]);
   if (!PLN.sel.includes(f.nome)) { PLN.sel = [f.nome]; PLN.nos = []; atualizarSelecao(); }
 }
@@ -374,6 +390,7 @@ ligarBusca($('#plnBusca'), async r => {
   if (fr.length && (!PLN.zona || !fr.includes(PLN.zona))) { limparSelecao(); modoDesmarcar(false); PLN.zona = fr[0]; zonasPln(); colorirPln(); }
   focarNomes([r.rotulo]);
   if (PLN.zona) { if (PLN.desmarcar) modoDesmarcar(false); marcarNo(r.rotulo); }
+  else toast(`Achado: ${nomeAlvoCurto(r.rotulo)}. Ele não liga trecho de nenhuma zona: abra a zona dele na faixa de frentes para escolher.`);
 });
 
 /* ---------------------------------------------------------------- ferramentas: dia, juntar, legenda e zonas */

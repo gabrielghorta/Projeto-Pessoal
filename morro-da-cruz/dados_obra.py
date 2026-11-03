@@ -378,7 +378,10 @@ def reservar(conn, data, equipe_id, linhas, nos, materiais, por):
     alvos = _alvos(sel)
     if not alvos:
         raise RegraViolada("Escolha no mapa o trecho em que a equipe vai trabalhar.")
-    _data(data, "reserva")
+    dia = _data(data, "reserva")
+    if dia <= RL.hoje():                             # reserva é para dia futuro; hoje é a liberação do material
+        raise RegraViolada("Reserva é para um dia que ainda não chegou: para hoje, libere o material do dia.")
+    data = dia.isoformat()
     itens = [m for m in materiais or [] if float(m.get("quantidade") or 0) > 0]
     if not itens:
         raise RegraViolada("Informe a quantidade de ao menos um material.")

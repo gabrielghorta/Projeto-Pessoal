@@ -45,6 +45,7 @@ def corrigir(conn, nf_id, linha_id, por):
     conn.execute("""INSERT INTO nf_confirmacoes(linha_id,solicitada_por,solicitada_em) VALUES (?,?,?)
         ON CONFLICT(linha_id) DO UPDATE SET pendente=1,solicitada_por=excluded.solicitada_por,
         solicitada_em=excluded.solicitada_em,confirmada_por=NULL,confirmada_em=NULL""", (linha_id, por, _agora()))
+    conn.execute("UPDATE nf_linhas SET fora_do_estoque=0 WHERE id=?", (linha_id,))   # volta a ser material a confirmar
     return {'ok': True}
 
 

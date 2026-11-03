@@ -14,6 +14,8 @@ SAIDA = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.abspath(__
 os.makedirs(SAIDA, exist_ok=True)
 D, rede, itens = motor.ler_dados()
 p_prazo = motor.resolver_prazo(D, rede)
+if p_prazo is None:
+    sys.exit('Nem com 200 m/dia a obra termina no prazo contratual: revise as premissas em motor.py.')
 cenarios = [
     {'id': 'A', 'p': p_prazo, 'titulo': f'CENÁRIO A - PRAZO CONTRATUAL ({p_prazo:.1f} m/dia)'.replace('.', ','),
      'p_txt': 'a menor produtividade que fecha a obra no prazo contratual',

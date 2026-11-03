@@ -199,7 +199,10 @@ def listar(conn, usuario):
     todos = 'compras_aprovar' in usuario['permissoes'] or 'compras' in usuario.get('telas', ())
     sql = 'SELECT s.*,d.frente_id FROM solicitacoes_compra s LEFT JOIN solicitacao_detalhes d ON d.solicitacao_id=s.id'
     sql += '' if todos else ' WHERE lower(s.solicitante)=lower(?)'
-    rows = _rows(conn.execute(sql + ' ORDER BY s.id DESC LIMIT 200', () if todos else (usuario['login'],)))
+    # as 200 mais novas e, sempre, as abertas e aprovadas: um pedido antigo que ainda falta chegar não sai de "A comprar"
+    sql += (' WHERE ' if todos else ' AND (') + ("s.status IN ('ABERTA','APROVADA') OR s.id IN (SELECT id FROM solicitacoes_compra"
+                                                 + ('' if todos else ' WHERE lower(solicitante)=lower(?)') + ' ORDER BY id DESC LIMIT 200)') + ('' if todos else ')')
+    rows = _rows(conn.execute(sql + ' ORDER BY s.id DESC', () if todos else (usuario['login'], usuario['login'])))
     nomes = {x['id']: x for x in catalogo(conn)}
     for s in rows:
         s['itens'] = _rows(conn.execute('SELECT material_id,quantidade FROM solicitacao_itens WHERE solicitacao_id=?', (s['id'],)))
@@ -214,6 +217,11 @@ def listar(conn, usuario):
         recebido = dict(conn.execute("""SELECT ni.material_id,SUM(i.aceito) FROM solicitacao_notas sn
             JOIN nf_itens ni ON ni.nf_id=sn.nf_id JOIN recebimento_itens ri ON ri.nf_item_id=ni.id
             JOIN inspecoes i ON i.recebimento_item_id=ri.id WHERE sn.solicitacao_id=? GROUP BY ni.material_id""", (s['id'],)))
+        for mid, dev in conn.execute("""SELECT ni.material_id,SUM(d.quantidade) FROM solicitacao_notas sn
+                JOIN nf_itens ni ON ni.nf_id=sn.nf_id JOIN devolucoes_fornecedor d ON d.nf_item_id=ni.id
+                WHERE sn.solicitacao_id=? AND d.movimento_id NOT IN (SELECT movimento_id FROM estornos)
+                GROUP BY ni.material_id""", (s['id'],)):
+            recebido[mid] = recebido.get(mid, 0) - dev          # devolvido ao fornecedor volta para "A comprar"
         s['situacao'] = 'CHEGOU' if s['status'] == 'APROVADA' and necessario and all(mid and recebido.get(mid, 0) >= q - C.TOL for mid, q in necessario.items()) else s['status']
         # Compras e notas (D-187): as notas ligadas e, do aprovado, o que ainda falta chegar (a lista "A comprar")
         s['notas'] = [r[0] for r in conn.execute('''SELECT n.numero FROM solicitacao_notas sn JOIN notas_fiscais n ON n.id=sn.nf_id

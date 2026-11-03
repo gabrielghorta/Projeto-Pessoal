@@ -350,6 +350,9 @@ def restaurar(pasta, db=DB_PADRAO, dir_fotos=DIR_FOTOS, destino_seguranca=None, 
         raise BackupIncompleto(pasta, det["ausentes"])
     with open(os.path.join(pasta, MANIFESTO), encoding="utf-8") as f:
         m = json.load(f)
+    for a in m.get("arquivos") or {}:                    # nada é gravado fora de fotos/ e documentos/
+        if any(p in ("", ".", "..") or "\\" in p or ":" in p for p in a.split("/")):
+            raise RuntimeError(f"Manifesto com caminho inválido ({a}): restauração cancelada")
     pasta_db = os.path.dirname(os.path.abspath(db))
     exigir_servidor_parado(pasta_db, "A restauração")
     destino_seguranca = destino_seguranca or os.path.join(pasta_db, "backups")

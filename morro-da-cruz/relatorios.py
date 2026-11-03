@@ -79,7 +79,7 @@ def avanco(conn, ini=None, fim=None, frente=None, equipe=None):
     base = f"FROM intervalos_execucao i JOIN trechos t ON t.id=i.trecho_id WHERE {onde}"
     linhas = defaultdict(lambda: {e: 0.0 for e in ETAPAS})
     trechos = defaultdict(set)
-    for r in conn.execute(f"SELECT t.frente_id, COALESCE(i.equipe_id, '—'), i.etapa, i.trecho_id, i.fim_m - i.ini_m {base}", args):
+    for r in conn.execute(f"SELECT COALESCE(t.frente_id, '—'), COALESCE(i.equipe_id, '—'), i.etapa, i.trecho_id, i.fim_m - i.ini_m {base}", args):
         linhas[(r[0], r[1])][r[2]] += r[4]
         trechos[(r[0], r[1])].add(r[3])
     por_equipe = [{"frente_id": f, "equipe_id": e, **{k: round(v, 3) for k, v in d.items()}, "trechos": len(trechos[(f, e)])}

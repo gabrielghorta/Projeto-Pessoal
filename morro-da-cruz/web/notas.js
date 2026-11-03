@@ -138,7 +138,10 @@ function criarFilaNs(op) {
   };
   F.marcar = (c, r) => { Object.assign(c, { estado: 'registrada', resultado: r, motivo: null }); F.render(); };
   F.registrarTodas = async () => {
-    const lista = F.cartoes.filter(c => c.estado === 'lida' || c.estado === 'pronta');
+    // na ordem das datas: a NS mais antiga primeiro, para a liberação e o cadastro ficarem com a data certa
+    const lista = F.cartoes.filter(c => c.estado === 'lida' || c.estado === 'pronta')
+      .map((c, i) => [c, i]).sort(([a, i], [b, j]) => ((a.leitura && a.leitura.leitura.data) || '9999').localeCompare((b.leitura && b.leitura.leitura.data) || '9999') || i - j)
+      .map(([c]) => c);
     if (!lista.length || F.ocupado) return;
     F.ocupado = true; F.render();
     try {

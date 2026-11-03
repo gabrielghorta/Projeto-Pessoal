@@ -374,7 +374,7 @@ def totalizar_bm(itens, bdi_material, bdi_servico, coef_k, modo="medicao"):
     total01_02 = sub01 + bdi_m + bdi_s
     total = total01_02 + total01_02 * coef_k
     return {"modo": modo, "material": float(mat), "servico": float(srv), "bdi_material": bdi_m, "bdi_servico": bdi_s,
-            "subtotal_01": sub01, "total_01_02": total01_02, "k": total01_02 * coef_k, "total": round(total, 2),
+            "subtotal_01": sub01, "total_01_02": total01_02, "k": total01_02 * coef_k, "total": float(excel_round(total)),
             "total_exato": total}
 
 
