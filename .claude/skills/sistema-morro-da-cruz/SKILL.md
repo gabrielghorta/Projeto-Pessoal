@@ -29,7 +29,7 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
 | `references/historico-e-pendencias.md` | quiser saber o que já foi feito (PRs), as decisões recentes, o que falta e o jeito de trabalhar com o responsável |
 | `scripts/zerar_dados_de_teste.sh` | o responsável pedir para zerar os dados de teste do site |
 
-## 1. Estado atual (30/10/2026)
+## 1. Estado atual (03/11/2026)
 
 - **Mesclado no ramo do site:** até o PR #17 (v22 com pedir material e entrega por linha; Subadutora; trechos
   finos). O site só muda depois que o responsável roda o comando de atualização (§8).
@@ -47,6 +47,11 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
   chuva e recesso, produtividade pelo diâmetro, ligações pelas próprias equipes a 20/dia, caixas do caminho antes e
   interligação pelo caminho); fim em 10/01/2029 (−293 dias, a mostrar como está); Zona 11 pronta para água em
   28/07/2027. No ramo `claude/pensive-lamport-szymez` (`cronograma-executivo.md`, seção REV02).
+- **Menu novo e requisição sem aprovação, 03/11/2026 (D-196 a D-200), no ramo `claude/pensive-lamport-szymez`:**
+  4 abas e 11 subabas com páginas (Almoxarifado no lugar de Planejamento; Programação no lugar de Dados da obra);
+  requisição aberta → aguardando a entrega → recebida; inventário ajusta na hora; almoxarife identifica a linha da
+  nota; no mapa, uma etiqueta por equipe e o contorno dos trechos do dia. O 2º PR do fluxo (Início com "o que espera
+  por mim", recado, linha do tempo, programação de amanhã com corte às 17h) está em `historico-e-pendencias.md`.
 - **Banco no site:** o de demonstração (`dados_demo/`, faixa DEMONSTRAÇÃO). A importação real espera a D-01.
 - **Medição:** só de TESTE (D-56). O pacote mensal no BM REV04 já é gerado com a marca "TESTE – NÃO OFICIAL".
 - **Próximos passos:** `references/historico-e-pendencias.md`.

@@ -401,6 +401,10 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .ilu-pin circle { fill: #F15922; stroke: #101010; }
 .ilu-pin text { fill: #fff; font-weight: 700; text-anchor: middle; dominant-baseline: central; font-family: var(--fonte); pointer-events: none; }
 .ilu-pin { cursor: pointer; }
+.ilu-pin rect { fill: #F15922; stroke: #101010; }
+/* D-200: o contorno dos trechos e nós do dia da equipe, por baixo da cor do avanço */
+.eq-halo { fill: none; stroke: #F15922; stroke-opacity: .34; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.eq-halo-no { fill: #F15922; fill-opacity: .34; pointer-events: none; }
 .ilu-sel { fill: none; stroke: #FFFFFF; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
 /* nós e caixas (D-183): a forma diz o que é; contorno claro para aparecer no satélite escuro */
 .ilu-no { stroke: #F2F2F2; stroke-width: 1.6px; vector-effect: non-scaling-stroke; cursor: pointer; }
@@ -648,6 +652,7 @@ label.nota-confere:has(input:checked) { border-color: var(--verde); background: 
 /* Pedir material (D-173): tudo por toque, botões grandes, sem código e sem rolagem lateral no celular */
 .sol-grade { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
 .sol-grade > * { min-width: 0; }
+.sol-grade.so-lista { grid-template-columns: minmax(0, 1fr); }
 .sol-botoes { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .sol-botoes .btn { min-height: 48px; min-width: 64px; }
 .sol-botoes [aria-pressed="true"] { background: var(--laranja); border-color: var(--laranja); color: var(--sobre-laranja); }

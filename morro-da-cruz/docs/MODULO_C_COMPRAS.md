@@ -176,3 +176,35 @@ Não muda o banco. Substitui o que vem acima sobre aprovar em Pedir material.
   reaproveitado na mesma unidade. Contagem de inventário com data obrigatória e não futura.
 - **A comprar** mostra sempre as solicitações abertas e aprovadas, e o devolvido volta a faltar.
 - Detalhes: `CORRECOES_REVISAO_30-10-2026.md`.
+
+## Requisição sem aprovação, inventário na hora e Compras em páginas (03/11/2026, D-196 a D-199)
+
+Não muda o banco. Substitui o que vem acima sobre aprovar, recusar, "A comprar" e o ajuste aprovado por outra pessoa.
+
+- **Almoxarifado › Compras** tem três páginas: **Requisições**, **Notas fiscais** e **Fornecedores**. Pedir material
+  deixou de ser subaba e virou a página Requisições (o link antigo `#solicitar` abre ela).
+- **Requisições:** quem só pede (encarregado, supervisor) vê o formulário e as próprias. Quem abre Compras (engenharia,
+  administração e almoxarife) vê as da obra primeiro e abre o formulário em "Nova requisição". Os blocos: **abertas**,
+  **aguardando a entrega** e, recolhidas, **recebidas e canceladas**.
+- **Sem aprovação (D-196):** a requisição nasce aberta. Ligada a uma nota em Compras › Notas fiscais
+  (`/api/solicitacao/vincular`), passa a **aguardando a entrega**; com a entrega aceita no Estoque, **recebida**. A nota
+  que traz só uma parte deixa a requisição aberta, com o resto "sem nota ainda" (`solicitacoes._cobertura`, com o
+  material reconhecido pelo sistema; linha ainda sem material conta como aguardando). O recusado na entrega e o
+  devolvido ao fornecedor voltam a faltar.
+- **Cancelar** (`/api/solicitacao/cancelar`) pede o motivo: quem pediu cancela a própria; a engenharia e a administração
+  (`requisicoes_cancelar`), qualquer uma. Com nota ligada, o botão diz "Cancelar o que falta".
+- **Identificar** (`/api/solicitacao/identificar`, `nf_confirmar`): quem compra diz qual material é o item pedido por
+  foto ou descrição, no próprio cartão, com a quantidade na unidade do material. Não trava nada.
+- A requisição APROVADA de antes vale como aberta (`compras.REQ_ABERTA`); a RECUSADA aparece como cancelada. Saíram a
+  lista "A comprar", a rota `/api/solicitacao/decidir` e a permissão `compras_aprovar`.
+- **Linha da nota que o sistema não reconheceu (D-198):** o almoxarife também confirma (`nf_confirmar`), menos quem
+  digitou a nota.
+- **Fornecedores:** o cadastro e a lista dos cadastrados (saiu de dentro do painel da nota).
+- **Inventário (D-197), em Estoque › Inventário e transferência:** a diferença entra no saldo na hora da contagem
+  (`compras.registrar_contagem`, motivo opcional). A engenharia ou a administração dá ciência depois
+  (`/api/inventario/ciencia`, `inventario_ciencia`; quem contou não dá ciência do próprio). A contagem de antes, que
+  esperava a aprovação, ainda pode ser aplicada ou descartada por outra pessoa (`/api/inventario/decidir`).
+
+Testes: `tests/test_fluxo_v22.py` (`TestSolicitacoesHTTP`), `tests/test_compras.py`
+(`test_inventario_ajusta_na_hora_e_outra_pessoa_da_ciencia`, `test_contagem_de_antes_da_d197_ainda_se_aplica`) e
+`tests/test_telas.py` (`test_requisicoes_em_compras_e_estoque_em_paginas`).

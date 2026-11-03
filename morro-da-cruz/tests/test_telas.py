@@ -162,7 +162,7 @@ class TestPaginaECodigo(unittest.TestCase):
 
     def test_cada_item_do_menu_abre_uma_tela_que_existe(self):
         telas = set(re.findall(r"^\s{2}(\w+): \{ titulo:", self.js, re.M))
-        self.assertGreaterEqual(len(telas), 14)
+        self.assertEqual(len(telas), 13)                    # D-199: Início, Mapa iluminado e as 11 subabas
         for t in telas:
             self.assertIn("aba-" + t, self.ids, t)
         for t in set(re.findall(r'data-tela="(\w+)"', self.html)):
@@ -264,52 +264,40 @@ class TestPaginaECodigo(unittest.TestCase):
     def secao(self, tela):
         return re.search(r'<section class="aba" id="aba-' + tela + r'">.*?\n  </section>', self.html, re.S).group(0)
 
-    def test_execucao_reorganizada(self):
-        """Execução reorganizada (23/10/2026): o menu na ordem combinada; Notas de serviço só com as NS do campo da obra;
-        Lançamento do dia sem NS; Topografia e Cadastro de campo com a página de envio e a do resumo; um componente
-        de páginas só (chips, endereço, lembrança na sessão)."""
+    def test_menu_d199_quatro_abas_onze_subabas_e_paginas(self):
+        """Menu novo (D-199, 03/11/2026): 4 abas (Mapa iluminado, Execução, Almoxarifado, Administrativo) e 11 subabas;
+        Topografia, Cadastro de campo, Interferências, Pedir material e Cronograma viraram páginas; as subabas longas
+        ganharam páginas. Um componente de páginas só (chips, endereço, lembrança na sessão)."""
         app = ler("app.js")
         corpo = re.search(r"const TELAS = \{.*?\n\};", app, re.S).group(0)
-        execucao = re.findall(r"^\s{2}(\w+): \{ titulo: '[^']+', grupo: 'grupo-campo'", corpo, re.M)
-        ordem = ["campo", "notas", "topografia", "cadastro_campo", "interferencias", "diario"]
-        self.assertEqual(execucao, ordem)
-        rail = re.search(r'data-grupo="grupo-campo".*?</div>', self.html, re.S).group(0)
-        self.assertEqual(re.findall(r'data-tela="(\w+)"', rail), ordem)
-        # as páginas de cada aba: as mesmas no código e no HTML
+        grupos = {"grupo-campo": ["campo", "notas", "diario"], "planejamento": ["mapa", "almox", "compras"],
+                  "administrativo": ["medicao", "equipes", "relatorios", "lev", "admin"]}
+        for g, ordem in grupos.items():
+            self.assertEqual(re.findall(r"^\s{2}(\w+): \{ titulo: '[^']+', grupo: '" + g + "'", corpo, re.M), ordem, g)
+            rail = re.search(r'<div class="rail-sub" data-grupo="' + g + '">.*?</div>', self.html, re.S).group(0)
+            self.assertEqual(re.findall(r'data-tela="(\w+)"', rail), ordem, g)
+        self.assertIn("planejamento: 'Almoxarifado'", app)
+        # as páginas de cada subaba: as mesmas no código e no HTML
         blocos = re.split(r"^\s{2}(\w+): \[", re.search(r"const PAGINAS = \{.*?\n\};", app, re.S).group(0), flags=re.M)[1:]
         paginas = {t: re.findall(r"\['(\w+)', '[^']+', \(\) =>", b) for t, b in zip(blocos[::2], blocos[1::2])}
-        self.assertEqual(paginas, {"campo": ["apropriacao", "apontamento", "fotos", "clima"], "notas": ["dia", "servico"],
-                                   "topografia": ["enviar", "resumo"], "cadastro_campo": ["enviar", "feito"]})
+        self.assertEqual(paginas["compras"], ["requisicoes", "notas", "fornecedores"])
+        self.assertEqual(paginas["notas"], ["dia", "servico", "topografia", "cadastro"])
+        self.assertEqual(paginas["campo"], ["apropriacao", "apontamento", "fotos", "clima", "interferencia"])
+        self.assertEqual(paginas["almox"], ["dia", "receber", "saldo", "inventario", "tubos"])
+        self.assertEqual(paginas["lev"], ["lev", "cronograma"])
+        self.assertEqual(set(paginas), {t for ts in grupos.values() for t in ts})       # toda subaba tem páginas
         for tela, ps in paginas.items():
             sec = self.secao(tela)
             self.assertEqual(sorted(re.findall(r'data-pagina="(\w+)"', sec)), sorted(ps), tela)
             self.assertIn('class="abas-chip grandes paginas-aba"', sec)     # alvos de 44 px, quebrando a linha
+        for velha in ("topografia", "cadastro_campo", "interferencias", "solicitar", "cronograma"):
+            self.assertNotIn('id="aba-' + velha + '"', self.html)
+            destino = re.search(r"^\s{2}" + velha + r": \['(\w+)/(\w+)'", app, re.M)       # o link salvo abre o lugar novo
+            self.assertIn(destino.group(2), paginas[destino.group(1)], velha)
         self.assertEqual(app.count("function mostrarPagina("), 1)
         self.assertIn("sessionStorage.setItem('mc-pagina-' + tela, pag)", app)
         self.assertIn("'#' + id + (pag ? '/' + pag : '')", app)            # a página no endereço (voltar e avançar)
-        # Notas de serviço: só a NS do dia e a de serviço de obra
-        notas = self.secao("notas")
-        self.assertNotIn("TOPOGRAFIA", notas)
-        self.assertNotIn("CADASTRO", notas)
-        self.assertNotIn('id="nsTipo"', self.html)
-        self.assertIn('id="fNd"', notas)
-        self.assertIn("não acende o executado", notas)
-        # Lançamento do dia: nada de nota de serviço
-        campo = self.secao("campo")
-        for fora in ('id="fNd"', 'id="ndEnviadas"', 'id="ndServico"', 'id="campoAbas"', 'name="pdf"', 'name="croqui"'):
-            self.assertNotIn(fora, campo)
-        self.assertIn("A NS do dia é enviada em Execução › Notas de serviço.", campo)
-        # Topografia e Cadastro: o envio na própria aba (sai o botão que levava para Notas de serviço), exceção recolhida
-        self.assertNotIn("data-ns-enviar", self.html + self.js)
-        self.assertIn("inp.value = nomeCompleto(d.nome)", app)              # o trecho escolhido com o nome completo
-        for tela, envio, excecao in (("topografia", "topEnvio", "fTop"), ("cadastro_campo", "cadEnvio", "fCad")):
-            sec = self.secao(tela)
-            self.assertIn(f'id="{envio}"', sec)
-            self.assertRegex(sec, r'<details class="painel" id="\w+Excecao"[^>]*>\s*<summary>Sem nota de serviço \(exceção\)</summary>\s*<form id="' + excecao)
-        notasjs = ler("notas.js")
-        for caixa, tipo in (("#nsEnvioServico", "SERVICO"), ("#topEnvio", "TOPOGRAFIA"), ("#cadEnvio", "CADASTRO")):
-            self.assertIn(f"montarEnvioNs($('{caixa}'), '{tipo}')", notasjs)
-
+        self.assertIn("const podeAba = id => podeTela(id) || ((TELAS[id] || {}).inclui || []).some(podeTela);", app)
     def test_scripts_da_pagina_sem_erro_de_sintaxe(self):
         """Um erro de sintaxe derruba o script inteiro (a tela dele não abre): node --check em cada um, se houver Node."""
         import shutil
@@ -398,29 +386,30 @@ console.log(JSON.stringify(r));
             self.assertIn(texto, app)
         self.assertIn(".nota-lado", ler("app.css"))
 
-    def test_requerimentos_em_compras_e_transferencia_no_estoque(self):
-        """D-187 (29/10/2026): o pedido de material vira requerimento em Compras e notas (aguardando a decisão, a comprar
-        e os decididos); a transferência entre equipes, o inventário e as reservas vencidas passam ao Estoque."""
-        estoque = self.html.split('id="aba-almox"', 1)[1].split('<section', 1)[0]
-        compras = self.html.split('id="aba-compras"', 1)[1].split('<section', 1)[0]
-        for ide in ('id="reqPainel"', 'id="reqDecidir"', 'id="reqDecididos"', 'id="reqComprarPainel"', 'id="reqComprar"'):
-            self.assertIn(ide, compras)
+    def test_requisicoes_em_compras_e_estoque_em_paginas(self):
+        """D-196 e D-199 (03/11/2026): Compras tem Requisições (pedir e acompanhar, sem aprovação), Notas fiscais e
+        Fornecedores; a transferência, o inventário e as reservas vencidas ficam no Estoque."""
+        estoque, compras = self.secao("almox"), self.secao("compras")
+        pagina = lambda sec, p: sec.split(f'<div data-pagina="{p}" hidden>', 1)[1].split('<div data-pagina=', 1)[0]
+        self.assertIn('id="solicitarConteudo"', pagina(compras, "requisicoes"))
+        for ide in ('id="fXml"', 'id="fNfDig"', 'id="notasLista"'):
+            self.assertIn(ide, pagina(compras, "notas"))
+        for ide in ('id="fForn"', 'id="fornLista"'):
+            self.assertIn(ide, pagina(compras, "fornecedores"))
         for ide in ('id="fTransf"', 'id="fInv"', 'id="invLista"', 'id="vencidasLista"'):
             self.assertIn(ide, estoque)
             self.assertNotIn(ide, compras)
         app, sol = ler("app.js"), ler("solicitacoes.js")
         corpo = lambda f, fonte: fonte.split(f"async function {f}()", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("await carregarRequerimentos();", corpo("carregarCompras", app))
+        self.assertIn("renderFornecedores();", corpo("carregarCompras", app))
         self.assertNotIn("/api/inventarios", corpo("carregarCompras", app))
         self.assertIn("if (podeTela('almox')) carregarInventarioEVencidas().catch(", corpo("carregarAlmox", app))
-        req = corpo("carregarRequerimentos", sol)
-        for texto in ("solCard(s, decide && !solMeu(s), true)", "s.situacao === 'APROVADA'", "s.falta", "Falta chegar"):
-            self.assertIn(texto, req)
-        self.assertNotIn("solOutros", sol)                      # Pedir material só aponta para Compras e notas
-        self.assertIn('data-tela="compras"', sol)
-        self.assertIn("solAcaoCard(b, carregarCompras)", sol)
-        self.assertIn("solAcaoCard(b, carregarSolicitacoes)", sol)
-
+        for texto in ("compras_aprovar", "/api/solicitacao/decidir", "carregarRequerimentos", "A comprar"):
+            self.assertNotIn(texto, sol + app)
+        for texto in ("/api/solicitacao/identificar", "/api/solicitacao/cancelar", "'Aguardando a entrega'", "Sem nota ainda",
+                      "Falta chegar", "solAcaoCard(b, carregarSolicitacoes)"):
+            self.assertIn(texto, sol)
+        self.assertIn("/api/inventario/ciencia", app)                      # D-197: o ajuste entra na hora; outro dá ciência
     def test_conferir_e_marcar_e_o_que_falta_e_confirmado_em_compras(self):
         """D-171 (27/10/2026): no Estoque, uma caixinha por linha com o material reconhecido, "Marcar todas" e o verde só
         com todas marcadas; ninguém escolhe material nem pedido ali. Em Compras e notas, as linhas faltando a confirmação."""

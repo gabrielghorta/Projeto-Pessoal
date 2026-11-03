@@ -87,8 +87,7 @@ class TestEstornosComCaminhoProprio(BaseCompras):
 
     def test_ajuste_de_inventario_nao_se_estorna(self):
         self.entrada()
-        inv = C.registrar_contagem(self.c, D, [{"material_id": TUBO_CAESB, "contado": 48}], "almox1")
-        C.decidir_inventario(self.c, inv, True, "diferença aceita", "almox2")
+        C.registrar_contagem(self.c, D, [{"material_id": TUBO_CAESB, "contado": 48}], "almox1")      # D-197: ajusta na hora
         mid = self.q("SELECT id FROM movimentos WHERE tipo LIKE 'AJUSTE_INVENTARIO_%'")[0][0]
         with self.assertRaisesRegex(S.RegraViolada, "nova contagem"):
             S.estornar(self.c, mid, "contagem errada", "almox1")

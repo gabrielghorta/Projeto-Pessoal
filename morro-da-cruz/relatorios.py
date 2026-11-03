@@ -30,12 +30,12 @@ def materiais(conn):
     def soma(sql, args=()):
         return {r[0]: r[1] for r in conn.execute(sql, args)}
     solicitado = soma("""SELECT i.material_id, SUM(i.quantidade) FROM solicitacao_itens i JOIN solicitacoes_compra s
-                         ON s.id=i.solicitacao_id WHERE s.status='APROVADA' GROUP BY 1""")
+                         ON s.id=i.solicitacao_id WHERE s.status IN ('ABERTA','APROVADA') GROUP BY 1""")
     comprado = soma("""SELECT i.material_id,SUM(i.quantidade) FROM nf_itens i
         JOIN notas_fiscais n ON n.id=i.nf_id JOIN materiais m ON m.id=i.material_id
         WHERE n.status<>'CANCELADA' AND m.propriedade<>'CAESB' GROUP BY i.material_id""")
     for mid, q in conn.execute("""SELECT a.material_id,SUM(a.quantidade) FROM solicitacao_avulsos a
-        JOIN solicitacoes_compra s ON s.id=a.solicitacao_id WHERE s.status='APROVADA' AND a.material_id IS NOT NULL GROUP BY a.material_id"""):
+        JOIN solicitacoes_compra s ON s.id=a.solicitacao_id WHERE s.status IN ('ABERTA','APROVADA') AND a.material_id IS NOT NULL GROUP BY a.material_id"""):
         solicitado[mid] = solicitado.get(mid, 0) + q
     mov = defaultdict(lambda: defaultdict(float))
     for r in conn.execute(f"""SELECT material_id, tipo, COALESCE(status,'ACEITO') st, SUM(quantidade) q FROM movimentos
@@ -188,7 +188,7 @@ def planilha(conn, ini, fim, frente=None):
     ws = wb.active
     ws.title = "MATERIAIS"
     aba(ws, "Ciclo do material — previsto × comprado × recebido × reservado × aplicado × medido",
-        ["Material", "Descrição", "Unid.", "Propriedade", "Previsto (projeto)", "Solicitado (aprovado)", "Comprado", "A receber",
+        ["Material", "Descrição", "Unid.", "Propriedade", "Previsto (projeto)", "Requisitado", "Comprado", "A receber",
          "Quarentena", "Recebido (aceito − devolvido)", "Saldo almox.", "Reservado", "Com as equipes", "Aplicado", "Perda", "Medido"],
         [[m["material_id"], m["descricao"], m["unidade"], m["propriedade"], m["previsto"], m["solicitado"], m["comprado"],
           m["a_receber"], m["quarentena"], m["recebido"], m["saldo_almox"], m["reservado"], m["com_equipes"], m["aplicado"],

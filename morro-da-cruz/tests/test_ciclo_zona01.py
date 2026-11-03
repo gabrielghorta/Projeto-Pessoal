@@ -178,15 +178,13 @@ class CicloZona01(unittest.TestCase):
     def test_02_solicitar_e_comprar(self):
         sid = self.ok("eng1", "/api/solicitacao", {"data": D0, "itens": [{"material_id": self.luva, "quantidade": 20}],
                                                    "frente_id": "Zona01", "observacao": "Zona01 TR001 — programação de 16/10"})["id"]
-        erro = self.recusa("eng1", "/api/solicitacao/decidir", {"solicitacao_id": sid, "aprovar": True})
-        self.ok("eng2", "/api/solicitacao/decidir", {"solicitacao_id": sid, "aprovar": True})
         self.recusa("almox1", "/api/fornecedor", {"cnpj": NT.CNPJ_FORNECEDOR, "nome": "Fornecedor de Teste Ltda"}, 403)
         fid = self.ok("adm", "/api/fornecedor", {"cnpj": NT.CNPJ_FORNECEDOR, "nome": "Fornecedor de Teste Ltda"})["id"]
         type(self).solicitacao_id = sid
         self.assertEqual(self.q("SELECT COUNT(*) FROM movimentos")[0][0], 0)
         m = self.material(self.luva)
         self.assertEqual((m["solicitado"], m["comprado"], m["recebido"], m["a_receber"]), (20, 0, 0, 0))
-        self.ev["2_comprar"] = {"autoaprovacao_recusada": erro, "solicitacao": sid, "estoque_luva": m["saldo_almox"]}
+        self.ev["2_comprar"] = {"requisicao_sem_aprovacao": True, "solicitacao": sid, "estoque_luva": m["saldo_almox"]}
 
     # ---------------------------------------------------------------- 3. receber parcialmente e conferir
     def test_03_receber_parcial_e_conferir(self):

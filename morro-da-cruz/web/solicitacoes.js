@@ -1,5 +1,5 @@
-/* Pedir material: nomes de uso, destino por toque e apenas as solicitações permitidas pela sessão. */
-const SOL_UI = { dados: null, tipo: '', tamanho: '', busca: '', carrinho: [], frente: '', obs: '' };
+/* Compras › Requisições (D-196): pedir material (nomes de uso, destino por toque) e acompanhar as requisições, sem aprovação. */
+const SOL_UI = { dados: null, tipo: '', tamanho: '', busca: '', carrinho: [], frente: '', obs: '', novo: false };
 const SOL_UN = { UN: 'unidades', M: 'metros', 'PÇ': 'peças', KG: 'quilos', M2: 'metros quadrados', M3: 'metros cúbicos' };
 const solTexto = x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 // o nome da frente no botão: "Zona 08", "Adutora", "Caixas hidráulicas" (o nome da equipe sem "EQUIPE" e sem a sigla)
@@ -14,18 +14,21 @@ async function carregarSolicitacoes() {
   SOL_UI.dados = await api('/api/solicitacoes');
   if (USUARIO.restrito_a_equipe) SOL_UI.frente = USUARIO.equipe_id;
   const box = $('#solicitarConteudo');
-  box.innerHTML = `<div class="sol-grade"><div class="painel sol-pedir"><h2>O que precisa?</h2>
+  // quem compra vê a lista primeiro e abre o formulário em "Nova requisição"; quem só pede vê o formulário aberto
+  const obra = podeTela('compras'), aberto = !obra || SOL_UI.novo || SOL_UI.carrinho.length > 0;
+  box.innerHTML = `${obra ? `<div class="acoes" style="margin:0 0 12px"><button type="button" class="btn prim grande" id="solNova" aria-expanded="${aberto}">${aberto ? 'Fechar a nova requisição' : 'Nova requisição'}</button></div>` : ''}
+    <div class="sol-grade${aberto ? '' : ' so-lista'}"><div class="painel sol-pedir"${aberto ? '' : ' hidden'}><h2>O que precisa?</h2>
     <div id="solTipos" class="sol-botoes"></div><label>Buscar material<input id="solBusca" type="search" placeholder="Ex.: luva 110" value="${esc(SOL_UI.busca)}"></label>
     <div id="solTamanhos" class="sol-botoes"></div><div id="solMateriais" class="sol-materiais"></div>
     <button type="button" class="btn grande" id="solNaoAchei">Não achei: escrever ou tirar foto</button>
     <form id="solAvulso" class="form" hidden><label>O que precisa?<input name="descricao" maxlength="600" placeholder="Escreva como você conhece o material"></label>
       <label>Tirar foto ou escolher imagem<input name="foto" type="file" accept="image/jpeg,image/png" capture="environment"></label>
       <label>Unidade<select name="unidade">${Object.entries(SOL_UN).map(([v,n]) => `<option value="${v}">${n}</option>`).join('')}</select></label>
-      <button class="btn prim">Adicionar à solicitação</button></form>
+      <button class="btn prim">Adicionar à requisição</button></form>
     <h2>Quanto?</h2><div id="solCarrinho"></div><h2>Para onde?</h2><div id="solFrentes" class="sol-botoes"></div>
     <label>Observação (opcional)<textarea id="solObs" maxlength="600" rows="2">${esc(SOL_UI.obs)}</textarea></label>
-    <button type="button" class="btn prim grande" id="solEnviar">Enviar solicitação</button><p id="solMensagem" role="status"></p></div>
-    <div class="painel"><h2>Meus pedidos</h2><div id="solMeus"></div>${pode('compras_aprovar') && podeTela('compras') ? '<h2>Requerimentos da obra</h2><div id="solAprovar"></div>' : ''}</div></div>`;
+    <button type="button" class="btn prim grande" id="solEnviar">Enviar requisição</button><p id="solMensagem" role="status"></p></div>
+    <div class="painel"><h2>${podeTela('compras') ? 'Requisições da obra' : 'Minhas requisições'}</h2><div id="solMeus"></div></div></div>`;
   renderSolCatalogo(); renderSolCarrinho(); renderSolFrentes(); renderSolPedidos();
   $('#solBusca').addEventListener('input', e => { SOL_UI.busca = e.target.value; renderSolCatalogo(); });
   $('#solObs').addEventListener('input', e => { SOL_UI.obs = e.target.value; });
@@ -63,71 +66,56 @@ function renderSolFrentes() {
   $('#solFrentes').innerHTML = SOL_UI.dados.frentes.filter(f => !USUARIO.restrito_a_equipe || f.id === USUARIO.equipe_id).map(f => `<button type="button" class="btn" data-sol-frente="${esc(f.id)}" aria-pressed="${SOL_UI.frente === f.id}">${esc(solFrente(f.id))}</button>`).join('');
 }
 const solMeu = s => String(s.solicitante).toLowerCase() === String(USUARIO.login).toLowerCase();
-function solCard(s, decidir, quem = decidir) {
-  const estados = { ABERTA: ['Aguardando', 'amarelo'], APROVADA: ['Aprovado', 'azul'], RECUSADA: ['Recusado', 'vermelho'], CHEGOU: ['Chegou', 'verde'], CANCELADA: ['Cancelado', ''] };
-  const st = estados[s.situacao] || [s.situacao, ''], foto = solMeu(s) || pode('compras_aprovar');   // a foto: quem pediu e quem aprova
-  return `<div class="registro sol-card" data-sol-id="${s.id}"><b>Solicitação ${s.id} · ${esc(solFrente(s.frente_id))}</b> <span class="chip ${st[1]}">${esc(st[0])}</span>
-    <p>${esc(dataBR(s.data))}${quem ? ' · ' + esc(s.solicitante) : ''}${s.decidida_por ? ` · ${s.status === 'RECUSADA' ? 'recusado' : s.status === 'CANCELADA' ? 'cancelado' : 'aprovado'} por ${esc(s.decidida_por)}` : ''}</p>
-    ${[...s.itens, ...s.avulsos].map(m => `<div><b>${esc(m.nome)}</b> · ${nf(m.quantidade, 3)} ${esc(solUn(m.quantidade, m.unidade_nome))}
+// D-196: a requisição não tem aprovação. Aberta (sem nota) → aguardando a entrega (a nota foi ligada) → recebida; ou cancelada
+const SOL_ESTADOS = { ABERTA: ['Aberta', 'amarelo'], AGUARDANDO: ['Aguardando a entrega', 'azul'], RECEBIDA: ['Recebida', 'verde'], CANCELADA: ['Cancelada', ''] };
+const solAberta = s => s.situacao === 'ABERTA' || s.situacao === 'AGUARDANDO';
+const solLista = (l, titulo) => l.length ? `<p class="vazio" style="margin:6px 0 4px">${titulo}: ${l.map(f => `${esc(f.nome)} ${nf(f.quantidade, 3)} ${esc(solUn(f.quantidade, f.unidade_nome))}`).join(' · ')}</p>` : '';
+function solCard(s, quem) {
+  const st = SOL_ESTADOS[s.situacao] || [s.situacao, ''], foto = solMeu(s) || podeTela('compras');   // a foto: quem pediu e quem compra
+  const identifica = solAberta(s) && pode('nf_confirmar'), cancela = solAberta(s) && (solMeu(s) || pode('requisicoes_cancelar'));
+  return `<div class="registro sol-card" data-sol-id="${s.id}"><b>Requisição ${s.id} · ${esc(solFrente(s.frente_id))}</b> <span class="chip ${st[1]}">${esc(st[0])}</span>
+    <p>${esc(dataBR(s.data))}${quem ? ' · ' + esc(s.solicitante) : ''}${s.status === 'CANCELADA' && s.decidida_por ? ` · cancelada por ${esc(s.decidida_por)}` : ''}${s.status === 'RECUSADA' ? ` · recusada por ${esc(s.decidida_por)} (antes da D-196)` : ''}</p>
+    ${[...s.itens, ...s.avulsos].map(m => `<div><b>${esc(m.nome)}</b> · ${nf(m.quantidade, 3)} ${esc(solUn(m.quantidade, m.unidade_nome))}${'descricao' in m && !m.material_id ? ' <span class="chip amarelo">a identificar</span>' : ''}
       ${m.documento_id && foto ? `<button type="button" class="btn" data-sol-foto="${m.id}">Ver foto</button><div data-sol-imagem="${m.id}"></div>` : ''}</div>`).join('')}
     ${s.motivo ? `<p>${esc(s.motivo)}</p>` : ''}${s.decisao_motivo ? `<p>Motivo: ${esc(s.decisao_motivo)}</p>` : ''}
     ${(s.notas || []).length ? `<p>Nota${s.notas.length > 1 ? 's' : ''} ligada${s.notas.length > 1 ? 's' : ''}: NF ${s.notas.map(esc).join(', NF ')}</p>` : ''}
-    ${s.status === 'ABERTA' && quem && solMeu(s) ? '<p class="vazio">Pedido seu: outra pessoa da engenharia ou da administração decide.</p>' : ''}
-    ${decidir ? s.avulsos.filter(x => !x.material_id).map(x => `<fieldset data-sol-avulso="${x.id}"><legend>${esc(x.descricao)}</legend>
+    ${solLista(s.sem_nota || [], 'Sem nota ainda')}${s.situacao === 'AGUARDANDO' || (s.notas || []).length ? solLista(s.falta || [], 'Falta chegar') : ''}
+    ${s.situacao === 'ABERTA' && !(s.notas || []).length && podeTela('compras') ? '<p class="vazio" style="margin:4px 0">Quando a nota chegar, ligue a nota a esta requisição em <b>Compras › Notas fiscais</b>: ela passa a "aguardando a entrega".</p>' : ''}
+    ${identifica ? s.avulsos.filter(x => !x.material_id).map(x => `<fieldset data-sol-avulso="${x.id}"><legend>Qual material é "${esc(x.descricao)}"?</legend>
       <label>Material<select data-sol-resolver><option value="">Escolha o material</option>${SOL_UI.dados.catalogo.map(m => `<option value="${esc(m.id)}">${esc(m.nome)} (${esc(m.unidade_nome)})</option>`).join('')}</select></label>
-      <label>Quantidade na unidade do material<input type="number" inputmode="decimal" min="0.001" step="any" data-sol-convertida value="${x.quantidade}"></label></fieldset>`).join('') + '<div class="acoes"><button type="button" class="btn ok" data-sol-decidir="sim">Aprovar</button><button type="button" class="btn recusar" data-sol-decidir="nao">Recusar</button></div>' : ''}</div>`;
+      <label>Quantidade na unidade do material<input type="number" inputmode="decimal" min="0.001" step="any" data-sol-convertida value="${x.quantidade}"></label></fieldset>`).join('') : ''}
+    ${(identifica && s.a_identificar) || cancela ? `<div class="acoes">${identifica && s.a_identificar ? '<button type="button" class="btn ok" data-sol-identificar>Identificar</button>' : ''}${cancela ? `<button type="button" class="btn recusar" data-sol-cancelar>${(s.notas || []).length ? 'Cancelar o que falta' : 'Cancelar'}</button>` : ''}</div>` : ''}</div>`;
 }
+// Compras › Requisições: abertas em cima, aguardando a entrega no meio, recebidas e canceladas recolhidas embaixo.
+// Quem abre Compras vê as da obra; quem só pede vê as suas
 function renderSolPedidos() {
-  const ss = SOL_UI.dados.solicitacoes, meus = ss.filter(solMeu);
-  $('#solMeus').innerHTML = meus.map(s => solCard(s, false)).join('') || '<p>Você ainda não fez solicitações.</p>';
-  // a decisão e o "a comprar" ficam em Compras e notas (D-187); aqui, só quantos esperam
-  const box = $('#solAprovar'), n = ss.filter(s => s.status === 'ABERTA' && !solMeu(s)).length;
-  if (box) box.innerHTML = `<p>${n ? `${n} pedido${n > 1 ? 's' : ''} aguardando a sua decisão.` : 'Nenhum pedido aguardando a sua decisão.'} Aprovar, recusar e acompanhar o que falta comprar é em <b>Compras e notas › Requerimentos de material</b>.</p>
-    <button type="button" class="btn" data-tela="compras">Abrir os requerimentos</button>`;
+  const ss = SOL_UI.dados.solicitacoes, obra = podeTela('compras');
+  const bloco = (titulo, l, vazio) => `<h3 style="margin:16px 0 8px">${titulo} (${l.length})</h3>${l.map(s => solCard(s, obra)).join('') || `<p class="vazio">${vazio}</p>`}`;
+  const fechadas = ss.filter(s => !solAberta(s));
+  $('#solMeus').innerHTML = bloco('Abertas', ss.filter(s => s.situacao === 'ABERTA'), 'Nenhuma requisição aberta.')
+    + bloco('Aguardando a entrega', ss.filter(s => s.situacao === 'AGUARDANDO'), 'Nenhuma nota ligada esperando a entrega.')
+    + `<details class="nota-mais" style="margin-top:16px"><summary>Recebidas e canceladas (${fechadas.length})</summary>${fechadas.slice(0, 60).map(s => solCard(s, obra)).join('') || '<p class="vazio">Nenhuma.</p>'}</details>`;
 }
-/* Compras e notas (D-187): cada pedido de material é um requerimento. Aguardando a decisão (Aprovar ou Recusar, nunca
-   o próprio), A comprar (o aprovado que ainda não chegou, somado por material) e os já decididos (recusado, chegou). */
-async function carregarRequerimentos() {
-  const box = $('#reqDecidir');
-  try { SOL_UI.dados = await api('/api/solicitacoes'); }
-  catch (e) { box.className = 'aviso problema'; box.textContent = `Não consegui mostrar os requerimentos: ${e.message}`; return; }
-  const ss = SOL_UI.dados.solicitacoes, decide = pode('compras_aprovar');
-  const abertos = ss.filter(s => s.status === 'ABERTA'), comprar = ss.filter(s => s.situacao === 'APROVADA');
-  const decididos = ss.filter(s => s.status !== 'ABERTA' && s.situacao !== 'APROVADA');
-  box.className = abertos.length ? '' : 'vazio';
-  box.innerHTML = abertos.length ? abertos.map(s => solCard(s, decide && !solMeu(s), true)).join('') : 'Nenhum requerimento aguardando decisão.';
-  $('#reqDecididosN').textContent = decididos.length;
-  $('#reqDecididos').innerHTML = decididos.slice(0, 40).map(s => solCard(s, false, true)).join('') || '<p class="vazio">Nenhum.</p>';
-  const soma = {};
-  for (const s of comprar) for (const f of s.falta || []) {
-    const x = soma[f.material_id] || (soma[f.material_id] = { ...f, quantidade: 0, sols: [], para: new Set() });
-    x.quantidade += f.quantidade; x.sols.push(s.id); x.para.add(solFrente(s.frente_id));
-  }
-  const linhas = Object.values(soma).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-  $('#reqComprar').className = linhas.length ? '' : 'vazio';
-  $('#reqComprar').innerHTML = linhas.length ? `<div class="tabela"><table><thead><tr><th>Material</th><th class="n">Falta chegar</th><th>Para</th><th>Solicitações</th></tr></thead><tbody>
-      ${linhas.map(x => `<tr><td>${esc(x.nome)}</td><td class="n">${nf(x.quantidade, 3)} ${esc(solUn(x.quantidade, x.unidade_nome))}</td><td>${esc([...x.para].join(', '))}</td><td>${x.sols.join(', ')}</td></tr>`).join('')}</tbody></table></div>
-    <details class="nota-mais"><summary>Por requerimento (${comprar.length})</summary>${comprar.map(s => solCard(s, false, true)).join('')}</details>`
-    : 'Nada a comprar: nenhum requerimento aprovado esperando material.';
-}
-// Ver foto, Aprovar e Recusar: no card do pedido, em Pedir material e nos requerimentos de Compras e notas
+// Ver foto, Identificar e Cancelar: no cartão da requisição
 async function solAcaoCard(b, recarregar) {
   if (b.dataset.solFoto) {
     const r = await acao(() => api('/api/solicitacao/foto?id=' + b.dataset.solFoto)).catch(() => null);
     if (r) { const img = new Image(); img.src = r.imagem; img.alt = 'Material solicitado'; img.className = 'sol-foto'; $('[data-sol-imagem="' + b.dataset.solFoto + '"]', b.closest('.sol-card')).replaceChildren(img); }
     return;
   }
-  if (b.dataset.solDecidir) {
-    const card = b.closest('[data-sol-id]'), aprovar = b.dataset.solDecidir === 'sim', motivo = aprovar ? null : prompt('Por que foi recusado?');
-    if (!aprovar && !motivo) return;
-    const avulsos = $$('[data-sol-avulso]', card).map(f => ({ id: f.dataset.solAvulso, material_id: $('[data-sol-resolver]', f).value, quantidade: +$('[data-sol-convertida]', f).value }));
-    const r = await acao(() => api('/api/solicitacao/decidir', { solicitacao_id: card.dataset.solId, aprovar, motivo, avulsos }), aprovar ? 'Requerimento aprovado: entrou em "A comprar".' : 'Requerimento recusado.').catch(() => null);
-    if (r) await recarregar();
+  const card = b.closest('[data-sol-id]');
+  if (b.hasAttribute('data-sol-identificar')) {
+    const avulsos = $$('[data-sol-avulso]', card).map(f => ({ id: f.dataset.solAvulso, material_id: $('[data-sol-resolver]', f).value, quantidade: +$('[data-sol-convertida]', f).value }))
+      .filter(x => x.material_id);
+    if (!avulsos.length) return toast('Escolha o material.', 'erro');
+    if (await acao(() => api('/api/solicitacao/identificar', { solicitacao_id: card.dataset.solId, avulsos }), 'Material identificado.').catch(() => null)) await recarregar();
+    return;
+  }
+  if (b.hasAttribute('data-sol-cancelar')) {
+    const motivo = prompt('Por que a requisição foi cancelada?'); if (!motivo || !motivo.trim()) return;
+    if (await acao(() => api('/api/solicitacao/cancelar', { solicitacao_id: card.dataset.solId, motivo }), 'Requisição cancelada.').catch(() => null)) await recarregar();
   }
 }
-['#reqPainel', '#reqComprarPainel'].forEach(id => $(id).addEventListener('click', e => {
-  const b = e.target.closest('button[data-sol-foto], button[data-sol-decidir]'); if (b) solAcaoCard(b, carregarCompras);
-}));
 $('#solicitarConteudo').addEventListener('change', e => {
   if (e.target.matches('[data-sol-qtd]')) { SOL_UI.carrinho[+e.target.closest('[data-sol-item]').dataset.solItem].quantidade = +e.target.value; renderSolCatalogo(); }
 });
@@ -148,11 +136,12 @@ $('#solicitarConteudo').addEventListener('click', async e => {
     else { const q = Number(m.quantidade) || 0; m.quantidade = b.hasAttribute('data-sol-mais') ? q + 1 : q > 1 ? q - 1 : q; }   // o − para em 1
     renderSolCatalogo(); return renderSolCarrinho(); }
   if (b.dataset.solFrente) { SOL_UI.frente = b.dataset.solFrente; return renderSolFrentes(); }
+  if (b.id === 'solNova') { SOL_UI.novo = b.getAttribute('aria-expanded') !== 'true'; return carregarSolicitacoes(); }
   if (b.id === 'solNaoAchei') { $('#solAvulso').hidden = !$('#solAvulso').hidden; return; }
   if (b.id === 'solEnviar') {
     b.disabled = true;
-    const r = await acao(() => api('/api/solicitacao', { frente_id: SOL_UI.frente, observacao: SOL_UI.obs, itens: SOL_UI.carrinho }), 'Solicitação enviada.').catch(() => null);
+    const r = await acao(() => api('/api/solicitacao', { frente_id: SOL_UI.frente, observacao: SOL_UI.obs, itens: SOL_UI.carrinho }), 'Requisição enviada: ela entra aberta, sem aprovação.').catch(() => null);
     b.disabled = false; if (r) { SOL_UI.carrinho = []; SOL_UI.obs = ''; await carregarSolicitacoes(); } return;
   }
-  if (b.dataset.solFoto || b.dataset.solDecidir) return solAcaoCard(b, carregarSolicitacoes);
+  if (b.dataset.solFoto || b.hasAttribute('data-sol-identificar') || b.hasAttribute('data-sol-cancelar')) return solAcaoCard(b, carregarSolicitacoes);
 });
