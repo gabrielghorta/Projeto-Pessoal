@@ -305,7 +305,7 @@ class TestPaginaECodigo(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("sem Node")
-        for arq in ("app.js", "solicitacoes.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
+        for arq in ("app.js", "solicitacoes.js", "iluminado.js", "mapa_fundo.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
             r = subprocess.run([node, "--check", os.path.join(WEB, arq)], capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 0, f"{arq}: {r.stderr[-400:]}")
 
@@ -441,7 +441,7 @@ console.log(JSON.stringify(r));
     def test_ids_unicos_e_scripts_carregados(self):
         todos = re.findall(r'id="([^"]+)"', self.html)
         self.assertEqual(len(todos), len(set(todos)))
-        self.assertIn('<script src="/app.js"></script>\n<script src="/solicitacoes.js"></script>\n<script src="/iluminado.js"></script>\n<script src="/planejamento.js"></script>\n'
+        self.assertIn('<script src="/app.js"></script>\n<script src="/solicitacoes.js"></script>\n<script src="/iluminado.js"></script>\n<script src="/mapa_fundo.js"></script>\n<script src="/planejamento.js"></script>\n'
                       '<script src="/notas.js"></script>\n<script src="/apropriacao.js"></script>', self.html)
 
 
