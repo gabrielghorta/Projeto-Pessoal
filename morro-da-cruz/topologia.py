@@ -19,6 +19,7 @@ Conversão de metros (0 do trecho físico no seu no_ini; 0 de cada linha no no_i
 * para_linhas(fisico, ini_m, fim_m) / para_fisico(fisico, trecho_id, ini_m, fim_m) → conversão de intervalos
 * pendencias(conn) → pontas fora do nó, nós inexistentes, decisões em DUVIDA e decisões que não batem com o banco
 * consulta(conn, trecho_id) → resposta de GET /api/topologia;  pontas_nao_conexao() → pontas que o desenho não encaixa
+* limites_mnd(conn) → onde o trecho físico em MND encosta no VCA ao lado (a NS passa de um para o outro, D-202)
 """
 import hashlib
 import json
@@ -294,6 +295,28 @@ def fisico_do_trecho(conn, trecho_id):
     return _estado(conn)["de_trecho"].get(trecho_id)
 
 
+def limites_mnd(conn):
+    """Onde o pedaço em MND encosta no VCA ao lado (junção LIMITE_MND em NAO_JUNTAR, D-202): o tubo continua, mas são
+    trechos físicos separados. [{"juncao": "J-…", "pontas": [(fisico_id, posicao_m), (fisico_id, posicao_m)]}]."""
+    est = _estado(conn)
+    por_ponto = {t["ponto"]: t for t in est["trechos"]}
+    out = []
+    for j in est["cfg"].get("juncoes") or []:
+        if not isinstance(j, dict) or j.get("tipo") != "LIMITE_MND" or j.get("decisao") != NAO_JUNTAR:
+            continue
+        pontas, motivo = _validar(j, por_ponto)
+        if motivo:
+            continue
+        lados = []
+        for t, lado in pontas:
+            F = est["de_trecho"].get(t["id"])
+            pos = 0.0 if lado == "ini" else _f(t["extensao_m"])
+            lados.append((F["id"], para_fisico(F, t["id"], pos, pos)[0]) if F else None)
+        if None not in lados and lados[0][0] != lados[1][0]:
+            out.append({"juncao": j.get("id"), "pontas": lados})
+    return out
+
+
 def para_linhas(fisico, ini_m, fim_m):
     """Metros do trecho físico (0 em no_ini) → [{"trecho_id", "ponto", "ini_m", "fim_m"}] por membro tocado."""
     x, y = sorted((_f(ini_m), _f(fim_m)))
@@ -356,7 +379,8 @@ def pendencias(conn):
         for lado in ("ini", "fim"):
             no = t["no_" + lado]
             if no in SEM_NO:
-                if (t["id"], lado) in livres and (t["id"], lado) not in est["cortadas"]:
+                # no limite da travessia MND o trecho físico termina sem conexão de propósito (D-202): não é pendência
+                if (t["id"], lado) in livres and (t["id"], lado) not in est["cortadas"] and SEM_NO[no] != "LIMITE_MND":
                     out.append({"tipo": "PONTA_SEM_CONEXAO", "trecho": t["ponto"], "lado": lado, "no": no,
                                 "detalhe": f"o trecho físico termina em '{no}' (a 06.2 não tem conexão nesse ponto)"})
             elif no and no not in nomes:

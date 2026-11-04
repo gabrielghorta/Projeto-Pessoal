@@ -164,10 +164,11 @@ Duas regras do responsável: **"todo trecho termina em algum tipo de conexão"**
 semicírculo é o mesmo trecho"**. A 06.1 continua intacta para o BM e a medição; o trecho físico é uma visão por cima
 (cada linha com `offset_m` e sentido), que converte um intervalo da NS em intervalos de cada linha.
 
-- Juntam: cruzamento com semicírculo; tubo que passa ao lado do nó sem peça para ele; divisa de zona e limite de MND
-  (mesmo ponto, mesmo DE); emenda sem nó (folga ≤ 1,0 m, ângulo ≥ 120°). Não juntam: quando as peças do nó (orçamento
+- Juntam: cruzamento com semicírculo; tubo que passa ao lado do nó sem peça para ele; divisa de zona (mesmo ponto,
+  mesmo DE); emenda sem nó (folga ≤ 1,0 m, ângulo ≥ 120°). Não juntam: quando as peças do nó (orçamento
   de bocas: tê 3, curva/redução/válvula 2) ligam o par; 3 ou mais tubos sem nó (tê faltando na 06.2); troca de DE ou
-  material.
+  material; **limite da travessia MND** (D-202, 03/11/2026: VCA e MND são trechos separados, mesmo sem nó; a NS que
+  atravessa vira um segmento por trecho, com a distância dividida na proporção do projeto).
 - **Conexão no meio de uma linha da 06.1** (29 casos: 23 ventosas, um hidrante, 5 nós): a NS corta ali e a 06.1 não; o
   segmento vira o intervalo da linha até a conexão.
 - Resultado: 1.358 trechos físicos, 48 com mais de uma linha. Ferramentas e diagnóstico em `ferramentas/topologia/`.

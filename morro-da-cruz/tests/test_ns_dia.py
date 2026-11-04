@@ -139,12 +139,29 @@ class TestLancamento(BaseDia):
         r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ59.1", "NÓ1.1"], [567.7], obs=["ESCAVAÇÃO, ASSENTAMENTO E REATERRO", None],
                                                        titulo="REDE ZONA 09 - PB16", material="PEAD-63")], numero="050", titulo=z9),
                                 equipe="Zona09"))
-        s = r["segmentos"][0]
-        self.assertEqual((s["situacao"], s["fisico_id"], r["fila"]), ("AUTOMATICO", "TF-01016", []))
-        self.assertEqual(s["agora"]["pulado"], ["TR002 é MND (sem vala): reaterrado e escavado não se aplicam; o assentado vale"])
+        # D-202: o TR002 (MND) é um trecho físico só dele; a NS passa pelos dois limites da travessia e vira 3 segmentos
+        lim = NS.LIMITE_MND
+        self.assertEqual([(s["situacao"], s["fisico_id"], s["de"], s["para"], s["metros_ns"]) for s in r["segmentos"]],
+                         [("AUTOMATICO", "TF-01017", "NÓ59.1", lim, 247.51), ("AUTOMATICO", "TF-01016", lim, lim, 54.36),
+                          ("AUTOMATICO", "TF-01025", lim, "NÓ1.1", 265.83)])
+        self.assertEqual(r["fila"], [])
+        self.assertTrue(all("limite da travessia MND" in s["avisos"][-1] for s in r["segmentos"]))
+        self.assertEqual(r["segmentos"][1]["agora"]["pulado"],
+                         ["TR002 é MND (sem vala): reaterrado e escavado não se aplicam; o assentado vale"])
         self.assertEqual([x[0] for x in self.gravado()], ["TR002", "TR003", "TR004", "TR011"])
         self.assertEqual([x[0] for x in self.gravado("REATERRADO")], ["TR003", "TR004", "TR011"])
         self.assertEqual([x[0] for x in self.gravado("ESCAVADO")], ["TR003", "TR004", "TR011"])
+
+    def test_mnd_execucao_parcial_para_dentro_da_travessia(self):
+        z9 = '"REDE DE ÁGUA" - ZONA 09 - PB16 - NOTA DO DIA'
+        r = self.ok(self.enviar("eng1", pdf_dia([grupo(["NÓ59.1", "NÓ1.1"], [280.0], obs=["ASSENTAMENTO", None],
+                                                       titulo="REDE ZONA 09 - PB16", material="PEAD-63")], numero="051", titulo=z9),
+                                equipe="Zona09"))
+        # 247,51 m de VCA inteiros e 32,49 m dos 54,36 m do MND; o VCA depois da travessia não foi feito
+        self.assertEqual([(s["situacao"], s["fisico_id"], s["metros_ns"]) for s in r["segmentos"]],
+                         [("AUTOMATICO", "TF-01017", 247.51), ("AUTOMATICO", "TF-01016", 32.49)])
+        self.assertEqual([(x[0], x[2] - x[1]) for x in self.gravado() if x[0] == "TR002"], [("TR002", 32.49)])
+        self.assertNotIn("TR011", [x[0] for x in self.gravado()])
 
     def test_conexao_no_meio_da_linha_e_sem_etapa_escrita(self):
         z4 = '"REDE DE ÁGUA" - ZONA 04 - PB02 - NOTA DO DIA'
