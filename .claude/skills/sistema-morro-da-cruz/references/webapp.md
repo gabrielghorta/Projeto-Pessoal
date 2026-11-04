@@ -69,7 +69,8 @@ aberta (D-113: os lançamentos esperam em `SEM_MEDICAO_ABERTA` e entram quando a
   `instalar_pythonanywhere.sh` a partir do ramo do site; alternativa Render (pago, `render.yaml`); `nuvem.py` (modo
   nuvem: nada é "o próprio computador"); no Windows, `MorroDaCruz.exe` (PyInstaller, `iniciar.py`) com link temporário
   pelo túnel da Cloudflare (`link.py`). Na nuvem o banco é o de **demonstração** (`dados_demo/`, faixa DEMONSTRAÇÃO)
-  até a aprovação dos controles (D-01); o site migra o esquema sozinho ao recarregar, com backup verificado antes.
+  até a aprovação dos controles (D-01); o site migra o esquema sozinho ao recarregar, com backup verificado antes, e reimporta a demonstração quando uma
+  planilha do repositório muda (outro SHA-256, D-203; reprovada, abre como estava e não tenta de novo).
 - **Google Drive** (`drive.py`, v15/v16): fotos sobem para `03_EXECUCAO_DE_CAMPO/01_Fotos_por_Trecho/<Zona>/<trecho>`,
   notas para `04_COMPRAS_E_ALMOXARIFADO/01_Notas_Fiscais/<AAAA-MM>`, NS para
   `03_EXECUCAO_DE_CAMPO/02_Notas_de_Servico/...`, apropriações para `03_Apropriacao_Direta/<AAAA-MM>`, base de custo em

@@ -52,7 +52,7 @@ OK interno usam outras cores (rosa, roxo, azul) e dizem "conferência interna An
 |---|---|
 | `planilhas/06.1 - LEV_DMC_MORRO_DA_CRUZ_REDES_REV01_13-10-26.xlsx` | Os 1.436 trechos (aba REDE, cabeçalho na linha 5, chave `PONTO`): perfil de vala, quantidades por serviço (escavação por categoria, reaterro, escoramento, transporte, locação, cadastro), `DIST. CANTEIRO`, `CLASSIFICAÇÃO EXECUTIVA` (primária, secundária, terciária) |
 | `planilhas/06.2 - LEV_DMC_MORRO_DA_CRUZ_CONEXÕES_REV08_13-10-26.xlsm` | Nós e dispositivos, atividades e as peças de cada um, com o item do BM |
-| `planilhas/BM_MORRO_DA_CRUZ_REV04_IDENTIFICACAO_09-10-26.xlsx` | BM oficial: juntada, vertical (aba `BM MORRO DA CRUZ - VERTICAL`, itens nas linhas 6 a 547), 01ª MC, cronograma FF, reajuste, gráficos. Também é o modelo do pacote mensal |
+| `planilhas/BM_MORRO_DA_CRUZ_REV04_IDENTIFICACAO_09-10-26.xlsx` | BM oficial: juntada, vertical (aba `BM MORRO DA CRUZ - VERTICAL`, itens nas linhas 6 a 547), 01ª MC, cronograma FF, reajuste, gráficos. Também é o modelo do pacote mensal. Identificação da Ankara (B a L / F a P) revisada em 04/11/2026: 23 itens, D-203; controles CTRL-02 |
 | `planilhas/03.3.2 - BM_MORRO_DA_CRUZ_REV03_REAJUSTE_13-10-26.xlsx` | Data-base, aniversário e índice da CEFR |
 | `planilhas/EVIDENCIAS_REV08_06.2_e_REV01_06.1_MORRO_DA_CRUZ.xlsx` | Conferência do agrupamento por handle, zona e status de posição |
 | `mapa/PLANTAS_TRECHOS_E_NOS_MORRO_DA_CRUZ_REV02_EQUIPES.html` | Mapa técnico com satélite das 25 PBs. O objeto `const DADOS = {…}` (traçado, nós, peças, imagens) nunca é alterado; o bloco de código do fim só muda a pedido do responsável. Arquivo com fim de linha CRLF (`.gitattributes` o trata como binário): ao editar por script, preserve o `\r\n` |
@@ -147,7 +147,7 @@ A NS de topografia ainda não tinha sido feita (ficou para 03 a 13/11/2026).
 | BM vertical | Os mesmos itens repetidos por frente × material/serviço × categoria; chave `CódCronFF_ItemBM` (ex.: `2.2_5.8.44`). Alimenta o cronograma FF. |
 | nª MC | Memória de cálculo do mês: uma folha por item medido (fotos, justificativa, memorial). |
 | Cód. Cron. FF | Grupo do cronograma físico-financeiro (ex.: `2.2` REDES – SERVIÇO, `6.2` ADMINISTRAÇÃO LOCAL). |
-| Código Caesb | Código da composição; liga o vertical à juntada. Só números = base Caesb; com "SI" = SINAPI; com "SC" = SICRO (todos contratuais); com "XX" = provisório (a aprovar). |
+| Código Caesb | Código da composição; liga o vertical à juntada. Só números = base Caesb; com "SI" = SINAPI; com "SC" = SICRO; com "X" (14 códigos, como 8008508024X238) = também base Caesb, conferidos no orçamento da juntada 1426, data-base 01/2025 (D-205). Todos contratuais. Provisório só se vazio ou fora do formato. |
 | P0 | Preço original, sem reajuste. |
 | NS | Nota de serviço da Caesb (PDF; planilha opcional .xlsx/.xls). Tipos no sistema: topografia, cadastro, serviço de obra e NS do dia (execução). |
 | Estaca | 20 m: `EST. 3+16,55` = 3 × 20 + 16,55 = 76,55 m. |

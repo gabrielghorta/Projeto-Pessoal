@@ -63,6 +63,8 @@ novo · e as provisórias de campo e almoxarifado (D-12 a D-18, D-21, D-22, D-40
 | D-196 a D-200 | (03/11/2026) Requisição sem aprovação (aberta → aguardando a entrega → recebida, ou cancelada com motivo) · inventário ajusta na hora, outro dá ciência · o almoxarife também identifica a linha da nota · menu novo: 4 abas, 11 subabas com páginas · no mapa, uma etiqueta por equipe e o contorno dos trechos do dia |
 | D-201 | (03/11/2026) Mapa conferido com a 06.1, a 06.2 e o BM: o vetor da PB25 corrigido na tela (as cópias de 3 trechos saíram); coordenadas reais na ficha do trecho e do nó; pendentes os 78,25 m de DE 160 do quadro e o DE 125 no item 5.8.37 |
 | D-202 | (03/11/2026) VCA e MND são trechos físicos separados, mesmo sem nó entre eles (as 4 travessias da 06.1, 291,26 m); a NS que atravessa vira um segmento por trecho. O projeto só marca essas 4: os outros 6.687,69 m de MND do BM não têm lugar no desenho (pendente) |
+| D-203 | (04/11/2026) Identificação do BM revisada: 23 itens (o 5.14.3 é o portão, não "TUBO"; o 5.7.7 é o hidrante; o 5.18.1 é o kit cavalete); controles CTRL-02; a demonstração se reimporta ao recarregar quando uma planilha muda |
+| D-204, D-205 | (04/11/2026) "Corrigir data" na apropriação direta (a de antes fica guardada; esquema v23) e o orçamento parcial em cada resultado da busca · os 14 códigos com X são da base Caesb 01/2025 (juntada 1426): aprovados |
 
 **Revisão do código (30/10/2026, D-188 a D-195):** apropriação no item da ADM recusada · OK interno não antes do
 serviço · nota repetida pelo fornecedor, número e série · estorno só pelo caminho de cada movimento (transferência,

@@ -65,6 +65,14 @@ class BaseAp(BaseReal):
     def linhas(self, restricao=None):
         return [x for x in AP.restricoes(self.c)["linhas"] if restricao is None or restricao in x["tags"]]
 
+    def provisorio(self, item, codigo="A DEFINIR"):
+        """D-205: os códigos com X do BM REV04 são da base Caesb; o código provisório (vazio ou fora do formato da Caesb)
+        aparece numa revisão futura do BM. Aqui ele é simulado no item, nas duas abas."""
+        cod = self.c.execute("SELECT codigo_caesb FROM bm_itens WHERE item=? AND vigente=1", (item,)).fetchone()[0]
+        with S.transacao(self.c):
+            self.c.execute("UPDATE bm_itens SET codigo_caesb=? WHERE codigo_caesb=? AND vigente=1", (codigo, cod))
+        return cod
+
     def codigo(self, item, codigo):
         with S.transacao(self.c):
             return AP.registrar_codigo_oficial(self.c, {"item_ref": self.ref(item), "codigo": codigo, "data": DIA,
@@ -115,7 +123,9 @@ class TestBusca(BaseAp):
 class TestSituacao(BaseAp):
     def test_origem_do_codigo(self):
         casos = {"0173003001001": "BASE_CAESB", "8900103001SI39363": "SINAPI", "2202019100SCE9779": "SICRO",
-                 "1514603060XX11": "PROVISORIO", "8008508024X238": "PROVISORIO", "": "PROVISORIO", None: "PROVISORIO"}
+                 "1514603060XX11": "BASE_CAESB", "8008508024X238": "BASE_CAESB", "1514603060XXX5": "BASE_CAESB",
+                 "8001008060SI74022/10": "SINAPI", "": "PROVISORIO", None: "PROVISORIO", "A DEFINIR": "PROVISORIO",
+                 "15146030XX": "PROVISORIO"}
         for cod, origem in casos.items():
             self.assertEqual(R.origem_codigo(cod), origem, cod)
         self.assertEqual([R.composicao_referencia(c) for c in ("8000508010SI98459", "2202019100SCE9779", "0173003001001")],
@@ -128,20 +138,22 @@ class TestSituacao(BaseAp):
         cont = {}
         for it in AP.catalogo(self.c):
             cont[(it["situacao"], it["origem"])] = cont.get((it["situacao"], it["origem"]), 0) + 1
-        self.assertEqual(cont, {("APROVADO", "BASE_CAESB"): 215, ("APROVADO", "SINAPI"): 185, ("APROVADO", "SICRO"): 16,
-                                ("A_APROVAR", "PROVISORIO"): 16})
+        # D-205: os 16 itens com X da vertical (14 códigos) estão no orçamento Caesb 01/2025: aprovados, base Caesb
+        self.assertEqual(cont, {("APROVADO", "BASE_CAESB"): 231, ("APROVADO", "SINAPI"): 185, ("APROVADO", "SICRO"): 16})
+        self.assertEqual(AP.item(self.c, LUVA_XX)["rotulo"], "Aprovado · base Caesb")
+        self.provisorio(LUVA_XX)
         self.assertEqual(AP.item(self.c, LUVA_XX)["rotulo"], "A aprovar · código provisório")
         r = self.codigo(LUVA_XX, "1514603060011")
         self.assertEqual((r["item"]["situacao"], r["item"]["rotulo"]), ("APROVADO", "Aprovado · código oficial 1514603060011"))
         self.assertEqual(self.c.execute("SELECT codigo_caesb FROM bm_itens WHERE item=? AND vigente=1", (LUVA_XX,)).fetchone()[0],
-                         "1514603060XX11")                                         # a planilha do BM não muda
+                         "A DEFINIR")                                              # a planilha do BM não muda
         with self.assertRaisesRegex(R.RegraViolada, "já tem o código oficial"):
             self.codigo(LUVA_XX, "1514603060099")
         with self.assertRaisesRegex(R.RegraViolada, "não tem código provisório"):
             self.codigo(FOSSA, "123")
         lev = {i["item"]: i for i in LV.bm(self.c, "VERTICAL")["itens"]}
         self.assertEqual((lev[LUVA_XX]["situacao"], lev[LUVA_XX]["codigo_oficial"]), ("APROVADO", "1514603060011"))
-        self.assertEqual(lev["5.1_1.14.14"]["situacao"], "A_APROVAR")
+        self.assertEqual(lev["5.1_1.14.14"]["situacao"], "APROVADO")             # 1514603084XX10: base Caesb (D-205)
         # revisão nova do BM já com o código: "conciliado com a REV xx"
         self.c.execute("UPDATE bm_itens SET codigo_caesb='1514603060011' WHERE item=? AND vigente=1", (LUVA_XX,))
         it = AP.item(self.c, LUVA_XX)
@@ -235,6 +247,32 @@ class TestApropriacaoHttp(BaseAp):
         self.assertEqual(self.ok(self.cli("enc1").get(f"/api/apropriacoes?ini={DIA}")), [])   # o encarregado vê só a equipe dele
 
 
+    def test_corrigir_data_sem_estorno_vai_para_a_medicao_da_data_certa(self):
+        # D-204: apropriação lançada com a data do registro (fora da medição): a data se corrige sem relançar
+        ant_fim = ONTEM.replace(day=1) - timedelta(days=1)
+        ant_ini, ant_fim = ant_fim.replace(day=1).isoformat(), ant_fim.isoformat()
+        mid = self.medicao(1, ant_ini, ant_fim)                                # a medição do mês anterior
+        cli = self.cli("eng1")
+        r = self.ok(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2)))
+        self.assertEqual(r["situacao"], "PARADA")                              # a data de ontem não é dessa medição
+        corpo = {"apropriacao_id": r["id"], "data": ant_fim, "motivo": "data do serviço, não a do registro"}
+        for login in ("enc3", "almox1", "sup1"):
+            self.recusa(self.cli(login).post("/api/apropriacao/corrigir-data", corpo), 403, "permissão")
+        self.recusa(cli.post("/api/apropriacao/corrigir-data", dict(corpo, motivo=" ")), 422, "motivo")
+        self.recusa(cli.post("/api/apropriacao/corrigir-data", dict(corpo, data=DIA)), 422, "já está com a data")
+        futuro = (RL.hoje() + timedelta(days=1)).isoformat()
+        self.recusa(cli.post("/api/apropriacao/corrigir-data", dict(corpo, data=futuro)), 422, "")
+        c = self.ok(cli.post("/api/apropriacao/corrigir-data", corpo))
+        self.assertEqual((c["data"], c["situacao"], c["proposto"]), (ant_fim, "PROPOSTA", 2.0))
+        self.assertEqual([(x["antes"], x["depois"], x["por"]) for x in c["correcoes"]], [(DIA, ant_fim, "eng1")])
+        self.assertEqual(self.gaveta5(mid), [(CONTEINER, 2.0, "PROPOSTO")])     # foi sozinha para a medição certa
+        self.assertEqual((self.n("apropriacoes"), len(c["documentos"])), (1, 1))  # a mesma apropriação, com a evidência
+        self.recusa(cli.post("/api/apropriacao/corrigir-data", dict(corpo, data=DIA)), 422, "é de outra medição")
+        with S.transacao(self.c):
+            self.c.execute("UPDATE medicoes SET status='FECHADA' WHERE id=?", (mid,))
+        self.recusa(cli.post("/api/apropriacao/corrigir-data", dict(corpo, data=ant_ini)), 422, "fechada")
+
+
 class TestMedicao(BaseAp):
     def test_servico_aprovado_vira_proposta_na_gaveta_5_sem_duplicar(self):
         mid = self.medicao()
@@ -253,6 +291,7 @@ class TestMedicao(BaseAp):
         self.assertEqual(AP.saldo(self.c, AP.item(self.c, CONTEINER))["saldo"], 16.0)
 
     def test_item_a_aprovar_fica_parado_e_entra_com_o_codigo(self):
+        self.provisorio(ISOLAMENTO)
         mid = self.medicao()
         a = self.apropriar(ISOLAMENTO, 100)
         self.assertEqual((a["situacao"], self.gaveta5(mid)), ("PARADA", []))
@@ -262,22 +301,23 @@ class TestMedicao(BaseAp):
         self.assertEqual(l["dias"], 1)
         aprovar = {x["item"]: x for x in AP.itens_a_aprovar(self.c)}
         self.assertEqual(aprovar[ISOLAMENTO]["valor_parado"], 3091.0)
-        self.assertEqual(len([x for x in aprovar.values() if x["origem"] == "PROVISORIO"]), 16)
+        self.assertEqual(len([x for x in aprovar.values() if x["origem"] == "PROVISORIO"]), 3)   # o 5.3.2 em 3 orçamentos
         r = self.codigo(ISOLAMENTO, "8001508020010")
         self.assertEqual(r["liberados"], 1)
         self.assertEqual(self.gaveta5(mid), [(ISOLAMENTO, 100.0, "PROPOSTO")])
         self.assertEqual(self.linhas("ITEM_A_APROVAR"), [])
 
     def test_ok_interno_com_item_a_aprovar_e_liberado_na_proxima_medicao(self):
-        """A regra vale para as gavetas 1 a 4: o lançamento num item XX fica PENDENTE (ITEM_A_APROVAR); fechada a medição,
+        """A regra vale para as gavetas 1 a 4: o lançamento num item com código provisório fica PENDENTE (ITEM_A_APROVAR); fechada a medição,
         registrado o código, ele entra na próxima medição de teste aberta, uma vez só."""
+        self.provisorio(ISOLAMENTO)
         m1 = self.medicao()
         tr = S.alvo(self.c, "TRECHO", "Zona03_PB08_Rede_TR020")
         with S.transacao(self.c):
             S._lancar(self.c, m1, 1, "ISOLAMENTO DA OBRA", S._bm_item(self.c, ISOLAMENTO), "M2", 50, "TRECHO", tr["id"])
         l = self.c.execute("SELECT * FROM medicao_lancamentos").fetchone()
         self.assertEqual((l["status"], l["restricao"]), ("PENDENTE", "ITEM_A_APROVAR"))
-        self.assertIn("código provisório 8001508020XX10", l["motivo"])
+        self.assertIn("código provisório A DEFINIR", l["motivo"])
         self.assertEqual([x["origem"] for x in self.linhas("ITEM_A_APROVAR")], ["ISOLAMENTO DA OBRA · Zona03_PB08_Rede_TR020 · 1ª medição"])
         self.c.execute("UPDATE medicoes SET status='FECHADA' WHERE id=?", (m1,))
         prox = (ONTEM.replace(day=28) + timedelta(days=4)).replace(day=1)

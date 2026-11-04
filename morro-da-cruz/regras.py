@@ -405,14 +405,22 @@ ORIGEM_CODIGO = OrderedDict([("BASE_CAESB", "base Caesb"), ("SINAPI", "base Caes
                              ("NOVO", "item novo")])
 
 
+# código da base de custos da Caesb com X: 10 dígitos e o final com números e X (como 1514603060XX11, 8008508024X238)
+CAESB_COM_X = re.compile(r"\d{10}[0-9X]{3,4}")
+
+
 def origem_codigo(codigo):
-    """De onde vem o código do item do BM: base Caesb (só números), base Caesb com composição SINAPI ('SI' no código, como
-    8000508010SI98459) ou SICRO ('SC'), ou provisório (com 'X', como 1514603060XX11, até a Caesb dar o código oficial).
-    Os códigos com SI e SC são oficiais da base de custos da Caesb e vieram no orçamento da licitação (P0): são
-    contratuais. Código vazio ou fora desses formatos também é provisório."""
+    """De onde vem o código do item do BM: base Caesb (como 0173003001001), base Caesb com composição SINAPI ('SI' no
+    código, como 8000508010SI98459) ou SICRO ('SC'), ou provisório. Todos vieram no orçamento da licitação (P0) e são
+    contratuais. Os códigos com X (como 1514603060XX11 e 8008508024X238) também são da base Caesb: os 14 estão no
+    orçamento da Caesb desta obra (juntada 1426, Tabela de Engenharia DF, data-base 01/2025), com o preço do BM (D-205,
+    conferido em 04/11/2026). Provisório é só o código vazio ou fora desses formatos (como "A DEFINIR", numa revisão futura do
+    BM), até o código oficial ser registrado."""
     c = str(codigo or "").strip().upper()
-    if not c or "X" in c:
+    if not c:
         return "PROVISORIO"
+    if CAESB_COM_X.fullmatch(c):
+        return "BASE_CAESB"
     if "SI" in c:
         return "SINAPI"
     if "SC" in c:

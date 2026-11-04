@@ -1166,6 +1166,12 @@ def preparar_v21(conn):
     oficial do BM. Tabela nova e vazia: o pacote sugere as fotos até a engenharia escolher."""
     S.aplicar_esquema(conn)
 
+def preparar_v23(conn):
+    """Esquema v22 → v23: apropriacao_correcoes, a data de antes de cada apropriação corrigida (D-204). Tabela nova e
+    vazia."""
+    S.aplicar_esquema(conn)
+
+
 def preparar_v22(conn):
     """Só acrescenta tabelas. Guarda as notas antes de retirar o bloqueio do saldo, sem inventar aprovação."""
     S.aplicar_esquema(conn)

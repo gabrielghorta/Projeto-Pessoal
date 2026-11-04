@@ -28,7 +28,7 @@ import relogio as RL
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 22
+VERSAO_ESQUEMA = 23
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -72,7 +72,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "solicitação de material e entrega por linha antes da identificação; liberação sem pedido"))
+                 (VERSAO_ESQUEMA, _agora(), "correção da data da apropriação, com a data de antes guardada"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):

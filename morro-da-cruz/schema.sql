@@ -1081,6 +1081,17 @@ CREATE TABLE IF NOT EXISTS apropriacoes (
   CHECK ((bm_item_id IS NULL) <> (item_novo_id IS NULL))
 );
 CREATE INDEX IF NOT EXISTS ix_apropriacoes ON apropriacoes(data);
+-- Correção da data de uma apropriação (D-204): a data de antes fica guardada, com o motivo, quem corrigiu e quando
+CREATE TABLE IF NOT EXISTS apropriacao_correcoes (
+  id INTEGER PRIMARY KEY,
+  apropriacao_id INTEGER NOT NULL REFERENCES apropriacoes(id),
+  campo TEXT NOT NULL CHECK (campo IN ('data')),
+  antes TEXT NOT NULL,
+  depois TEXT NOT NULL,
+  motivo TEXT NOT NULL,
+  por TEXT NOT NULL, em TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_apropriacao_correcoes ON apropriacao_correcoes(apropriacao_id);
 CREATE TABLE IF NOT EXISTS apropriacao_documentos (
   apropriacao_id INTEGER NOT NULL REFERENCES apropriacoes(id),
   documento_id INTEGER NOT NULL REFERENCES documentos(id),

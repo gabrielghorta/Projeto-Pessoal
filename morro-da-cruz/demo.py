@@ -61,8 +61,8 @@ def criar(pasta=None):
         rel = importar.aplicar(db, I.DIR_PLANILHAS, cfg=cfg_demonstracao(), dir_relatorios=os.path.join(pasta, "relatorios"))
     except importar.ImportacaoReprovada as e:
         importar.imprimir(e.relatorio)
-        raise SystemExit("A importação de demonstração foi reprovada (veja o relatório acima). Se as planilhas não são as do "
-                         "CTRL-01 (mesmo SHA-256), a demonstração não tem conjunto de controles para elas.")
+        raise SystemExit("A importação de demonstração foi reprovada (veja o relatório acima). Se as planilhas não são as de "
+                         "um conjunto de config/controles.json (mesmo SHA-256), a demonstração não tem controles para elas.")
     print(f"Importação: {rel['status']}")
     c = S.conectar(db)
     try:

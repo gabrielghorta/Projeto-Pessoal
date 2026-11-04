@@ -207,6 +207,46 @@ class TestNuvem(unittest.TestCase):
         finally:
             shutil.rmtree(outra, ignore_errors=True)
 
+    def test_planilha_nova_no_repositorio_reimporta_a_demonstracao_ao_subir(self):
+        # D-203: o BM com a identificação revisada tem outro SHA-256; o banco que importou o anterior se atualiza ao subir
+        outra = tempfile.mkdtemp(prefix="nuvem_planilha_")
+        try:
+            shutil.copytree(os.path.join(self.dados, "dados_demo"), os.path.join(outra, "dados_demo"),
+                            ignore=shutil.ignore_patterns("logs", "SERVIDOR_ATIVO.json"))
+            db = os.path.join(outra, "dados_demo", "obra.db")
+            marca = os.path.join(outra, "dados_demo", nuvem.TENTADAS)
+            c = S.conectar(db)
+            with S.transacao(c):
+                c.execute("UPDATE fontes_arquivo SET sha256=? WHERE chave='bm'", ("0" * 64,))
+                c.execute("UPDATE bm_itens SET atributos=json_set(atributos,'$.descricao_resumida','TUBO ') WHERE item='5.14.3'")
+            c.close()
+            desc = lambda: self.q_em(db, "SELECT json_extract(atributos,'$.descricao_resumida') FROM bm_itens "
+                                         "WHERE planilha='JUNTADA' AND item='5.14.3'")
+            info = nuvem.preparar(outra, migrar=False)                # pelo console: só avisa
+            self.assertEqual((info["planilhas_novas"], info["reimportada"], desc()), (["bm"], None, [("TUBO ",)]))
+            with mock.patch("importar.aplicar", side_effect=RuntimeError("conferência reprovada")):
+                info = nuvem.preparar(outra)                          # reprovada: abre com o banco como estava
+            self.assertEqual((info["reimportada"], desc()), (None, [("TUBO ",)]))
+            self.assertTrue(os.path.exists(marca))
+            with mock.patch("importar.aplicar") as ap:                # os mesmos arquivos não são tentados de novo
+                nuvem.preparar(outra)
+            ap.assert_not_called()
+            os.remove(marca)
+            info = nuvem.preparar(outra)                              # o próprio servidor, ao subir
+            self.assertEqual((info["reimportada"], info["planilhas_novas"]), ("CONCLUIDA", []))
+            self.assertTrue(desc()[0][0].startswith("PORTÃO PARA VEÍCULOS"))
+            self.assertIsNone(nuvem.preparar(outra)["reimportada"])   # depois, nada a fazer
+        finally:
+            shutil.rmtree(outra, ignore_errors=True)
+
+    @staticmethod
+    def q_em(db, sql, *a):
+        c = S.conectar(db)
+        try:
+            return [tuple(r) for r in c.execute(sql, a)]
+        finally:
+            c.close()
+
     def test_sem_administrador_a_hospedagem_nao_sobe(self):
         outra = tempfile.mkdtemp(prefix="nuvem_vazia_")
         try:
