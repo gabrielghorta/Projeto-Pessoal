@@ -52,6 +52,9 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
   requisição aberta → aguardando a entrega → recebida; inventário ajusta na hora; almoxarife identifica a linha da
   nota; no mapa, uma etiqueta por equipe e o contorno dos trechos do dia. O 2º PR do fluxo (Início com "o que espera
   por mim", recado, linha do tempo, programação de amanhã com corte às 17h) está em `historico-e-pendencias.md`.
+- **Relatório mensal em PDF, 04/11/2026 (D-207, D-208), no ramo `claude/relatorio-mensal-pdf`:** a tela Relatórios gera o
+  RM da medição escolhida em PDF (capítulos do Lago Sul, visual do relatório de conexões, tudo do banco; o que falta sai
+  PENDENTE), no lugar da planilha. `relatorio_mensal.py` e `pdf_simples.py`.
 - **Banco no site:** o de demonstração (`dados_demo/`, faixa DEMONSTRAÇÃO). A importação real espera a D-01.
 - **Medição:** só de TESTE (D-56). O pacote mensal no BM REV04 já é gerado com a marca "TESTE – NÃO OFICIAL".
 - **Próximos passos:** `references/historico-e-pendencias.md`.

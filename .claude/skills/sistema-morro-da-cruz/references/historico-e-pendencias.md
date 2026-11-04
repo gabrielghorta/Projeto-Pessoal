@@ -80,7 +80,7 @@ aviso · ADM congelada no fechamento · equipe do usuário preso à equipe sempr
    (% por trecho, linha de status, "REV nn - nª MEDIÇÃO").
    REV02 (30/10): validar os tetos por diâmetro e os dias de chuva com o engenheiro sênior e decidir as equipes de
    ligação (as ligações pelas equipes de rede, a 20/dia, levam a obra a 10/01/2029).
-3. Relatório mensal em Word (fase 2), com a tela "Dados do contrato", a presença diária e as imagens fixas.
+3. Relatório mensal: o PDF já sai no site (D-207, 04/11/2026). Falta a tela "Dados do contrato" (D-145) para os campos que hoje saem PENDENTE (CNO, vigência, responsáveis, layout e instalações do canteiro) e o registro da vistoria ambiental (IDA/SAOB).
 4. Documento da juntada (ordem das peças, folha de rosto, ofício): pedir de novo ao responsável.
 5. Decisões que liberam a medição oficial (D-30, D-31, D-50 a D-57) e a importação real (D-01).
 6. Primeiras NS reais (formato da NS do dia, nós na NS do dia) para ajustar tolerâncias e leitura.

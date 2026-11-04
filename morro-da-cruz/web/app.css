@@ -689,3 +689,4 @@ label.nota-confere:has(input:checked) { border-color: var(--verde); background: 
   .pln-frentes { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
   .pln-frentes button { flex: none; }
 }
+.btn.desativado { opacity: .45; pointer-events: none; }

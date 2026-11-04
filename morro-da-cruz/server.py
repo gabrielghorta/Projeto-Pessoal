@@ -38,6 +38,7 @@ import medicao as M
 import notas_servico as NS
 import pacote_medicao as PM
 import planejamento as P
+import relatorio_mensal as RMEN
 import relatorios as RL
 import exportar
 import lev as LV
@@ -382,7 +383,9 @@ def _periodo(q):
 
 def r_relatorios(q, c):
     ini, fim = _periodo(q)
-    return RL.painel(c, ini, fim, q.get("frente") or None)
+    medicoes = [dict(r) for r in c.execute("SELECT id, numero, tipo, periodo_ini, periodo_fim, status FROM medicoes "
+                                           "ORDER BY tipo, numero")]
+    return {**RL.painel(c, ini, fim, q.get("frente") or None), "medicoes": medicoes}
 
 
 def r_medicao_elegibilidade(q, c):
@@ -957,7 +960,7 @@ TELA_GET = {"/api/solicitacoes": ("solicitar", "compras"), "/api/solicitacao/fot
             "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",), "/api/medicao/pacote": ("medicao",),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
-TELA_ARQUIVO = {"/api/relatorios/exportar": ("relatorios",), "/api/medicao/exportar": ("medicao",), "/api/medicao/pacote/baixar": ("medicao",),   # downloads (/arquivos/: LEV)
+TELA_ARQUIVO = {"/api/relatorios/mensal": ("relatorios",), "/api/medicao/exportar": ("medicao",), "/api/medicao/pacote/baixar": ("medicao",),   # downloads (/arquivos/: LEV)
                 "/api/ns/arquivo": TELAS_NS, "/api/apropriacao/arquivo": TELAS_APROPRIACAO}
 LIMITE_CORPO = 32 * 1024 * 1024                  # PDF + croqui + planilha da NS em base64 cabem; acima: 413 sem ler o corpo
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
@@ -1136,18 +1139,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(422, {"erro": str(e)})
             except Exception as e:  # noqa: BLE001
                 return self._falha_download(e)
-        if u.path == "/api/relatorios/exportar":
+        if u.path == "/api/relatorios/mensal":           # o relatório mensal (RM) da medição em PDF (D-207)
             try:
                 with LOCK:
-                    ini, fim = _periodo(q)
-                    nome, dados = RL.planilha(CONN, ini, fim, q.get("frente") or None)
+                    nome, dados, _ = RMEN.gerar(CONN, int(q["id"]), dir_fotos=DIR_FOTOS)
                     A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
             except R.RegraViolada as e:
                 return self._send(422, {"erro": str(e)})
             except Exception as e:  # noqa: BLE001
                 return self._falha_download(e)
-            return self._send(200, dados, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                              {"Content-Disposition": f'attachment; filename="{nome}"'})
+            return self._send(200, dados, "application/pdf", {"Content-Disposition": f'attachment; filename="{nome}"'})
         if u.path == "/api/ns/arquivo":
             return self._ns_arquivo(q, usuario)
         if u.path == "/api/apropriacao/arquivo":
