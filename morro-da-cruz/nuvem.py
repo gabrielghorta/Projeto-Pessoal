@@ -9,7 +9,10 @@ O que acontece ao subir:
    (<MC_DADOS>/dados_demo/obra.db), montada das planilhas do repositório com o perfil TESTE na primeira vez (faixa
    DEMONSTRAÇÃO, como no programa do Windows). A aprovação real dos controles (D-01) não é usada nem preenchida.
 2. Banco de demonstração em esquema antigo (versão nova do código) → migrado sem perda, com backup verificado antes,
-   pelo próprio servidor ao subir, antes de atender (é o único no ar: com disco, o Render para o antigo antes).
+   pelo próprio servidor ao subir, antes de atender (é o único no ar: com disco, o Render para o antigo antes). Do mesmo
+   jeito, planilha nova no repositório (outro SHA-256, como o BM com a identificação revisada, D-203) → a demonstração é
+   reimportada ao subir; se a importação reprovar, o site abre com o banco como estava e não tenta de novo os mesmos
+   arquivos.
 3. Sem administrador real → cria o que estiver em MC_ADMIN_LOGIN, MC_ADMIN_NOME e MC_ADMIN_SENHA (só nessa vez:
    depois a senha é trocada no próprio sistema). Usuários de demonstração, de senha pública, são sempre desativados.
 4. O servidor atende atrás do https da hospedagem: nada é tratado como "do próprio computador" (sem /configurar, sem
@@ -27,6 +30,7 @@ Comandos:
 import getpass
 import http.client
 import io
+import json
 import os
 import sys
 import threading
@@ -62,6 +66,50 @@ def _migrar_demonstracao(db):
     rel = importar.aplicar(db, I.DIR_PLANILHAS, cfg=demo.cfg_demonstracao(),
                            dir_relatorios=os.path.join(os.path.dirname(db), "relatorios"))
     print(f"Migração: {rel['status']} (v{rel['esquema_antes']} → v{rel['esquema_depois']})", flush=True)
+
+
+PLANILHAS = ("redes", "conexoes", "evidencias", "bm", "reajuste")     # as fontes que a importação registra
+TENTADAS = "planilhas_reprovadas.json"
+
+
+def _shas_atuais():
+    import importacao as I
+    cfg = I.carregar_config()
+    return {k: backup.sha256(p) for k in PLANILHAS if (p := I.caminho(cfg, k))}
+
+
+def planilhas_novas(c):
+    """Planilhas do repositório que este banco ainda não importou: {chave: sha256}."""
+    return {k: h for k, h in _shas_atuais().items()
+            if not c.execute("SELECT 1 FROM fontes_arquivo WHERE chave=? AND sha256=?", (k, h)).fetchone()}
+
+
+def _atualizar_demonstracao(db, novas):
+    """Reimporta a demonstração com as planilhas novas (backup verificado antes). Reprovada: o banco fica como estava e
+    os mesmos arquivos não são tentados de novo a cada subida."""
+    import demo
+    import importacao as I
+    import importar
+    pasta = os.path.dirname(db)
+    marca = os.path.join(pasta, TENTADAS)
+    try:
+        with open(marca, encoding="utf-8") as f:
+            if json.load(f) == novas:
+                return None
+    except (OSError, ValueError):
+        pass
+    print(f"Planilha nova no repositório ({', '.join(sorted(novas))}): reimportando a demonstração…", flush=True)
+    try:
+        rel = importar.aplicar(db, I.DIR_PLANILHAS, cfg=demo.cfg_demonstracao(), dir_relatorios=os.path.join(pasta, "relatorios"))
+    except Exception as e:  # noqa: BLE001 — o site abre com o banco que já tinha
+        with open(marca, "w", encoding="utf-8") as f:
+            json.dump(novas, f)
+        print(f"Reimportação não aplicada ({type(e).__name__}: {e}); o banco ficou como estava.", flush=True)
+        return None
+    if os.path.exists(marca):
+        os.remove(marca)
+    print(f"Reimportação: {rel['status']}", flush=True)
+    return rel["status"]
 
 
 def _administrador(c, perguntar):
@@ -104,6 +152,13 @@ def preparar(dados=None, perguntar=False, migrar=True):
             raise MigraAoRecarregar("O banco é de uma versão anterior: o site migra sozinho ao recarregar.") from None
         _migrar_demonstracao(db)
         c = S.conectar(db)
+    novas = planilhas_novas(c) if demonstracao else {}
+    reimportada = None
+    if novas and migrar:                          # no console (migrar=False) quem reimporta é o site, ao recarregar
+        c.close()
+        reimportada = _atualizar_demonstracao(db, novas)
+        c = S.conectar(db)
+        novas = planilhas_novas(c)
     try:
         criado = None
         if not A.acesso_configurado(c):
@@ -117,7 +172,7 @@ def preparar(dados=None, perguntar=False, migrar=True):
     finally:
         c.close()
     return {"db": db, "demonstracao": demonstracao, "configurado": configurado, "administrador_criado": criado,
-            "demo_desativados": desativados}
+            "demo_desativados": desativados, "planilhas_novas": sorted(novas), "reimportada": reimportada}
 
 
 # ------------------------------------------------------------------ WSGI (PythonAnywhere e semelhantes)
@@ -209,6 +264,9 @@ def main():
         print(f"\nBanco: {info['db']} ({'DEMONSTRAÇÃO' if info['demonstracao'] else 'OFICIAL'})")
         if info["administrador_criado"]:
             print(f"Administrador criado: {info['administrador_criado']}")
+        if info["planilhas_novas"]:
+            print(f"Planilha nova no repositório ({', '.join(info['planilhas_novas'])}): o site reimporta a demonstração "
+                  "ao recarregar (Web › Reload).")
         print("Pronto para o site." if info["configurado"] else "ATENÇÃO: ainda sem administrador; rode de novo e crie o seu.")
         return None
     info = preparar()

@@ -79,6 +79,11 @@ Lançamento direto no item da ADM é ignorado. `pacote_medicao.adm_local`.
 
 ## O pacote mensal no modelo oficial do BM
 
+**Quantidade se lança na nª MC, nunca direto na principal.** A cadeia é nª MC → vertical → principal. Digitar o
+número na coluna da medição da principal apaga a fórmula: a vertical, o cronograma FF e os gráficos ficam em zero, e a
+administração local proporcional não entra. Foi o que aconteceu na 1ª medição do responsável, corrigida em
+04/11/2026 (D-203).
+
 O que a Caesb recebe é o **BM REV04 preenchido, no próprio arquivo** (`pacote_medicao.gerar`), com as fórmulas do
 modelo (D-138). Tela Medição › "Pacote da medição no modelo oficial" › **Baixar pacote (.xlsx)**
 (`GET /api/medicao/pacote/baixar?id=`). O "Resumo interno (.xlsx)" é outra coisa: a conferência interna.
