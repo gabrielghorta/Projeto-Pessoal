@@ -22,3 +22,11 @@ def cfg_teste_real():
         conj.append(t)
     cfg["controles"], cfg["perfil"] = conj, "TESTE"
     return cfg
+
+
+def controle_atual(cfg, pasta=I.DIR_PLANILHAS):
+    """O conjunto de controles dos arquivos que estão hoje em planilhas/ (com revisões, o da revisão vigente)."""
+    from backup import sha256
+    chaves = cfg["controles"][0]["fontes"]
+    atual = {k: sha256(I.caminho(cfg, k, pasta)) for k in chaves}
+    return next(c for c in cfg["controles"] if c["fontes"] == atual)

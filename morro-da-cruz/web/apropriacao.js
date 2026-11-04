@@ -13,6 +13,10 @@ const APR_ATRIBUTOS = ['descricao_resumida', 'material', 'diametro', 'pressao', 
 const aprEtiqueta = it => `<span class="chip ${APR_COR[it.situacao] || ''}">${esc(it.rotulo)}</span>`;
 const aprPreco = it => it.preco == null ? '—' : reais(it.preco) + (it.preco_estimado ? ' <small>(estimado)</small>' : '');
 const aprNome = it => `${esc(it.item_bm || it.item)} · ${esc(it.resumida || it.descricao)}`;
+const aprGrupo = it => {                                 // "CANTEIRO - SERVIÇO" → "Canteiro · serviço (1.2)"
+  const [g, t] = String(it.subgrupo_nome || `${it.grupo} - ${it.tipo}`).split(' - '), m = s => String(s || '').toLowerCase();
+  return `${esc(g.charAt(0) + m(g.slice(1)))}${t ? ' · ' + esc(m(t)) : ''}${it.subgrupo ? ` (${esc(it.subgrupo)})` : ''}`;
+};
 
 /* ---------------------------------------------------------------- Lançamento do dia: as páginas do lançamento solto */
 // apropriação direta, apontamento sem NS, fotos e soldas, clima do dia (PAGINAS.campo em app.js); a NS do dia é em Notas de serviço
@@ -64,8 +68,12 @@ async function aprBuscar() {
   if (q.length < 2) { $('#aprResultados').innerHTML = ''; return; }
   const r = await api('/api/base-custo/busca?q=' + encodeURIComponent(q)).catch(() => null);
   if (!r || n !== APR.busca) return;                       // chegou a resposta de uma busca mais velha
-  $('#aprResultados').innerHTML = r.itens.length ? r.itens.slice(0, 20).map(it => `<button type="button" class="apr-res" data-apr-ref="${esc(it.ref)}"
-      aria-pressed="${String(!!APR.item && APR.item.ref === it.ref)}"><span><b>${aprNome(it)}</b><br><small>${esc(it.descricao.slice(0, 140))}</small></span>
+  // o mesmo item aparece uma vez por orçamento parcial (canteiro, redes, caixas…): cada um diz o seu, e o do grupo
+  // escolhido vem primeiro
+  const g = $('#aprGrupo').value, itens = r.itens.slice(0, 20);
+  if (g) itens.sort((a, b) => (a.grupo !== g) - (b.grupo !== g));
+  $('#aprResultados').innerHTML = itens.length ? itens.map(it => `<button type="button" class="apr-res" data-apr-ref="${esc(it.ref)}"
+      aria-pressed="${String(!!APR.item && APR.item.ref === it.ref)}"><span><b>${aprNome(it)}</b><br><span class="apr-grupo">${aprGrupo(it)}</span><br><small>${esc(it.descricao.slice(0, 140))}</small></span>
       <span style="text-align:right">${aprEtiqueta(it)}<br><small>${esc(it.unidade)} · ${aprPreco(it)}</small></span></button>`).join('')
     : '<p class="vazio">Nada encontrado. Se o item não está no orçamento, use "O item não está na lista".</p>';
 }
@@ -153,8 +161,9 @@ function aprHtml(a, comEstorno) {
     <div class="apr-riscado">${nf(a.quantidade, 3)} ${esc(a.unidade)} · ${reais(a.valor)} · ${aprEtiqueta(it)}</div>
     <small>${esc(a.executor)}${a.local_texto ? ' · ' + esc(a.local_texto) : ''} · ${esc(a.o_que_foi_feito)}</small>${med ? `<br><small>${med}</small>` : ''}
     ${a.estornado_em ? `<div class="aviso info">Estornada por ${esc(a.estornado_por)} em ${dataBR(String(a.estornado_em).slice(0, 10))}: ${esc(a.estorno_motivo)}</div>` : ''}
+    ${(a.correcoes || []).map(c => `<div class="aviso info">Data corrigida de ${dataBR(c.antes)} para ${dataBR(c.depois)} por ${esc(c.por)} em ${dataBR(String(c.em).slice(0, 10))}: ${esc(c.motivo)}</div>`).join('')}
     <div class="acoes" style="margin-top:6px">${a.documentos.map(d => `<a class="btn" href="/api/apropriacao/arquivo?doc=${d.id}" target="_blank" rel="noopener">${esc(d.nome_original || 'evidência')}</a>`).join('')}
-      ${comEstorno && !a.estornado_em && pode('apropriacao') ? `<button type="button" class="btn" data-apr-estornar="${a.id}">Estornar</button>` : ''}</div>
+      ${comEstorno && !a.estornado_em && pode('apropriacao') ? `<button type="button" class="btn" data-apr-data="${a.id}" data-atual="${esc(a.data)}">Corrigir data</button><button type="button" class="btn" data-apr-estornar="${a.id}">Estornar</button>` : ''}</div>
     <small>Registrada por ${esc(a.registrado_por)} em ${dataBR(String(a.registrado_em).slice(0, 10))}</small></div>`;
 }
 
@@ -239,7 +248,24 @@ function aprRenderItensAprovar(itens) {
         <div data-apr-form="${esc(it.ref)}"></div>` : ''}</div>`).join('') : 'Nenhum item a aprovar.';
 }
 
+// "15/10/2026" ou "2026-10-15" → "2026-10-15" (ou null)
+const aprIso = t => { const m = String(t || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : (/^\d{4}-\d{2}-\d{2}$/.test(String(t || '').trim()) ? String(t).trim() : null); };
+
 document.addEventListener('click', async ev => {
+  const cd = ev.target.closest('[data-apr-data]');
+  if (cd) {                                                // a data errada se corrige sem estorno; a de antes fica guardada
+    const txt = prompt('Data em que o serviço foi feito (dd/mm/aaaa):', dataBR(cd.dataset.atual));
+    if (txt === null) return;
+    const data = aprIso(txt);
+    if (!data) { toast('Data inválida: use dd/mm/aaaa.', 'erro'); return; }
+    const motivo = prompt('Motivo da correção da data (a data de antes fica no histórico):');
+    if (!motivo || !motivo.trim()) return;
+    const r = await acao(() => api('/api/apropriacao/corrigir-data', { apropriacao_id: +cd.dataset.aprData, data, motivo }),
+      'Data corrigida.').catch(() => null);
+    if (r) { aprCarregarLista(); if (APR.item) aprEscolher(APR.item.ref, false); }
+    return;
+  }
   const est = ev.target.closest('[data-apr-estornar]');
   if (est) {
     const motivo = prompt('Motivo do estorno (a apropriação fica riscada; nada é apagado):');

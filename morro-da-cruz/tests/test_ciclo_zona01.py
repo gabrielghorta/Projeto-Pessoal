@@ -39,7 +39,7 @@ import regras as R  # noqa: E402
 import server  # noqa: E402
 import servicos as S  # noqa: E402
 from fotos_teste import jpeg  # noqa: E402
-from perfil_teste import cfg_teste_real  # noqa: E402
+from perfil_teste import cfg_teste_real, controle_atual  # noqa: E402
 from test_acesso import SENHA, Cliente  # noqa: E402
 
 CFG = I.carregar_config()
@@ -404,7 +404,7 @@ class CicloZona01(unittest.TestCase):
         wb.save(p)
         wb.close()
         cfg = json.loads(json.dumps(cfg_teste_real()))
-        ctl = dict(cfg["controles"][0], id="CTRL-TESTE revisão do ciclo Zona01")
+        ctl = dict(controle_atual(cfg), id="CTRL-TESTE revisão do ciclo Zona01")
         ctl["fontes"] = dict(ctl["fontes"], redes=backup.sha256(p))
         cfg["controles"] = [ctl]
         rel = importar.aplicar(self.db, pl, cfg=cfg, dir_relatorios=self.rels)

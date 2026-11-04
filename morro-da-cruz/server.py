@@ -674,6 +674,8 @@ def r_medicao_restricoes(q, c):
 ROTAS_APROPRIACAO = {
     "/api/apropriacao": ("apropriacao", lambda b, c: AP.apropriar(c, b, b["por"], C.documento_dir(c))),
     "/api/apropriacao/estornar": ("apropriacao", lambda b, c: AP.estornar(c, int(b["apropriacao_id"]), b.get("motivo"), b["por"])),
+    "/api/apropriacao/corrigir-data": ("apropriacao", lambda b, c: AP.corrigir_data(c, int(b["apropriacao_id"]), b.get("data"),
+                                                                                    b.get("motivo"), b["por"])),
     "/api/base-custo/item-novo": ("apropriacao", lambda b, c: AP.propor_item(c, b, b["por"])),
     "/api/base-custo/decidir": ("medicao", lambda b, c: AP.decidir_item(c, b, b["por"], C.documento_dir(c))),
     "/api/base-custo/codigo-oficial": ("medicao", lambda b, c: AP.registrar_codigo_oficial(c, b, b["por"], C.documento_dir(c))),

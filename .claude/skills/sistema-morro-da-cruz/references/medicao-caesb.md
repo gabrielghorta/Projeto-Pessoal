@@ -35,7 +35,8 @@ a administração local e o pacote mensal que o sistema gera no próprio BM REV0
   D-54). Escavação mecanizada em dois itens: rateio pela proporção contratual, hipótese (D-51).
 - **Parcela única:** a mesma parcela (tipo|gaveta|serviço|alvo|item|unidade) não entra em duas medições (regra + índice
   único no banco); o mesmo alvo × serviço também é conferido sem o item.
-- **Item a aprovar** (16 itens "XX" e itens novos): todo lançamento fica PENDENTE (`ITEM_A_APROVAR`) até o código
+- **Item a aprovar** (código vazio ou fora do formato da Caesb e itens novos; os 14 códigos com X são da base Caesb
+  01/2025, D-205): todo lançamento fica PENDENTE (`ITEM_A_APROVAR`) até o código
   oficial (`codigos_oficiais`) ou a aprovação; quando a restrição cai, **entra sozinho** (na medição aberta vira
   PROPOSTO; numa fechada, uma cópia entra na próxima aberta com `origem_id`).
 - Painel **"Medível com restrição"**: valor parado por restrição (item a aprovar, acima do contrato, teto do subgrupo,

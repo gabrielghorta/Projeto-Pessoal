@@ -113,7 +113,7 @@ class TestEntregaAntesDaIdentificacao(BaseCompras):
             I.preparar_v22(self.c)
         self.assertEqual(self.q('SELECT nf_id,material_id,quantidade FROM nf_liberadas_v22'), [(nf, MAT, 4)])
         self.assertEqual(self.q('SELECT aprovada_por,aprovada_em FROM notas_fiscais'), [(None, None)])
-        self.assertEqual((self.saldo(), S.versao_banco(self.c)), ((4, 0), 22))
+        self.assertEqual((self.saldo(), S.versao_banco(self.c)), ((4, 0), S.VERSAO_ESQUEMA))
         self.assertEqual(self.q('SELECT * FROM movimentos'), antes)
         self.assertEqual(self.q('PRAGMA foreign_key_check'), [])
 

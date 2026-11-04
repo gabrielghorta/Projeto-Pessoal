@@ -147,7 +147,7 @@ A NS de topografia ainda não tinha sido feita (ficou para 03 a 13/11/2026).
 | BM vertical | Os mesmos itens repetidos por frente × material/serviço × categoria; chave `CódCronFF_ItemBM` (ex.: `2.2_5.8.44`). Alimenta o cronograma FF. |
 | nª MC | Memória de cálculo do mês: uma folha por item medido (fotos, justificativa, memorial). |
 | Cód. Cron. FF | Grupo do cronograma físico-financeiro (ex.: `2.2` REDES – SERVIÇO, `6.2` ADMINISTRAÇÃO LOCAL). |
-| Código Caesb | Código da composição; liga o vertical à juntada. Só números = base Caesb; com "SI" = SINAPI; com "SC" = SICRO (todos contratuais); com "XX" = provisório (a aprovar). |
+| Código Caesb | Código da composição; liga o vertical à juntada. Só números = base Caesb; com "SI" = SINAPI; com "SC" = SICRO; com "X" (14 códigos, como 8008508024X238) = também base Caesb, conferidos no orçamento da juntada 1426, data-base 01/2025 (D-205). Todos contratuais. Provisório só se vazio ou fora do formato. |
 | P0 | Preço original, sem reajuste. |
 | NS | Nota de serviço da Caesb (PDF; planilha opcional .xlsx/.xls). Tipos no sistema: topografia, cadastro, serviço de obra e NS do dia (execução). |
 | Estaca | 20 m: `EST. 3+16,55` = 3 × 20 + 16,55 = 76,55 m. |

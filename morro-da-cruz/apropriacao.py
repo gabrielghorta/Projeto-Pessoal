@@ -1,13 +1,14 @@
 """Apropriação direta (lançamento sem nota de serviço) e a base de custo (módulos B e E).
 
-* Situação do item, só duas: APROVADO (código da base Caesb, SINAPI ou SICRO, que vieram no orçamento da licitação, ou
-  código provisório com o código oficial já registrado) ou A_APROVAR (código provisório com "X" sem o oficial, ou item
-  novo fora do BM). Vale para toda a medição: servicos._lancar segura o item a aprovar (restrição ITEM_A_APROVAR).
+* Situação do item, só duas: APROVADO (código da base Caesb, SINAPI ou SICRO, que vieram no orçamento da licitação,
+  inclusive os com X, D-205; ou código provisório com o código oficial já registrado) ou A_APROVAR (código vazio ou fora do
+  formato da Caesb sem o oficial, ou item novo fora do BM). Vale para toda a medição: servicos._lancar segura o item a aprovar (restrição ITEM_A_APROVAR).
 * Busca por qualquer identificador (item, código, descrição, resumida, grupo, material, diâmetro…), sem acento e em
   qualquer ordem, com os sinônimos do orçamento (TÊ/TE, PEAD, FOFO, PVC, Ø/DE/DN/MM).
 * Apropriação: Engenharia e Administração; data já ocorrida; pelo menos uma evidência; correção só por estorno com
   motivo (o original fica). A apropriação em item aprovado, de serviço e dentro da quantidade do BM vira proposta na
   gaveta 5 da medição de TESTE aberta (a do mês da data ou a próxima), com a chave da parcela: não duplica.
+* corrigir_data(): a data errada se corrige sem estorno, com motivo, e a de antes fica guardada (D-204).
 * restricoes(): o que foi executado ou registrado e está parado, com o valor, há quantos dias e a ação que libera.
   Quando a restrição cai, sincronizar() propõe sozinho na medição de teste aberta.
 A planilha do BM não muda: o código oficial fica em codigos_oficiais e o item novo em itens_novos_base.
@@ -476,6 +477,42 @@ def estornar(conn, aid, motivo, por):
     return resumo(conn, ap["id"])
 
 
+def _br(iso):
+    return f"{iso[8:10]}/{iso[5:7]}/{iso[:4]}" if iso and len(iso) >= 10 else str(iso)
+
+
+def corrigir_data(conn, aid, data, motivo, por):
+    """Corrige a data da apropriação (o dia em que o serviço foi feito) sem estornar: item, quantidade e evidências
+    ficam; a data de antes fica em apropriacao_correcoes, com o motivo, quem corrigiu e quando (D-204). Parada, ela vai
+    sozinha para a medição de teste aberta da data nova. Já proposta numa medição, só se a data nova ainda for dessa
+    medição: fechada nunca muda (D-16), e trocar de medição é estorno e lançamento novo."""
+    ap = _ap(conn, aid)
+    if ap["estornado_em"]:
+        raise RegraViolada(f"A apropriação nº {ap['id']} foi estornada: não há data a corrigir.")
+    nova = _data(data, "Data corrigida")
+    if nova == ap["data"]:
+        raise RegraViolada(f"A apropriação nº {ap['id']} já está com a data {_br(nova)}.")
+    motivo = re.sub(r"\s+", " ", str(motivo or "")).strip()
+    if not motivo:
+        raise RegraViolada("Informe o motivo da correção da data.")
+    for l in _lancamentos(conn, ap["id"]):
+        if l["status"] != "PROPOSTO":
+            continue
+        if l["medicao_status"] != "ABERTA":
+            raise RegraViolada(f"A apropriação nº {ap['id']} já está na {l['numero']}ª medição, que está fechada: a data "
+                               "não muda (D-16).")
+        alvo = _medicao_aberta(conn, nova)
+        if not alvo or alvo["id"] != l["medicao_id"]:
+            raise RegraViolada(f"A apropriação nº {ap['id']} já está na {l['numero']}ª medição, e a data {_br(nova)} é de "
+                               "outra medição: estorne e lance de novo com a data certa.")
+    with transacao(conn):
+        conn.execute("""INSERT INTO apropriacao_correcoes(apropriacao_id,campo,antes,depois,motivo,por,em)
+                        VALUES (?,?,?,?,?,?,?)""", (ap["id"], "data", ap["data"], nova, motivo, por, _agora()))
+        conn.execute("UPDATE apropriacoes SET data=? WHERE id=?", (nova, ap["id"]))
+        _propor(conn, dict(ap, data=nova))
+    return resumo(conn, ap["id"])
+
+
 def _rotulo_executor(conn, ap):
     if ap["executor_tipo"] == "EQUIPE_OBRA":
         eq = _one(conn, "SELECT nome FROM equipes WHERE id=?", ap["equipe_id"])
@@ -502,6 +539,8 @@ def resumo(conn, aid, cat=None):
                                           (ap["id"],)))
     ap["lancamentos"] = [{k: l[k] for k in ("id", "medicao_id", "numero", "medicao_status", "servico", "quantidade", "status",
                                             "motivo")} for l in lanc]
+    ap["correcoes"] = _rows(conn.execute("SELECT campo, antes, depois, motivo, por, em FROM apropriacao_correcoes "
+                                         "WHERE apropriacao_id=? ORDER BY id", (ap["id"],)))
     ap["proposto"] = proposto
     ap["parado"] = 0.0 if ap["estornado_em"] else round(ap["quantidade"] - proposto, 4)
     ap["valor"] = float(R.produto_excel(ap["quantidade"], it.get("preco") or 0))
@@ -610,7 +649,8 @@ def _documento_pdf(conn, b64, nome, por, dir_docs):
 def _codigo_valido(codigo):
     c = str(codigo or "").strip().upper()
     if not c or R.origem_codigo(c) == "PROVISORIO":
-        raise RegraViolada("Informe o código oficial da Caesb (só números, ou o código SINAPI/SICRO), sem 'X'.")
+        raise RegraViolada("Informe o código oficial da Caesb, como está na base de custos (por exemplo 0173003001001, "
+                           "8008508024X238 ou 8000508010SI98459).")
     return c
 
 
