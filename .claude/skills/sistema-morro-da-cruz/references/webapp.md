@@ -99,6 +99,7 @@ aberta (D-113: os lançamentos esperam em `SEM_MEDICAO_ABERTA` e entram quando a
 | `pacote_medicao.py` / `xlsx_modelo.py` | Pacote mensal no modelo oficial do BM / edição de .xlsx por dentro (XML) |
 | `exportar.py` | Resumo interno da medição (.xlsx de conferência) |
 | `relatorios.py` / `diario.py` | Relatórios de operação / diário de obra e interferências |
+| `relatorio_mensal.py` / `pdf_simples.py` | Relatório mensal (RM) da medição em PDF, D-207 / gerador de PDF sem dependência (Helvetica condensada, tabelas, figuras vetoriais, sumário) |
 | `mapa_geral.py` | Visão geral do REV02 para o Mapa iluminado (satélite, zonas, traçado) |
 | `imagens.py` | Validação de imagem, miniatura |
 | `documentos.py` / `drive.py` | Documentos oficiais (links do Drive) / ligação com o Drive |

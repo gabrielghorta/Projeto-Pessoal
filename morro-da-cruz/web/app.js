@@ -1412,6 +1412,12 @@ $('#medFechar').addEventListener('click', async () => {
 });
 
 /* ---------------------------------------------------------------- 7. relatórios */
+function rlPdfLink() {
+  const id = $('#rlMed').value, a = $('#rlPdf');
+  a.href = id ? '/api/relatorios/mensal?id=' + encodeURIComponent(id) : '#';
+  a.setAttribute('aria-disabled', id ? 'false' : 'true');
+  a.classList.toggle('desativado', !id);
+}
 const ROT_PEND = { impedimentos: 'Impedimentos', nao_conformidades: 'Não conformidades', intervalos_sem_verificacao: 'Intervalos sem verificação',
   reaterro_sem_cadastro: 'Reaterro sem cadastro', legado_sem_posicao: 'Legado sem posição', aguardando_ok_interno: 'Aguardando OK interno',
   concluidos_sem_fotos: 'Concluídos sem fotos', cadastro_pronto: 'Cadastro não enviado', cadastro_recebido: 'Cadastro a conferir',
@@ -1422,8 +1428,12 @@ async function carregarRelatorios() {
   if ($('#rlFrente').options.length < 2) $('#rlFrente').innerHTML += (RESUMO.frentes || []).map(f => `<option>${esc(f)}</option>`).join('');
   const q = new URLSearchParams({ ini: $('#rlIni').value, fim: $('#rlFim').value });
   if ($('#rlFrente').value) q.set('frente', $('#rlFrente').value);
-  $('#rlExport').href = '/api/relatorios/exportar?' + q;
   const r = RELATORIO = await api('/api/relatorios?' + q);
+  const sel = $('#rlMed'), antes = sel.value;
+  sel.innerHTML = (r.medicoes || []).length ? r.medicoes.slice().reverse().map(m => `<option value="${m.id}">${m.numero}ª medição${m.tipo === 'TESTE' ? ' de teste' : ''} · ${dataBR(m.periodo_ini)} a ${dataBR(m.periodo_fim)} · ${m.status === 'FECHADA' ? 'fechada' : 'aberta'}</option>`).join('')
+    : '<option value="">nenhuma medição aberta</option>';
+  if (antes && [...sel.options].some(o => o.value === antes)) sel.value = antes;
+  rlPdfLink();
   const av = r.avanco, t = av.total_periodo;
   const dias = Object.entries(av.por_dia), maxd = Math.max(1, ...dias.map(d => d[1]));
   $('#rlAvanco').className = '';
@@ -1456,6 +1466,8 @@ function renderMateriaisRel() {
     : '<div class="vazio" style="padding:8px">Nenhum material com movimento.</div>';
 }
 ['#rlIni', '#rlFim', '#rlFrente'].forEach(x => $(x).addEventListener('change', carregarRelatorios));
+$('#rlMed').addEventListener('change', rlPdfLink);
+$('#rlPdf').addEventListener('click', e => { if (!$('#rlMed').value) e.preventDefault(); });
 $('#rlSoMov').addEventListener('change', () => RELATORIO && renderMateriaisRel());
 
 /* ---------------------------------------------------------------- 6. usuários e histórico */

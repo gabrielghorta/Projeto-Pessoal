@@ -773,13 +773,16 @@
 
   <!-- ======================================================= ADMINISTRATIVO: RELATÓRIOS -->
   <section class="aba" id="aba-relatorios">
-    <header class="cab-tela"><h1>Relatórios</h1><p>Material, avanço e pendências, com exportação em planilha.</p></header>
+    <header class="cab-tela"><h1>Relatórios</h1><p>Material, avanço e pendências na tela. O relatório mensal da medição sai em PDF.</p></header>
     <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas de Relatórios" style="margin:0 0 16px"></div>
     <div class="painel">
       <div class="acoes" style="justify-content:space-between">
         <div class="linha"><label>De<input type="date" id="rlIni"></label><label>Até<input type="date" id="rlFim"></label>
           <label>Frente<select id="rlFrente"><option value="">obra inteira</option></select></label></div>
-        <a class="btn azul" id="rlExport" href="#">⬇ Exportar .xlsx</a>
+      </div>
+      <div class="acoes" style="margin-top:10px">
+        <label>Relatório mensal da medição<select id="rlMed"></select></label>
+        <a class="btn azul" id="rlPdf" href="#" aria-disabled="true">⬇ Relatório mensal (PDF)</a>
       </div>
       <p class="vazio" style="margin:4px 0 0">Tudo calculado a partir dos registros efetivos: sem movimentos estornados e sem intervalos anulados por retificação.</p>
     </div>

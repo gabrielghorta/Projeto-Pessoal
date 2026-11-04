@@ -1,11 +1,8 @@
 """Módulo F — relatórios: ciclo do material, avanço por frente/equipe/período/etapa e pendências por frente, conferidos
 contra os movimentos e intervalos efetivos. Planilhas sintéticas, bancos temporários."""
-import io
 import os
 import sys
 import unittest
-
-from openpyxl import load_workbook
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(AQUI))
@@ -109,19 +106,23 @@ class TestAvancoEPendencias(BaseCampo):
 
 
 class TestRelatoriosPeloHTTP(BaseHTTP):
-    def test_consulta_e_exportacao(self):
+    def test_consulta_e_relatorio_mensal_em_pdf(self):
         self.assertEqual(self.cliente().get("/api/relatorios")[0], 401)
+        mid = S.criar_medicao(self.c, 1, D, D2)
         enc, eng = self.cliente("enc1"), self.cliente("eng1")                         # Relatórios: tela do Administrativo
-        self.assertEqual((enc.get("/api/relatorios")[0], enc.get(f"/api/relatorios/exportar?ini={D}&fim={D2}")[0]), (403, 403))
+        self.assertEqual((enc.get("/api/relatorios")[0], enc.get(f"/api/relatorios/mensal?id={mid}")[0]), (403, 403))
         st, r = eng.get(f"/api/relatorios?ini={D}&fim={D2}&frente=Zona01")
         self.assertEqual(st, 200, r)
-        self.assertEqual(set(r), {"materiais", "avanco", "pendencias", "faltantes"})
+        self.assertEqual(set(r), {"materiais", "avanco", "pendencias", "faltantes", "medicoes"})
         self.assertEqual([f["frente_id"] for f in r["avanco"]["frentes"]], ["Zona01"])
-        st, xlsx = eng.get(f"/api/relatorios/exportar?ini={D}&fim={D2}")
+        self.assertEqual([(m["id"], m["numero"], m["tipo"]) for m in r["medicoes"]], [(mid, 1, "TESTE")])
+        st, pdf = eng.get(f"/api/relatorios/mensal?id={mid}")                   # D-207: o PDF no lugar da planilha
         self.assertEqual(st, 200)
-        wb = load_workbook(io.BytesIO(xlsx))
-        self.assertEqual(wb.sheetnames, ["MATERIAIS", "AVANÇO", "PENDÊNCIAS", "FALTANTES"])
-        self.assertEqual(self.q("SELECT COUNT(*) FROM auditoria WHERE rota='/api/relatorios/exportar'")[0][0], 1)
+        self.assertTrue(pdf.startswith(b"%PDF-1.4"))
+        self.assertEqual(self.q("SELECT COUNT(*) FROM auditoria WHERE rota='/api/relatorios/mensal'")[0][0], 1)
+        self.assertEqual(eng.get("/api/relatorios/exportar")[0], 404)                # a exportação em planilha saiu
+        self.assertEqual(eng.get("/api/relatorios/mensal?id=999")[0], 422)
+        self.assertEqual(eng.get("/api/relatorios/mensal")[0], 400)
 
 
 if __name__ == "__main__":

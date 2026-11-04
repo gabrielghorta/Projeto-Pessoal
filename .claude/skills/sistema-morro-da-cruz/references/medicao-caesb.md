@@ -139,16 +139,17 @@ um pouco a cada folha (o modelo original também); **gere o PDF pelo Excel**.
 acumulado e saldo P0; reajuste; locado acumulado (= item de locação com NS); rede executada no mês e acumulada
 (relatório, item de assentamento, mapa); aplicado de tubo Caesb; efetivo e equipamentos.
 
-### Relatório mensal (fase 2, ainda não feito)
+### Relatório mensal em PDF (feito em 04/11/2026, D-207 e D-208)
 
-Word (cabeçalho com o logo da Ankara: contrato, nº do relatório, período — D-151), capa com o **mapa das zonas** como
-no relatório de conexões das 11 zonas (não a ponte do Lago Sul, D-148). Estrutura de referência (Lago Sul): capa,
-sumário, apresentação, identificação, empreendimento, dados contratuais, quadro resumo gerencial, dados gerenciais
-(faturado, reajuste, saldo, prazos), desenvolvimento e canteiro, organogramas, atividades por semana (croqui com
-executado/anterior/não executado e estacas), equipes e materiais (compatibilização de tubos Caesb), execução (locação
-com NS; rede executada), próximo mês, cronograma FF e os 4 gráficos, histograma (efetivo por dia), observações,
-relatório fotográfico (6 fotos por página), anexos (mapa iluminado e caminhamento da medição). Decisões já dadas:
-dados fixos numa tela "Dados do contrato" preenchida uma vez (D-145); textos do mês completados no Word, nos lugares
-marcados (D-146); presença diária marcada no sistema por RH ou supervisor (D-147); imagens fixas enviadas uma vez
-(D-148); IDA/SAOB fora (D-149); cronograma do Project depois (D-150). Dados pessoais só onde a Caesb exige, vindos do
-cadastro; histograma por iniciais ou matrícula. Falta o documento da juntada (o Drive não abriu).
+A tela Relatórios gera o RM da medição escolhida em PDF (`relatorio_mensal.py` + `pdf_simples.py`, sem dependência
+nova), no lugar da planilha antiga. Capítulos do Lago Sul (1 a 19) e visual do relatório de conexões: capa com o mapa
+vetorial das zonas, cabeçalho com o logo da Ankara (tirado do BM) e 3 campos (contrato, nº do RM, período), Arial
+Narrow (Helvetica condensada), títulos vinho, tabelas azul-marinho, borda dupla. Tudo sai do banco no período da
+medição: valores como o pacote no BM (juntada, ADM proporcional); previsto da aba GRÁFICOS; uma seção por semana como
+no modelo (execução, liberação, apropriação, ocorrência e croqui com zoom); equipes e efetivo pelo check-in; tubos da
+Caesb pelo almoxarifado; locação, cadastro e execução por diâmetro; gráficos 01 a 08 vetoriais; todas as fotos do mês
+(6 por página, até 60); mapa iluminado e caminhamento. O que não está no sistema (CNO, vigência, responsáveis, canteiro,
+DDS e reuniões) sai PENDENTE em amarelo. Medição de teste: "MEDIÇÃO DE TESTE – NÃO OFICIAL" em toda página.
+Mudou: D-146 (não passa pelo Word) e D-149 (IDA e SAOB entram, sem vistoria registrada). Continua para depois: a tela
+"Dados do contrato" (D-145) e o cronograma do Project (D-150). Fora do site, o RM 01/2026 REV01 foi montado à mão com os
+documentos da obra (Word e PDF, 30 páginas) e serviu de modelo.

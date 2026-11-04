@@ -7,13 +7,11 @@
   parte (não tem data por intervalo nem posição).
 * Pendências por frente: ocorrências, verificação, reaterro sem cadastro, legado, aguardando OK interno, cadastro,
   programação vencida; e as gerais (reservas vencidas, notas a conferir, quarentena).
+
+A exportação em planilha saiu (D-207): o arquivo da tela Relatórios agora é o relatório mensal da medição em PDF
+(relatorio_mensal.py), no formato do RM da Ankara.
 """
-import io
 from collections import defaultdict
-
-
-from openpyxl import Workbook
-from openpyxl.styles import Font
 
 import compras as C
 import planejamento as P
@@ -157,70 +155,3 @@ def pendencias(conn, frente=None, hoje=None):
 def painel(conn, ini, fim, frente=None):
     return {"materiais": materiais(conn), "avanco": avanco(conn, ini, fim, frente), "pendencias": pendencias(conn, frente),
             "faltantes": P.faltantes(conn, ini, fim, frente)}
-
-
-# ------------------------------------------------------------------ exportação
-ROTULOS_PEND = {"impedimentos": "Impedimentos abertos", "nao_conformidades": "Não conformidades abertas",
-                "intervalos_sem_verificacao": "Intervalos sem verificação", "reaterro_sem_cadastro": "Reaterro sem cadastro de campo",
-                "legado_sem_posicao": "Trechos com legado sem posição", "aguardando_ok_interno": "Concluídos aguardando OK interno",
-                "concluidos_sem_fotos": "Concluídos sem as fotos obrigatórias", "cadastro_pronto": "Cadastro pronto, não enviado",
-                "cadastro_recebido": "Cadastro recebido, a conferir/protocolar", "cadastro_negado": "Cadastro negado pela Caesb",
-                "programacao_vencida": "Programação vencida sem encerramento"}
-
-
-def planilha(conn, ini, fim, frente=None):
-    d = painel(conn, ini, fim, frente)
-    wb = Workbook()
-    neg = Font(bold=True)
-
-    def aba(ws, titulo, cab, linhas):
-        ws.append([titulo])
-        ws["A1"].font = Font(bold=True, size=12)
-        ws.append([f"{S.contrato(conn)} · período {ini} a {fim}" + (f" · frente {frente}" if frente else " · obra inteira")])
-        ws.append([])
-        ws.append(cab)
-        for c in ws[4]:
-            c.font = neg
-        for l in linhas:
-            ws.append(l)
-        ws.freeze_panes = "A5"
-
-    ws = wb.active
-    ws.title = "MATERIAIS"
-    aba(ws, "Ciclo do material — previsto × comprado × recebido × reservado × aplicado × medido",
-        ["Material", "Descrição", "Unid.", "Propriedade", "Previsto (projeto)", "Requisitado", "Comprado", "A receber",
-         "Quarentena", "Recebido (aceito − devolvido)", "Saldo almox.", "Reservado", "Com as equipes", "Aplicado", "Perda", "Medido"],
-        [[m["material_id"], m["descricao"], m["unidade"], m["propriedade"], m["previsto"], m["solicitado"], m["comprado"],
-          m["a_receber"], m["quarentena"], m["recebido"], m["saldo_almox"], m["reservado"], m["com_equipes"], m["aplicado"],
-          m["perda"], m["medido_situacao"]] for m in d["materiais"]])
-    ws = wb.create_sheet("AVANÇO")
-    av = d["avanco"]
-    aba(ws, "Avanço no período por frente e equipe (intervalos efetivos, m)",
-        ["Frente", "Equipe", "Assentado", "Cadastro de campo", "Reaterrado", "Trechos"],
-        [[l["frente_id"], l["equipe_id"], l["ASSENTADO"], l["CADASTRO_CAMPO"], l["REATERRADO"], l["trechos"]] for l in av["por_equipe"]]
-        + [["TOTAL", "", av["total_periodo"]["ASSENTADO"], av["total_periodo"]["CADASTRO_CAMPO"], av["total_periodo"]["REATERRADO"], ""]])
-    ws.append([])
-    ws.append(["Acumulado por frente (todas as datas)", "Trechos", "Extensão (m)", "Assentado (m)", "% assentado", "Cadastro de campo (m)",
-               "Reaterrado (m)", "Legado sem posição (m)", "Nós", "Nós concluídos"])
-    for c in ws[ws.max_row]:
-        c.font = neg
-    for f in av["frentes"]:
-        ws.append([f["frente_id"], f["trechos"], f["extensao_m"], f["assentado_m"], f["assentado_pct"], f["cadastro_campo_m"],
-                   f["reaterrado_m"], f["legado_sem_posicao_m"], f["nos"], f["nos_concluidos"]])
-    ws = wb.create_sheet("PENDÊNCIAS")
-    pend = d["pendencias"]
-    aba(ws, "Pendências por frente", ["Frente"] + list(ROTULOS_PEND.values()) + ["Total"],
-        [[f["frente_id"]] + [f.get(k, 0) for k in ROTULOS_PEND] + [f["total"]] for f in pend["frentes"]])
-    ws.append([])
-    g = pend["gerais"]
-    for rot, v in (("Reservas vencidas", g["reservas_vencidas"]), ("Notas a conferir", g["notas_a_conferir"]),
-                   ("Itens em quarentena", g["itens_em_quarentena"])):
-        ws.append([rot, v])
-    ws = wb.create_sheet("FALTANTES")
-    aba(ws, "Materiais faltantes para a programação do período",
-        ["Material", "Descrição", "Unid.", "Previsto", "Reservado", "Disponível", "A receber", "Faltante"],
-        [[f["material_id"], f["descricao"], f["unidade"], f["previsto"], f["reservado"], f["disponivel"], f["a_receber"], f["faltante"]]
-         for f in d["faltantes"]])
-    buf = io.BytesIO()
-    wb.save(buf)
-    return f"RELATORIOS_{ini}_{fim}{'_' + frente if frente else ''}.xlsx", buf.getvalue()

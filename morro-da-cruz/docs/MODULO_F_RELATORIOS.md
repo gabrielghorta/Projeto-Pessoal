@@ -4,7 +4,7 @@ CT 10.239/2026 · 17/10/2026 · esquema v13 (sem mudança de esquema) · plano: 
 
 ## Relatórios (aba 7, `relatorios.py`)
 
-Todos os relatórios são calculados a partir dos registros efetivos: sem movimentos estornados e sem intervalos anulados por retificação. O filtro é por período e frente. A exportação gera um .xlsx com as abas MATERIAIS, AVANÇO, PENDÊNCIAS e FALTANTES.
+Todos os relatórios são calculados a partir dos registros efetivos: sem movimentos estornados e sem intervalos anulados por retificação. O filtro dos painéis é por período e frente. O arquivo da tela é o relatório mensal da medição em PDF (D-207, seção abaixo); a planilha de exportação saiu.
 
 | Relatório | Colunas e regras | O que não é |
 |---|---|---|
@@ -14,8 +14,29 @@ Todos os relatórios são calculados a partir dos registros efetivos: sem movime
 | **Faltantes** | A mesma regra da aba 1.1: previsto na programação − reservado para a equipe no dia − disponível; mostra também o a receber. | — |
 
 Rotas:
-- `GET /api/relatorios?ini=&fim=&frente=`: perfis que abrem a tela Relatórios (Engenharia e Administração);
-- `GET /api/relatorios/exportar?...`: a exportação fica registrada na auditoria.
+- `GET /api/relatorios?ini=&fim=&frente=`: perfis que abrem a tela Relatórios (Engenharia e Administração); traz também a
+  lista das medições (`medicoes`) para a escolha do relatório mensal;
+- `GET /api/relatorios/mensal?id=`: o relatório mensal da medição em PDF, registrado na auditoria (D-207).
+
+## Relatório mensal em PDF (D-207, D-208)
+
+`relatorio_mensal.py` junta os dados da medição e monta o PDF com `pdf_simples.py` (biblioteca padrão e o Pillow, sem
+dependência nova). Nome: `RM_nn-AAAA_MORRO_DA_CRUZ_CT_10239-2026[_TESTE_NAO_OFICIAL].pdf`.
+
+| Capítulo | De onde vem |
+|---|---|
+| Capa e cabeçalho | Mapa vetorial das zonas (trechos do banco); logo da Ankara tirado do BM oficial; contrato, nº do RM e período da medição |
+| 1 Sumário | Os títulos com as páginas, calculados depois de montar o corpo |
+| 2 a 7 | `config/relatorio_mensal.json` (empresa e contrato, sem dado pessoal); OS e prazo da aba REAJUSTE do BM; valor do contrato; faturado, saldo e prazos da medição |
+| 8 a 10 | Apropriações no canteiro; organograma pelos papéis (nomes PENDENTE) e pelas equipes do cadastro |
+| 11 | Uma seção por semana: execução por frente e etapa, liberação topográfica, apropriações, ocorrências, croqui com zoom nos trechos da semana |
+| 12 | Equipes (funcionários, máquinas, dias com check-in); consumo de material da Ankara; tubos da Caesb (projeto, romaneio, emprestado, com as equipes, aplicado, saldo) |
+| 13 e 14 | Locação com NS e cadastro aprovado por diâmetro; execução no mês e acumulada; serviços medidos com subtotal, BDI, K e total; programação do mês seguinte |
+| 15 e 16 (paisagem) | Cronograma FF (previsto da aba GRÁFICOS, realizado das medições) e os gráficos 01 a 04; efetivo, funções, máquinas e gráficos 05 e 06 (check-in); produção por diâmetro (gráfico 07); IDA (gráfico 08, sem vistoria registrada) |
+| 17 a 19 | Observações (medição, reajuste não pedido, aditivo pendente, chuva, ocorrências); todas as fotos do mês, 6 por página; mapa iluminado e caminhamento da medição |
+
+O que o sistema ainda não guarda sai em amarelo como PENDENTE: CNO, vigência, responsáveis, layout e instalações do
+canteiro, DDS e reuniões.
 
 ## Celular (360 px)
 
@@ -38,7 +59,7 @@ O acesso real pelo celular continua dependendo da hospedagem (D-60).
 - **Implantação, rotina de backup, restauração, nova revisão, atualização de versão e recuperação de desastre:** `docs/IMPLANTACAO.md`. O ensaio está no ciclo da Zona01.
 - **Funcionamento sem internet:** não iniciado, por regra (D-61).
 
-## Testes (`tests/test_relatorios.py`, 4)
+## Testes (`tests/test_relatorios.py`, 4; `tests/test_relatorio_mensal.py`, 4)
 
 - **Ciclo do material:**
   - pedido 100, entrega 60 (quarentena 60, a receber 40), aceite 50 e recusa 10, devolução 5;
@@ -54,7 +75,12 @@ O acesso real pelo celular continua dependendo da hospedagem (D-60).
   - filtros de período, frente e equipe;
   - legado sem posição à parte.
 - **Pendências:** impedimento, reaterro sem cadastro (2), concluído sem OK e sem fotos, não conformidade, programação vencida, filtro por frente.
-- **HTTP:** sem login, 401; a equipe consulta; a exportação tem as 4 abas e fica registrada na auditoria.
+- **HTTP:** sem login, 401; a equipe não abre a tela (403); o relatório mensal sai em PDF, fica registrado na auditoria;
+  a rota da planilha não existe mais (404).
+- **Relatório mensal:** as semanas do modelo (agosto/2026 do Lago Sul); o PDF simples (acentos, cabeçalho da tabela
+  repetido, rodapé com o total de páginas, página em paisagem); sobre o BM REV04 real: capa, sumário começando no 2,
+  total igual ao do pacote, semanas, executado por diâmetro, apropriação no canteiro, as 10 fotos do mês, paisagem e
+  PENDENTE; e o download pelo HTTP com permissão e auditoria.
 
 ## Navegador (banco v7 real migrado, usuários de demonstração)
 

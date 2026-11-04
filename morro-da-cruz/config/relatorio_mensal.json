@@ -1,0 +1,48 @@
+{
+  "_leia": "Dados fixos do relatório mensal (D-207). Só dados de empresa e de contrato: nada de nome, telefone, e-mail ou registro de pessoa (repositório público). O que não tem fonte fica null e sai PENDENTE no PDF.",
+  "contratada": {
+    "razao_social": "ANKARA ENGENHARIA LTDA",
+    "cnpj": "13.578.869/0001-60",
+    "cnae": "42.22-7-01",
+    "atividade": "Construção de redes de abastecimento de água, coleta de esgoto e construções correlatas, exceto obras de irrigação",
+    "sede": "Rua Manoel Andrade, nº 55, sala 104 – Empresarial Manoel Gomes de Mendonça – Pituba, Salvador/BA – CEP 41.810-815",
+    "cidade_sede": "Salvador/BA"
+  },
+  "contratante": {
+    "orgao": "Companhia de Saneamento Ambiental do Distrito Federal – CAESB",
+    "sigla": "CAESB",
+    "cnpj": "00.082.024/0001-37",
+    "cnae": "36.00-6-01 – captação, tratamento e distribuição de água",
+    "grau_risco": "3",
+    "area_gestora": "ESON – Gerência de Implantação de Obras Centro Norte"
+  },
+  "obra": {
+    "nome": "Implantação de Redes de Distribuição no Morro da Cruz, São Sebastião/DF",
+    "nome_caixa_alta": "IMPLANTAÇÃO DE REDES DE DISTRIBUIÇÃO NO MORRO DA CRUZ",
+    "local_capa": "SÃO SEBASTIÃO DF",
+    "objeto": "Implantação do sistema de abastecimento de água no Morro da Cruz, em São Sebastião/DF (SL0327)",
+    "localizacao": "Morro da Cruz – Região Administrativa de São Sebastião – RA XIV/DF",
+    "licitacao": "LC 014/2026",
+    "projeto": "Juntada 1426 (RED.SSB-D014)",
+    "processo": "00092-00048943/2025-71",
+    "assinatura": "16/09/2026",
+    "publicacao": "21/09/2026",
+    "cnae_grau": "42.22-7-01 / 4",
+    "canteiro": "Área pública contígua ao Ginásio São Francisco – São Sebastião/DF – CEP 71.695-020",
+    "horario": "Segunda a sexta-feira, das 07h00 às 17h00",
+    "cno": null,
+    "vigencia_dias": null
+  },
+  "responsaveis": [
+    "Responsável técnico da obra",
+    "Engenharia de campo",
+    "Elaboração do PGAO",
+    "Suporte técnico no acompanhamento",
+    "Segurança do trabalho",
+    "Administrativo de obra"
+  ],
+  "terceirizadas": [
+    ["TOPOGRAFIA", "Levantamento topográfico e notas de serviço de locação"],
+    ["CADASTRO", "Cadastro técnico das redes executadas"]
+  ]
+}
