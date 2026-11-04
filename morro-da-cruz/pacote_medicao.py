@@ -27,6 +27,7 @@ import zipfile
 from collections import defaultdict
 from datetime import date, timedelta
 
+import compras as C
 import drive
 import importacao as I
 import regras as R
@@ -173,6 +174,27 @@ def _candidatas(conn, alvos):
     return fotos
 
 
+def _candidatas_apropriacao(conn, ap_ids):
+    """As imagens anexadas às apropriações diretas do item (as evidências da gaveta 5), como candidatas da galeria (D-206).
+    O id é o do documento com sinal negativo, para não se confundir com o das fotos dos trechos e nós. PDF não entra:
+    a galeria é de imagens."""
+    out = []
+    for aid in ap_ids:
+        ap = _one(conn, "SELECT id, data FROM apropriacoes WHERE id=?", int(aid))
+        if not ap:
+            continue
+        for d in _rows(conn.execute("""SELECT d.id, d.arquivo, d.mime, d.enviado_em FROM apropriacao_documentos x
+                                       JOIN documentos d ON d.id=x.documento_id WHERE x.apropriacao_id=? ORDER BY d.id""",
+                                    (ap["id"],))):
+            if not str(d["mime"] or "").startswith("image/"):
+                continue
+            out.append({"id": -d["id"], "alvo_tipo": "APROPRIACAO", "alvo_id": str(ap["id"]), "categoria": "APROPRIAÇÃO",
+                        "arquivo": d["arquivo"], "documento_id": d["id"], "data_hora": d["enviado_em"],
+                        "url": f"/api/apropriacao/arquivo?doc={d['id']}", "alvo": f"Apropriação nº {ap['id']}",
+                        "carimbo": f"APROPRIAÇÃO Nº {ap['id']} · {_br(ap['data'])}"})
+    return out
+
+
 def _escolhas(conn, medicao_id):
     return {r["item"]: r for r in _rows(conn.execute("SELECT * FROM medicao_folhas WHERE medicao_id=?", (medicao_id,)))}
 
@@ -196,7 +218,11 @@ def folhas(conn, medicao_id):
         alvos = [(r[0], r[1]) for r in conn.execute(
             """SELECT DISTINCT l.alvo_tipo, l.alvo_id FROM medicao_lancamentos l WHERE l.medicao_id=? AND l.status='PROPOSTO'
                AND l.bm_item_id=? AND l.alvo_tipo IN ('TRECHO','ATIVIDADE')""", (medicao_id, b["id"]))]
-        cand = _candidatas(conn, alvos)
+        aps = [r[0] for r in conn.execute(
+            """SELECT DISTINCT l.alvo_id FROM medicao_lancamentos l WHERE l.medicao_id=? AND l.status='PROPOSTO'
+               AND l.bm_item_id=? AND l.alvo_tipo='APROPRIACAO'""", (medicao_id, b["id"]))]
+        cand = _candidatas(conn, alvos) + _candidatas_apropriacao(conn, aps)
+        cand.sort(key=lambda f: (f["data_hora"] or "", f["id"]), reverse=True)
         e = esc.get(k) or {}
         ids_validos = {f["id"] for f in cand}
         if e.get("fotos") is not None:
@@ -340,7 +366,7 @@ def salvar_folha(conn, medicao_id, item, por, fotos=None, justificativa=None):
         validas = {f["id"] for f in fl[item]["candidatas"]}
         fora = [i for i in fotos if i not in validas]
         if fora:
-            raise RegraViolada(f"Foto(s) {fora} não são dos trechos e nós deste item ou não são válidas.")
+            raise RegraViolada(f"Foto(s) {fora} não são dos trechos, nós ou apropriações deste item, ou não são válidas.")
         if len(fotos) > FOTOS_POR_FOLHA:
             raise RegraViolada(f"A galeria tem {FOTOS_POR_FOLHA} lugares: escolha no máximo {FOTOS_POR_FOLHA} fotos.")
         if len(set(fotos)) != len(fotos):
@@ -402,7 +428,14 @@ def imagem_galeria(dados, carimbo, lado=820):
 
 
 def _bytes_foto(conn, foto, dir_fotos):
-    """O original da foto ou, se ele ficou só no Drive, a miniatura guardada no servidor."""
+    """O original da foto ou, se ele ficou só no Drive, a miniatura guardada no servidor. A evidência da apropriação
+    direta vem da pasta dos documentos."""
+    if foto.get("documento_id"):
+        p = os.path.join(C.documento_dir(conn), foto["arquivo"])
+        if os.path.isfile(p):
+            with open(p, "rb") as f:
+                return f.read()
+        return None
     for rel in (foto["arquivo"], drive.miniatura_de(conn, foto["arquivo"])):
         if rel and os.path.isfile(os.path.join(dir_fotos, rel)):
             with open(os.path.join(dir_fotos, rel), "rb") as f:

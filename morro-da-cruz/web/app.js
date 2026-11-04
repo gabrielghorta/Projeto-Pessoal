@@ -1307,9 +1307,9 @@ function folhaMcHtml(f, i, frases, edita) {
     <p class="vazio" style="margin:4px 0 8px">Chave ${esc(f.item)} · ${f.linhas} linha(s) no memorial · acumulado ${nf(f.acumulado, 3)} de ${nf(f.contrato, 3)} ${esc(f.unidade || '')}.
       ${edita ? 'Toque nas fotos para escolher até 6; o número é a ordem na folha.' : ''}</p>
     <div class="fotos fotos-mc">${f.candidatas.map(c => `<figure data-foto="${c.id}">
-        <img src="/fotos/${esc(c.arquivo)}" loading="lazy" alt="Foto ${esc(c.categoria.toLowerCase())} de ${esc(curto(c.alvo))}"><span class="ordem"></span>
+        <img src="${esc(c.url || '/fotos/' + c.arquivo)}" loading="lazy" alt="Foto ${esc(c.categoria.toLowerCase())} de ${esc(curto(c.alvo))}"><span class="ordem"></span>
         <figcaption>${esc(String(c.data_hora || '').replace('T', ' ').slice(0, 16))} · ${esc(c.categoria.toLowerCase())}<br>${esc(curto(c.alvo))}</figcaption></figure>`).join('')
-      || '<p class="vazio">Sem fotos válidas dos trechos e nós deste item.</p>'}</div>
+      || '<p class="vazio">Sem fotos válidas dos trechos, nós e apropriações deste item (PDF não entra na galeria).</p>'}</div>
     <label style="margin-top:10px">Justificativa técnica${f.excede ? ' <b>— obrigatória: acima de 100 % do contrato</b>' : ''}
       <select data-frase ${edita ? '' : 'disabled'}><option value="">Usar uma frase pronta…</option>${frases.map(x => `<option>${esc(x)}</option>`).join('')}</select></label>
     <textarea data-just rows="3" maxlength="600" ${edita ? '' : 'disabled'} placeholder="Escreva ou escolha uma frase pronta">${esc(just)}</textarea>

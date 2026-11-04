@@ -399,7 +399,8 @@ def r_medicao_pacote(q, c):
     r = PM.resumo(c, int(q["id"]))
     for f in r["folhas"]:
         f["candidatas"] = [{k: x[k] for k in ("id", "arquivo", "data_hora", "categoria", "alvo_tipo", "alvo_id")}
-                           | {"alvo": S.nome_alvo(c, x["alvo_tipo"], x["alvo_id"])} for x in f["candidatas"]]
+                           | {"alvo": x.get("alvo") or S.nome_alvo(c, x["alvo_tipo"], x["alvo_id"]),
+                              "url": x.get("url") or f"/fotos/{x['arquivo']}"} for x in f["candidatas"]]
         f["linhas"] = len(f["linhas"])
     return r
 

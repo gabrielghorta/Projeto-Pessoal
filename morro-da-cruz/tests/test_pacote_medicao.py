@@ -302,7 +302,7 @@ class TestPacoteHTTP(BasePacote):
         r = self.ok(eng.get(f"/api/medicao/pacote?id={self.mid}"))
         f = next(x for x in r["folhas"] if x["item"] == "2.2_5.8.44")
         self.assertEqual(f["linhas"], 1)
-        self.assertEqual(set(f["candidatas"][0]), {"id", "arquivo", "data_hora", "categoria", "alvo_tipo", "alvo_id", "alvo"})
+        self.assertEqual(set(f["candidatas"][0]), {"id", "arquivo", "data_hora", "categoria", "alvo_tipo", "alvo_id", "alvo", "url"})
         self.assertEqual(r["frases"], PM.FRASES)
         escolha = [f["candidatas"][1]["id"]]
         self.ok(eng.post("/api/medicao/folha", {"medicao_id": self.mid, "item": "2.2_5.8.44", "fotos": escolha,

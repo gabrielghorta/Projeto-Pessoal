@@ -290,6 +290,26 @@ class TestMedicao(BaseAp):
         self.assertEqual([x["nome"] for x in ret["alvos"]], [f"Apropriação nº {a['id']}"])
         self.assertEqual(AP.saldo(self.c, AP.item(self.c, CONTEINER))["saldo"], 16.0)
 
+    def test_foto_da_apropriacao_vai_para_a_galeria_da_folha(self):
+        # D-206: as evidências da apropriação direta (imagens) são as candidatas da galeria da folha da nª MC
+        import io
+        import zipfile
+        import pacote_medicao as PM
+        mid = self.medicao()
+        a = self.apropriar(CONTEINER, 2, evidencias=evidencia("canteiro.png") + [
+            {"nome": "plano.pdf", "conteudo_b64": b64(b"%PDF-1.4 plano de residuos")}])
+        [f] = [x for x in PM.folhas(self.c, mid) if x["item"] == CONTEINER]
+        img = [d for d in a["documentos"] if d["mime"].startswith("image/")][0]
+        self.assertEqual([(c["id"], c["alvo_tipo"], c["categoria"]) for c in f["candidatas"]],
+                         [(-img["id"], "APROPRIACAO", "APROPRIAÇÃO")])                 # o PDF não entra na galeria
+        self.assertEqual((f["fotos"], f["fotos_sugeridas"]), ([-img["id"]], True))
+        PM.salvar_folha(self.c, mid, CONTEINER, "eng1", fotos=[-img["id"]], justificativa="canteiro montado")
+        with self.assertRaisesRegex(R.RegraViolada, "apropriações deste item"):
+            PM.salvar_folha(self.c, mid, CONTEINER, "eng1", fotos=[-999])
+        _, dados, r = PM.gerar(self.c, mid, dir_fotos=os.path.join(self.dados, "fotos"))
+        self.assertNotIn(f"Item 5.1.1 ({CONTEINER}): sem foto na galeria.", r["avisos"])
+        self.assertTrue(any(n.startswith("xl/media/mc_foto_") for n in zipfile.ZipFile(io.BytesIO(dados)).namelist()))
+
     def test_item_a_aprovar_fica_parado_e_entra_com_o_codigo(self):
         self.provisorio(ISOLAMENTO)
         mid = self.medicao()
