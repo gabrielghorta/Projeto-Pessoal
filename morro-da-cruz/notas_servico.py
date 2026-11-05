@@ -27,6 +27,15 @@ import topologia as TP
 from servicos import RegraViolada, _agora, _one, _rows, transacao
 
 TIPOS = {"TOPOGRAFIA": "Topografia", "CADASTRO": "Cadastro de campo", "SERVICO": "Serviço de obra", "EXECUCAO": "Do dia (execução)"}
+# Palavras do bloco da NS que confirmam o tipo escolhido (D-210), pela raiz: o bloco pode dizer "TOPOGRAFIA",
+# "LIBERAÇÃO TOPOGRÁFICA" ou "LOCAÇÃO" (topografia) e "CADASTRO" ou "CADASTRAL" (cadastro de campo).
+RAIZES_TIPO = {"TOPOGRAFIA": ("TOPOGRAF", "LOCACAO"), "CADASTRO": ("CADASTR",)}
+
+
+def tipo_confere(tipo, bloco):
+    """True se o bloco da NS combina com o tipo escolhido (ou se não há o que conferir: bloco vazio, tipo sem raiz)."""
+    b = L.norm_txt(bloco)
+    return not b or tipo not in RAIZES_TIPO or any(r in b for r in RAIZES_TIPO[tipo])
 PERMISSAO_TIPO = {"TOPOGRAFIA": "topografia", "CADASTRO": "cadastro_campo"}      # além de notas_servico, para registrar
 TOL_ABS, TOL_REL, LIM_REL = 0.10, 0.005, 0.05       # diferença NS × projeto: OK até max(0,10 m; 0,5 %); aviso até 5 %
 LIMITE_CROQUI = 15 * 1024 * 1024
@@ -562,8 +571,7 @@ def ler(conn, tipo, pdf_b64, planilha_b64=None, zona=None, pb=None, hoje=None, c
                 "valer a data desta, anule a NS posterior e envie as duas na ordem das datas."]
     por_arquivo, mesma = _ja_registrada(conn, ns, tipo, hashlib.sha256(pdf).hexdigest())
     aviso_tipo = None
-    bloco = L.norm_txt(ns["cabecalho"].get("bloco"))
-    if bloco and tipo in ("TOPOGRAFIA", "CADASTRO") and tipo not in bloco:
+    if not tipo_confere(tipo, ns["cabecalho"].get("bloco")):
         aviso_tipo = f"o bloco da NS diz '{ns['cabecalho'].get('bloco')}' e o tipo escolhido é {TIPOS[tipo]}"
     return {"tipo": tipo, "leitura": _resumo_leitura(ns), "contexto": ctx, "segmentos": segs, "impressao": ns["impressao_dados"],
             "contrato_ok": L.norm_contrato(ns["cabecalho"].get("contrato")) == L.norm_contrato(S.contrato(conn)),

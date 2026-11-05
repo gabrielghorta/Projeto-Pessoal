@@ -435,3 +435,17 @@ o HTML de origem, as linhas da 06.1, a topologia, as quantidades e o banco não 
 
 Guia: `docs/MAPA_RUAS_PRANCHA01.md`; `mapa_contexto.py`, `web/mapa_fundo.js`. Testes de projeção, limites e canteiro:
 `tests/test_mapa_fundo.py`; regressões das seleções, frentes e PB25 nos testes existentes.
+
+## 27. NS de topografia com o bloco "LIBERAÇÃO TOPOGRÁFICA" (05/11/2026)
+
+Pergunta do responsável ao enviar as NS de teste 7001 a 7012: por que todas ficaram "precisa conferir"? A leitura estava
+certa (todos os segmentos casaram sozinhos com os trechos), mas a conferência do tipo procurava a palavra TOPOGRAFIA
+dentro do bloco, e o bloco dizia "LIBERAÇÃO TOPOGRÁFICA": falso aviso "confira o tipo".
+
+Guia: `notas_servico.py` (`RAIZES_TIPO`, `tipo_confere`). Teste: `tests/test_notas_servico.py`
+(`test_bloco_liberacao_topografica_confere_com_topografia`).
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-210 | Como o tipo escolhido confere com o bloco da NS | a palavra inteira (TOPOGRAFIA, CADASTRO) / a raiz da palavra | Com a palavra inteira, toda NS de "LIBERAÇÃO TOPOGRÁFICA" (ou "CADASTRAL") pede conferência sem motivo. | A raiz. | **Correção (05/11/2026):** TOPOGRAF ou LOCAÇÃO para topografia; CADASTR para cadastro. Bloco vazio não gera aviso. Bloco de outro tipo continua avisando ("CADASTRO" na aba de topografia, e o contrário). Conferido com as NS 7003 a 7007 enviadas: sem aviso, todos os segmentos automáticos, e o registro grava 20.316 m de liberação sem pendência. |
+

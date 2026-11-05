@@ -60,6 +60,9 @@ Os perfis Topografia e Cadastro, que só consultam, abrem direto no resumo.
 - **PDF sem camada de texto** (escaneado) é recusado com mensagem clara. Não há leitura por imagem (OCR).
 - **Duas leituras:** pypdf e, quando existe no servidor, o pdftotext. Se as duas (ou o PDF e a planilha) leem dados
   diferentes, a nota é recusada para conferência.
+- **Tipo da nota × bloco (D-210):** o bloco da NS (a linha acima da tabela) tem de combinar com a aba de envio, pela raiz
+  da palavra: TOPOGRAF ou LOCAÇÃO na topografia ("TOPOGRAFIA", "LIBERAÇÃO TOPOGRÁFICA") e CADASTR no cadastro
+  ("CADASTRO", "CADASTRAL"). Se não combinar, a nota fica "precisa conferir" com o aviso "confira o tipo"; não é recusada.
 
 ### Segmentos da nota × trechos da obra
 
