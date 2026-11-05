@@ -416,3 +416,17 @@ Guia: `relatorio_mensal.py` (dados e capítulos), `pdf_simples.py` (o PDF sem de
 |---|---|---|---|---|---|
 | D-207 | O arquivo da tela Relatórios | planilha (MATERIAIS, AVANÇO, PENDÊNCIAS, FALTANTES) / o relatório mensal em PDF / os dois | A planilha não servia para mandar à Caesb. O RM era montado à mão, em Word. | Trocar pelo PDF. | **Pedido e escolhido pelo responsável (04/11/2026):** o botão "Exportar .xlsx" e a rota `/api/relatorios/exportar` saíram. A tela tem a escolha da medição e o botão "Relatório mensal (PDF)" (`GET /api/relatorios/mensal?id=`, tela Relatórios, auditado). O período é o da medição escolhida. O PDF sai pronto, sem passar pelo Word (muda a D-146). Os painéis da tela (avanço, pendências, ciclo do material) continuam iguais. |
 | D-208 | Conteúdo e fontes do PDF | só o que tem no sistema / com dados digitados no mês | O RM tem dados que o sistema ainda não guarda. | Tudo do banco; o resto PENDENTE. | **Escolhido pelo responsável (04/11/2026):** capítulos do Lago Sul (1 a 19), visual do relatório de conexões (capa com o mapa das zonas, cabeçalho com o logo e 3 campos, Arial Narrow, títulos vinho, tabelas azul-marinho, borda dupla). Valores e itens como o pacote no BM REV04 (juntada, ADM proporcional); previsto da aba GRÁFICOS do BM; semanas como no modelo (a 1ª leva os dias antes da 1ª segunda-feira); equipes, efetivo, funções e máquinas pelo check-in; tubos da Caesb pelo almoxarifado; locação, cadastro aprovado e execução por diâmetro; mapas vetoriais do traçado (capa, figura 01, croqui de cada semana com zoom, mapa iluminado); **todas as fotos do mês** (campo e apropriação direta, 6 por página, até 60, com o carimbo). CNO, vigência, responsáveis, layout e instalações do canteiro saem PENDENTE em amarelo (a tela "Dados do contrato" da D-145 fica para depois). IDA e SAOB entram como no RM REV01, sem vistoria registrada (muda a D-149). Medição de teste sai marcada "MEDIÇÃO DE TESTE – NÃO OFICIAL" em toda página (D-56). |
+
+## 26. NS de topografia com o bloco "LIBERAÇÃO TOPOGRÁFICA" (05/11/2026)
+
+Pergunta do responsável ao enviar as NS de teste 7001 a 7012: por que todas ficaram "precisa conferir"? A leitura estava
+certa (todos os segmentos casaram sozinhos com os trechos), mas a conferência do tipo procurava a palavra TOPOGRAFIA
+dentro do bloco, e o bloco dizia "LIBERAÇÃO TOPOGRÁFICA": falso aviso "confira o tipo".
+
+Guia: `notas_servico.py` (`RAIZES_TIPO`, `tipo_confere`). Teste: `tests/test_notas_servico.py`
+(`test_bloco_liberacao_topografica_confere_com_topografia`).
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-209 | Como o tipo escolhido confere com o bloco da NS | a palavra inteira (TOPOGRAFIA, CADASTRO) / a raiz da palavra | Com a palavra inteira, toda NS de "LIBERAÇÃO TOPOGRÁFICA" (ou "CADASTRAL") pede conferência sem motivo. | A raiz. | **Correção (05/11/2026):** TOPOGRAF ou LOCAÇÃO para topografia; CADASTR para cadastro. Bloco vazio não gera aviso. Bloco de outro tipo continua avisando ("CADASTRO" na aba de topografia, e o contrário). Conferido com as NS 7003 a 7007 enviadas: sem aviso, todos os segmentos automáticos, e o registro grava 20.316 m de liberação sem pendência. |
+
