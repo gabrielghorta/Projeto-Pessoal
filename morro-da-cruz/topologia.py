@@ -442,6 +442,18 @@ def pontas_nao_conexao(caminho=None):
     return out
 
 
+def pontas_juntar(caminho=None):
+    """Junções que o arquivo de decisões dá como um tubo só (JUNTAR): [(id, tipo, [(nome visível, 'ini'|'fim'), ...])].
+    O desenho liga essas pontas entre si (mapa_geral), mesmo onde a prancha as deixou separadas."""
+    out = []
+    for j in _ler_config(caminho).get("juncoes") or []:
+        if isinstance(j, dict) and j.get("decisao") == JUNTAR and isinstance(j.get("pontas"), list):
+            ps = [(p.get("trecho"), p.get("lado")) for p in j["pontas"] if isinstance(p, dict)]
+            if len(ps) >= 2:
+                out.append((j.get("id"), j.get("tipo"), ps))
+    return out
+
+
 def chave_config(caminho=None):
     """Muda quando config/topologia.json muda (para quem guarda cálculo derivado dele)."""
     return _chave_config(caminho)[1]

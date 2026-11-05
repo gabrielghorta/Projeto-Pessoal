@@ -64,6 +64,11 @@ Cada ponta foi medida em metros, contra o nó da 06.1, a partir da polilinha da 
   * Zona11_PB25_Rede_TR001, fim, a 15,07 m do Zona11_PB23_Rede_NÓ11.1;
   * Zona11_PB23_Rede_TR081, início, a 6,69 m do mesmo nó (o NÓ11.1 já vem marcado "fora" no HTML).
 * **Desenho incompleto:** a polilinha do Zona07_PB19_Rede_TR019 termina 5,44 m antes da ponta que a 06.1 dá para o fim desse trecho.
+* **Atualização de 05/11/2026 (D-214):** o desenho liga o que ficava solto, sem alterar o HTML.
+  * As duas pontas do NÓ11.1 são completadas em linha reta até o nó, só na visão geral. A parte desenhada mais o que falta dá L.
+  * O fim do TR019 encontra o Zona07_PB18_Rede_TR004 pela junção J-098 (JUNTAR).
+  * Toda cópia do trecho vinda de outra prancha também vai para o nó.
+  * Ver `MAPA_CONTINUIDADE_05-11-2026.md`.
 * **Visão geral × pranchas:** é o mesmo traçado. Em 2.719 pontas comparadas, a maior diferença é 0,20 m, e só 2 passam de 5 cm. O problema está nas duas, porque vem das polilinhas do levantamento. A imagem das pranchas (plotagem do DWG) mostra a linha chegando ao nó, como no caso A.
 * **Comprimento desenhado × L:** o desenho mede L − Lx.
   * Lx é o "tubo desenhado no próprio nó": 410 trechos, 888,89 m, até 8,40 m numa linha.

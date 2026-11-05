@@ -369,6 +369,78 @@ class TopologiaReal(unittest.TestCase):
             longe = max(min(dseg(q, pb22[i], pb22[i + 1]) for i in range(len(pb22) - 1)) for q in pb25)
             self.assertLess(longe, 0.3, nome)
 
+    # ---------------------------------------------------------------- continuidade do desenho (05/11/2026)
+    def _ponta_desenhada(self, nome, lado):
+        """A ponta do trecho no desenho da visão geral (de todas as partes, a mais perto da UTM da 06.1)."""
+        d, ref = MG._ler(MAPA)["dados"], MG.desenhos(MAPA)["GERAL"]
+        f = next(t for t in d["trechos"] if t["R"] == nome)
+        t = next(t for t in MG.geometria(MAPA)["trechos"] if t["n"] == nome)
+        u = MG.aplicar(ref["t"], *(f["A"] if lado == "ini" else f["B"]))
+        return min([(p[0], p[1]) for p in t["p"]] + [(p[-2], p[-1]) for p in t["p"]], key=lambda q: math.dist(q, u))
+
+    def test_toda_ponta_de_no_chega_ao_no(self):
+        """Toda ponta que a 06.1 liga a um nó termina no nó (até 0,25 m: 0,10 m do NO_NO mais o arredondamento de 0,1
+        unidade), também a cópia do trecho que vem de outra prancha e o desenho curto do NÓ11.1 (PB22/PB23), completado em
+        linha reta. Só as pontas de cruzamento e de passagem passam ao lado do nó, de propósito."""
+        d, g = MG._ler(MAPA)["dados"], MG.geometria(MAPA)
+        esc = MG.desenhos(MAPA)["GERAL"]["escala"]
+        els = {n: (e["x"], e["y"]) for e in g["els"] for n in e["n"]}
+        nao = TP.pontas_nao_conexao()
+        longe = []
+        for f in d["trechos"]:
+            for lado in ("ini", "fim"):
+                no = f[lado]
+                if no in MG.SEM_NO or (f["R"], lado) in nao:
+                    continue
+                dd = math.dist(self._ponta_desenhada(f["R"], lado), els[no]) / esc
+                if dd > 0.25:
+                    longe.append((f["R"], lado, round(dd, 2)))
+        self.assertEqual(longe, [])
+        completadas = [(p["trecho"], p["lado"]) for p in MG.pontas(MAPA) if p.get("desenho") == "COMPLETADO_EM_LINHA_RETA"]
+        self.assertEqual(sorted(completadas), [("Zona11_PB23_Rede_TR081", "ini"), ("Zona11_PB25_Rede_TR001", "fim")])
+        self.assertEqual({p["acao"] for p in MG.pontas(MAPA) if p["classe"] == "LONGE_DO_NO"}, {"PENDENCIA_DESENHO"})
+
+    def test_pontas_de_um_tubo_so_se_encontram(self):
+        """JUNTAR (emenda sem nó, divisa de zona, cruzamento, passagem): as pontas se encontram no desenho, inclusive as
+        5,89 m da J-098 (PB18 × PB19). As 2 em DÚVIDA ficam como estão até o responsável decidir."""
+        esc = MG.desenhos(MAPA)["GERAL"]["escala"]
+        juntas = TP.pontas_juntar()
+        self.assertEqual(len(juntas), 73)
+        for jid, _tipo, ps in juntas:
+            q = [self._ponta_desenhada(n, lado) for n, lado in ps]
+            self.assertLess(max(math.dist(a, b) for a in q for b in q) / esc, 0.25, jid)
+        a, b = (self._ponta_desenhada(n, lado) for n, lado in (("Zona07_PB19_Rede_TR016", "fim"), ("Zona07_PB19_Rede_TR019", "ini")))
+        self.assertGreater(math.dist(a, b) / esc, 1.0)                     # J-099, DÚVIDA: não liga sozinho
+
+    def test_partes_do_mesmo_trecho_formam_uma_peca_so(self):
+        """Na visão geral o trecho que passa de uma prancha para outra vem em partes; na emenda da PB15 com a PB19 duas
+        partes ficavam 2,11 m afastadas (Zona07_PB15_Rede_TR032 e Zona07_PB19_Adutora_TR001). Agora toda parte toca outra."""
+        esc = MG.desenhos(MAPA)["GERAL"]["escala"]
+
+        def perto(q, p):
+            return min(MG._dist_seg(q, (p[m], p[m + 1]), (p[m + 2], p[m + 3])) for m in range(0, len(p) - 3, 2)) <= 0.3 * esc
+        soltos = []
+        for t in MG.geometria(MAPA)["trechos"]:
+            ps, lig, mudou = t["p"], {0}, True
+            while mudou:
+                mudou = False
+                for k, p in enumerate(ps):
+                    if k not in lig and any(perto((p[0], p[1]), ps[j]) or perto((p[-2], p[-1]), ps[j]) or perto((ps[j][0], ps[j][1]), p)
+                                            or perto((ps[j][-2], ps[j][-1]), p) for j in lig):
+                        lig.add(k)
+                        mudou = True
+            if len(lig) < len(ps):
+                soltos.append(t["n"])
+        self.assertEqual(soltos, [])
+
+    def test_emendar_liga_a_ponta_solta_e_nao_mexe_no_resto(self):
+        fins = [(0, 0), (20, 0)]
+        a, b = [0, 0, 8, 0], [10, 0, 20, 0]                                 # 2 unidades de folga no meio
+        self.assertEqual(MG.emendar([a, b], fins, 1.0), [[0, 0, 8, 0, 10, 0], [10, 0, 20, 0]])
+        self.assertEqual(MG.emendar([a, [8.1, 0, 20, 0]], fins, 1.0), [a, [8.1, 0, 20, 0]])   # já se tocam (até 0,3)
+        self.assertEqual(MG.emendar([a, [16, 0, 20, 0]], fins, 1.0), [a, [16, 0, 20, 0]])     # 8 > TOL_EMENDA_M: não inventa
+        self.assertEqual(MG.emendar([a], fins, 1.0), [a])
+
     def test_mnd_e_vca_sao_trechos_fisicos_separados(self):
         """D-202: no limite da travessia MND não há nó, mas o pedaço MND e o VCA são trechos separados (método, equipe e
         itens do BM mudam). As 4 travessias da 06.1 (291,26 m, DE 63) ficam sozinhas no trecho físico."""

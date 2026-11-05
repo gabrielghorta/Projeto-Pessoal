@@ -40,6 +40,13 @@ function linhasTracejadas(trechos, attrs) {
   trechos.forEach(t => { const z = zonaDoTrecho(t); if (!por.has(z)) por.set(z, []); por.get(z).push(t); });
   return [...por.values()].map(ts => `<path ${attrs} d="${caminho(ts.flatMap(t => t.p))}"/>`).join('');
 }
+// Com uma zona em foco, os trechos das outras frentes (zonas vizinhas e Subadutora) ficam por baixo, finos e cinza:
+// onde a rede da zona continua na vizinha (a 06.1 divide a rua na divisa) ela não parece cortada. Não se tocam
+// (tocavel) e não entram na contagem da legenda (05/11/2026).
+const COR_FORA = '#8C96A3';
+const htmlFora = ts => ts.length ? `<path class="ilu-tr tr-fora" d="${caminho(ts.flatMap(t => t.p))}"/>` : '';
+const grupoForaCopia = ts => ({ cor: COR_FORA, opacidade: 0.55, largura: 1, trechos: ts });
+const legendaFora = () => `<div class="ilu-linha"><i style="border-color:${COR_FORA}"></i><span>Cinza fino: outras frentes, só para ver onde a rede continua</span></div>`;
 function contornosTracejados(polis, cls, passo = 40) {
   let s = '';
   for (const p of polis) {
@@ -327,6 +334,7 @@ function copiaIlu(g, u) {
     g.restore();
   }
   if (ILU.cam.zonas) zonasCopia(g, u, z => opacidadeZonaIlu(z.id));
+  if (ILU.zona) linhasCopia(g, u, [grupoForaCopia(GERAL.trechos.filter(t => !naFrenteIlu(t)))]);
   linhasCopia(g, u, SITU.filter(s => ILU.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado ? '5 4' : null,
     largura: larguraIlu(1, s.id), halo: s.id === 'nao' ? null : s.id === 'pronto' ? '#24303D' : '#FFFFFF',
     trechos: GERAL.trechos.filter(t => t.s === s.id && naFrenteIlu(t)) })));
@@ -358,7 +366,7 @@ function montarIluminado(g) {
   const svg = iluSvg();
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}"/>`).join('')
     + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
-  svg.innerHTML = `${htmlSatelite(g, 'ilu')}${htmlFundoRuas(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluHalo"></g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluNos"></g>
+  svg.innerHTML = `${htmlSatelite(g, 'ilu')}${htmlFundoRuas(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluFora"></g><g id="iluHalo"></g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluNos"></g>
     <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g>${htmlCanteiro(g)}<g id="iluPins"></g>`;
   ILU.frentesNo = frentesDosNos(g);
   ligarFundoRuas(ILU, g);
@@ -506,6 +514,7 @@ function desenharIlu(px, zoom) {
   if (escalaMudou(ILU, px)) {                        // arrastar não muda a escala: só o zoom mexe em traços e textos
     $('#iluZonas').style.setProperty('--k', 1 / px);   // só no grupo do contorno: na raiz, refazia o estilo do mapa inteiro
     $$('#iluLinhas .ilu-tr').forEach(p => espessura(p, larguraIlu(zoom, p.dataset.situ)));
+    espessura($('#iluFora'), larguraTrecho(zoom, 0.75));
     $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
     escalarEquipes($('#iluPins'), $('#iluHalo'), px, larguraTrecho(zoom, 1.1));
     espessura($('#iluSel'), Math.min(8, 4 * Math.pow(Math.max(zoom, 1), 0.4)));
@@ -705,6 +714,7 @@ function colorirIluminado() {
   const est = ILU.est, por = Object.fromEntries(SITU.map(s => [s.id, []]));
   GERAL.trechos.forEach(t => { t.s = situacao(est, t.n); if (naFrenteIlu(t)) por[t.s].push(t); });
   ILU.cores = (ILU.cores || 0) + 1;
+  $('#iluFora').innerHTML = ILU.zona ? htmlFora(GERAL.trechos.filter(t => !naFrenteIlu(t))) : '';
   $('#iluLinhas').innerHTML = SITU.map(s => s.tracejado
     ? linhasTracejadas(por[s.id], `class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}" stroke-dasharray="5 4"`)
     : `<path class="ilu-tr" data-situ="${s.id}" stroke="${s.cor}" d="${caminho(por[s.id].flatMap(t => t.p))}"/>`).join('');
@@ -772,6 +782,7 @@ function abrirPop(nome, recarregar) {
     pop.innerHTML = `<h3>Situação dos trechos: ${esc(ILU.zona ? nomeZona(ILU.zona) : 'obra inteira')}</h3>`
       + SITU.map(s => `<button type="button" class="ilu-linha" data-situ="${s.id}" aria-pressed="${ILU.vis[s.id]}"><i class="${s.tracejado ? 'tracejado' : ''}" style="border-color:${s.cor}"></i>
         <span>${esc(s.nome)}</span><span class="fim">${nf(conta[s.id].n, 0)} · ${km(conta[s.id].m)}</span></button>`).join('')
+      + (ILU.zona ? legendaFora() : '')
       + '<p>Toque numa linha para mostrar ou esconder. "OK interno" é a conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada.</p>'
       + legendaNos('#101010', 'A forma diz o que é; a cor é a mesma situação dos trechos (preto: não iniciado). De longe, só as caixas; os nós aparecem ao aproximar.');
   }

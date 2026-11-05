@@ -241,6 +241,22 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertIn("function desenharNos(", pln)
         self.assertIn("zonaDoTrecho(t)", re.search(r"function linhasTracejadas\(.*?\n\}", ilu, re.S).group(0))
 
+    def test_zona_em_foco_mostra_as_outras_frentes_em_cinza(self):
+        """05/11/2026: com uma zona em foco, os trechos das outras frentes ficam por baixo, finos e cinza, nos dois mapas.
+        A rede da zona não parece cortada onde a 06.1 passa o tubo para a zona vizinha ou para a Subadutora (ex.: o 160
+        do VM-3.2 segue pela Zona 05 e volta para a Zona 03). Eles não se tocam e entram também na cópia do gesto."""
+        pln, ilu, css = ler("planejamento.js"), ler("iluminado.js"), ler("app.css")
+        self.assertIn("$('#plnFora').innerHTML = PLN.zona ? htmlFora(GERAL.trechos.filter(t => !naFrente(t))) : '';", pln)
+        self.assertIn("$('#iluFora').innerHTML = ILU.zona ? htmlFora(GERAL.trechos.filter(t => !naFrenteIlu(t))) : '';", ilu)
+        self.assertIn('<g id="plnFora"></g>', pln)
+        self.assertIn('<g id="iluFora"></g>', ilu)
+        self.assertIn("grupoForaCopia(", re.search(r"function copiaPln\(.*?\n\}", pln, re.S).group(0))
+        self.assertIn("grupoForaCopia(", re.search(r"function copiaIlu\(.*?\n\}", ilu, re.S).group(0))
+        self.assertIn("tocavel: t => naFrente(t)", pln)                   # fora da frente continua sem toque
+        self.assertIn("legendaFora()", pln)
+        self.assertIn("legendaFora()", ilu)
+        self.assertIn(".tr-fora {", css)
+
     def test_mapa_do_dados_da_obra_tela_cheia_vista_e_zonas(self):
         """Fluxo integrado (23/10/2026): tela cheia de verdade (API e a classe para o Safari do iPhone), a vista guardada na
         sessão (o mapa não volta sozinho para a obra inteira); com uma zona em foco, as outras não respondem e só se troca de

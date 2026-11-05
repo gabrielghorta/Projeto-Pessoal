@@ -20,6 +20,17 @@ de cada polilinha está sobre a UTM da 06.1 (colunas BS..BV, até 2,5 cm), mas a
 Essas pontas são encaixadas no nó até TOL_ENCAIXE_M; acima disso viram pendência de desenho, sem encaixe forçado.
 As pontas que, pelas decisões de config/topologia.json, passam pelo nó sem se ligar a ele (cruzamento com semicírculo,
 tubo ao lado do nó) não são puxadas: o arco do pulo fica como está.
+
+Continuidade (05/11/2026): nenhum tubo pode aparecer solto no mapa.
+* Toda parte do desenho que termina na ponta do trecho é encaixada no nó, não só a mais perto: na visão geral o
+  mesmo trecho vem de duas pranchas, e a cópia que não era puxada ficava como um rabicho ao lado do nó.
+* As pontas que o arquivo de decisões dá como um tubo só (JUNTAR: emenda sem nó, divisa de zona, cruzamento,
+  passagem) são ligadas entre si, no ponto médio, até TOL_JUNTAR_M.
+* Desenho que para antes do fim do trecho (LONGE_DO_NO, a prancha não desenhou o resto) é completado em linha reta
+  até o nó, na visão geral, só quando a parte desenhada mais o que falta dá a extensão da 06.1. Continua pendência de
+  desenho (o caminho exato não está no HTML).
+* Na visão geral, as partes do mesmo trecho que vêm de pranchas vizinhas e não se tocam na emenda são ligadas, até
+  TOL_EMENDA_M.
 """
 import base64
 import io
@@ -38,6 +49,9 @@ TOL_NO_M = 0.10            # ponta a até 10 cm do centro do nó: já está no n
 TOL_ENCAIXE_M = 2.0        # a 06.1 liga ponta a nó até 1,59 m (2.721 pontas): acima de 2 m não encaixa, é pendência
 TOL_PONTA_UTM_M = 0.5      # a ponta do desenho fica sobre a UTM da 06.1; acima disso o desenho não chega ao fim do trecho
 ALCANCE_ARCO_M = 3.0       # trecho perto da ponta onde se procura o arco do pulo
+TOL_COMPLETAR_M = 20.0     # desenho que para antes do fim do trecho: completa em linha reta até o nó (só na visão geral)
+TOL_JUNTAR_M = 6.0         # pontas de um tubo só (JUNTAR) que a prancha deixou separadas: a maior é 5,89 m (J-098)
+TOL_EMENDA_M = 5.0         # partes do mesmo trecho em pranchas vizinhas que não se tocam: a maior é 2,11 m
 VERSAO_MOSAICO = 2          # muda quando a montagem do mosaico muda (o guardado em mapa/cache/ é refeito)
 SEM_NO = {"DIVISA DE ZONA": "DIVISA_ZONA", "LIMITE DA TRAVESSIA MND": "LIMITE_MND",
           "PONTA SEM NÓ NA TABELA": "PONTA_SEM_NO", "JUNÇÃO SEM NÓ NA TABELA": "JUNCAO_SEM_NO"}
@@ -303,17 +317,34 @@ def classificar(no, m, nao_conexao=None):
     return "DESLOCADA", "ESTENDER_ATE_NO"
 
 
+def completavel(m, extensao_m):
+    """Ponta LONGE_DO_NO cujo desenho só parou antes (o nó fica à frente, na linha) e a parte desenhada mais o que falta
+    dá a extensão da 06.1: completar em linha reta até o nó não inventa caminho que contradiga a tabela."""
+    if not m or "d_no_m" not in m or not extensao_m:
+        return False
+    d = m["d_no_m"]
+    return (m["d_utm_m"] > TOL_PONTA_UTM_M and d <= TOL_COMPLETAR_M and m["ao_longo_m"] >= 0.8 * d
+            and abs(m["comprimento_m"] + d - extensao_m) <= max(1.0, 0.05 * extensao_m))
+
+
+def _dist_seg(q, a, b):
+    vx, vy = b[0] - a[0], b[1] - a[1]
+    L = vx * vx + vy * vy
+    f = 0.0 if L == 0 else max(0.0, min(1.0, ((q[0] - a[0]) * vx + (q[1] - a[1]) * vy) / L))
+    return math.hypot(q[0] - a[0] - f * vx, q[1] - a[1] - f * vy)
+
+
 def _derivados(caminho):
     """pontas e correções, refeitos quando o HTML ou o arquivo de decisões mudam"""
     c = _ler(caminho)
     chave = topologia.chave_config()
     if c.get("derivados_chave") != chave or "pontas" not in c:
         try:
-            nao_conexao = topologia.pontas_nao_conexao()
+            nao_conexao, juntar = topologia.pontas_nao_conexao(), topologia.pontas_juntar()
         except Exception:  # noqa: BLE001 — o arquivo de decisões é editado à mão: o traçado não pode cair por causa dele
-            nao_conexao = {}
+            nao_conexao, juntar = {}, []
         c.pop("geometria", None)
-        c["pontas"], c["correcoes"] = _calcular(c["dados"], desenhos(caminho), nao_conexao)
+        c["pontas"], c["correcoes"] = _calcular(c["dados"], desenhos(caminho), nao_conexao, juntar)
         c["derivados_chave"] = chave
     return c
 
@@ -326,11 +357,24 @@ def pontas(caminho):
 
 def correcoes(caminho):
     """{desenho: [[trecho (índice em DADOS.trechos), parte, ponta (0 começo | 1 fim), cortar, x, y], ...]}:
-    em cada desenho, tira `cortar` vértices daquela ponta e põe o centro do nó (x, y) no lugar."""
+    em cada desenho, tira `cortar` vértices daquela ponta e põe o ponto (x, y) no lugar: o centro do nó, ou o ponto
+    médio das pontas de um tubo só (JUNTAR)."""
     return _derivados(caminho)["correcoes"]
 
 
-def _calcular(d, dzs, nao_conexao):
+def _pontas_perto(partes, alvo, tol, outro):
+    """De cada parte, a ponta a até tol do alvo: [(parte, 0 | 1, distância)]. Uma ponta por parte, e só a que fica mais
+    perto deste lado do trecho que do outro (`outro`): no trecho curto as duas pontas não vão para o mesmo nó."""
+    out = []
+    for k, p in enumerate(partes):
+        qual, q = min(((0, p[0]), (1, p[-1])), key=lambda x: math.dist(x[1], alvo))
+        dd = math.dist(q, alvo)
+        if dd <= tol and dd <= math.dist(q, outro):
+            out.append((k, qual, dd))
+    return out
+
+
+def _calcular(d, dzs, nao_conexao, juntar=()):
     trechos, els = d["trechos"], d["els"]
     geral = dzs.get("GERAL")
     lista, acoes = [], {}
@@ -345,27 +389,81 @@ def _calcular(d, dzs, nao_conexao):
             if m is not None:
                 item.update({k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()
                              if k in ("d_no_m", "d_utm_m", "ao_longo_m", "lateral_m", "arco")})
-            lista.append(item)
             if acao in ("ESTENDER_ATE_NO", "APARAR"):
                 acoes[(i, lado)] = (j, no_utm, acao)
+            elif classe == "LONGE_DO_NO" and completavel(m, t.get("L")):
+                item["desenho"] = "COMPLETADO_EM_LINHA_RETA"          # continua pendência: o caminho exato não está no HTML
+                acoes[(i, lado)] = (j, no_utm, "COMPLETAR")
+            lista.append(item)
+    idx = {t["R"]: i for i, t in enumerate(trechos)}
     corr = {}
     for ident, dz in dzs.items():
-        out = []
+        out, esc = [], dz["escala"]
         for (i, lado), (j, no_utm, acao) in sorted(acoes.items()):
             partes = dz["tr"].get(i)
-            if not partes:
-                continue
+            if not partes or (acao == "COMPLETAR" and ident != "GERAL"):
+                continue                                    # a prancha mostra só a folha dela: o resto está em outra
             t = trechos[i]
             U = aplicar(dz["t"], *(t["A"] if lado == "ini" else t["B"]))
-            k, qual, dd = _casar_ponta([_pontos(p) for p in partes], U)
-            if dd > TOL_PONTA_UTM_M * dz["escala"]:
-                continue                                    # essa ponta não está neste desenho (trecho cortado pela prancha)
+            V = aplicar(dz["t"], *(t["B"] if lado == "ini" else t["A"]))
+            pts = [_pontos(p) for p in partes]
+            if acao == "COMPLETAR":
+                k, qual, dd = _casar_ponta(pts, U)
+                achadas = [(k, qual, dd)] if dd <= (TOL_COMPLETAR_M + TOL_PONTA_UTM_M) * esc else []
+            else:                                           # toda parte que termina aqui (o trecho vem de duas pranchas)
+                achadas = _pontas_perto(pts, U, TOL_PONTA_UTM_M * esc, V)
             alvo = dz["el"].get(j) or aplicar(dz["t"], *no_utm)
-            cortar = _aparar(_pontos(partes[k]) if qual == 0 else _pontos(partes[k])[::-1], alvo, dz["escala"]) if acao == "APARAR" else 0
-            out.append([i, k, qual, cortar, round(alvo[0], 2), round(alvo[1], 2)])
+            for k, qual, _ in achadas:                      # nenhuma: ponta fora deste desenho (trecho cortado pela prancha)
+                cortar = _aparar(pts[k] if qual == 0 else pts[k][::-1], alvo, esc) if acao == "APARAR" else 0
+                out.append([i, k, qual, cortar, round(alvo[0], 2), round(alvo[1], 2)])
+        for _jid, _tipo, ps in juntar:                      # um tubo só: as pontas se encontram no ponto médio
+            achou = []
+            for nome, lado in ps:
+                i = idx.get(nome)
+                partes = dz["tr"].get(i) if i is not None else None
+                if not partes or lado not in ("ini", "fim"):
+                    break
+                t = trechos[i]
+                pts = [_pontos(p) for p in partes]
+                k, qual, dd = _casar_ponta(pts, aplicar(dz["t"], *(t["A"] if lado == "ini" else t["B"])))
+                if dd > TOL_JUNTAR_M * esc:
+                    break
+                achou.append((i, k, qual, pts[k][0] if qual == 0 else pts[k][-1]))
+            else:
+                cx = sum(a[3][0] for a in achou) / len(achou)
+                cy = sum(a[3][1] for a in achou) / len(achou)
+                if max(math.dist(a[3], (cx, cy)) for a in achou) > 0.005 * esc:
+                    out += [[i, k, qual, 0, round(cx, 2), round(cy, 2)] for i, k, qual, _ in achou]
         if out:
             corr[ident] = out
     return lista, corr
+
+
+def emendar(partes, fins, esc):
+    """Partes do mesmo trecho, uma por prancha, que não se tocam na emenda das pranchas: a ponta solta de uma parte vai
+    até a ponta mais perto de outra, até TOL_EMENDA_M. fins: as pontas do trecho no desenho (essas não são emenda)."""
+    if len(partes) < 2:
+        return partes
+    partes = [list(p) for p in partes]
+    toque, tol, longe = 0.3 * esc, TOL_EMENDA_M * esc, 2.5 * esc         # até 30 cm: as duas pranchas se sobrepõem
+    feitas = set()
+    for k, p in enumerate(partes):
+        for qual in (0, 1):
+            q = (p[0], p[1]) if qual == 0 else (p[-2], p[-1])
+            if min(math.dist(q, f) for f in fins) <= longe:
+                continue
+            outras = [(k2, _pontos(p2)) for k2, p2 in enumerate(partes) if k2 != k]
+            if any(_dist_seg(q, a, b) <= toque for _, pt in outras for a, b in zip(pt, pt[1:])):
+                continue
+            dd, k2, r = min((math.dist(q, r), k2, r) for k2, pt in outras for r in (pt[0], pt[-1]))
+            if dd > tol or (k2, k) in feitas:
+                continue
+            feitas.add((k, k2))
+            if qual == 0:
+                p[0:0] = [r[0], r[1]]
+            else:
+                p.extend([r[0], r[1]])
+    return partes
 
 
 def _aparar(p, alvo, esc):
@@ -416,16 +514,17 @@ def geometria(caminho):
         # nós e caixas desenhados na visão geral: [índice em DADOS.els, x, y]; os sem posição não aparecem aqui
         "els": [{"n": d["els"][e[0]]["noms"], "x": _r(e[1]), "y": _r(e[2])} for e in g.get("el", []) if e[0] < len(d["els"])],
     }
+    ref = desenhos(caminho)["GERAL"]
     for t in g.get("tr", []):
         f = trechos[t["i"]]
         partes = encaixar(t["p"], corr[t["i"]]) if t["i"] in corr else t["p"]   # ponta no centro do nó (lei da obra)
+        partes = emendar(partes, [aplicar(ref["t"], *f["A"]), aplicar(ref["t"], *f["B"])], ref["escala"])
         # met: MND sai tracejado; a e b: os nós das pontas (a frente de cada nó no Dados da obra, D-182)
         out["trechos"].append({"n": f["R"], "z": f.get("loc"), "tp": f.get("tipo"), "de": f.get("de"), "L": f.get("L"),
                                "pb": f.get("pb"), "met": f.get("met"), "a": f.get("ini"), "b": f.get("fim"),
                                "p": [[_r(v) for v in parte] for parte in partes]})
     # O fundo novo recebe a referência do desenho já corrigido; os pontos da rede continuam os mesmos.
     from mapa_contexto import contexto
-    ref = desenhos(caminho)["GERAL"]
     out["contexto"] = contexto(ref["t"], ref["inv"])
     c["geometria"] = out
     return out
