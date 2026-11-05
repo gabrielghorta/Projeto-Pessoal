@@ -1,0 +1,4 @@
+# planilhas e mapa: bytes exatos (o controle CTRL-01 confere o SHA-256 das planilhas)
+*.xlsx binary
+*.xlsm binary
+mapa/*.html binary

@@ -1,0 +1,29 @@
+# Sistema Morro da Cruz na nuvem (Render): link fixo https, sempre no ar, sem depender de computador da obra.
+# Passo a passo em morro-da-cruz/docs/NUVEM.md. A conta e o pagamento ficam no nome do responsável pela obra.
+services:
+  - type: web
+    name: morro-da-cruz
+    runtime: python
+    branch: claude/powerbi-modifications-wqxekj
+    rootDir: morro-da-cruz              # só mudanças nesta pasta publicam versão nova
+    plan: starter                       # o plano gratuito não tem disco: os lançamentos se perderiam a cada reinício
+    region: virginia
+    buildCommand: pip install -r requirements.txt
+    startCommand: python nuvem.py
+    healthCheckPath: /
+    autoDeploy: true
+    disk:
+      name: dados-da-obra               # banco, fotos, documentos, backups e logs
+      mountPath: /var/data
+      sizeGB: 1                         # pode crescer depois (só aumenta)
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: MC_DADOS
+        value: /var/data
+      - key: MC_ADMIN_LOGIN             # o Render pede estes três ao criar; usados só para o primeiro administrador
+        sync: false
+      - key: MC_ADMIN_NOME
+        sync: false
+      - key: MC_ADMIN_SENHA
+        sync: false

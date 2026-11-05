@@ -1,0 +1,4 @@
+{
+  "_leia": "Exceções revisáveis aos nomes gerados. Chave = id do material; campos permitidos = nome, tipo, tamanho. Preserve pressão, resina e dimensões que distinguem materiais.",
+  "materiais": {}
+}

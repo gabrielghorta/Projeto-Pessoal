@@ -1,0 +1,4 @@
+# saídas grandes da ferramenta: ficam na pasta de trabalho do Drive (07_IA_CHATGPT_E_CLAUDE/topologia_trechos_2026-10-20)
+saida/pontas.csv
+saida/recortes/
+__pycache__/

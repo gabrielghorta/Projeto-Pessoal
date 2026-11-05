@@ -1,0 +1,465 @@
+"""Telas novas (tela inicial, menu lateral e Mapa iluminado): visão geral do mapa REV02 (traçado, zonas e satélite),
+planilhas oficiais para baixar do próprio sistema, ligações prediais do BM, camada de liberação topográfica e a
+coerência entre o HTML e o JavaScript (toda tela do menu existe, todo elemento usado pelo código está na página)."""
+import io
+import os
+import re
+import sys
+import unittest
+import urllib.error
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+RAIZ = os.path.dirname(AQUI)
+sys.path.insert(0, RAIZ)
+sys.path.insert(0, AQUI)
+import mapa_geral as MG  # noqa: E402
+import planejamento as P  # noqa: E402
+import server  # noqa: E402
+import servicos as S  # noqa: E402
+from test_acesso import BaseHTTP  # noqa: E402
+
+WEB = os.path.join(RAIZ, "web")
+MAPA = server._mapa_path()
+
+
+def ler(nome):
+    with open(os.path.join(WEB, nome), encoding="utf-8") as f:
+        return f.read()
+
+
+@unittest.skipUnless(os.path.exists(MAPA), "mapa REV02 ausente")
+class TestVisaoGeral(unittest.TestCase):
+    def test_geometria_sai_do_html_sem_coordenada_nova(self):
+        g = MG.geometria(MAPA)
+        self.assertEqual((len(g["trechos"]), len(g["zonas"]), len(g["quadros"]), len(g["imagens"])), (1436, 11, 25, 25))
+        nomes = [t["n"] for t in g["trechos"]]
+        self.assertEqual(len(set(nomes)), 1436)
+        self.assertTrue(all(re.match(r"^(Zona\d\d|ADUTORA)_PB\d\d_", n) for n in nomes), nomes[:3])
+        # tudo dentro da prancha da visão geral
+        dentro = lambda x, y: -1 <= x <= g["w"] + 1 and -1 <= y <= g["h"] + 1
+        self.assertTrue(all(dentro(p[i], p[i + 1]) for t in g["trechos"] for p in t["p"] for i in range(0, len(p), 2)))
+        self.assertTrue(all(dentro(e["x"], e["y"]) for e in g["els"]))
+        # MV-11, VTF-12 e VTF-16 continuam sem posição: não aparecem entre os nós desenhados
+        desenhados = {n for e in g["els"] for n in e["n"]}
+        self.assertFalse([n for n in desenhados if re.search(r"_(MV-11|VTF-12|VTF-16)$", n)])
+
+    def test_geometria_traz_o_que_as_frentes_e_as_cores_pedem(self):
+        """D-182/D-184: as cores do projeto por diâmetro, a metodologia (MND tracejado) e os nós das pontas (a frente de
+        cada nó). A Subadutora (adutora e 200 mm pra cima) tem 132 trechos, cerca de 10,5 km."""
+        g = MG.geometria(MAPA)
+        self.assertEqual(g["cores_de"]["225"].lower(), "#00ff7f")
+        self.assertTrue(all(str(t["de"]) in g["cores_de"] for t in g["trechos"]))
+        self.assertTrue({t["met"] for t in g["trechos"]} >= {"VCA", "MND"})
+        nos = {n for e in g["els"] for n in e["n"]}
+        self.assertGreater(sum(t["a"] in nos and t["b"] in nos for t in g["trechos"]), 1300)
+        sub = [t for t in g["trechos"] if t["tp"] == "Adutora" or t["de"] >= 200]
+        self.assertEqual((len(sub), sum(t["de"] in (225, 250) for t in sub)), (132, 96))
+        self.assertAlmostEqual(sum(t["L"] for t in sub), 10463.38, places=1)
+
+    def test_html_base_com_a_frente_subadutora(self):
+        """D-182/D-183: o HTML do mapa base também tira os 200 mm pra cima das zonas e desenha cada dispositivo com a sua
+        forma (o DADOS não muda)."""
+        with open(MAPA, encoding="utf-8") as f:
+            html = f.read()
+        codigo = html[html.rfind("<script>"):]
+        self.assertIn("const isSub = t => t.tipo === 'Adutora' || t.de >= SUBADUTORA_MM;", codigo)
+        self.assertIn("const pipeFront = t => isSub(t) ? 'ADUTORA' : t.loc;", codigo)
+        self.assertIn("key === 'ADUTORA' ? 'Subadutora'", codigo)
+        self.assertIn("mk('polygon', { class: 'el'", codigo)
+        self.assertNotIn(".elg rect", codigo)
+
+    def test_mosaico_do_satelite_com_todas_as_pbs_no_lugar(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("sem Pillow: a tela monta as PBs uma a uma")
+        im = Image.open(io.BytesIO(MG.mosaico(MAPA))).convert("L")
+        g = MG.geometria(MAPA)
+        for pb in ("PB01", "PB12", "PB20"):            # a PB20 é girada 90° no REV02 e ficava de fora do mosaico
+            q = next(q for q in g["quadros"] if q["id"] == pb)
+            cx, cy = (min(q["p"][0::2]) + max(q["p"][0::2])) / 2 * 1.3, (min(q["p"][1::2]) + max(q["p"][1::2])) / 2 * 1.3
+            reg = im.crop((round(cx - 40), round(cy - 40), round(cx + 40), round(cy + 40)))
+            media = sum(i * n for i, n in enumerate(reg.histogram())) / (reg.width * reg.height)
+            self.assertGreater(media, 60, pb)            # o fundo vazio do mosaico é 14
+
+    def test_imagens_das_plantas(self):
+        self.assertEqual(MG.imagem_pb(MAPA, "PB01")[:4], b"RIFF")
+        self.assertIsNone(MG.imagem_pb(MAPA, "PB99"))
+
+
+class TestCamadasELigacoes(BaseHTTP):
+    LIBERAR_TUDO = False                  # a camada da liberação topográfica é o assunto
+
+    def test_liberacao_topografica_total_e_parcial(self):
+        t1, t2 = self.q("SELECT id, extensao_m FROM trechos WHERE vigente=1 AND metodologia='VCA' ORDER BY id LIMIT 2")
+        S.registrar_etapa_complementar(self.c, t1[0], "LIBERACAO_TOPOGRAFICA", 0, t1[1], "2026-10-15", "eng1", "NS 01")
+        S.registrar_etapa_complementar(self.c, t2[0], "LIBERACAO_TOPOGRAFICA", 0, t2[1] / 2, "2026-10-15", "eng1", "NS 02")
+        nome = dict(self.q("SELECT id, ponto FROM trechos WHERE id IN (?, ?)", t1[0], t2[0]))
+        lib = P.camadas_mapa(self.c)["liberado"]
+        self.assertEqual((lib[nome[t1[0]]], lib[nome[t2[0]]], len(lib)), ("TOTAL", "PARCIAL", 2))
+        st, est = self.cliente("almox1").get("/api/mapa/estado")
+        self.assertEqual((st, est["camadas"]["liberado"].get(nome[t1[0]])), (200, "TOTAL"))
+
+    def test_ligacoes_prediais_vem_do_bm(self):
+        eng = self.cliente("eng1")
+        self.c.execute("DELETE FROM bm_itens WHERE codigo_caesb='8005508120013'")
+        self.c.commit()
+        self.assertIsNone(eng.get("/api/resumo")[1]["ligacoes"])          # sem o item no BM: não inventa número
+        self.c.execute("""INSERT INTO bm_itens(planilha, item, codigo_caesb, descricao, unidade, quantidade)
+                          VALUES ('JUNTADA', '5.10.6', '8005508120013', 'LIGAÇÃO PREDIAL DE ÁGUA EM REDE DE PEAD', 'UN', 11894)""")
+        self.c.commit()
+        self.assertEqual(eng.get("/api/resumo")[1]["ligacoes"], {"quantidade": 11894, "fonte": "BM, item 5.10.6"})
+
+
+class TestArquivosHTTP(BaseHTTP):
+    def test_planilhas_baixam_do_sistema_so_com_sessao(self):
+        anon, almox, alm = self.cliente(), self.cliente("almox1"), self.cliente("eng1")
+        self.assertEqual(anon.get("/api/planilhas")[0], 401)
+        self.assertEqual(anon.get("/arquivos/bm")[0], 401)
+        self.assertEqual((almox.get("/api/planilhas")[0], almox.get("/arquivos/bm")[0]), (403, 403))   # LEV: engenharia e adm
+        st, ls = alm.get("/api/planilhas")
+        self.assertEqual(st, 200)
+        cfg = server._cfg()["arquivos"]
+        esperadas = [k for k in server.PLANILHAS if server._arquivo_oficial(k)]
+        self.assertEqual([a["chave"] for a in ls], esperadas)
+        for a in ls:
+            self.assertEqual(a["arquivo"], cfg[a["chave"]])
+        if "bm" in esperadas:
+            with alm.op.open(self.url + "/arquivos/bm", timeout=20) as r:
+                dados, disp = r.read(), r.headers["Content-Disposition"]
+            caminho = os.path.join(server.BASE, "planilhas", cfg["bm"])
+            with open(caminho, "rb") as f:
+                self.assertEqual(dados, f.read())
+            self.assertTrue(disp.startswith("attachment;"), disp)
+        for rota in ("/arquivos/xyz", "/arquivos/../server.py", "/arquivos/", "/arquivos/%2e%2e%2fserver.py"):
+            self.assertEqual(alm.get(rota)[0], 404, rota)
+
+    @unittest.skipUnless(os.path.exists(MAPA), "mapa REV02 ausente")
+    def test_mapa_geral_e_imagens_so_com_sessao(self):
+        anon, alm = self.cliente(), self.cliente("almox1")
+        for rota in ("/api/mapa/geral", "/mapa/geral.webp", "/mapa/pb/PB01.webp"):
+            self.assertEqual(anon.get(rota)[0], 401, rota)
+        st, g = alm.get("/api/mapa/geral")
+        self.assertEqual((st, len(g["trechos"]), len(g["zonas"])), (200, 1436, 11))
+        with alm.op.open(self.url + "/mapa/pb/PB01.webp", timeout=20) as r:
+            self.assertEqual((r.headers.get_content_type(), r.read(4)), ("image/webp", b"RIFF"))
+        try:                                                # o mosaico precisa do Pillow; sem ele, a tela monta as PBs
+            with alm.op.open(self.url + "/mapa/geral.webp", timeout=60) as r:
+                self.assertEqual(r.read(4), b"RIFF")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 404)
+            self.assertIsNone(MG.mosaico(MAPA))
+        for rota in ("/mapa/pb/PB99.webp", "/mapa/pb/../../server.py", "/mapa/outra.webp"):
+            self.assertEqual(alm.get(rota)[0], 404, rota)
+
+
+class TestPaginaECodigo(unittest.TestCase):
+    """Guarda contra tela quebrada: o menu, as seções e os elementos usados pelo JavaScript precisam existir no HTML."""
+
+    def setUp(self):
+        self.html, self.js = ler("index.html"), ler("app.js") + ler("equipes.js") + ler("iluminado.js") + ler("planejamento.js") + ler("notas.js") + ler("apropriacao.js")
+        self.ids = set(re.findall(r'id="([^"]+)"', self.html))
+
+    def test_cada_item_do_menu_abre_uma_tela_que_existe(self):
+        telas = set(re.findall(r"^\s{2}(\w+): \{ titulo:", self.js, re.M))
+        self.assertEqual(len(telas), 13)                    # D-199: Início, Mapa iluminado e as 11 subabas
+        for t in telas:
+            self.assertIn("aba-" + t, self.ids, t)
+        for t in set(re.findall(r'data-tela="(\w+)"', self.html)):
+            self.assertTrue(t in telas or t == "administrativo", t)
+
+    def test_elementos_usados_pelo_codigo_existem(self):
+        usados = set(re.findall(r"\$\('#([\w-]+)'\)", self.js))
+        criados = set(re.findall(r'id="([\w-]+)"', self.js))      # elementos que o próprio JavaScript desenha
+        self.assertFalse(sorted(usados - self.ids - criados))
+        # campo achado pelo nome na página inteira: sem ele o início da página parava (contingência do check-in que saiu)
+        nomes = set(re.findall(r"\$\('\w*\[name=(\w+)\]'\)", self.js))
+        self.assertFalse(sorted(n for n in nomes if f'name="{n}"' not in self.html))
+
+    def test_nomes_globais_sem_repeticao_entre_os_scripts(self):
+        """Os scripts da página dividem o mesmo escopo global: um const/let repetido derruba o script que vem depois."""
+        vistos = {}
+        for arq in ("app.js", "equipes.js", "solicitacoes.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js"):
+            for m in re.finditer(r"^(?:async\s+)?(?:function\s+|const\s+|let\s+)(\w+)", ler(arq), re.M):
+                self.assertNotIn(m.group(1), vistos, f"{m.group(1)} declarado em {vistos.get(m.group(1))} e em {arq}")
+                vistos[m.group(1)] = arq
+
+    def test_mapas_sem_o_que_travava_de_perto(self):
+        """Medido em 22/10/2026: a rede inteira num caminho tracejado só e o filtro CSS no satélite levavam de 0,5 a 1,7 s
+        por quadro ao arrastar de perto. O tracejado vai em pedaços (um caminho por trecho, contorno em pedaços) e o
+        escurecimento é um véu por cima das fotos."""
+        ilu, pln, css = ler("iluminado.js"), ler("planejamento.js"), ler("app.css")
+        for js in (ilu, pln):
+            self.assertIn("linhasTracejadas(por[s.id]", js)
+            self.assertIn("contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl')", js)
+            self.assertNotIn("<polyline class=\"ilu-zl\" points=", js)
+        self.assertNotIn(".style.filter = FUNDOS", ilu)
+        self.assertNotRegex(css, r"#plnSat\s*\{[^}]*filter")
+        self.assertIn('class="sat-veu"', ilu)
+        # o zoom: um desenho por quadro e nada de variável na raiz do mapa (refazia o estilo de todos os elementos)
+        self.assertIn("agendarVista(ctx);", ilu)
+        self.assertNotIn("svg().style.setProperty('--k'", ilu + pln)
+
+    def test_gesto_pela_placa_de_video(self):
+        """Mapas fluidos (23/10/2026): durante o gesto (arrastar, roda, pinça, botões, focar zona) o SVG só é movido e
+        ampliado por transform; o desenho de verdade (viewBox) vem quando o gesto para, e o will-change sai no redesenho
+        (ligado depois, o navegador guardava a escala de pintura do gesto e o mapa ficava preto ao aproximar)."""
+        ilu = ler("iluminado.js")
+        corpo = lambda nome: re.search(r"\nfunction " + nome + r"\(.*?\n\}", ilu, re.S).group(0)
+        self.assertIn("(ctx.gesto ? moverVista : desenharVista)(ctx)", corpo("agendarVista"))
+        self.assertIn("svg.style.transform = transformVista(", corpo("moverVista"))
+        self.assertIn("svg.style.willChange = 'transform'", corpo("moverVista"))
+        self.assertIn("svg.style.willChange = ''", corpo("desenharVista"))
+        self.assertIn("setTimeout(() => soltarVista(ctx), espera)", corpo("gestoVista"))
+        self.assertIn("gestoVista(ctx)", corpo("zoomEm"))
+        gestos = corpo("ligarGestos")
+        self.assertIn("gestoVista(ctx)", gestos)                       # arrastar
+        self.assertIn("soltarVista(ctx);", gestos)                     # soltar o dedo: o desenho na hora
+        self.assertNotIn("__GPU", ilu)                                 # o protótipo virou o comportamento normal
+        # a animação de irPara roda no compositor e desenha uma vez, no fim
+        self.assertIn(".animate(", corpo("irPara"))
+        self.assertIn("redesenhar(ctx)", corpo("irPara"))
+        # o tamanho vem da caixa, nunca do SVG (transformado durante o gesto)
+        for nome in ("pontoDoMapa", "irPara", "ajustarAspecto", "desenharVista", "moverVista"):
+            self.assertIn("ctx.caixa().getBoundingClientRect()", corpo(nome), nome)
+            self.assertNotIn("svg().getBoundingClientRect()", corpo(nome), nome)
+
+    def test_borda_do_gesto_e_redesenho_leve(self):
+        """5.2 e 5.3 dos mapas fluidos: a cópia leve por baixo cobre a borda do gesto; o clique acha o trecho por cálculo
+        (sem 1.436 caminhos invisíveis); os nós do Dados da obra só existem onde aparecem; o tracejado vai por zona."""
+        ilu, pln, css = ler("iluminado.js"), ler("planejamento.js"), ler("app.css")
+        self.assertIn("class=\"vista-fundo\"", ilu)                    # fundo opaco do desenho esconde a cópia parada
+        self.assertRegex(css, r"\.vista-fundo \{[^}]*fill: #0B0B0B")
+        self.assertRegex(css, r"\.ilu \{[^}]*background: #0B0B0B")     # a mesma cor do fundo da caixa
+        self.assertRegex(css, r"\.vista-copia \{[^}]*pointer-events: none")
+        for js, ctx in ((ilu, "ILU"), (pln, "PLN")):
+            self.assertNotIn("ilu-hit", js)
+            self.assertRegex(js, r"const " + ctx + r" = \{[^;]*copia: \(g, u\) =>[^;]*copiaChave: ")
+        self.assertIn("trechoPerto(ctx, pontoDoMapa(", ilu)
+        self.assertIn("function cliquePln(alvo, ev, i)", pln)
+        self.assertNotIn("${nos}</g>", pln)                            # nós sob demanda (desenharNos)
+        self.assertIn("function desenharNos(", pln)
+        self.assertIn("zonaDoTrecho(t)", re.search(r"function linhasTracejadas\(.*?\n\}", ilu, re.S).group(0))
+
+    def test_zona_em_foco_mostra_as_outras_frentes_em_cinza(self):
+        """05/11/2026: com uma zona em foco, os trechos das outras frentes ficam por baixo, finos e cinza, nos dois mapas.
+        A rede da zona não parece cortada onde a 06.1 passa o tubo para a zona vizinha ou para a Subadutora (ex.: o 160
+        do VM-3.2 segue pela Zona 05 e volta para a Zona 03). Eles não se tocam e entram também na cópia do gesto."""
+        pln, ilu, css = ler("planejamento.js"), ler("iluminado.js"), ler("app.css")
+        self.assertIn("$('#plnFora').innerHTML = PLN.zona ? htmlFora(GERAL.trechos.filter(t => !naFrente(t))) : '';", pln)
+        self.assertIn("$('#iluFora').innerHTML = ILU.zona ? htmlFora(GERAL.trechos.filter(t => !naFrenteIlu(t))) : '';", ilu)
+        self.assertIn('<g id="plnFora"></g>', pln)
+        self.assertIn('<g id="iluFora"></g>', ilu)
+        self.assertIn("grupoForaCopia(", re.search(r"function copiaPln\(.*?\n\}", pln, re.S).group(0))
+        self.assertIn("grupoForaCopia(", re.search(r"function copiaIlu\(.*?\n\}", ilu, re.S).group(0))
+        self.assertIn("tocavel: t => naFrente(t)", pln)                   # fora da frente continua sem toque
+        self.assertIn("legendaFora()", pln)
+        self.assertIn("legendaFora()", ilu)
+        self.assertIn(".tr-fora {", css)
+
+    def test_mapa_do_dados_da_obra_tela_cheia_vista_e_zonas(self):
+        """Fluxo integrado (23/10/2026): tela cheia de verdade (API e a classe para o Safari do iPhone), a vista guardada na
+        sessão (o mapa não volta sozinho para a obra inteira); com uma zona em foco, as outras não respondem e só se troca de
+        zona pela janela Zonas, pela barra de frentes ou por "Obra inteira" (D-185); a caixa das ferramentas não engole o
+        toque; o menu fechado sem barra de rolagem."""
+        pln, ilu, css, html = ler("planejamento.js"), ler("iluminado.js"), ler("app.css"), self.html
+        for trecho in ("requestFullscreen", "classList.add('tela-cheia')", "fullscreenchange", "aria-pressed"):
+            self.assertIn(trecho, pln)
+        self.assertIn('id="plnTela"', html)
+        self.assertIn("⌖", html)
+        self.assertIn("sessionStorage.setItem(VISTA_PLN", pln)
+        self.assertNotIn("0.08", re.search(r"function aplicarCamadas\(\).*?\n\}", ilu, re.S).group(0))
+        self.assertIn("if (zona && !ILU.zona) return focarZona(zona.dataset.zona);", ilu)
+        self.assertNotIn("if (outra && outra !== ILU.zona)", ilu)
+        self.assertIn("return focarZonaPln(z);", pln)                  # obra inteira: o toque abre a zona do trecho
+        self.assertIn("&& !selecaoNaZona(z)", pln)                       # revisão de 30/10: a seleção da própria zona fica
+        self.assertRegex(css, r"\.ilu-ferr \{ pointer-events: none; \}")
+        self.assertIn(".rail:not(.aberto):not(.fixo) .rail-itens { scrollbar-width: none; }", css)
+        self.assertIn("::-webkit-scrollbar { display: none; }", css)
+
+    def secao(self, tela):
+        return re.search(r'<section class="aba" id="aba-' + tela + r'">.*?\n  </section>', self.html, re.S).group(0)
+
+    def test_menu_d199_quatro_abas_onze_subabas_e_paginas(self):
+        """Menu novo (D-199, 03/11/2026): 4 abas (Mapa iluminado, Execução, Almoxarifado, Administrativo) e 11 subabas;
+        Topografia, Cadastro de campo, Interferências, Pedir material e Cronograma viraram páginas; as subabas longas
+        ganharam páginas. Um componente de páginas só (chips, endereço, lembrança na sessão)."""
+        app = ler("app.js")
+        corpo = re.search(r"const TELAS = \{.*?\n\};", app, re.S).group(0)
+        grupos = {"grupo-campo": ["campo", "notas", "diario"], "planejamento": ["mapa", "almox", "compras"],
+                  "administrativo": ["medicao", "equipes", "relatorios", "lev", "admin"]}
+        for g, ordem in grupos.items():
+            self.assertEqual(re.findall(r"^\s{2}(\w+): \{ titulo: '[^']+', grupo: '" + g + "'", corpo, re.M), ordem, g)
+            rail = re.search(r'<div class="rail-sub" data-grupo="' + g + '">.*?</div>', self.html, re.S).group(0)
+            self.assertEqual(re.findall(r'data-tela="(\w+)"', rail), ordem, g)
+        self.assertIn("planejamento: 'Almoxarifado'", app)
+        # as páginas de cada subaba: as mesmas no código e no HTML
+        blocos = re.split(r"^\s{2}(\w+): \[", re.search(r"const PAGINAS = \{.*?\n\};", app, re.S).group(0), flags=re.M)[1:]
+        paginas = {t: re.findall(r"\['(\w+)', '[^']+', \(\) =>", b) for t, b in zip(blocos[::2], blocos[1::2])}
+        self.assertEqual(paginas["compras"], ["requisicoes", "notas", "fornecedores"])
+        self.assertEqual(paginas["notas"], ["servico", "topografia", "cadastro"])
+        self.assertEqual(paginas["campo"], ["apropriacao", "apontamento", "fotos", "interferencia"])
+        self.assertEqual(paginas["almox"], ["dia", "receber", "saldo", "inventario", "tubos"])
+        self.assertEqual(paginas["lev"], ["lev", "cronograma"])
+        self.assertEqual(set(paginas), {t for ts in grupos.values() for t in ts})       # toda subaba tem páginas
+        for tela, ps in paginas.items():
+            sec = self.secao(tela)
+            self.assertEqual(sorted(re.findall(r'data-pagina="(\w+)"', sec)), sorted(ps), tela)
+            self.assertIn('class="abas-chip grandes paginas-aba"', sec)     # alvos de 44 px, quebrando a linha
+        for velha in ("topografia", "cadastro_campo", "interferencias", "solicitar", "cronograma"):
+            self.assertNotIn('id="aba-' + velha + '"', self.html)
+            destino = re.search(r"^\s{2}" + velha + r": \['(\w+)/(\w+)'", app, re.M)       # o link salvo abre o lugar novo
+            self.assertIn(destino.group(2), paginas[destino.group(1)], velha)
+        self.assertEqual(app.count("function mostrarPagina("), 1)
+        self.assertIn("sessionStorage.setItem('mc-pagina-' + tela, pag)", app)
+        self.assertIn("'#' + id + (pag ? '/' + pag : '')", app)            # a página no endereço (voltar e avançar)
+        self.assertIn("const podeAba = id => podeTela(id) || ((TELAS[id] || {}).inclui || []).some(podeTela);", app)
+    def test_scripts_da_pagina_sem_erro_de_sintaxe(self):
+        """Um erro de sintaxe derruba o script inteiro (a tela dele não abre): node --check em cada um, se houver Node."""
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("sem Node")
+        for arq in ("app.js", "equipes.js", "solicitacoes.js", "iluminado.js", "mapa_fundo.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
+            r = subprocess.run([node, "--check", os.path.join(WEB, arq)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(r.returncode, 0, f"{arq}: {r.stderr[-400:]}")
+
+    def test_trecho_mais_perto_do_toque(self):
+        """O clique por cálculo acha o trecho da mesma forma que o antigo caminho de 14 px: até 7 px da tela; com duas
+        linhas sobrepostas, a de cima no desenho (índice maior). Roda o código da tela no Node, se houver."""
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("sem Node")
+        js = ler("iluminado.js")
+        trecho = lambda nome: (re.search(r"\nfunction " + nome + r"\(.*?\n\}\n", js, re.S)
+                               or re.search(r"\n(?:const|let) " + nome + r"\b[^\n]*\n", js)).group(0)
+        codigo = "".join(trecho(n) for n in ("limites", "GRADE", "gradeTrechos", "distSegmento", "trechoPerto", "TOQUE_PX"))
+        roteiro = codigo + """
+const GERAL = { trechos: [
+  { n: 'A', p: [[0, 0, 100, 0]] },            // horizontal em y = 0
+  { n: 'B', p: [[0, 10, 100, 10]] },          // horizontal em y = 10
+  { n: 'C', p: [[50, -50, 50, 50]] },         // vertical em x = 50 (cruza A e B)
+  { n: 'D', p: [[0, 10, 100, 10]] },          // igual a B (sobreposta, desenhada depois)
+] };
+const ctx = { vb: [0, -50, 200, 100], caixa: () => ({ getBoundingClientRect: () => ({ width: 200 }) }) };   // 1 unidade = 1 px
+const r = [[20, 1], [20, 6], [20, 9], [20, 30], [52, 30], [52, 0.5], [300, 300]].map(p => trechoPerto(ctx, p));
+ctx.tocavel = t => t.n !== 'D';
+r.push(trechoPerto(ctx, [20, 9]));
+console.log(JSON.stringify(r));
+"""
+        saida = subprocess.run([node, "-e", roteiro], capture_output=True, text=True, timeout=30)
+        self.assertEqual(saida.returncode, 0, saida.stderr)
+        # perto de A; entre A e B fica B (mais perto); sobre B e D, a de cima (D); longe de tudo (> 7 px) nada;
+        # perto de C; no cruzamento, o mais perto (A); fora do mapa nada; D intocável → B
+        self.assertEqual(eval(saida.stdout.strip()), [0, 3, 3, -1, 2, 0, -1, 1])
+
+    def test_dados_da_obra_com_o_fundo_do_iluminado_e_selecao_na_zona(self):
+        """D-185/D-186 (29/10/2026): o Dados da obra tem o fundo escuro do Mapa iluminado (revoga a planta clara da D-184),
+        os trechos na cor do diâmetro e finos, e escolhe só dentro da zona, com Desselecionar e Limpar seleção."""
+        pln, ilu, css = ler("planejamento.js"), ler("iluminado.js"), ler("app.css")
+        self.assertIn("htmlSatelite(g, 'pln')", pln)
+        self.assertIn("FUNDOS[ILU.fundo]", pln)                  # o véu do fundo escolhido no Mapa iluminado
+        self.assertNotIn("plnVeu", pln + css)
+        self.assertNotIn("#plnSat .sat-veu { display: none; }", css)
+        self.assertIn("larguraTrecho(zoom, 0.75)", pln)
+        for nome in ("function marcarTrecho(", "function marcarNo(", "function modoDesmarcar("):
+            self.assertIn(nome, pln)
+        self.assertNotIn("function escolherTrecho(", pln)
+        self.assertIn('id="plnDesmarcar"', self.html)
+        self.assertIn('id="plnLimpar"', self.html)
+        # foco por zona como no HTML, nos dois mapas: as outras zonas sem cor, sem trecho e sem toque
+        self.assertIn("const opacidadeZona = id => !PLN.zona ? 0.26 : id === PLN.zona ? 0.36 : 0;", pln)
+        self.assertIn("const opacidadeZonaIlu = id => !ILU.zona ? 0.26 : id === ILU.zona ? 0.36 : 0;", ilu)
+        self.assertIn("tocavel: t => naFrenteIlu(t)", ilu)
+        self.assertNotIn("plnMulti", self.html + pln)            # D-177: sem o botão "Juntar trechos"
+
+    def test_frentes_do_mapa_com_a_subadutora(self):
+        """D-182/D-183 (29/10/2026): a Subadutora (adutora e redes de 200 mm pra cima) é uma frente do Dados da obra, com
+        a Equipe Adutora; os nós e as caixas têm a sua forma nos dois mapas."""
+        ilu, pln = ler("iluminado.js"), ler("planejamento.js")
+        self.assertIn("const SUBADUTORA_MM = 200;", ilu)
+        self.assertIn("t.tp === 'Adutora' || (t.de || 0) >= SUBADUTORA_MM", ilu)
+        for tipo in ("'NÓ'", "DF:", "VTF:", "VM:", "VRP:", "MV:", "HID:"):
+            self.assertIn(tipo, ilu.split("const TIPOS_NO", 1)[1].split("};", 1)[0])
+        self.assertIn('id="plnFrentes"', self.html)
+        self.assertIn("function frentesPln()", pln)
+        self.assertIn("desenharNosIlu(", ilu)
+
+    def test_nota_sobe_em_compras_e_e_recebida_pelos_botoes_da_lateral(self):
+        """D-170 (27/10/2026): a importação do XML só em Compras e notas; no Estoque, as notas com Aceitar a entrega,
+        Recusar a entrega (com o porquê) e Aceite ou recusa parcial na lateral."""
+        estoque = self.html.split('id="aba-almox"', 1)[1].split('<section', 1)[0]
+        compras = self.html.split('id="aba-compras"', 1)[1].split('<section', 1)[0]
+        self.assertNotIn('type="file"', estoque.split("Notas a receber", 1)[1].split('class="painel', 1)[0])
+        self.assertNotIn("fXmlAlmox", self.html + self.js)
+        self.assertIn('id="fXml"', compras)
+        app = ler("app.js")
+        for texto in ("Aceitar a entrega", "Recusar a entrega", "Aceite ou recusa parcial", "data-nota-recusar-ok",
+                      "data-nota-parcial-ok", "data-nota-refazer", "class=\"nota-lado\""):
+            self.assertIn(texto, app)
+        self.assertIn(".nota-lado", ler("app.css"))
+
+    def test_coordenadas_reais_nas_tres_fichas(self):
+        """D-201: a ficha do Mapa iluminado, o painel da Programação e a ficha completa mostram E, N e o link do mapa."""
+        app, ilu, pln = ler("app.js"), ler("iluminado.js"), ler("planejamento.js")
+        self.assertIn("https://www.google.com/maps/search/?api=1&query=", app)
+        self.assertEqual(app.count("const coordTxt = "), 1)
+        self.assertIn("...pontasTxt(d, curto)", app.split("async function mostrarFiscal", 1)[1].split("\n}\n", 1)[0])
+        self.assertIn("['Coordenadas', coordTxt((d.coordenadas || {}).no)]", app)
+        self.assertIn("...pontasTxt(d, curto)", ilu.split("async function abrirFicha", 1)[1].split("\n}\n", 1)[0])
+        self.assertIn("['Coordenadas', coordTxt((d.coordenadas || {}).no)]", ilu)
+        self.assertIn("${coordSel(r)}", pln)
+
+    def test_requisicoes_em_compras_e_estoque_em_paginas(self):
+        """D-196 e D-199 (03/11/2026): Compras tem Requisições (pedir e acompanhar, sem aprovação), Notas fiscais e
+        Fornecedores; a transferência, o inventário e as reservas vencidas ficam no Estoque."""
+        estoque, compras = self.secao("almox"), self.secao("compras")
+        pagina = lambda sec, p: sec.split(f'<div data-pagina="{p}" hidden>', 1)[1].split('<div data-pagina=', 1)[0]
+        self.assertIn('id="solicitarConteudo"', pagina(compras, "requisicoes"))
+        for ide in ('id="fXml"', 'id="fNfDig"', 'id="notasLista"'):
+            self.assertIn(ide, pagina(compras, "notas"))
+        for ide in ('id="fForn"', 'id="fornLista"'):
+            self.assertIn(ide, pagina(compras, "fornecedores"))
+        for ide in ('id="fTransf"', 'id="fInv"', 'id="invLista"', 'id="vencidasLista"'):
+            self.assertIn(ide, estoque)
+            self.assertNotIn(ide, compras)
+        app, sol = ler("app.js"), ler("solicitacoes.js")
+        corpo = lambda f, fonte: fonte.split(f"async function {f}()", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("renderFornecedores();", corpo("carregarCompras", app))
+        self.assertNotIn("/api/inventarios", corpo("carregarCompras", app))
+        self.assertIn("if (podeTela('almox')) carregarInventarioEVencidas().catch(", corpo("carregarAlmox", app))
+        for texto in ("compras_aprovar", "/api/solicitacao/decidir", "carregarRequerimentos", "A comprar"):
+            self.assertNotIn(texto, sol + app)
+        for texto in ("/api/solicitacao/identificar", "/api/solicitacao/cancelar", "'Aguardando a entrega'", "Sem nota ainda",
+                      "Falta chegar", "solAcaoCard(b, carregarSolicitacoes)"):
+            self.assertIn(texto, sol)
+        self.assertIn("/api/inventario/ciencia", app)                      # D-197: o ajuste entra na hora; outro dá ciência
+    def test_conferir_e_marcar_e_o_que_falta_e_confirmado_em_compras(self):
+        """D-171 (27/10/2026): no Estoque, uma caixinha por linha com o material reconhecido, "Marcar todas" e o verde só
+        com todas marcadas; ninguém escolhe material nem pedido ali. Em Compras e notas, as linhas faltando a confirmação."""
+        app, css = ler("app.js"), ler("app.css")
+        receber = app.split("function renderNotasReceber", 1)[1].split("\nfunction ", 1)[0]
+        for texto in ("data-confere", "data-marcar-todas", "data-contagem", "confira pela descrição", "Pode aceitar a entrega"):
+            self.assertIn(texto, receber)
+        for texto in ("<select", "opMat(", "data-c=pedido", "listaMateriais"):
+            self.assertNotIn(texto, receber)                    # o almoxarife não busca nem escolhe material
+        self.assertNotIn("listaMateriais", self.html)
+        for texto in ("Faltando a confirmação", "data-confirmar-linhas", "/api/nf/confirmar-linhas", "data-corrigir-linha"):
+            self.assertIn(texto, app)
+        for texto in ("conferirNf", "data-conferir-nf", "conf-nf", "__fora\">— fora do estoque"):
+            self.assertNotIn(texto, app)                        # a tabela de conferência antiga saiu
+        for texto in (".nota-confere", ".nota-marcar", ".nf-confirmar", ".nf-conf-linha"):
+            self.assertIn(texto, css)
+
+    def test_ids_unicos_e_scripts_carregados(self):
+        todos = re.findall(r'id="([^"]+)"', self.html)
+        self.assertEqual(len(todos), len(set(todos)))
+        self.assertIn('<script src="/app.js"></script>\n<script src="/equipes.js"></script>\n<script src="/solicitacoes.js"></script>\n<script src="/iluminado.js"></script>\n<script src="/mapa_fundo.js"></script>\n<script src="/planejamento.js"></script>\n'
+                      '<script src="/notas.js"></script>\n<script src="/apropriacao.js"></script>', self.html)
+
+
+if __name__ == "__main__":
+    unittest.main()

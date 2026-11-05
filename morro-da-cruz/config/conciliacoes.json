@@ -1,0 +1,37 @@
+{
+  "_leia": "De-para explícito de identidade, decidido por pessoa. A importação NUNCA transfere histórico (check-in, foto, execução, medição, cadastro) por coincidência de nome. Quando a nova revisão muda traçado, divide, une ou exclui um trecho/elemento com histórico, ela é REPROVADA até haver uma entrada aqui. Todas exigem tipo, responsavel, data e motivo.",
+  "_exemplos": [
+    {
+      "tipo": "TRECHO",
+      "ponto": "Zona01_PB01_Rede_TR001A",
+      "handle": "5FD12",
+      "usar_id": "TR-00001",
+      "responsavel": "Nome",
+      "data": "AAAA-MM-DD",
+      "motivo": "divisão do TR001: a parte A mantém o histórico"
+    },
+    {
+      "tipo": "TRECHO",
+      "retirar_id": "TR-00002",
+      "responsavel": "Nome",
+      "data": "AAAA-MM-DD",
+      "motivo": "trecho excluído do projeto; histórico permanece no ID retirado"
+    },
+    {
+      "tipo": "ELEMENTO",
+      "chave_natural": "H:7AB01",
+      "usar_id": "EL-0005",
+      "responsavel": "Nome",
+      "data": "AAAA-MM-DD",
+      "motivo": "MV-11 locada no CAD"
+    },
+    {
+      "tipo": "ATIVIDADE",
+      "retirar_id": "AT-0010",
+      "responsavel": "Nome",
+      "data": "AAAA-MM-DD",
+      "motivo": "..."
+    }
+  ],
+  "conciliacoes": []
+}

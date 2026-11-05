@@ -1,0 +1,604 @@
+"""Visão geral do mapa REV02 para o Mapa Iluminado: satélite, zonas oficiais e traçado dos trechos.
+
+Tudo sai do próprio HTML PLANTAS_..._REV02_EQUIPES (bloco `const DADOS = {...}`, chave `visaoGeral`), sem coordenada
+nova: as zonas, os quadros das plantas, as imagens das 25 PBs e as polilinhas dos 1.436 trechos já vêm no espaço da
+visão geral (largura × altura em unidades da prancha). O arquivo não é alterado; o resultado fica em memória e é
+refeito quando o HTML muda (data de modificação).
+
+* geometria(caminho)  → dicionário enxuto para a tela (zonas, nomes, quadros, trechos por nome visível, imagens),
+                        com as pontas dos trechos encaixadas no centro do nó (correcoes)
+* mosaico(caminho)    → as fotos de satélite das 25 PBs montadas numa só (webp), com a matriz completa de cada uma e cada
+                        PB recortada pelo seu quadro, se o Pillow estiver instalado; senão None e a tela monta as PBs
+                        uma a uma (imagem_pb)
+* imagem_pb(caminho, pb) → bytes webp da imagem de uma PB, como está no HTML
+* pontas(caminho)     → cada ponta de trecho medida em metros contra o nó da 06.1, com classe e ação de desenho
+* correcoes(caminho)  → por desenho (GERAL e PBxx), as pontas a encaixar no nó: [trecho, parte, ponta, cortar, x, y]
+
+Pontas: a lei da obra é que todo trecho termina numa conexão, então o desenho tem de terminar no centro do nó. A ponta
+de cada polilinha está sobre a UTM da 06.1 (colunas BS..BV, até 2,5 cm), mas a 06.1 ligou ponta a nó com folga de até
+~1,6 m: a linha pode parar antes do nó (NAO_CHEGA), ao lado dele (DESLOCADA) ou passar um pouco dele (PASSA_DO_NO).
+Essas pontas são encaixadas no nó até TOL_ENCAIXE_M; acima disso viram pendência de desenho, sem encaixe forçado.
+As pontas que, pelas decisões de config/topologia.json, passam pelo nó sem se ligar a ele (cruzamento com semicírculo,
+tubo ao lado do nó) não são puxadas: o arco do pulo fica como está.
+
+Continuidade (05/11/2026): nenhum tubo pode aparecer solto no mapa.
+* Toda parte do desenho que termina na ponta do trecho é encaixada no nó, não só a mais perto: na visão geral o
+  mesmo trecho vem de duas pranchas, e a cópia que não era puxada ficava como um rabicho ao lado do nó.
+* As pontas que o arquivo de decisões dá como um tubo só (JUNTAR: emenda sem nó, divisa de zona, cruzamento,
+  passagem) são ligadas entre si, no ponto médio, até TOL_JUNTAR_M.
+* Desenho que para antes do fim do trecho (LONGE_DO_NO, a prancha não desenhou o resto) é completado em linha reta
+  até o nó, na visão geral, só quando a parte desenhada mais o que falta dá a extensão da 06.1. Continua pendência de
+  desenho (o caminho exato não está no HTML).
+* Na visão geral, as partes do mesmo trecho que vêm de pranchas vizinhas e não se tocam na emenda são ligadas, até
+  TOL_EMENDA_M.
+"""
+import base64
+import io
+import json
+import math
+import os
+import re
+import threading
+
+import topologia
+
+_TRAVA = threading.Lock()
+_CACHE = {}
+
+TOL_NO_M = 0.10            # ponta a até 10 cm do centro do nó: já está no nó (arredondamento do desenho e das UTM)
+TOL_ENCAIXE_M = 2.0        # a 06.1 liga ponta a nó até 1,59 m (2.721 pontas): acima de 2 m não encaixa, é pendência
+TOL_PONTA_UTM_M = 0.5      # a ponta do desenho fica sobre a UTM da 06.1; acima disso o desenho não chega ao fim do trecho
+ALCANCE_ARCO_M = 3.0       # trecho perto da ponta onde se procura o arco do pulo
+TOL_COMPLETAR_M = 20.0     # desenho que para antes do fim do trecho: completa em linha reta até o nó (só na visão geral)
+TOL_JUNTAR_M = 6.0         # pontas de um tubo só (JUNTAR) que a prancha deixou separadas: a maior é 5,89 m (J-098)
+TOL_EMENDA_M = 5.0         # partes do mesmo trecho em pranchas vizinhas que não se tocam: a maior é 2,11 m
+VERSAO_MOSAICO = 2          # muda quando a montagem do mosaico muda (o guardado em mapa/cache/ é refeito)
+SEM_NO = {"DIVISA DE ZONA": "DIVISA_ZONA", "LIMITE DA TRAVESSIA MND": "LIMITE_MND",
+          "PONTA SEM NÓ NA TABELA": "PONTA_SEM_NO", "JUNÇÃO SEM NÓ NA TABELA": "JUNCAO_SEM_NO"}
+# Desenho vetorial de prancha fora do lugar no HTML REV02: (ΔE, ΔN) em metros, somados ao que a prancha desenha na
+# visão geral. A foto e o quadro da PB25 estão certos, mas o vetor dela caía 37,68 m ao norte e 1,81 m a oeste, e a
+# visão geral mostrava cópias fora do lugar de 3 trechos (Zona11_PB22_Rede_TR031 e TR032, Zona11_PB25_Rede_TR001).
+# Medido em 03/11/2026 contra o traçado das PBs vizinhas nos mesmos trechos: resíduo médio de 3 cm depois da correção
+# (docs/MAPA_CONFERENCIA_03-11-2026.md). O HTML não é alterado; a correção vale só para o que a tela desenha.
+CORRECAO_VETOR_M = {"PB25": (1.81, -37.68)}
+
+
+def _ler(caminho):
+    chave = (os.path.abspath(caminho), os.path.getmtime(caminho))
+    with _TRAVA:
+        if _CACHE.get("chave") != chave:
+            with open(caminho, encoding="utf-8") as f:
+                html = f.read()
+            i = html.find("const DADOS")
+            if i < 0:
+                raise ValueError("O HTML do mapa não tem o bloco DADOS.")
+            j = html.find("=", i) + 1
+            dados, _ = json.JSONDecoder().raw_decode(html[j:].lstrip())
+            imagens = dict(re.findall(r'"(PB\d+)":\s*"data:image/webp;base64,([A-Za-z0-9+/=]+)"', html))
+            dados = {"visaoGeral": dados.get("visaoGeral"), "trechos": dados.get("trechos"),   # o resto (peças) fica no HTML
+                     "coresTubos": dados.get("coresTubos") or {},
+                     "els": [{"noms": e.get("noms") or [], "E": e.get("E"), "N": e.get("N")} for e in dados.get("els") or []],
+                     "pbs": [{"id": p["id"], "tr": [{"i": t["i"], "p": t["p"]} for t in p.get("tr") or []],
+                              "el": p.get("el") or []} for p in dados.get("pbs") or []]}
+            dados["vetores_corrigidos"] = _corrigir_vetores(dados)
+            _CACHE.clear()
+            _CACHE.update(chave=chave, dados=dados, imagens=imagens)
+        return _CACHE
+
+
+def _corrigir_vetores(dados):
+    """Leva para o lugar certo, na visão geral, as partes de trecho que vêm das pranchas de CORRECAO_VETOR_M. Cada parte
+    da visão geral é a parte da prancha passada pela matriz da imagem: acha-se a igual (mesmos pontos, até 0,5 unidade)
+    e soma-se o deslocamento, convertido de metros para a visão geral pelos nós. Devolve [(prancha, trecho, achou)]."""
+    vg, els = dados.get("visaoGeral") or {}, dados.get("els") or []
+    pares = [((els[j]["E"], els[j]["N"]), (x, y)) for j, x, y in vg.get("el") or []
+             if j < len(els) and els[j].get("E") is not None]
+    t = ajuste_afim(pares)
+    matriz = {im["id"]: im["matrix"] for im in vg.get("images") or []}
+    por_i = {tr["i"]: tr for tr in vg.get("tr") or []}
+    feitos = []
+    if t is None:
+        return feitos
+    for pb in dados.get("pbs") or []:
+        if pb["id"] not in CORRECAO_VETOR_M or pb["id"] not in matriz:
+            continue
+        de, dn = CORRECAO_VETOR_M[pb["id"]]
+        dx, dy = t[0] * de + t[1] * dn, t[3] * de + t[4] * dn
+        a, b, c, d, e, f = matriz[pb["id"]]                 # SVG: x = a·u + c·v + e; y = b·u + d·v + f
+        for tr in pb["tr"]:
+            alvo = por_i.get(tr["i"])
+            for p in tr["p"]:
+                q = []
+                for k in range(0, len(p) - 1, 2):
+                    q += [a * p[k] + c * p[k + 1] + e, b * p[k] + d * p[k + 1] + f]
+                achou = False
+                for n, r in enumerate(alvo["p"] if alvo else []):
+                    if len(r) == len(q) and max(abs(u - v) for u, v in zip(r, q)) < 0.5:
+                        alvo["p"][n] = [v + (dx if k % 2 == 0 else dy) for k, v in enumerate(r)]
+                        achou = True
+                        break
+                feitos.append((pb["id"], tr["i"], achou))
+    return feitos
+
+
+def _r(v):
+    return round(float(v), 1)
+
+
+# ---------------------------------------------------------------- coordenadas: UTM ↔ desenho
+def _resolver3(m, b):
+    a = [linha[:] + [b[k]] for k, linha in enumerate(m)]
+    for c in range(3):
+        p = max(range(c, 3), key=lambda r: abs(a[r][c]))
+        if abs(a[p][c]) < 1e-12:
+            return None
+        a[c], a[p] = a[p], a[c]
+        for r in range(3):
+            if r != c:
+                f = a[r][c] / a[c][c]
+                for k in range(c, 4):
+                    a[r][k] -= f * a[c][k]
+    return [a[k][3] / a[k][k] for k in range(3)]
+
+
+def ajuste_afim(pares):
+    """(E, N) → (x, y) por mínimos quadrados: [A, B, C, D, E, F] com x = A·E + B·N + C e y = D·E + E·N + F.
+    None se os pontos não bastam (menos de 3 ou alinhados)."""
+    if len(pares) < 3:
+        return None
+    e0 = sum(u[0] for u, _ in pares) / len(pares)
+    n0 = sum(u[1] for u, _ in pares) / len(pares)
+    m = [[0.0] * 3 for _ in range(3)]
+    bx, by = [0.0] * 3, [0.0] * 3
+    for (e, n), (x, y) in pares:
+        r = (e - e0, n - n0, 1.0)
+        for a in range(3):
+            bx[a] += r[a] * x
+            by[a] += r[a] * y
+            for b in range(3):
+                m[a][b] += r[a] * r[b]
+    cx, cy = _resolver3(m, bx), _resolver3(m, by)
+    if cx is None or cy is None or abs(cx[0] * cy[1] - cx[1] * cy[0]) < 1e-12:
+        return None
+    return [cx[0], cx[1], cx[2] - cx[0] * e0 - cx[1] * n0, cy[0], cy[1], cy[2] - cy[0] * e0 - cy[1] * n0]
+
+
+def aplicar(t, x, y):
+    return t[0] * x + t[1] * y + t[2], t[3] * x + t[4] * y + t[5]
+
+
+def inversa(t):
+    det = t[0] * t[4] - t[1] * t[3]
+    a, b, d, e = t[4] / det, -t[1] / det, -t[3] / det, t[0] / det
+    return [a, b, -(a * t[2] + b * t[5]), d, e, -(d * t[2] + e * t[5])]
+
+
+def escala(t):
+    """unidades do desenho por metro"""
+    return math.sqrt(abs(t[0] * t[4] - t[1] * t[3]))
+
+
+def desenhos(caminho):
+    """Visão geral e pranchas: {id: {"tr": {i: partes}, "el": {j: (x, y)}, "t": UTM→desenho, "inv": desenho→UTM,
+    "escala": unidades/m, "residuo_m": [mediana, p95, máx], "n": nós usados}}. A transformação de cada desenho é
+    ajustada nos nós que têm UTM e posição nele; a prancha com poucos nós usa a da visão geral composta com a matriz
+    da imagem dela."""
+    c = _ler(caminho)
+    if "desenhos" in c:
+        return c["desenhos"]
+    d = c["dados"]
+    els = d["els"]
+    vg = d["visaoGeral"]
+
+    def montar(ident, trs, el):
+        pares = [((els[j]["E"], els[j]["N"]), (x, y)) for j, x, y in el if j < len(els) and els[j].get("E") is not None]
+        t = ajuste_afim(pares) if len(pares) >= 4 else None
+        return {"id": ident, "tr": {tr["i"]: tr["p"] for tr in trs}, "el": {j: (x, y) for j, x, y in el},
+                "t": t, "pares": pares}
+
+    out = {"GERAL": montar("GERAL", vg.get("tr") or [], vg.get("el") or [])}
+    for pb in d.get("pbs") or []:
+        out[pb["id"]] = montar(pb["id"], pb["tr"], pb["el"])
+    tg = out["GERAL"]["t"]
+    for im in vg.get("images") or []:                  # prancha sem nós suficientes: visão geral ∘ inversa da imagem
+        dz = out.get(im["id"])
+        if dz is not None and dz["t"] is None and tg is not None:
+            a, b, cc, dd, e, f = im["matrix"]           # SVG: x = a·u + c·v + e; y = b·u + d·v + f
+            dz["t"] = _compor(inversa([a, cc, e, b, dd, f]), tg)
+    for dz in out.values():
+        if dz["t"] is None:
+            continue
+        dz["inv"], dz["escala"] = inversa(dz["t"]), escala(dz["t"])
+        res = sorted(math.dist(aplicar(dz["t"], *u), xy) / dz["escala"] for u, xy in dz["pares"])
+        dz["n"] = len(res)
+        dz["residuo_m"] = [round(res[len(res) // 2], 4), round(res[int(0.95 * (len(res) - 1))], 4), round(res[-1], 4)] if res else None
+        del dz["pares"]
+    c["desenhos"] = {k: v for k, v in out.items() if v["t"] is not None}
+    return c["desenhos"]
+
+
+def _compor(t2, t1):
+    """t2 ∘ t1"""
+    return [t2[0] * t1[0] + t2[1] * t1[3], t2[0] * t1[1] + t2[1] * t1[4], t2[0] * t1[2] + t2[1] * t1[5] + t2[2],
+            t2[3] * t1[0] + t2[4] * t1[3], t2[3] * t1[1] + t2[4] * t1[4], t2[3] * t1[2] + t2[4] * t1[5] + t2[5]]
+
+
+# ---------------------------------------------------------------- pontas dos trechos
+def _pontos(parte):
+    return [(parte[k], parte[k + 1]) for k in range(0, len(parte) - 1, 2)]
+
+
+def _casar_ponta(partes, alvo):
+    """Ponta da polilinha (várias partes, qualquer sentido) mais perto do alvo: (parte, 0 = começo | 1 = fim, distância)."""
+    melhor = None
+    for k, p in enumerate(partes):
+        for qual, q in ((0, p[0]), (1, p[-1])):
+            dd = math.dist(q, alvo)
+            if melhor is None or dd < melhor[2]:
+                melhor = (k, qual, dd)
+    return melhor
+
+
+def _ponto_a(p, s):
+    """ponto a s metros do começo da polilinha p (ou o último)"""
+    acum = 0.0
+    for a, b in zip(p, p[1:]):
+        L = math.dist(a, b)
+        if L > 0 and acum + L >= s:
+            f = (s - acum) / L
+            return a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f
+        acum += L
+    return p[-1]
+
+
+def arco(p, alcance=ALCANCE_ARCO_M, giro_min=3.0):
+    """Curva desenhada perto da ponta (p começa na ponta): vértices que giram ≥ giro_min graus nos primeiros
+    `alcance` metros, soma dos giros (graus) e giro líquido. O semicírculo do pulo é desenhado com muitos vértices."""
+    n, soma, liq, acum = 0, 0.0, 0.0, 0.0
+    for k in range(1, len(p) - 1):
+        acum += math.dist(p[k - 1], p[k])
+        if acum > alcance:
+            break
+        a = (p[k][0] - p[k - 1][0], p[k][1] - p[k - 1][1])
+        b = (p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1])
+        if math.hypot(*a) < 1e-9 or math.hypot(*b) < 1e-9:
+            continue
+        g = math.degrees(math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]))
+        if abs(g) >= giro_min:
+            n += 1
+            soma += abs(g)
+        liq += g
+    return {"vertices": n, "giro": round(soma), "liquido": round(liq), "tem": n >= 4 and soma >= 60}
+
+
+def medir(dz, trecho, i, lado, no_utm):
+    """Uma ponta de trecho num desenho, em metros. None se o trecho não está nesse desenho."""
+    partes = dz["tr"].get(i)
+    if not partes:
+        return None
+    U = trecho["A"] if lado == "ini" else trecho["B"]
+    pu = [[aplicar(dz["inv"], x, y) for x, y in _pontos(p)] for p in partes]
+    k, qual, d_utm = _casar_ponta(pu, U)
+    p = pu[k] if qual == 0 else pu[k][::-1]
+    L = sum(math.dist(a, b) for a, b in zip(p, p[1:]))
+    out = {"parte": k, "ponta": qual, "xy": tuple(partes[k][0:2]) if qual == 0 else tuple(partes[k][-2:]),
+           "utm": p[0], "d_utm_m": d_utm, "arco": arco(p), "comprimento_m": L}
+    if no_utm is not None:
+        q = _ponto_a(p, min(2.0, L / 2))
+        u = (p[0][0] - q[0], p[0][1] - q[1])           # direção da linha saindo pela ponta
+        nu = math.hypot(*u) or 1.0
+        u = (u[0] / nu, u[1] / nu)
+        v = (no_utm[0] - p[0][0], no_utm[1] - p[0][1])
+        out.update(d_no_m=math.hypot(*v), ao_longo_m=v[0] * u[0] + v[1] * u[1], lateral_m=abs(v[0] * u[1] - v[1] * u[0]))
+    return out
+
+
+def classificar(no, m, nao_conexao=None):
+    """Classe e ação de desenho de uma ponta medida (m = medir(...)), dado o nome do nó na 06.1."""
+    if no in SEM_NO:
+        if m is not None and m["d_utm_m"] > TOL_PONTA_UTM_M:
+            return "DESENHO_INCOMPLETO", "PENDENCIA_DESENHO"
+        return SEM_NO[no], "MANTER_SEM_NO"
+    if m is None:
+        return "SEM_DESENHO", "PENDENCIA_DESENHO"
+    if "d_no_m" not in m:
+        return "NO_SEM_POSICAO", "PENDENCIA_DESENHO"
+    if nao_conexao:
+        return nao_conexao, "NAO_ENCAIXAR"
+    d = m["d_no_m"]
+    if d <= TOL_NO_M:
+        return "NO_NO", "NADA"
+    if d > TOL_ENCAIXE_M or m["d_utm_m"] > TOL_PONTA_UTM_M:
+        return "LONGE_DO_NO", "PENDENCIA_DESENHO"
+    if m["ao_longo_m"] >= 0.8 * d:
+        return "NAO_CHEGA", "ESTENDER_ATE_NO"
+    if m["ao_longo_m"] <= -0.8 * d:
+        return "PASSA_DO_NO", "APARAR"
+    return "DESLOCADA", "ESTENDER_ATE_NO"
+
+
+def completavel(m, extensao_m):
+    """Ponta LONGE_DO_NO cujo desenho só parou antes (o nó fica à frente, na linha) e a parte desenhada mais o que falta
+    dá a extensão da 06.1: completar em linha reta até o nó não inventa caminho que contradiga a tabela."""
+    if not m or "d_no_m" not in m or not extensao_m:
+        return False
+    d = m["d_no_m"]
+    return (m["d_utm_m"] > TOL_PONTA_UTM_M and d <= TOL_COMPLETAR_M and m["ao_longo_m"] >= 0.8 * d
+            and abs(m["comprimento_m"] + d - extensao_m) <= max(1.0, 0.05 * extensao_m))
+
+
+def _dist_seg(q, a, b):
+    vx, vy = b[0] - a[0], b[1] - a[1]
+    L = vx * vx + vy * vy
+    f = 0.0 if L == 0 else max(0.0, min(1.0, ((q[0] - a[0]) * vx + (q[1] - a[1]) * vy) / L))
+    return math.hypot(q[0] - a[0] - f * vx, q[1] - a[1] - f * vy)
+
+
+def _derivados(caminho):
+    """pontas e correções, refeitos quando o HTML ou o arquivo de decisões mudam"""
+    c = _ler(caminho)
+    chave = topologia.chave_config()
+    if c.get("derivados_chave") != chave or "pontas" not in c:
+        try:
+            nao_conexao, juntar = topologia.pontas_nao_conexao(), topologia.pontas_juntar()
+        except Exception:  # noqa: BLE001 — o arquivo de decisões é editado à mão: o traçado não pode cair por causa dele
+            nao_conexao, juntar = {}, []
+        c.pop("geometria", None)
+        c["pontas"], c["correcoes"] = _calcular(c["dados"], desenhos(caminho), nao_conexao, juntar)
+        c["derivados_chave"] = chave
+    return c
+
+
+def pontas(caminho):
+    """Cada ponta de trecho na visão geral (em metros): [{"trecho", "i", "lado", "no", "classe", "acao", "d_no_m",
+    "d_utm_m", "ao_longo_m", "lateral_m", "arco"}], na ordem dos trechos do HTML."""
+    return _derivados(caminho)["pontas"]
+
+
+def correcoes(caminho):
+    """{desenho: [[trecho (índice em DADOS.trechos), parte, ponta (0 começo | 1 fim), cortar, x, y], ...]}:
+    em cada desenho, tira `cortar` vértices daquela ponta e põe o ponto (x, y) no lugar: o centro do nó, ou o ponto
+    médio das pontas de um tubo só (JUNTAR)."""
+    return _derivados(caminho)["correcoes"]
+
+
+def _pontas_perto(partes, alvo, tol, outro):
+    """De cada parte, a ponta a até tol do alvo: [(parte, 0 | 1, distância)]. Uma ponta por parte, e só a que fica mais
+    perto deste lado do trecho que do outro (`outro`): no trecho curto as duas pontas não vão para o mesmo nó."""
+    out = []
+    for k, p in enumerate(partes):
+        qual, q = min(((0, p[0]), (1, p[-1])), key=lambda x: math.dist(x[1], alvo))
+        dd = math.dist(q, alvo)
+        if dd <= tol and dd <= math.dist(q, outro):
+            out.append((k, qual, dd))
+    return out
+
+
+def _calcular(d, dzs, nao_conexao, juntar=()):
+    trechos, els = d["trechos"], d["els"]
+    geral = dzs.get("GERAL")
+    lista, acoes = [], {}
+    for i, t in enumerate(trechos):
+        for lado in ("ini", "fim"):
+            no = t.get(lado)
+            j = t.get(lado + "E", -1)
+            no_utm = (els[j]["E"], els[j]["N"]) if j is not None and 0 <= j < len(els) and els[j].get("E") is not None else None
+            m = medir(geral, t, i, lado, no_utm) if geral else None
+            classe, acao = classificar(no, m, nao_conexao.get((t["R"], lado)))
+            item = {"trecho": t["R"], "i": i, "lado": lado, "no": no, "classe": classe, "acao": acao}
+            if m is not None:
+                item.update({k: (round(v, 3) if isinstance(v, float) else v) for k, v in m.items()
+                             if k in ("d_no_m", "d_utm_m", "ao_longo_m", "lateral_m", "arco")})
+            if acao in ("ESTENDER_ATE_NO", "APARAR"):
+                acoes[(i, lado)] = (j, no_utm, acao)
+            elif classe == "LONGE_DO_NO" and completavel(m, t.get("L")):
+                item["desenho"] = "COMPLETADO_EM_LINHA_RETA"          # continua pendência: o caminho exato não está no HTML
+                acoes[(i, lado)] = (j, no_utm, "COMPLETAR")
+            lista.append(item)
+    idx = {t["R"]: i for i, t in enumerate(trechos)}
+    corr = {}
+    for ident, dz in dzs.items():
+        out, esc = [], dz["escala"]
+        for (i, lado), (j, no_utm, acao) in sorted(acoes.items()):
+            partes = dz["tr"].get(i)
+            if not partes or (acao == "COMPLETAR" and ident != "GERAL"):
+                continue                                    # a prancha mostra só a folha dela: o resto está em outra
+            t = trechos[i]
+            U = aplicar(dz["t"], *(t["A"] if lado == "ini" else t["B"]))
+            V = aplicar(dz["t"], *(t["B"] if lado == "ini" else t["A"]))
+            pts = [_pontos(p) for p in partes]
+            if acao == "COMPLETAR":
+                k, qual, dd = _casar_ponta(pts, U)
+                achadas = [(k, qual, dd)] if dd <= (TOL_COMPLETAR_M + TOL_PONTA_UTM_M) * esc else []
+            else:                                           # toda parte que termina aqui (o trecho vem de duas pranchas)
+                achadas = _pontas_perto(pts, U, TOL_PONTA_UTM_M * esc, V)
+            alvo = dz["el"].get(j) or aplicar(dz["t"], *no_utm)
+            for k, qual, _ in achadas:                      # nenhuma: ponta fora deste desenho (trecho cortado pela prancha)
+                cortar = _aparar(pts[k] if qual == 0 else pts[k][::-1], alvo, esc) if acao == "APARAR" else 0
+                out.append([i, k, qual, cortar, round(alvo[0], 2), round(alvo[1], 2)])
+        for _jid, _tipo, ps in juntar:                      # um tubo só: as pontas se encontram no ponto médio
+            achou = []
+            for nome, lado in ps:
+                i = idx.get(nome)
+                partes = dz["tr"].get(i) if i is not None else None
+                if not partes or lado not in ("ini", "fim"):
+                    break
+                t = trechos[i]
+                pts = [_pontos(p) for p in partes]
+                k, qual, dd = _casar_ponta(pts, aplicar(dz["t"], *(t["A"] if lado == "ini" else t["B"])))
+                if dd > TOL_JUNTAR_M * esc:
+                    break
+                achou.append((i, k, qual, pts[k][0] if qual == 0 else pts[k][-1]))
+            else:
+                cx = sum(a[3][0] for a in achou) / len(achou)
+                cy = sum(a[3][1] for a in achou) / len(achou)
+                if max(math.dist(a[3], (cx, cy)) for a in achou) > 0.005 * esc:
+                    out += [[i, k, qual, 0, round(cx, 2), round(cy, 2)] for i, k, qual, _ in achou]
+        if out:
+            corr[ident] = out
+    return lista, corr
+
+
+def emendar(partes, fins, esc):
+    """Partes do mesmo trecho, uma por prancha, que não se tocam na emenda das pranchas: a ponta solta de uma parte vai
+    até a ponta mais perto de outra, até TOL_EMENDA_M. fins: as pontas do trecho no desenho (essas não são emenda)."""
+    if len(partes) < 2:
+        return partes
+    partes = [list(p) for p in partes]
+    toque, tol, longe = 0.3 * esc, TOL_EMENDA_M * esc, 2.5 * esc         # até 30 cm: as duas pranchas se sobrepõem
+    feitas = set()
+    for k, p in enumerate(partes):
+        for qual in (0, 1):
+            q = (p[0], p[1]) if qual == 0 else (p[-2], p[-1])
+            if min(math.dist(q, f) for f in fins) <= longe:
+                continue
+            outras = [(k2, _pontos(p2)) for k2, p2 in enumerate(partes) if k2 != k]
+            if any(_dist_seg(q, a, b) <= toque for _, pt in outras for a, b in zip(pt, pt[1:])):
+                continue
+            dd, k2, r = min((math.dist(q, r), k2, r) for k2, pt in outras for r in (pt[0], pt[-1]))
+            if dd > tol or (k2, k) in feitas:
+                continue
+            feitas.add((k, k2))
+            if qual == 0:
+                p[0:0] = [r[0], r[1]]
+            else:
+                p.extend([r[0], r[1]])
+    return partes
+
+
+def _aparar(p, alvo, esc):
+    """p começa na ponta que passou do nó: quantos vértices tirar para a linha terminar no nó (sem passar dele)."""
+    acum = 0.0
+    for k in range(len(p) - 1):
+        a, b = p[k], p[k + 1]
+        L = math.dist(a, b)
+        if L > 0 and ((alvo[0] - a[0]) * (b[0] - a[0]) + (alvo[1] - a[1]) * (b[1] - a[1])) / (L * L) <= 1.0:
+            return min(k + 1, len(p) - 1)                   # o nó cai neste segmento: some com os vértices antes dele
+        acum += L
+        if acum > ALCANCE_ARCO_M * esc:
+            break
+    return 0
+
+
+def encaixar(partes, correcoes_trecho):
+    """Aplica as correções de um trecho (lista de [parte, ponta, cortar, x, y]) às partes da polilinha (cópia)."""
+    partes = [list(p) for p in partes]
+    for k, qual, cortar, x, y in correcoes_trecho:
+        p = partes[k]
+        cortar = min(cortar, len(p) // 2 - 1)
+        partes[k] = [x, y] + p[2 * cortar:] if qual == 0 else p[:len(p) - 2 * cortar] + [x, y]
+    return partes
+
+
+def geometria(caminho):
+    c = _derivados(caminho)
+    if "geometria" in c:
+        return c["geometria"]
+    d = c["dados"]
+    g = d.get("visaoGeral")
+    if not g:
+        raise ValueError("O HTML do mapa não tem a visão geral (visaoGeral).")
+    trechos = d["trechos"]
+    corr = {}
+    for i, k, qual, cortar, x, y in c["correcoes"].get("GERAL", []):
+        corr.setdefault(i, []).append((k, qual, cortar, x, y))
+    out = {
+        "versao": int(c["chave"][1]),                       # muda com o HTML: a tela pede o satélite novo
+        "w": g["w"], "h": g["h"],
+        "zonas": [{"id": z["id"], "cor": z.get("color") or "#9AA3AE", "p": [_r(v) for v in z["p"]]} for z in g.get("zf", [])],
+        "nomes": [{"id": n[0], "x": _r(n[1]), "y": _r(n[2])} for n in g.get("zn", [])],
+        "quadros": [{"id": q["id"], "p": [_r(v) for v in q["p"]]} for q in g.get("frames", [])],
+        "imagens": [{"id": im["id"], "w": im["w"], "h": im["h"], "m": im["matrix"]} for im in g.get("images", [])],
+        "trechos": [],
+        "cores_de": d.get("coresTubos") or {},             # a legenda de cores por diâmetro do projeto (prancha 02/037)
+        # nós e caixas desenhados na visão geral: [índice em DADOS.els, x, y]; os sem posição não aparecem aqui
+        "els": [{"n": d["els"][e[0]]["noms"], "x": _r(e[1]), "y": _r(e[2])} for e in g.get("el", []) if e[0] < len(d["els"])],
+    }
+    ref = desenhos(caminho)["GERAL"]
+    for t in g.get("tr", []):
+        f = trechos[t["i"]]
+        partes = encaixar(t["p"], corr[t["i"]]) if t["i"] in corr else t["p"]   # ponta no centro do nó (lei da obra)
+        partes = emendar(partes, [aplicar(ref["t"], *f["A"]), aplicar(ref["t"], *f["B"])], ref["escala"])
+        # met: MND sai tracejado; a e b: os nós das pontas (a frente de cada nó no Dados da obra, D-182)
+        out["trechos"].append({"n": f["R"], "z": f.get("loc"), "tp": f.get("tipo"), "de": f.get("de"), "L": f.get("L"),
+                               "pb": f.get("pb"), "met": f.get("met"), "a": f.get("ini"), "b": f.get("fim"),
+                               "p": [[_r(v) for v in parte] for parte in partes]})
+    # O fundo novo recebe a referência do desenho já corrigido; os pontos da rede continuam os mesmos.
+    from mapa_contexto import contexto
+    out["contexto"] = contexto(ref["t"], ref["inv"])
+    c["geometria"] = out
+    return out
+
+
+def imagem_pb(caminho, pb):
+    b64 = _ler(caminho)["imagens"].get(pb)
+    return base64.b64decode(b64) if b64 else None
+
+
+def _no_mosaico(Image, ImageDraw, tela, src, im, escala, quadro=None):
+    """Cola uma PB na tela do mosaico com a matriz completa do REV02 (a PB20 é girada 90°): reduz a foto primeiro (Lanczos)
+    e aplica a afim só na caixa que ela ocupa. Com `quadro`, só a parte dentro do quadro da PB."""
+    a, b, cc, d, e, f = im["matrix"]
+    k = escala * math.hypot(a, b) * im["w"] / src.width               # pixels da tela por pixel da foto
+    red = src.resize((max(1, round(src.width * k)), max(1, round(src.height * k))), Image.LANCZOS, reducing_gap=2.0)
+    su, sv = im["w"] / red.width, im["h"] / red.height                 # unidades da folha por pixel da foto reduzida
+    A, C, B, D = escala * a * su, escala * cc * sv, escala * b * su, escala * d * sv
+    E, F = escala * e, escala * f
+    cantos = [(A * x + C * y + E, B * x + D * y + F) for x, y in ((0, 0), (red.width, 0), (red.width, red.height), (0, red.height))]
+    x0, y0 = max(0, math.floor(min(x for x, _ in cantos))), max(0, math.floor(min(y for _, y in cantos)))
+    x1, y1 = min(tela.width, math.ceil(max(x for x, _ in cantos))), min(tela.height, math.ceil(max(y for _, y in cantos)))
+    if x1 <= x0 or y1 <= y0:
+        return
+    det = A * D - C * B
+    i00, i01, i10, i11 = D / det, -C / det, -B / det, A / det
+    pedaco = red.transform((x1 - x0, y1 - y0), Image.AFFINE,
+                           (i00, i01, i00 * (x0 - E) + i01 * (y0 - F), i10, i11, i10 * (x0 - E) + i11 * (y0 - F)), resample=Image.BILINEAR)
+    mascara = Image.new("L", pedaco.size, 0)
+    ImageDraw.Draw(mascara).polygon([(x - x0, y - y0) for x, y in cantos], fill=255)
+    if quadro:
+        corte = Image.new("L", pedaco.size, 0)
+        ImageDraw.Draw(corte).polygon([(quadro[i] * escala - x0, quadro[i + 1] * escala - y0) for i in range(0, len(quadro), 2)], fill=255)
+        mascara = Image.composite(corte, Image.new("L", pedaco.size, 0), mascara)
+    tela.paste(pedaco, (x0, y0), mascara)
+
+
+def mosaico(caminho, escala=1.3, qualidade=58):
+    """As fotos de satélite das 25 PBs montadas numa imagem só, no espaço da visão geral. Primeiro as folhas inteiras (cobrem
+    o que fica entre os quadros), depois cada PB recortada pelo seu quadro: a folha inteira cobria a vizinha e deixava a
+    emenda torta. O corte no limite das zonas é feito na tela (clipPath), com a borda exata."""
+    c = _ler(caminho)
+    if "mosaico" in c:
+        return c["mosaico"]
+    # montar leva alguns segundos: a imagem fica guardada em mapa/cache/ (refeita quando o HTML ou a montagem mudam)
+    guardado = os.path.join(os.path.dirname(os.path.abspath(caminho)), "cache",
+                            f"geral_v{VERSAO_MOSAICO}_{int(os.path.getmtime(caminho))}_{escala:g}_{qualidade}.webp")
+    if os.path.isfile(guardado):
+        with open(guardado, "rb") as f:
+            c["mosaico"] = f.read()
+        return c["mosaico"]
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        c["mosaico"] = None
+        return None
+    g = c["dados"]["visaoGeral"]
+    tela = Image.new("RGB", (round(g["w"] * escala), round(g["h"] * escala)), (14, 14, 14))
+    quadros = {q["id"]: q["p"] for q in g.get("frames", [])}
+    fotos = [im for im in g["images"] if c["imagens"].get(im["id"])]
+    abrir = lambda im: Image.open(io.BytesIO(base64.b64decode(c["imagens"][im["id"]]))).convert("RGB")
+    for im in fotos:                  # uma foto aberta por vez: as 25 juntas passavam de 800 MB e derrubavam o site
+        _no_mosaico(Image, ImageDraw, tela, abrir(im), im, escala)
+    for im in fotos:
+        if im["id"] in quadros:
+            _no_mosaico(Image, ImageDraw, tela, abrir(im), im, escala, quadros[im["id"]])
+    buf = io.BytesIO()
+    tela.save(buf, "WEBP", quality=qualidade, method=4)
+    c["mosaico"] = buf.getvalue()
+    try:                                                   # pasta só de leitura (executável): fica só na memória
+        os.makedirs(os.path.dirname(guardado), exist_ok=True)
+        with open(guardado + ".tmp", "wb") as f:
+            f.write(c["mosaico"])
+        os.replace(guardado + ".tmp", guardado)
+    except OSError:
+        pass
+    return c["mosaico"]

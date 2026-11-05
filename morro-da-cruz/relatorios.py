@@ -1,0 +1,157 @@
+"""Relatórios de operação (módulo F), todos calculados a partir dos registros efetivos (sem estornos, sem intervalos anulados).
+
+* Ciclo do material: previsto (projeto) × solicitado × comprado × a receber × recebido × reservado × com as equipes ×
+  aplicado × perda × medido. Material não entra em medição enquanto o regime estiver bloqueado (D-53, D-54): a coluna
+  "medido" mostra isso, sem zero inventado.
+* Avanço por frente, equipe, período e etapa, a partir dos intervalos efetivos. O avanço legado sem posição aparece à
+  parte (não tem data por intervalo nem posição).
+* Pendências por frente: ocorrências, verificação, reaterro sem cadastro, legado, aguardando OK interno, cadastro,
+  programação vencida; e as gerais (reservas vencidas, notas a conferir, quarentena).
+
+A exportação em planilha saiu (D-207): o arquivo da tela Relatórios agora é o relatório mensal da medição em PDF
+(relatorio_mensal.py), no formato do RM da Ankara.
+"""
+from collections import defaultdict
+
+import compras as C
+import planejamento as P
+import regras as R
+import relogio as RL
+import servicos as S
+from servicos import _rows
+
+ETAPAS = ("ASSENTADO", "CADASTRO_CAMPO", "REATERRADO")
+
+
+# ------------------------------------------------------------------ ciclo do material
+def materiais(conn):
+    def soma(sql, args=()):
+        return {r[0]: r[1] for r in conn.execute(sql, args)}
+    solicitado = soma("""SELECT i.material_id, SUM(i.quantidade) FROM solicitacao_itens i JOIN solicitacoes_compra s
+                         ON s.id=i.solicitacao_id WHERE s.status IN ('ABERTA','APROVADA') GROUP BY 1""")
+    comprado = soma("""SELECT i.material_id,SUM(i.quantidade) FROM nf_itens i
+        JOIN notas_fiscais n ON n.id=i.nf_id JOIN materiais m ON m.id=i.material_id
+        WHERE n.status<>'CANCELADA' AND m.propriedade<>'CAESB' GROUP BY i.material_id""")
+    for mid, q in conn.execute("""SELECT a.material_id,SUM(a.quantidade) FROM solicitacao_avulsos a
+        JOIN solicitacoes_compra s ON s.id=a.solicitacao_id WHERE s.status IN ('ABERTA','APROVADA') AND a.material_id IS NOT NULL GROUP BY a.material_id"""):
+        solicitado[mid] = solicitado.get(mid, 0) + q
+    mov = defaultdict(lambda: defaultdict(float))
+    for r in conn.execute(f"""SELECT material_id, tipo, COALESCE(status,'ACEITO') st, SUM(quantidade) q FROM movimentos
+                              WHERE {S.VALIDO} GROUP BY 1, 2, 3"""):
+        mov[r[0]][(r[1], r[2])] += r[3]
+    reservado = soma("SELECT material_id, SUM(quantidade) FROM reservas WHERE status='ATIVA' GROUP BY 1")
+    recebiveis = P.a_receber_por_material(conn)
+    out = []
+    for m in _rows(conn.execute("SELECT * FROM materiais ORDER BY propriedade, id")):
+        mv = mov[m["id"]]
+        t = lambda tipo, st="ACEITO": mv.get((tipo, st), 0.0)
+        recebido = t("ENTRADA_NF") + t("ROMANEIO_CAESB") + t("ENTRADA_CONSUMO") - t("DEVOLUCAO_FORNECEDOR")
+        com_equipes = (t("CUSTODIA") + t("TRANSF_ENTRADA") - t("APLICADO") - t("SOBRA") - t("PERDA") - t("TRANSF_SAIDA"))
+        saldo, quar = S.saldo_almox(conn, m["id"])
+        linha = {"material_id": m["id"], "descricao": m["descricao"], "unidade": m["unidade"], "propriedade": m["propriedade"],
+                 "previsto": m["qtd_projeto"], "solicitado": solicitado.get(m["id"], 0.0), "comprado": comprado.get(m["id"], 0.0),
+                 "a_receber": recebiveis.get(m["id"], 0.0), "quarentena": quar,
+                 "recebido": recebido, "saldo_almox": saldo, "reservado": reservado.get(m["id"], 0.0),
+                 "com_equipes": com_equipes, "aplicado": t("APLICADO"), "perda": t("PERDA"),
+                 "emprestado": t("EMPRESTIMO_OUTRA_OBRA"), "medido": None,
+                 "medido_situacao": "material não entra na medição: regime bloqueado (D-53 · D-54)"}
+        for k in ("solicitado", "comprado", "a_receber", "quarentena", "recebido", "saldo_almox", "reservado", "com_equipes",
+                  "aplicado", "perda", "emprestado"):
+            linha[k] = round(linha[k], 4)
+        linha["movimentado"] = any(linha[k] for k in ("solicitado", "comprado", "recebido", "reservado", "aplicado", "quarentena",
+                                                       "com_equipes", "perda", "emprestado"))
+        if linha["movimentado"] or m["qtd_projeto"]:
+            out.append(linha)
+    return out
+
+
+# ------------------------------------------------------------------ avanço
+def avanco(conn, ini=None, fim=None, frente=None, equipe=None):
+    """Metros por frente × equipe × etapa no período (intervalos efetivos) e a situação acumulada de cada frente."""
+    ini, fim = ini or "0000-01-01", fim or "9999-12-31"
+    onde, args = f"i.{S.EFETIVO} AND i.data BETWEEN ? AND ?", [ini, fim]
+    if frente:
+        onde, args = onde + " AND t.frente_id=?", args + [frente]
+    if equipe:
+        onde, args = onde + " AND i.equipe_id=?", args + [equipe]
+    base = f"FROM intervalos_execucao i JOIN trechos t ON t.id=i.trecho_id WHERE {onde}"
+    linhas = defaultdict(lambda: {e: 0.0 for e in ETAPAS})
+    trechos = defaultdict(set)
+    for r in conn.execute(f"SELECT COALESCE(t.frente_id, '—'), COALESCE(i.equipe_id, '—'), i.etapa, i.trecho_id, i.fim_m - i.ini_m {base}", args):
+        linhas[(r[0], r[1])][r[2]] += r[4]
+        trechos[(r[0], r[1])].add(r[3])
+    por_equipe = [{"frente_id": f, "equipe_id": e, **{k: round(v, 3) for k, v in d.items()}, "trechos": len(trechos[(f, e)])}
+                  for (f, e), d in sorted(linhas.items())]
+    por_dia = {r[0]: round(r[1], 3) for r in conn.execute(
+        f"SELECT i.data, SUM(i.fim_m - i.ini_m) {base} AND i.etapa='ASSENTADO' GROUP BY 1 ORDER BY 1", args)}
+    # acumulado por frente (todas as datas), sobre os trechos vigentes
+    acum = defaultdict(lambda: {e: 0.0 for e in ETAPAS})
+    for r in conn.execute(f"""SELECT t.frente_id, i.etapa, SUM(i.fim_m - i.ini_m) FROM intervalos_execucao i
+                              JOIN trechos t ON t.id=i.trecho_id WHERE i.{S.EFETIVO} AND t.vigente=1 GROUP BY 1, 2"""):
+        acum[r[0]][r[1]] += r[2]
+    ext = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT frente_id, COUNT(*), SUM(extensao_m) FROM trechos WHERE vigente=1 GROUP BY 1")}
+    legado = defaultdict(float)
+    for (tid,) in conn.execute(f"SELECT DISTINCT ap.alvo_id {S._SQL_LEGADO}").fetchall():
+        t = S._one(conn, "SELECT * FROM trechos WHERE id=?", tid)
+        lg = S.legado_pendente(conn, t) if t else None
+        if lg:
+            legado[t["frente_id"]] += lg["ASSENTADO"]
+    nos = defaultdict(lambda: [0, 0])
+    for r in conn.execute("""SELECT a.frente_id, COUNT(*), SUM(COALESCE(x.concluido,0)) FROM atividades a
+                             JOIN elementos e ON e.id=a.elemento_id LEFT JOIN execucao x ON x.alvo_tipo='ATIVIDADE' AND x.alvo_id=a.id
+                             WHERE a.vigente=1 AND e.vigente=1 GROUP BY 1"""):
+        nos[r[0]] = [r[1], r[2] or 0]
+    frentes = []
+    for f in R.FRENTES:
+        if frente and f != frente:
+            continue
+        n, e = ext.get(f, (0, 0.0))
+        a = acum[f]
+        frentes.append({"frente_id": f, "trechos": n, "extensao_m": round(e or 0, 3),
+                        **{k.lower() + "_m": round(v, 3) for k, v in a.items()},
+                        "assentado_pct": round(100 * a["ASSENTADO"] / e, 2) if e else None,
+                        "legado_sem_posicao_m": round(legado[f], 3), "nos": nos[f][0], "nos_concluidos": nos[f][1]})
+    tot = {e: round(sum(d[e] for d in linhas.values()), 3) for e in ETAPAS}
+    return {"periodo": {"ini": ini, "fim": fim}, "por_equipe": por_equipe, "total_periodo": tot,
+            "por_dia": por_dia, "frentes": frentes}
+
+
+# ------------------------------------------------------------------ pendências
+def pendencias(conn, frente=None, hoje=None):
+    hoje = hoje or RL.hoje().isoformat()
+    fr_trecho = {r[0]: r[1] for r in conn.execute("SELECT id, frente_id FROM trechos")}
+    fr_ativ = {r[0]: r[1] for r in conn.execute("SELECT id, frente_id FROM atividades")}
+    fr = lambda tipo, aid: fr_trecho.get(aid) if tipo == "TRECHO" else fr_ativ.get(aid)
+    cont = defaultdict(lambda: defaultdict(int))
+    for r in conn.execute("SELECT alvo_tipo, alvo_id, tipo FROM ocorrencias WHERE resolvida_em IS NULL"):
+        cont[fr(r[0], r[1])]["impedimentos" if r[2] == "IMPEDIMENTO" else "nao_conformidades"] += 1
+    for r in conn.execute(f"SELECT trecho_id, verificado_em, sem_cadastro_campo FROM intervalos_execucao WHERE {S.EFETIVO}"):
+        if not r[1]:
+            cont[fr_trecho.get(r[0])]["intervalos_sem_verificacao"] += 1
+        if r[2]:
+            cont[fr_trecho.get(r[0])]["reaterro_sem_cadastro"] += 1
+    for (tid,) in conn.execute(f"SELECT DISTINCT ap.alvo_id {S._SQL_LEGADO}"):
+        cont[fr_trecho.get(tid)]["legado_sem_posicao"] += 1
+    for r in conn.execute("SELECT alvo_tipo, alvo_id FROM execucao WHERE concluido=1 AND ok_fiscal_em IS NULL"):
+        f = fr(r[0], r[1])
+        cont[f]["aguardando_ok_interno"] += 1
+        if S.fotos_faltando(conn, r[0], r[1]):
+            cont[f]["concluidos_sem_fotos"] += 1
+    for r in conn.execute("SELECT trecho_id, etapa FROM cadastro"):
+        if r[1] in ("1_PRONTO", "5A_NEGADO", "3_RECEBIDO"):
+            cont[fr_trecho.get(r[0])]["cadastro_" + r[1].split("_", 1)[1].lower()] += 1
+    for r in conn.execute("SELECT alvo_tipo, alvo_id FROM programacoes WHERE status='PLANEJADA' AND data < ?", (hoje,)):
+        cont[fr(r[0], r[1])]["programacao_vencida"] += 1
+    frentes = [{"frente_id": f, **cont.get(f, {}), "total": sum(cont.get(f, {}).values())}
+               for f in R.FRENTES if not frente or f == frente]
+    gerais = {"reservas_vencidas": len(C.reservas_vencidas(conn, hoje)),
+              "notas_a_conferir": conn.execute("SELECT COUNT(*) FROM notas_fiscais WHERE status='A_CONFERIR'").fetchone()[0],
+              "itens_em_quarentena": conn.execute(f"SELECT COUNT(*) FROM movimentos WHERE tipo='ENTRADA_NF' AND status='QUARENTENA' "
+                                                  f"AND {S.VALIDO}").fetchone()[0],
+              "sem_frente": dict(cont.get(None, {}))}
+    return {"frentes": frentes, "gerais": gerais, "hoje": hoje}
+
+
+def painel(conn, ini, fim, frente=None):
+    return {"materiais": materiais(conn), "avanco": avanco(conn, ini, fim, frente), "pendencias": pendencias(conn, frente),
+            "faltantes": P.faltantes(conn, ini, fim, frente)}

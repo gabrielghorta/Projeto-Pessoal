@@ -1,0 +1,546 @@
+"""Topologia dos trechos: ponta no nó, cruzamento e trecho físico (topologia.py, mapa_geral.py, config/topologia.json).
+
+Sobre o banco montado a partir das planilhas REAIS do repositório (06.1 REV01 e 06.2 REV08) e o mapa REV02:
+  * caso A: Zona04_PB06_Rede_TR002 para 1,47 m antes do NÓ2.1 e é desenhado encaixado no nó (visão geral e PB06);
+  * caso B: TR007 + TR006 (PB08) = um trecho físico de 295,98 m de NÓ9.1 até VRP-15; o NÓ113.1 é cruzamento e os
+    outros tubos do nó (TR011, TR003, TR004) ficam fora da cadeia DE 160;
+  * luva ou redução entre dois trechos é conexão: não junta;
+  * para_linhas / para_fisico fazem ida e volta com sentido +1 e −1;
+  * os números do diagnóstico ficam fixados (mudam só com mudança de planilha, mapa ou regra, de propósito).
+"""
+import json
+import math
+import os
+import random
+import shutil
+import sqlite3
+import sys
+import tempfile
+import unittest
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+APP = os.path.dirname(AQUI)
+sys.path.insert(0, APP)
+sys.path.insert(0, AQUI)
+sys.path.insert(0, os.path.join(APP, "ferramentas", "topologia"))
+import importacao as I  # noqa: E402
+import importar  # noqa: E402
+import mapa_geral as MG  # noqa: E402
+import server  # noqa: E402
+import topologia as TP  # noqa: E402
+from perfil_teste import cfg_teste_real  # noqa: E402
+
+MAPA = server._mapa_path()
+CFG = I.carregar_config()
+TEM_DADOS = all(I.caminho(CFG, k) for k in ("redes", "conexoes", "evidencias", "bm", "reajuste")) and os.path.exists(MAPA)
+TR002, NO21 = "Zona04_PB06_Rede_TR002", "Zona04_PB06_Rede_NÓ2.1"
+TR006, TR007, NO113 = "Zona03_PB08_Rede_TR006", "Zona03_PB08_Rede_TR007", "Zona03_PB08_Rede_NÓ113.1"
+
+
+def _cfg():
+    with open(TP.CONFIG, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _limpar_caches():
+    TP._CACHE.clear()
+    for k in ("pontas", "correcoes", "geometria", "derivados_chave"):
+        MG._CACHE.pop(k, None)
+
+
+class Conversao(unittest.TestCase):
+    """para_linhas / para_fisico: sem banco, num trecho físico montado à mão com sentidos +1 e −1."""
+    F = {"id": "TF-TESTE", "membros": [
+        {"trecho_id": "TR-A", "ponto": "A", "ordem": 1, "offset_m": 0.0, "extensao_m": 10.0, "sentido": 1},
+        {"trecho_id": "TR-B", "ponto": "B", "ordem": 2, "offset_m": 10.0, "extensao_m": 5.5, "sentido": -1},
+        {"trecho_id": "TR-C", "ponto": "C", "ordem": 3, "offset_m": 15.5, "extensao_m": 7.25, "sentido": 1}]}
+
+    def test_fisico_para_linhas_com_sentido_menos_um(self):
+        self.assertEqual(TP.para_linhas(self.F, 3, 18), [
+            {"trecho_id": "TR-A", "ponto": "A", "ini_m": 3.0, "fim_m": 10.0},
+            {"trecho_id": "TR-B", "ponto": "B", "ini_m": 0.0, "fim_m": 5.5},       # linha inteira (sentido −1)
+            {"trecho_id": "TR-C", "ponto": "C", "ini_m": 0.0, "fim_m": 2.5}])
+        self.assertEqual(TP.para_linhas(self.F, 11, 12.5), [{"trecho_id": "TR-B", "ponto": "B", "ini_m": 3.0, "fim_m": 4.5}])
+        self.assertEqual(TP.para_linhas(self.F, 12.5, 11), TP.para_linhas(self.F, 11, 12.5))   # ordem não importa
+        self.assertEqual(TP.para_linhas(self.F, 10, 10.0005), [])                              # abaixo de 1 mm: nada
+        self.assertEqual(TP.para_linhas(self.F, -5, 100)[-1]["fim_m"], 7.25)                   # cortado na linha
+
+    def test_linha_para_fisico(self):
+        self.assertEqual(TP.para_fisico(self.F, "TR-A", 2, 4), (2.0, 4.0))
+        self.assertEqual(TP.para_fisico(self.F, "TR-B", 3, 4.5), (11.0, 12.5))    # sentido −1: ext − y, ext − x
+        self.assertEqual(TP.para_fisico(self.F, "TR-C", 0, 7.25), (15.5, 22.75))
+        self.assertEqual(TP.para_fisico(self.F, "TR-B", -1, 99), (10.0, 15.5))     # cortado em [0, ext]
+        with self.assertRaises(ValueError):
+            TP.para_fisico(self.F, "TR-X", 0, 1)
+
+    def test_ida_e_volta(self):
+        rnd = random.Random(10239)
+        for _ in range(500):
+            x, y = sorted(round(rnd.uniform(0, 22.75), 3) for _ in range(2))
+            pedacos = TP.para_linhas(self.F, x, y)
+            volta = sorted(TP.para_fisico(self.F, p["trecho_id"], p["ini_m"], p["fim_m"]) for p in pedacos)
+            if y - x > 1e-3:
+                self.assertAlmostEqual(volta[0][0], x, places=3)
+                self.assertAlmostEqual(volta[-1][1], y, places=3)
+            for (a, b), (c, d) in zip(volta, volta[1:]):                 # pedaços colados, sem buraco
+                self.assertAlmostEqual(b, c, places=3)
+            for p in pedacos:                                            # e a volta pela linha dá o mesmo pedaço
+                ini, fim = TP.para_fisico(self.F, p["trecho_id"], p["ini_m"], p["fim_m"])
+                self.assertEqual(TP.para_linhas(self.F, ini, fim), [p])
+
+
+class TopologiaSintetica(unittest.TestCase):
+    """Banco mínimo em memória: anel de junções, sentido estável e arquivo de decisões editado com erro."""
+
+    def setUp(self):
+        self.raiz = tempfile.mkdtemp(prefix="topologia_sint_")
+        self.c = sqlite3.connect(":memory:")
+        self.c.execute("CREATE TABLE trechos (id TEXT, ponto TEXT, vigente INTEGER, no_ini TEXT, no_fim TEXT, extensao_m REAL, "
+                       "de_mm REAL, material TEXT, metodologia TEXT, frente_id TEXT)")
+        self.c.execute("CREATE TABLE atividades (nomenclatura TEXT, vigente INTEGER)")
+        self.c.executemany("INSERT INTO atividades VALUES (?, 1)", [("N0",), ("N9",), ("X",)])
+        self.antigo = TP.CONFIG, TP.CONFIG_PROGRAMA
+        TP.CONFIG = TP.CONFIG_PROGRAMA = os.path.join(self.raiz, "topologia.json")
+        TP._CACHE.clear()
+
+    def tearDown(self):
+        TP.CONFIG, TP.CONFIG_PROGRAMA = self.antigo
+        _limpar_caches()
+        self.c.close()
+        shutil.rmtree(self.raiz)
+
+    def trechos(self, linhas):
+        self.c.execute("DELETE FROM trechos")
+        self.c.executemany("INSERT INTO trechos VALUES (?, ?, 1, ?, ?, ?, 160, 'PEAD', 'VCA', 'Zona01')", linhas)
+        TP._CACHE.clear()
+
+    def decisoes(self, juncoes, texto=None):
+        with open(TP.CONFIG, "w", encoding="utf-8") as f:
+            f.write(texto if texto is not None else json.dumps({"juncoes": juncoes, "pendencias": []}))
+        TP._CACHE.clear()                                # gravações no mesmo segundo têm a mesma data de modificação
+
+    @staticmethod
+    def j(ident, a, la, b, lb, tipo="DIVISA_ZONA", no="DIVISA DE ZONA"):
+        return {"id": ident, "tipo": tipo, "no": no, "decisao": "JUNTAR",
+                "pontas": [{"trecho": a, "lado": la}, {"trecho": b, "lado": lb}]}
+
+    def test_anel_a_juncao_cortada_nao_conta_nem_vira_ponta_sem_conexao(self):
+        d = "DIVISA DE ZONA"
+        self.trechos([("TR-00001", "A", d, d, 10), ("TR-00002", "B", d, d, 20), ("TR-00003", "C", d, d, 30)])
+        self.decisoes([self.j("J1", "A", "fim", "B", "ini"), self.j("J2", "B", "fim", "C", "ini"),
+                       self.j("J3", "C", "fim", "A", "ini")])
+        fis = TP.trechos_fisicos(self.c)
+        self.assertEqual([(len(f["membros"]), len(f["juncoes"])) for f in fis], [(3, 2)])
+        self.assertEqual(TP.resumo(self.c)["juncoes_aplicadas"], 2)
+        tipos = [p["tipo"] for p in TP.pendencias(self.c)]
+        self.assertIn("CADEIA_EM_ANEL", tipos)
+        self.assertNotIn("PONTA_SEM_CONEXAO", tipos)
+
+    def test_sentido_nao_vira_com_mudanca_de_extensao(self):
+        jx = [self.j("J1", "A", "fim", "B", "fim", tipo="CRUZAMENTO", no="X")]
+        vistos = []
+        for ext_b in (49.99, 50.01):                     # B passa a ser o mais longo: nada muda no trecho físico
+            self.trechos([("TR-00001", "A", "N0", "X", 50.0), ("TR-00002", "B", "N9", "X", ext_b)])
+            self.decisoes(jx)
+            f = TP.fisico_do_trecho(self.c, "TR-00001")
+            vistos.append((f["id"], f["no_ini"], f["no_fim"], [(m["ponto"], m["sentido"]) for m in f["membros"]],
+                           TP.para_linhas(f, 0, 10)))
+        self.assertEqual(vistos[0], vistos[1])
+        self.assertEqual(vistos[0][:4], ("TF-00001", "N0", "N9", [("A", 1), ("B", -1)]))
+
+    def test_arquivo_com_erro_vale_a_ultima_versao_boa(self):
+        self.trechos([("TR-00001", "A", "N0", "X", 50.0), ("TR-00002", "B", "N9", "X", 40.0)])
+        self.decisoes([self.j("J1", "A", "fim", "B", "fim", tipo="CRUZAMENTO", no="X")])
+        self.assertEqual(len(TP.trechos_fisicos(self.c)), 1)
+        self.decisoes(None, texto='{"juncoes": [ {"id": "J1",, } ]')               # erro de digitação na revisão
+        self.assertEqual(len(TP.trechos_fisicos(self.c)), 1)                     # continua valendo a versão boa
+        self.assertEqual(TP.pontas_nao_conexao(), {("A", "fim"): "CRUZAMENTO", ("B", "fim"): "CRUZAMENTO"})
+        self.assertIn("ARQUIVO_DE_DECISOES_INVALIDO", [p["tipo"] for p in TP.pendencias(self.c)])
+        self.decisoes([{"id": "J2", "tipo": "CRUZAMENTO", "no": "X", "decisao": "JUNTAR", "pontas": [["A", "fim"], ["B", "fim"]]},
+                       "não é junção"])                                              # formato errado: recusa sem cair
+        self.assertEqual(len(TP.trechos_fisicos(self.c)), 2)
+        self.assertEqual(TP.pontas_nao_conexao(), {})
+        self.assertIn("DECISAO_DESATUALIZADA", [p["tipo"] for p in TP.pendencias(self.c)])
+
+    def test_passagem_fica_a_conferir_ate_a_revisao(self):
+        """Tubo ao lado do nó sem semicírculo: junta já, e fica na lista até a engenharia preencher "revisao"."""
+        self.trechos([("TR-00001", "A", "N0", "X", 50.0), ("TR-00002", "B", "N9", "X", 40.0)])
+        jx = self.j("J1", "A", "fim", "B", "fim", tipo="PASSAGEM", no="X")
+        for revisao, esperado in ((None, [("J1", ["A", "B"])]), ({"por": "Engenharia", "em": "2026-10-21"}, [])):
+            self.decisoes([dict(jx, revisao=revisao)])
+            self.assertEqual(len(TP.trechos_fisicos(self.c)), 1)
+            self.assertEqual([(p["juncao"], p["trechos"]) for p in TP.pendencias(self.c)
+                              if p["tipo"] == "PASSAGEM_A_CONFERIR"], esperado)
+
+
+@unittest.skipUnless(TEM_DADOS, "planilhas oficiais ou mapa REV02 ausentes")
+class TopologiaReal(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.raiz = tempfile.mkdtemp(prefix="topologia_")
+        cls.db = os.path.join(cls.raiz, "obra.db")
+        os.makedirs(os.path.join(cls.raiz, "fotos"))
+        importar.aplicar(cls.db, I.DIR_PLANILHAS, cfg=cfg_teste_real(), dir_relatorios=os.path.join(cls.raiz, "rel"))
+        cls.c = sqlite3.connect(cls.db)
+        cls.id = dict(cls.c.execute("SELECT ponto, id FROM trechos WHERE vigente = 1"))
+        _limpar_caches()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.c.close()
+        _limpar_caches()
+        shutil.rmtree(cls.raiz)
+
+    def ponta(self, trecho, lado):
+        return next(p for p in MG.pontas(MAPA) if p["trecho"] == trecho and p["lado"] == lado)
+
+    # ---------------------------------------------------------------- caso A: desenho que não chega ao nó
+    def test_caso_a_ponta_para_antes_do_no_e_e_encaixada(self):
+        p = self.ponta(TR002, "ini")
+        self.assertEqual((p["no"], p["classe"], p["acao"]), (NO21, "NAO_CHEGA", "ESTENDER_ATE_NO"))
+        self.assertAlmostEqual(p["d_no_m"], 1.465, delta=0.01)
+        self.assertLess(p["d_utm_m"], 0.03)                                # o desenho está na UTM da 06.1 ...
+        self.assertGreater(p["ao_longo_m"], 0.95 * p["d_no_m"])           # ... e o nó fica à frente, na linha
+        self.assertEqual(self.ponta(TR002, "fim")["classe"], "NO_NO")
+        g = MG.geometria(MAPA)
+        no = next(e for e in g["els"] if NO21 in e["n"])
+        tr = next(t for t in g["trechos"] if t["n"] == TR002)
+        pontas = [(pt[0], pt[1]) for pt in tr["p"]] + [(pt[-2], pt[-1]) for pt in tr["p"]]
+        self.assertLess(min(math.dist(q, (no["x"], no["y"])) for q in pontas), 0.15)   # 0,1 unidade = arredondamento
+        d = MG._ler(MAPA)["dados"]
+        i = next(k for k, t in enumerate(d["trechos"]) if t["R"] == TR002)
+        pb06 = MG.correcoes(MAPA)["PB06"]
+        pos = dict((j, (x, y)) for j, x, y in next(p for p in d["pbs"] if p["id"] == "PB06")["el"])[d["trechos"][i]["iniE"]]
+        self.assertIn([i, 0, 0, 0, round(pos[0], 2), round(pos[1], 2)], pb06)       # na prancha também
+
+    # ---------------------------------------------------------------- caso B: cruzamento com semicírculo
+    def test_caso_b_vira_um_trecho_fisico_de_295_98_m(self):
+        f = TP.fisico_do_trecho(self.c, self.id[TR007])
+        self.assertIs(f, TP.fisico_do_trecho(self.c, self.id[TR006]))
+        self.assertEqual(f["id"], "TF-" + min(self.id[TR006], self.id[TR007]).split("-")[1])
+        self.assertEqual((f["no_ini"], f["no_fim"], f["extensao_m"], f["de_mm"], f["material"]),
+                         ("Zona03_PB08_Rede_NÓ9.1", "Zona03_PB08_CH_VRP-15", 295.98, 160, "PEAD"))
+        self.assertEqual([(m["ponto"], m["ordem"], m["offset_m"], m["extensao_m"], m["sentido"]) for m in f["membros"]],
+                         [(TR007, 1, 0.0, 2.51, 1), (TR006, 2, 2.51, 293.47, 1)])
+        self.assertEqual([(j["no"], j["tipo"], j["decisao"], j["posicao_m"]) for j in f["juncoes"]],
+                         [(NO113, "CRUZAMENTO", "JUNTAR", 2.51)])
+        self.assertEqual(f["texto"], "Trecho físico: TR007 + TR006 = 295,98 m, de NÓ9.1 até VRP-15. "
+                                     "NÓ113.1 é cruzamento (não é conexão).")
+        # 10 m do trecho físico a partir de 1 m: 1,51 m no fim do TR007 e 8,49 m no começo do TR006
+        self.assertEqual(TP.para_linhas(f, 1, 11), [
+            {"trecho_id": self.id[TR007], "ponto": TR007, "ini_m": 1.0, "fim_m": 2.51},
+            {"trecho_id": self.id[TR006], "ponto": TR006, "ini_m": 0.0, "fim_m": 8.49}])
+
+    def test_no113_os_outros_tubos_ficam_fora_da_cadeia(self):
+        cadeia = {m["ponto"] for m in TP.fisico_do_trecho(self.c, self.id[TR007])["membros"]}
+        for nome in ("Zona03_PB08_Rede_TR011", "Zona03_PB08_Rede_TR003", "Zona03_PB08_Rede_TR004"):
+            f = TP.fisico_do_trecho(self.c, self.id[nome])
+            self.assertNotIn(nome, cadeia)
+            self.assertEqual([m["ponto"] for m in f["membros"]], [nome])
+        # o desenho não puxa as pontas do cruzamento para o NÓ113.1: o arco do pulo fica como está
+        for trecho, lado in ((TR007, "fim"), (TR006, "ini")):
+            p = self.ponta(trecho, lado)
+            self.assertEqual((p["classe"], p["acao"]), ("CRUZAMENTO", "NAO_ENCAIXAR"))
+            self.assertTrue(p["arco"]["tem"])
+        self.assertEqual(self.ponta("Zona03_PB08_Rede_TR011", "fim")["acao"], "ESTENDER_ATE_NO")  # o TR011 vai ao nó
+
+    # ---------------------------------------------------------------- conexão de verdade não junta
+    def test_luva_ou_reducao_entre_dois_trechos_nao_junta(self):
+        import base as B
+        import juncoes as J
+        luva = [{"tipo_conexao": "LUVA", "diametro": "63", "quantidade": 1, "unidade": "UN"}]
+        reducao = [{"tipo_conexao": "REDUÇÃO", "diametro": "90X63", "quantidade": 1, "unidade": "UN"}]
+        self.assertEqual((B.portas(luva), B.portas(reducao)), (2, 2))
+        # mesmo par alinhado, junto e afastado do marcador: com a luva (2 bocas para 2 pontas) é conexão
+        self.assertEqual(J.decidir_par(2, B.portas(luva), 0.0, 180, 0.8, True)[1], "NAO_JUNTAR")
+        self.assertEqual(J.decidir_par(2, B.portas(reducao), 0.0, 180, 0.8, False)[1], "NAO_JUNTAR")   # troca de DE
+        self.assertEqual(J.decidir_par(4, 2, 0.0, 180, 1.5, True)[1], "JUNTAR")                       # sem peça: passa
+        # nos dados reais: nó de grau 2 só com redução (19 casos) nunca junta os dois trechos
+        base = B.Base(self.db, MAPA)
+        pares = []
+        for eid, pontas in base.pontas_el.items():
+            tipos = {(p["tipo_conexao"] or "").split(" ")[0] for p in base.pecas.get(eid, [])
+                     if (p["tipo_conexao"] or "").startswith(("LUVA", "REDUÇÃO", "TÊ", "CURVA", "VÁLVULA"))}
+            if len(pontas) == 2 and tipos and tipos <= {"LUVA", "REDUÇÃO"}:
+                pares.append((pontas[0][0]["id"], pontas[1][0]["id"]))
+        self.assertEqual(len(pares), 19)
+        for a, b in pares:
+            self.assertNotEqual(TP.fisico_do_trecho(self.c, a)["id"], TP.fisico_do_trecho(self.c, b)["id"])
+
+    def test_decisao_com_troca_de_de_e_ignorada(self):
+        cfg = {"juncoes": [{"id": "J-X", "tipo": "PASSAGEM", "no": "Zona03_PB08_Rede_NÓ113.1", "decisao": "JUNTAR",
+                            "pontas": [{"trecho": TR006, "lado": "ini"}, {"trecho": "Zona03_PB08_Rede_TR003", "lado": "fim"}]}]}
+        p = os.path.join(self.raiz, "topologia_troca_de.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(cfg, f)
+        antigo = TP.CONFIG
+        try:
+            TP.CONFIG = p
+            TP._CACHE.clear()
+            self.assertEqual(len(TP.fisico_do_trecho(self.c, self.id[TR006])["membros"]), 1)
+            pend = [x for x in TP.pendencias(self.c) if x["tipo"] == "DECISAO_DESATUALIZADA"]
+            self.assertEqual(len(pend), 1)
+            self.assertIn("troca de DE", pend[0]["detalhe"])
+        finally:
+            TP.CONFIG = antigo
+            _limpar_caches()
+
+    def test_sem_arquivo_de_decisoes_cada_linha_e_um_trecho_fisico(self):
+        antigo = TP.CONFIG, TP.CONFIG_PROGRAMA
+        try:
+            TP.CONFIG = TP.CONFIG_PROGRAMA = os.path.join(self.raiz, "nao_existe.json")
+            TP._CACHE.clear()
+            fis = TP.trechos_fisicos(self.c)
+            self.assertEqual(len(fis), 1436)
+            self.assertTrue(all(len(f["membros"]) == 1 and f["membros"][0]["sentido"] == 1 for f in fis))
+            self.assertIn("SEM_ARQUIVO_DE_DECISOES", [p["tipo"] for p in TP.pendencias(self.c)])
+        finally:
+            TP.CONFIG, TP.CONFIG_PROGRAMA = antigo
+            _limpar_caches()
+
+    def test_executavel_atualizado_sem_o_arquivo_usa_o_do_programa(self):
+        """Obra instalada antes desta versão: só o .exe foi trocado e config/ não tem topologia.json."""
+        antigo = TP.CONFIG
+        try:
+            TP.CONFIG = os.path.join(self.raiz, "pasta_da_obra_sem_o_arquivo.json")      # CONFIG_PROGRAMA: o do repositório
+            _limpar_caches()
+            self.assertEqual(TP.fisico_do_trecho(self.c, self.id[TR007])["extensao_m"], 295.98)
+            self.assertEqual(self.ponta(TR007, "fim")["acao"], "NAO_ENCAIXAR")             # o desenho não puxa o pulo
+        finally:
+            TP.CONFIG = antigo
+            _limpar_caches()
+
+    def test_arquivo_de_decisoes_com_erro_nao_derruba_o_mapa(self):
+        p = os.path.join(self.raiz, "topologia_com_erro.json")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write('{"juncoes": [{"id": "J-1",, "decisao": "JUNTAR"}]}')                  # vírgula sobrando
+        antigo = TP.CONFIG
+        try:
+            TP.CONFIG = p
+            _limpar_caches()
+            self.assertEqual(len(MG.geometria(MAPA)["trechos"]), 1436)                     # o traçado continua
+            self.assertEqual(len(TP.trechos_fisicos(self.c)), 1436)
+            self.assertIn("ARQUIVO_DE_DECISOES_INVALIDO", [x["tipo"] for x in TP.pendencias(self.c)])
+            self.assertEqual(server.r_topologia({}, self.c)["resumo"]["juncoes_aplicadas"], 0)
+        finally:
+            TP.CONFIG = antigo
+            _limpar_caches()
+
+    # ---------------------------------------------------------------- cadeias reais: sentido −1 e ida e volta
+    def test_cadeias_reais_ida_e_volta(self):
+        fis = TP.trechos_fisicos(self.c)
+        multi = [f for f in fis if len(f["membros"]) > 1]
+        com_menos_um = [f for f in multi if any(m["sentido"] == -1 for m in f["membros"])]
+        self.assertTrue(com_menos_um)
+        for f in multi:
+            pos = 0.0
+            for m in f["membros"]:
+                self.assertAlmostEqual(m["offset_m"], pos, places=3)
+                pos += m["extensao_m"]
+                ini, fim = TP.para_fisico(f, m["trecho_id"], 0, m["extensao_m"])
+                self.assertEqual((ini, fim), (m["offset_m"], round(m["offset_m"] + m["extensao_m"], 3)))
+                meio = TP.para_linhas(f, ini + 0.25, fim - 0.25) if m["extensao_m"] > 0.6 else []
+                if meio:
+                    self.assertEqual(len(meio), 1)
+                    self.assertEqual(TP.para_fisico(f, meio[0]["trecho_id"], meio[0]["ini_m"], meio[0]["fim_m"]),
+                                     (round(ini + 0.25, 3), round(fim - 0.25, 3)))
+            self.assertAlmostEqual(pos, f["extensao_m"], places=2)
+            # a cadeia segue a 06.1 do membro de menor id, o mesmo que dá o id TF-
+            ancora = min(f["membros"], key=lambda m: m["trecho_id"])
+            self.assertEqual((ancora["sentido"], f["id"]), (1, "TF-" + ancora["trecho_id"].split("-")[1]))
+
+    # ---------------------------------------------------------------- conferência de 03/11/2026 (D-201)
+    def test_pb25_vetor_corrigido_cai_em_cima_da_pb22(self):
+        """O vetor da PB25 caía 37,68 m ao norte: os 3 trechos dela apareciam duas vezes na visão geral. Corrigido, cada
+        parte da PB25 fica sobre a da PB22 do mesmo trecho (até 0,3 m)."""
+        corr = MG._ler(MAPA)["dados"]["vetores_corrigidos"]
+        self.assertEqual(sorted(i for _, i, ok in corr if ok), [1305, 1306, 1435])
+        self.assertTrue(all(ok for *_, ok in corr))
+        inv = MG.desenhos(MAPA)["GERAL"]["inv"]
+        geo = {t["n"]: t for t in MG.geometria(MAPA)["trechos"]}
+
+        def dseg(p, a, b):
+            vx, vy = b[0] - a[0], b[1] - a[1]
+            L2 = vx * vx + vy * vy
+            t = 0 if not L2 else max(0, min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2))
+            return math.hypot(p[0] - a[0] - t * vx, p[1] - a[1] - t * vy)
+        for nome in ("Zona11_PB22_Rede_TR031", "Zona11_PB22_Rede_TR032", "Zona11_PB25_Rede_TR001"):
+            pb22, pb25 = ([MG.aplicar(inv, p[k], p[k + 1]) for k in range(0, len(p), 2)] for p in geo[nome]["p"])
+            longe = max(min(dseg(q, pb22[i], pb22[i + 1]) for i in range(len(pb22) - 1)) for q in pb25)
+            self.assertLess(longe, 0.3, nome)
+
+    # ---------------------------------------------------------------- continuidade do desenho (05/11/2026)
+    def _ponta_desenhada(self, nome, lado):
+        """A ponta do trecho no desenho da visão geral (de todas as partes, a mais perto da UTM da 06.1)."""
+        d, ref = MG._ler(MAPA)["dados"], MG.desenhos(MAPA)["GERAL"]
+        f = next(t for t in d["trechos"] if t["R"] == nome)
+        t = next(t for t in MG.geometria(MAPA)["trechos"] if t["n"] == nome)
+        u = MG.aplicar(ref["t"], *(f["A"] if lado == "ini" else f["B"]))
+        return min([(p[0], p[1]) for p in t["p"]] + [(p[-2], p[-1]) for p in t["p"]], key=lambda q: math.dist(q, u))
+
+    def test_toda_ponta_de_no_chega_ao_no(self):
+        """Toda ponta que a 06.1 liga a um nó termina no nó (até 0,25 m: 0,10 m do NO_NO mais o arredondamento de 0,1
+        unidade), também a cópia do trecho que vem de outra prancha e o desenho curto do NÓ11.1 (PB22/PB23), completado em
+        linha reta. Só as pontas de cruzamento e de passagem passam ao lado do nó, de propósito."""
+        d, g = MG._ler(MAPA)["dados"], MG.geometria(MAPA)
+        esc = MG.desenhos(MAPA)["GERAL"]["escala"]
+        els = {n: (e["x"], e["y"]) for e in g["els"] for n in e["n"]}
+        nao = TP.pontas_nao_conexao()
+        longe = []
+        for f in d["trechos"]:
+            for lado in ("ini", "fim"):
+                no = f[lado]
+                if no in MG.SEM_NO or (f["R"], lado) in nao:
+                    continue
+                dd = math.dist(self._ponta_desenhada(f["R"], lado), els[no]) / esc
+                if dd > 0.25:
+                    longe.append((f["R"], lado, round(dd, 2)))
+        self.assertEqual(longe, [])
+        completadas = [(p["trecho"], p["lado"]) for p in MG.pontas(MAPA) if p.get("desenho") == "COMPLETADO_EM_LINHA_RETA"]
+        self.assertEqual(sorted(completadas), [("Zona11_PB23_Rede_TR081", "ini"), ("Zona11_PB25_Rede_TR001", "fim")])
+        self.assertEqual({p["acao"] for p in MG.pontas(MAPA) if p["classe"] == "LONGE_DO_NO"}, {"PENDENCIA_DESENHO"})
+
+    def test_pontas_de_um_tubo_so_se_encontram(self):
+        """JUNTAR (emenda sem nó, divisa de zona, cruzamento, passagem): as pontas se encontram no desenho, inclusive as
+        5,89 m da J-098 (PB18 × PB19). As 2 em DÚVIDA ficam como estão até o responsável decidir."""
+        esc = MG.desenhos(MAPA)["GERAL"]["escala"]
+        juntas = TP.pontas_juntar()
+        self.assertEqual(len(juntas), 73)
+        for jid, _tipo, ps in juntas:
+            q = [self._ponta_desenhada(n, lado) for n, lado in ps]
+            self.assertLess(max(math.dist(a, b) for a in q for b in q) / esc, 0.25, jid)
+        a, b = (self._ponta_desenhada(n, lado) for n, lado in (("Zona07_PB19_Rede_TR016", "fim"), ("Zona07_PB19_Rede_TR019", "ini")))
+        self.assertGreater(math.dist(a, b) / esc, 1.0)                     # J-099, DÚVIDA: não liga sozinho
+
+    def test_partes_do_mesmo_trecho_formam_uma_peca_so(self):
+        """Na visão geral o trecho que passa de uma prancha para outra vem em partes; na emenda da PB15 com a PB19 duas
+        partes ficavam 2,11 m afastadas (Zona07_PB15_Rede_TR032 e Zona07_PB19_Adutora_TR001). Agora toda parte toca outra."""
+        esc = MG.desenhos(MAPA)["GERAL"]["escala"]
+
+        def perto(q, p):
+            return min(MG._dist_seg(q, (p[m], p[m + 1]), (p[m + 2], p[m + 3])) for m in range(0, len(p) - 3, 2)) <= 0.3 * esc
+        soltos = []
+        for t in MG.geometria(MAPA)["trechos"]:
+            ps, lig, mudou = t["p"], {0}, True
+            while mudou:
+                mudou = False
+                for k, p in enumerate(ps):
+                    if k not in lig and any(perto((p[0], p[1]), ps[j]) or perto((p[-2], p[-1]), ps[j]) or perto((ps[j][0], ps[j][1]), p)
+                                            or perto((ps[j][-2], ps[j][-1]), p) for j in lig):
+                        lig.add(k)
+                        mudou = True
+            if len(lig) < len(ps):
+                soltos.append(t["n"])
+        self.assertEqual(soltos, [])
+
+    def test_emendar_liga_a_ponta_solta_e_nao_mexe_no_resto(self):
+        fins = [(0, 0), (20, 0)]
+        a, b = [0, 0, 8, 0], [10, 0, 20, 0]                                 # 2 unidades de folga no meio
+        self.assertEqual(MG.emendar([a, b], fins, 1.0), [[0, 0, 8, 0, 10, 0], [10, 0, 20, 0]])
+        self.assertEqual(MG.emendar([a, [8.1, 0, 20, 0]], fins, 1.0), [a, [8.1, 0, 20, 0]])   # já se tocam (até 0,3)
+        self.assertEqual(MG.emendar([a, [16, 0, 20, 0]], fins, 1.0), [a, [16, 0, 20, 0]])     # 8 > TOL_EMENDA_M: não inventa
+        self.assertEqual(MG.emendar([a], fins, 1.0), [a])
+
+    def test_mnd_e_vca_sao_trechos_fisicos_separados(self):
+        """D-202: no limite da travessia MND não há nó, mas o pedaço MND e o VCA são trechos separados (método, equipe e
+        itens do BM mudam). As 4 travessias da 06.1 (291,26 m, DE 63) ficam sozinhas no trecho físico."""
+        fis = {m["trecho_id"]: f for f in TP.trechos_fisicos(self.c) for m in f["membros"]}
+        for mnd in ("Zona02_PB04_Rede_TR036", "Zona09_PB13_Rede_TR012", "Zona09_PB16_Rede_TR002", "Zona09_PB16_Rede_TR021"):
+            self.assertEqual([m["ponto"] for m in fis[self.id[mnd]]["membros"]], [mnd])
+        cfg = _cfg()
+        self.assertEqual({j["decisao"] for j in cfg["juncoes"] if j["tipo"] == "LIMITE_MND"}, {"NAO_JUNTAR"})
+        mnd = dict(self.c.execute("SELECT ponto, extensao_m FROM trechos WHERE vigente=1 AND metodologia='MND'"))
+        self.assertAlmostEqual(sum(mnd.values()), 291.26, places=2)
+
+    def test_coordenadas_reais_nas_fichas(self):
+        """A ficha do trecho traz as duas pontas da 06.1 e a do nó, a coordenada da 06.2, com latitude e longitude."""
+        import dados_obra as DO
+        import servicos as S
+        self.c.row_factory = sqlite3.Row
+        try:
+            d = S.detalhe(self.c, "TRECHO", "Zona01_PB01_Rede_TR001")["coordenadas"]
+            self.assertEqual(d["inicio"], {"e": 203552.494, "n": 8239199.097, "lat": -15.9087023, "lon": -47.7685795,
+                                           "no": "Zona01_PB01_Rede_NÓ1.8"})
+            self.assertEqual((d["fim"]["e"], d["fim"]["n"], d["fim"]["no"]), (203492.052, 8239246.068, "Zona01_PB01_Rede_NÓ2.7"))
+            no = S.detalhe(self.c, "ATIVIDADE", "Zona01_PB01_Rede_NÓ1.8")["coordenadas"]["no"]
+            self.assertEqual((no["e"], no["n"]), (203552.494, 8239199.097))      # o nó e a ponta do trecho: o mesmo ponto
+            sel = DO.selecao(self.c, ["Zona01_PB01_Rede_TR001"], ["Zona01_PB01_Rede_NÓ1.8"])
+            self.assertEqual(sel["linhas"][0]["coordenadas"], S.detalhe(self.c, "TRECHO", "Zona01_PB01_Rede_TR001")["coordenadas"])
+            self.assertEqual(sel["nos"][0]["coordenadas"]["e"], 203552.494)
+        finally:
+            self.c.row_factory = None
+
+    def test_metros_por_diametro_sistema_igual_a_06_1(self):
+        """Conferência por DE: o sistema tem os 1.436 trechos da 06.1, com os mesmos metros (110.686,03 m)."""
+        por_de = dict(self.c.execute("SELECT CAST(de_mm AS INT), ROUND(SUM(extensao_m), 2) FROM trechos WHERE vigente=1 GROUP BY 1"))
+        self.assertEqual(por_de, {63: 70439.31, 90: 7877.16, 110: 8529.34, 125: 881.67, 160: 12495.17, 225: 4097.25,
+                                  250: 1001.08, 280: 463.85, 315: 2173.44, 355: 683.91, 400: 608.93, 500: 1434.92})
+        self.assertAlmostEqual(sum(por_de.values()), 110686.03, places=2)
+
+    # ---------------------------------------------------------------- números do diagnóstico (fixados)
+    def test_numeros_do_diagnostico(self):
+        from collections import Counter
+        dz = MG.desenhos(MAPA)
+        self.assertEqual((round(dz["GERAL"]["escala"], 4), dz["GERAL"]["n"]), (0.7, 1188))
+        self.assertLess(dz["GERAL"]["residuo_m"][2], 0.02)                 # UTM → visão geral: ≤ 1 cm
+        self.assertGreater(dz["PB25"]["residuo_m"][2], 30)                 # PB25: desenho vetorial deslocado (pendência)
+        pontas = MG.pontas(MAPA)
+        self.assertEqual(len(pontas), 2872)
+        self.assertEqual(dict(Counter(p["classe"] for p in pontas)), {
+            "NO_NO": 2249, "DESLOCADA": 318, "NAO_CHEGA": 130, "DIVISA_ZONA": 72, "PONTA_SEM_NO": 62, "PASSAGEM": 16,
+            "LIMITE_MND": 10, "JUNCAO_SEM_NO": 6, "CRUZAMENTO": 4, "PASSA_DO_NO": 2, "LONGE_DO_NO": 2,
+            "DESENHO_INCOMPLETO": 1})
+        d = [p["d_no_m"] for p in pontas if "d_no_m" in p]
+        self.assertEqual((sum(x > 0.5 for x in d), sum(x > 1 for x in d), sum(x > 3 for x in d)), (164, 55, 2))
+        self.assertEqual(sorted((p["trecho"], p["lado"]) for p in pontas if p["classe"] == "LONGE_DO_NO"),
+                         [("Zona11_PB23_Rede_TR081", "ini"), ("Zona11_PB25_Rede_TR001", "fim")])
+        cfg = _cfg()
+        self.assertEqual(dict(Counter(j["decisao"] for j in cfg["juncoes"])), {"JUNTAR": 73, "NAO_JUNTAR": 35, "DUVIDA": 2})
+        self.assertEqual(dict(Counter(j["tipo"] for j in cfg["juncoes"] if j["decisao"] == "JUNTAR")),
+                         {"CRUZAMENTO": 2, "PASSAGEM": 8, "DIVISA_ZONA": 36, "PONTA_SEM_NO": 27})      # D-202: MND e VCA separados
+        r = TP.resumo(self.c)
+        self.assertEqual((r["linhas_06_1"], r["trechos_fisicos"], r["com_mais_de_uma_linha"], r["linhas_em_cadeias"],
+                          r["juncoes_aplicadas"]), (1436, 1363, 46, 119, 73))
+        fis = TP.trechos_fisicos(self.c)
+        ids = Counter(m["trecho_id"] for f in fis for m in f["membros"])
+        self.assertEqual((len(ids), set(ids.values())), (1436, {1}))      # toda linha em exatamente um trecho físico
+        self.assertAlmostEqual(sum(f["extensao_m"] for f in fis), 110686.03, places=2)
+        pend = Counter(p["tipo"] for p in TP.pendencias(self.c))
+        self.assertEqual(pend["DECISAO_EM_DUVIDA"], 2)
+        self.assertEqual(pend["DECISAO_DESATUALIZADA"] + pend["DECISAO_EM_CONFLITO"] + pend["NO_INEXISTENTE"], 0)
+        self.assertEqual((pend["PONTA_SEM_CONEXAO"], pend["PONTA_FORA_DO_NO"], pend["TE_SEM_NO"], pend["PECAS_A_MENOS"],
+                          pend["PRANCHA_DESLOCADA"], pend["TRECHO_ISOLADO"], pend["CONEXAO_NO_MEIO_DA_LINHA"]),
+                         (15, 3, 2, 1, 1, 1, 29))
+        self.assertEqual([p["juncao"] for p in TP.pendencias(self.c) if p["tipo"] == "PASSAGEM_A_CONFERIR"],
+                         [f"J-{n:03d}" for n in range(3, 11)])           # as 8 passagens, até a engenharia conferir
+
+    def test_arquivo_de_decisoes_bate_com_a_ferramenta(self):
+        """config/topologia.json é o que ferramentas/topologia gera hoje (fora as decisões revisadas à mão)."""
+        import base as B
+        import juncoes as J
+        novas, _ = J.todas(B.Base(self.db, MAPA))
+        chave = lambda j: tuple(sorted((p["trecho"], p["lado"]) for p in j["pontas"]))
+        cfg = _cfg()
+        arquivo = {chave(j): (j["tipo"], j["decisao"]) for j in cfg["juncoes"] if not j.get("revisao")}
+        geradas = {chave(j): (j["tipo"], j["decisao"]) for j in novas}
+        self.assertEqual({k: v for k, v in geradas.items() if k in arquivo}, arquivo)
+        self.assertEqual(set(geradas) - {chave(j) for j in cfg["juncoes"]}, set())
+
+    # ---------------------------------------------------------------- rota
+    def test_rota_api_topologia(self):
+        self.assertIs(server.GET["/api/topologia"], server.r_topologia)
+        self.assertEqual(server.TELA_GET["/api/topologia"], ("mapa", "iluminado"))
+        r = server.r_topologia({}, self.c)
+        self.assertEqual(set(r), {"resumo", "cadeias", "cruzamentos", "pendencias"})
+        self.assertTrue(all(len(f["membros"]) > 1 for f in r["cadeias"]))
+        um = server.r_topologia({"trecho": TR007}, self.c)
+        self.assertEqual((um["trecho_id"], um["trecho_fisico"]["extensao_m"]), (self.id[TR007], 295.98))
+        self.assertEqual(server.r_topologia({"trecho": self.id[TR006]}, self.c)["trecho_fisico"]["id"],
+                         um["trecho_fisico"]["id"])
+        des = server.r_topologia({"desenho": "1"}, self.c)
+        self.assertIn("GERAL", des["correcoes"])
+        self.assertIn([TR007, TR006], [f["membros"] for f in des["fisicos"]])
+
+
+if __name__ == "__main__":
+    unittest.main()

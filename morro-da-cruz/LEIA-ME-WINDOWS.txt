@@ -1,0 +1,37 @@
+SISTEMA MORRO DA CRUZ — Ankara Engenharia · CT 10.239/2026
+====================================================================
+Já vem com as planilhas e o mapa da obra. Não precisa instalar nada.
+
+COMO ABRIR (no computador do escritório)
+1. Descompacte este .zip numa pasta (por exemplo, Documentos\MorroDaCruz).
+   Não abra o programa de dentro do .zip.
+2. Dê dois cliques em MorroDaCruz.exe.
+   Se o Windows mostrar "O Windows protegeu o computador", clique em
+   "Mais informações" e depois em "Executar assim mesmo".
+   Se o firewall perguntar, permita o acesso.
+3. Na PRIMEIRA vez, o programa monta a obra (menos de 1 minuto) e o navegador
+   abre na página "Link para a equipe": crie o SEU usuário de administrador
+   (login, nome e senha de pelo menos 10 caracteres).
+4. Em alguns segundos aparece o LINK PARA A EQUIPE, algo como
+   https://palavras-aleatorias.trycloudflare.com
+   Envie esse link. Quem abrir o link entra no sistema pelo computador ou
+   pelo celular, de qualquer lugar.
+5. Crie o usuário de cada pessoa na aba "6. Usuários & Histórico".
+   Cada lançamento fica registrado com o nome de quem fez.
+
+TODO DIA
+- Deixe o programa aberto (a janela preta) enquanto a equipe usa o sistema.
+  Fechar a janela fecha o sistema e o link.
+- O link MUDA cada vez que o programa é aberto de novo. O link atual aparece:
+  na janela preta, no arquivo LINK_DA_EQUIPE.txt (nesta pasta) e no botão
+  "Link da equipe" no topo do sistema (clique para copiar).
+- Se o computador desligar ou ficar sem internet, o link para de funcionar.
+
+IMPORTANTE
+- Os dados ficam nesta pasta (dados_demo\). Faça cópia dela de vez em quando.
+- A faixa amarela DEMONSTRAÇÃO continua enquanto os controles das planilhas
+  (CTRL-01) não forem aprovados; a medição é sempre de TESTE.
+- Os usuários de demonstração (eng.demo etc.) são desligados quando você cria
+  o administrador, porque a senha deles é conhecida.
+- Para atualizar o programa, baixe a versão nova e substitua só o
+  MorroDaCruz.exe; as pastas de dados continuam.
