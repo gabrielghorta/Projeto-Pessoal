@@ -27,7 +27,7 @@ import topologia as TP
 from servicos import RegraViolada, _agora, _one, _rows, transacao
 
 TIPOS = {"TOPOGRAFIA": "Topografia", "CADASTRO": "Cadastro de campo", "SERVICO": "Serviço de obra", "EXECUCAO": "Do dia (execução)"}
-# Palavras do bloco da NS que confirmam o tipo escolhido (D-209), pela raiz: o bloco pode dizer "TOPOGRAFIA",
+# Palavras do bloco da NS que confirmam o tipo escolhido (D-210), pela raiz: o bloco pode dizer "TOPOGRAFIA",
 # "LIBERAÇÃO TOPOGRÁFICA" ou "LOCAÇÃO" (topografia) e "CADASTRO" ou "CADASTRAL" (cadastro de campo).
 RAIZES_TIPO = {"TOPOGRAFIA": ("TOPOGRAF", "LOCACAO"), "CADASTRO": ("CADASTR",)}
 

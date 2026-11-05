@@ -360,7 +360,13 @@ topografia, intervalo sem sobreposição), e a busca continua. Lançar vários a
 
 ## Mapas
 
-**Mapa iluminado** (`web/iluminado.js`, tela Início e Mapa iluminado): satélite das 25 PBs alinhado e cortado nas zonas,
+**Atualização de 04/11/2026 (D-209):** o fundo padrão dos dois mapas passa a ruas contínuas do OpenStreetMap gratuito,
+inclusive fora das zonas. O retângulo e a navegação vêm do viewport 381C4 da prancha 01; canteiro A–F só destaca e
+aproxima. Mantidas as cores, opções e regras abaixo; satélite claro/escuro são alternativas. `web/mapa_fundo.js` e
+`mapa_contexto.py` acrescentam fundo/limites sem redesenhar a rede ou alterar o banco. Detalhes e fontes:
+`morro-da-cruz/docs/MAPA_RUAS_PRANCHA01.md`. Sem internet, a rede continua utilizável, com aviso do fundo.
+
+**Mapa iluminado** (`web/iluminado.js`, tela Início e Mapa iluminado): ruas contínuas por padrão (satélite das 25 PBs como alternativa),
 zonas oficiais e o traçado dos 1.436 trechos, cor só pelo que foi gravado (`regras.etapa_trecho`, D-118):
 
 | Etapa | Cor (clara, D-136) |
@@ -394,7 +400,7 @@ duas frentes. O `frente_id` do banco continua a zona do local.
 **Nós e caixas (D-183):** nó = bola; DF ▼, VTF ▲, VM ■, VRP ◆, MV ⬢, HID ✚ (`TIPOS_NO`). No Mapa iluminado os trechos
 ficam como estavam e os nós/caixas ganham a cor da situação (caixa sempre, nó só de perto; toque abre a ficha).
 
-**Dados da obra (D-186, revoga a planta clara da D-184 e a D-177):** o Mapa iluminado (mesmo fundo escuro de satélite)
+**Dados da obra (D-186, revoga a planta clara da D-184 e a D-177):** o Mapa iluminado (mesmo fundo escolhido)
 com os trechos na cor do diâmetro do projeto, finos (Subadutora mais grossa, MND tracejado) ou, à escolha na legenda, na
 cor da programação; barra **Frentes** (Obra inteira, Zona 01 a 11, Subadutora). Seleção só dentro da zona: na obra
 inteira o toque abre a zona; na zona cada toque soma; **Desselecionar** (modo) tira um a um; **Limpar seleção** zera.

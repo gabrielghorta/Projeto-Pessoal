@@ -248,7 +248,7 @@ class TestCadastro(BaseReal):
         self.assertIn("TOPOGRAFIA", r["aviso_tipo"])
 
     def test_bloco_liberacao_topografica_confere_com_topografia(self):
-        # D-209: "LIBERAÇÃO TOPOGRÁFICA" não contém a palavra TOPOGRAFIA, mas é topografia (falso aviso das NS 7001 a 7012)
+        # D-210: "LIBERAÇÃO TOPOGRÁFICA" não contém a palavra TOPOGRAFIA, mas é topografia (falso aviso das NS 7001 a 7012)
         pdf = pdf_ns(numero="014", bloco="LIBERAÇÃO TOPOGRÁFICA")
         self.assertIsNone(self.ok(self.ler("eng1", "TOPOGRAFIA", pdf))["aviso_tipo"])
         self.assertIn("LIBERA", self.ok(self.ler("eng1", "CADASTRO", pdf))["aviso_tipo"])

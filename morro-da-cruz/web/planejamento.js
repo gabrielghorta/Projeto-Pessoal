@@ -1,5 +1,5 @@
 /* Planejamento: o mapa da Programação e o cronograma do MS Project.
- * O mapa é o Mapa iluminado (iluminado.js: traçado do REV02, o mesmo fundo escuro de satélite e o visor de arrastar e
+ * O mapa é o Mapa iluminado (iluminado.js: traçado do REV02, o mesmo fundo escolhido e o visor de arrastar e
  * aproximar, D-186) com os trechos na cor do diâmetro do projeto, finos (a Subadutora, de 200 mm pra cima, mais grossa;
  * MND tracejado) ou, à escolha, na cor da programação do dia; os nós em bola e as caixas com a sua forma (D-183). A frente
  * escolhida (uma zona ou a Subadutora, D-182) é a única com cor: as outras zonas ficam sem preenchimento, sem trecho, sem nó
@@ -26,7 +26,7 @@ const PLN = { pronto: false, vb: null, base: null, anim: 0, zona: null, pop: nul
   cam: { zonas: true, nomes: true }, corPor: 'de',
   prefixo: 'pln', svg: () => $('#plnSvg'), caixa: () => $('#plnMapa'), desenhar: desenharPln, clique: cliquePln,
   tocavel: t => naFrente(t),                                         // fora da frente não há trecho para tocar
-  copia: (g, u) => copiaPln(g, u), copiaChave: () => [ILU.fundo, PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0, !!PLN.mosaico, PLN.corPor, PLN.zona].join('|') };
+  copia: (g, u) => copiaPln(g, u), copiaChave: () => [ILU.fundo, PLN.cam.zonas, PLAN.map(s => +PLN.vis[s.id]).join(''), PLN.cores || 0, !!PLN.mosaico, PLN.corPor, PLN.zona, PLN.ruasVersao || 0].join('|') };
 const CAMADAS_PLN = { zonas: 'Zonas oficiais', nomes: 'Nomes das zonas' };
 try {                                 // só as camadas que existem: as antigas (plantas, quadros) salvas no navegador caem fora
   const salvas = JSON.parse(localStorage.getItem('mc-pln-camadas') || '{}');
@@ -102,13 +102,13 @@ function montarPln(g) {
   PLN.noIdx = new Map();
   g.els.forEach((e, i) => e.n.forEach(n => PLN.noIdx.set(n, i)));
   PLN.frentesNo = frentesDosNos(g);
-  // o mesmo fundo do Mapa iluminado (D-186): o satélite cortado nas zonas, escurecido pelo fundo escolhido lá
-  svg.innerHTML = `${htmlSatelite(g, 'pln')}<g id="plnZonas">${zonas}</g>
+  // O fundo de ruas é contínuo (D-209); o satélite recortado continua como alternativa (D-186).
+  svg.innerHTML = `${htmlSatelite(g, 'pln')}${htmlFundoRuas(g, 'pln')}<g id="plnZonas">${zonas}</g>
     <g id="plnHalo"></g><g id="plnSelB"></g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnSelC"></g><g id="plnNos" class="longe"></g>
-    <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="plnPins"></g>`;
+    <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g>${htmlCanteiro(g)}<g id="plnPins"></g>`;
   aplicarCamadasPln();
-  ligarSatelite(PLN, g); carregarMosaicoCopia(g, PLN);
-  PLN.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
+  ligarFundoRuas(PLN, g);
+  PLN.base = g.contexto ? g.contexto.limites : limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   const salva = vistaSalvaPln();                       // a última vista da sessão: o mapa não volta sozinho para a obra inteira
   PLN.vb = salva ? salva.vb : null; PLN.zona = salva ? salva.zona : null; zonasPln(); ajustarAspecto(PLN);
   ligarGestos(svg, PLN);
@@ -197,7 +197,8 @@ function colorirPln() {
 }
 // a cópia leve do gesto (iluminado.js): o satélite com o véu do Mapa iluminado, as zonas e as linhas da frente em foco
 function copiaPln(g, u) {
-  if (ILU.fundo !== 'sem' && PLN.mosaico) {
+  if (ILU.fundo === 'ruas') copiarFundoRuas(PLN, g);
+  else if (ILU.fundo !== 'sem' && PLN.mosaico) {
     g.save(); g.beginPath(); GERAL.zonas.forEach(z => poligonoCopia(g, z.p)); g.clip();
     g.drawImage(PLN.mosaico, 0, 0, GERAL.w, GERAL.h);
     g.globalAlpha = FUNDOS[ILU.fundo][1]; g.fillStyle = '#000'; g.fillRect(0, 0, GERAL.w, GERAL.h); g.restore();
@@ -301,6 +302,7 @@ async function buscarSelecao() {
 // zona em foco, o resto do mapa não responde: só os trechos dela são achados (tocavel) e as outras zonas não abrem
 function cliquePln(alvo, ev, i) {
   fecharPopPln();
+  if (alvo.closest && alvo.closest('.mapa-canteiro')) return destacarCanteiro(PLN);
   const perto = s => alvo.closest && alvo.closest(s);
   const etq = perto('.eq-etq');                // a etiqueta da equipe: o dia dela (os trechos marcados e o painel)
   if (etq) return escolherEquipeDoDia(etq.dataset.equipe);
@@ -483,7 +485,9 @@ function aplicarCamadasPln() {
     if (el) el.style.display = PLN.cam[k] ? '' : 'none';
   });
   const sat = satDe(PLN);                          // o fundo é o do Mapa iluminado (Camadas › Fundo de lá)
-  if (sat) { sat.style.display = ILU.fundo === 'sem' ? 'none' : ''; $('.sat-veu', sat).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]); }
+  if (sat) { sat.style.display = ['sem', 'ruas'].includes(ILU.fundo) ? 'none' : ''; $('.sat-veu', sat).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]); }
+  aplicarFundoRuas(PLN);
+  if (sat && !['sem', 'ruas'].includes(ILU.fundo)) ligarSatelite(PLN, GERAL);
   try { localStorage.setItem('mc-pln-camadas', JSON.stringify(PLN.cam)); } catch (_) { /* sem storage */ }
   agendarCopia(PLN);
 }
