@@ -17,6 +17,11 @@ Conteúdo:
 
 ## O ciclo da obra até a medição (ponta a ponta)
 
+**Leitura do Mapa iluminado (D-211, 05/11/2026):** topografia em azul forte, etapas em cores saturadas e traço mais
+largo que o cinza tracejado de não iniciado. Contorno claro (escuro no branco de pronto) em Ruas, satélite e sem
+fundo; mesmo desenho durante o gesto. Paleta única para rede, nós e legenda. Não muda a etapa calculada nem as cores
+DE/programação de Dados da obra. Roteiro: `ferramentas/desempenho/conferir_contraste_iluminado.cjs`.
+
 ```
 planilhas oficiais ─► importação (controles aprovados) ─► banco
         │
