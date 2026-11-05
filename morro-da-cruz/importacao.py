@@ -1182,6 +1182,14 @@ def preparar_v24(conn):
     conn.execute("UPDATE equipes SET ativa=0,excluida_em=?,excluida_por='migração D-212: cadastro manual'", (S._agora(),))
 
 
+def preparar_v26(conn):
+    """Preserva o histórico; não inventa dimensões antigas nem registros de chuva."""
+    _recriar_tabela(conn, "apropriacoes", "NAO_INFORMADO")
+    _recriar_tabela(conn, "clima", "SEM_CHUVA")
+    _add_coluna(conn, "apropriacoes", "calculo_json", "TEXT")
+    S.aplicar_esquema(conn)
+
+
 def preparar_v25(conn):
     """Somente o vínculo entre a nota anterior e a execução; não presume equipe, clima ou execução."""
     S.aplicar_esquema(conn)

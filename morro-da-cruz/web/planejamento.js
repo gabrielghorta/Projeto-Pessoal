@@ -103,7 +103,7 @@ function montarPln(g) {
   g.els.forEach((e, i) => e.n.forEach(n => PLN.noIdx.set(n, i)));
   PLN.frentesNo = frentesDosNos(g);
   // O fundo de ruas é contínuo (D-209); o satélite recortado continua como alternativa (D-186).
-  svg.innerHTML = `${htmlSatelite(g, 'pln')}${htmlFundoRuas(g, 'pln')}<g id="plnZonas">${zonas}</g>
+  svg.innerHTML = `${htmlSatelite(g, 'pln')}${htmlFundoRuas(g, 'pln')}<g id="plnZonas">${zonas}</g><g id="plnFora"></g>
     <g id="plnHalo"></g><g id="plnSelB"></g><g id="plnSelG"></g><g id="plnLinhas"></g><g id="plnSelC"></g><g id="plnNos" class="longe"></g>
     <g id="plnNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g>${htmlCanteiro(g)}<g id="plnPins"></g>`;
   aplicarCamadasPln();
@@ -125,7 +125,7 @@ function desenharPln(px, zoom) {
   satDepois(PLN, GERAL, px);
   try { sessionStorage.setItem(VISTA_PLN, JSON.stringify({ vb: PLN.vb, zona: PLN.zona })); } catch (_) { /* sem storage */ }
   const larg = larguraTrecho(zoom, 0.75);               // finas, para a rede não poluir o mapa
-  espessura($('#plnLinhas'), larg); espessura($('#plnSelC'), larg);
+  espessura($('#plnLinhas'), larg); espessura($('#plnSelC'), larg); espessura($('#plnFora'), larg);
   const sub = $('#plnSub'); if (sub) espessura(sub, Math.min(6, larg * 1.6));
   if (escalaMudou(PLN, px)) {                          // arrastar não muda a escala: só o zoom mexe em textos, pinos e nós
     $('#plnZonas').style.setProperty('--k', 1 / px);  // só no contorno tracejado: na raiz, refazia o estilo do mapa inteiro
@@ -172,6 +172,7 @@ function colorirPln() {
   const mapa = ESTADO_MAPA, por = Object.fromEntries(PLAN.map(s => [s.id, []]));
   GERAL.trechos.forEach(t => { t.ps = planSitu(t.n, mapa); if (naFrente(t)) por[t.ps].push(t); });
   PLN.cores = (PLN.cores || 0) + 1;
+  $('#plnFora').innerHTML = PLN.zona ? htmlFora(GERAL.trechos.filter(t => !naFrente(t))) : '';
   if (PLN.corPor === 'de') {
     const linha = gr => {
       const attrs = `class="ilu-tr" stroke="${corDe(gr.de)}"`;
@@ -205,6 +206,7 @@ function copiaPln(g, u) {
   }
   if (PLN.cam.zonas) zonasCopia(g, u, z => opacidadeZona(z.id));
   const ts = GERAL.trechos.filter(naFrente);
+  if (PLN.zona) linhasCopia(g, u, [grupoForaCopia(GERAL.trechos.filter(t => !naFrente(t)))]);
   linhasCopia(g, u, PLN.corPor === 'de'
     ? gruposDe(ts).map(gr => ({ cor: corDe(gr.de), tracejado: gr.mnd ? '9 6' : null, trechos: gr.trechos }))
     : PLAN.filter(s => PLN.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado, opacidade: s.opacidade, trechos: ts.filter(t => t.ps === s.id) })));
@@ -448,7 +450,7 @@ function abrirPopPln(nome, recarregar) {
         <span>${esc(s.nome)}</span><span class="fim">${nf(conta[s.id].n, 0)} · ${km(conta[s.id].m)}</span></button>`).join('')
         + '<p>Toque numa linha para mostrar ou esconder.</p>';
     }
-    pop.innerHTML = modo + titulo + corpo
+    pop.innerHTML = modo + titulo + corpo + (PLN.zona ? legendaFora() : '')
       + legendaNos(null, 'As caixas aparecem sempre; os nós, ao aproximar.')
       + '<p>O pino é a equipe com check-in no dia; o contorno escuro e branco é a seleção; o nó azul com anel entrou sozinho (liga dois trechos escolhidos ou é ponta de rua).</p>';
   } else if (nome === 'camadas') {

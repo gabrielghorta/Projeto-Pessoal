@@ -193,8 +193,8 @@ const TELAS_ANTIGAS = {
 // lembrada por subaba na sessão. Cada página diz quem a usa; a subaba abre na pedida, na lembrada ou na primeira do perfil
 const PAGINAS = {
   campo: [['apropriacao', 'Apropriação direta', () => pode('apropriacao')], ['apontamento', 'Apontamento sem NS', () => pode('lancar_sem_ns')],
-    ['fotos', 'Fotos e soldas', () => podeTela('campo') && pode('campo')], ['clima', 'Clima do dia', () => podeTela('campo') && pode('campo')],
-    ['interferencia', 'Interferência', () => podeTela('interferencias')]],
+    ['fotos', 'Fotos e soldas', () => podeTela('campo') && pode('campo')],
+    ['interferencia', 'Interferências e chuva', () => podeTela('interferencias')]],
   notas: [['servico', 'Nota de serviço', () => podeTela('notas')],
     ['topografia', 'Topografia', () => podeTela('topografia')], ['cadastro', 'Cadastro', () => podeTela('cadastro_campo')]],
   diario: [['resumo', 'Resumo do dia', () => true], ['programacao', 'Programação e check-in', () => true], ['ocorrencias', 'Ocorrências', () => true]],
@@ -215,6 +215,7 @@ const paginasDe = tela => (PAGINAS[tela] || []).filter(([, , usa]) => usa());
 function paginaDe(tela, pedida) {
   const ps = paginasDe(tela).map(p => p[0]); if (!ps.length) return null;
   let lembrada = null; try { lembrada = sessionStorage.getItem('mc-pagina-' + tela); } catch (_) { /* sem storage */ }
+  if (tela === 'campo') { if (pedida === 'clima') pedida = 'interferencia'; if (lembrada === 'clima') lembrada = 'interferencia'; }
   return [pedida, lembrada].find(p => p && ps.includes(p)) || ps[0];
 }
 function mostrarPagina(tela, pag) {
@@ -1042,7 +1043,6 @@ $('#apPrevisto').addEventListener('click', async () => {
 });
 async function enviarApontamento(editado) {
   const o = formObj(fAp);
-  await acao(() => api('/api/clima', { data: o.data, equipe_id: o.equipe_id, MANHA: o.MANHA, TARDE: o.TARDE }));
   const quantidades = editado ? $$('#apQuant input[data-s]').filter(i => +i.value !== +i.dataset.p).map(i => ({ servico: i.dataset.s, unidade: i.dataset.u, confirmado: +i.value })) : null;
   const intervalos = [['ASSENTADO', 'ass'], ['REATERRADO', 'rea']]
     .filter(([, k]) => o[k + '_ini'] !== '' && o[k + '_fim'] !== '' && o[k + '_ini'] != null)
@@ -1681,7 +1681,7 @@ let INT_SITUACAO = '1';
 function htmlInterf(o) {
   return `<div class="int-item${o.resolvida_em ? ' resolvida' : ''}"><div class="topo"><b>${esc(rotCateg(o.categoria))} · ${esc(curto(o.alvo_nome))}</b>
       ${o.resolvida_em ? '<span class="chip verde">resolvida</span>' : `<span class="chip amarelo">${o.tipo === 'IMPEDIMENTO' ? 'impedimento' : 'não conformidade'} · aberta</span>`}</div>
-    <p>${esc(o.descricao)}</p>
+    <p>${esc(o.descricao)}</p>${o.chuva ? `<small>${esc({MANHA:"Manhã",TARDE:"Tarde",DIA_TODO:"Dia todo"}[o.chuva.turno])} · ${esc(RESUMO.clima[o.chuva.condicao])}</small>` : ""}
     <small>#${o.id} · ${dataBR(o.data)} · ${esc(o.equipe_id || 'sem equipe')} · aberta por ${esc(o.aberta_por)}</small>
     ${o.resolvida_em ? `<p><small>Resolução (${esc(o.resolvida_por)}, ${dataBR(o.resolvida_em.slice(0, 10))}):</small> ${esc(o.resolucao)}</p>`
       : pode('verificar') ? `<div class="acoes" style="margin-top:8px"><button type="button" class="btn" data-int-resolver="${o.id}">Marcar como resolvida</button></div>` : ''}</div>`;
@@ -1690,6 +1690,7 @@ function catsInterf() {
   const c = $('#intCat');
   c.innerHTML = (RESUMO.categorias_ocorrencia[$('#intTipo').value] || []).map(x => `<option value="${x}">${esc(rotCateg(x))}</option>`).join('');
   if ($('#intTipo').value === 'IMPEDIMENTO') c.value = 'INTERFERENCIA';
+  chuvaCampos();
 }
 const marcarSituacao = () => $$('#intSituacao button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.intSituacao === INT_SITUACAO)));
 async function carregarInterferencias() {
@@ -1712,6 +1713,13 @@ async function carregarInterferencias() {
 const fInt = $('#fInterf');
 ligarBusca($('input[name=alvo_txt]', fInt));
 $('#intTipo').addEventListener('change', catsInterf);
+$('#intCat').addEventListener('change', chuvaCampos);
+function chuvaCampos() {
+  const chuva = $('#intTipo').value === 'IMPEDIMENTO' && $('#intCat').value === 'CHUVA';
+  $('#intChuva').hidden = !chuva;
+  $('#fInterf').alvo_txt.required = !chuva; $('#fInterf').descricao.required = !chuva;
+  $('#fInterf').equipe_id.required = chuva;
+}
 $('#intSituacao').addEventListener('click', ev => {
   const b = ev.target.closest('[data-int-situacao]'); if (!b) return;
   INT_SITUACAO = b.dataset.intSituacao; marcarSituacao(); carregarInterferencias();
@@ -1721,9 +1729,11 @@ $('#intCategoria').addEventListener('change', carregarInterferencias);
 fInt.addEventListener('submit', async ev => {
   ev.preventDefault();
   const o = formObj(fInt), inp = $('input[name=alvo_txt]', fInt);
-  if (!inp.dataset.id) { toast('Escolha o trecho, nó ou caixa na lista que aparece enquanto você digita.', 'erro'); return; }
+  const chuva = o.categoria === 'CHUVA' && o.tipo === 'IMPEDIMENTO';
+  if (!inp.dataset.id && !chuva) { toast('Escolha o trecho, nó ou caixa na lista que aparece enquanto você digita.', 'erro'); return; }
   const r = await acao(() => api('/api/ocorrencia', { alvo_tipo: inp.dataset.tipo, alvo_id: inp.dataset.id, tipo: o.tipo, categoria: o.categoria,
-    descricao: o.descricao, data: o.data, equipe_id: o.equipe_id || null }), 'Interferência registrada.').catch(() => null);
+    descricao: o.descricao, data: o.data, equipe_id: o.equipe_id || null,
+    ...(chuva ? {turno:o.turno,clima_condicao:o.clima_condicao} : {}) }), 'Interferência registrada.').catch(() => null);
   if (r) { fInt.descricao.value = ''; inp.value = ''; inp.dataset.id = ''; INT_SITUACAO = '1'; marcarSituacao(); carregarInterferencias(); }
 });
 document.addEventListener('click', async ev => {

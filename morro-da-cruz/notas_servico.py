@@ -1220,10 +1220,6 @@ def _clima_do_dia(conn, data, equipe_id, clima):
     for turno in ("MANHA", "TARDE"):
         if (clima or {}).get(turno):
             S.registrar_clima(conn, data, equipe_id, turno, clima[turno])
-    turnos = {r[0] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
-    if turnos != {"MANHA", "TARDE"}:
-        raise RegraViolada(f"Informe o clima da manhã e da tarde de {_data_br(data)}: o diário precisa dele "
-                           "(toque no envio da NS ou marque em Lançamento do dia › Clima do dia).")
 
 
 def gravar_clima(conn, data, equipe_id, clima, corrigir=False):

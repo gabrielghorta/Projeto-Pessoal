@@ -1,5 +1,5 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v25. Banco SQLite local.
+-- Esquema v26. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
@@ -477,7 +477,7 @@ CREATE TABLE IF NOT EXISTS clima (
   data TEXT NOT NULL,
   equipe_id TEXT NOT NULL REFERENCES equipes(id),
   turno TEXT NOT NULL CHECK (turno IN ('MANHA','TARDE')),
-  condicao TEXT NOT NULL CHECK (condicao IN ('SOL','CHUVA_FRACA_TENDA','PARALISADO_CHUVA','VALA_ALAGADA_BOMBA')),
+  condicao TEXT NOT NULL CHECK (condicao IN ('SEM_CHUVA','SOL','CHUVA_FRACA_TENDA','PARALISADO_CHUVA','VALA_ALAGADA_BOMBA')),
   PRIMARY KEY (data, equipe_id, turno)
 );
 
@@ -1082,12 +1082,13 @@ CREATE TABLE IF NOT EXISTS apropriacoes (
   local_tipo TEXT CHECK (local_tipo IN ('CANTEIRO','ZONA','TRECHO','ATIVIDADE')),
   local_id TEXT,
   local_texto TEXT,
-  executor_tipo TEXT NOT NULL CHECK (executor_tipo IN ('EQUIPE_OBRA','OUTRA_OBRA','TERCEIRO')),
+  executor_tipo TEXT NOT NULL CHECK (executor_tipo IN ('NAO_INFORMADO','EQUIPE_OBRA','OUTRA_OBRA','TERCEIRO')),
   equipe_id TEXT REFERENCES equipes(id),
   executor_obra TEXT,                  -- outra obra ou contrato da Ankara
   executor_nome TEXT,                  -- equipe da outra obra ou nome do terceiro
   o_que_foi_feito TEXT NOT NULL,
   memoria_calculo TEXT NOT NULL,
+  calculo_json TEXT,                  -- parcelas e dimensões informadas; não reconstruídas do total antigo
   justificativa TEXT NOT NULL,
   registrado_por TEXT NOT NULL, registrado_em TEXT NOT NULL,
   estornado_por TEXT, estornado_em TEXT, estorno_motivo TEXT,
@@ -1235,4 +1236,11 @@ CREATE TABLE IF NOT EXISTS ns_execucoes_origem (
   ns_execucao_id INTEGER NOT NULL UNIQUE REFERENCES notas_servico(id),
   registrada_em TEXT NOT NULL,
   registrada_por TEXT NOT NULL
+);
+
+-- v26: chuva relatada na interferência; resolver não apaga o clima que ocorreu naquele dia.
+CREATE TABLE IF NOT EXISTS ocorrencia_chuvas (
+  ocorrencia_id INTEGER PRIMARY KEY REFERENCES ocorrencias(id),
+  turno TEXT NOT NULL CHECK (turno IN ('MANHA','TARDE','DIA_TODO')),
+  condicao TEXT NOT NULL CHECK (condicao IN ('CHUVA_FRACA_TENDA','PARALISADO_CHUVA','VALA_ALAGADA_BOMBA'))
 );

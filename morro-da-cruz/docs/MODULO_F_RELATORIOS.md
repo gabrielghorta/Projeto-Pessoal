@@ -98,3 +98,9 @@ O acesso real pelo celular continua dependendo da hospedagem (D-60).
 - Os relatórios são consultas ao vivo. Não há histórico de fotografias mensais além da medição congelada.
 - O avanço não estima o legado sem posição por período.
 - O "previsto" de material é a quantidade de projeto do cadastro (`qtd_projeto`). Material sem previsão aparece só se tiver movimento.
+
+
+Atualização em 05/11/2026 (D-215 a D-217, v26): Interferências e chuva substitui a página de clima; sem chuva é
+premissa explícita, sem observação fabricada. Apropriação calcula m/m²/m³ por medidas e leva a conta à MC; extras
+ficam opcionais. O RM da tela Relatórios sai em DOCX editável, com os mesmos dados e totais. Histórico e medição
+fechada preservados. Guia: `CAMPO_MEMORIA_RM_WORD.md`.

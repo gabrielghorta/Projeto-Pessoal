@@ -132,10 +132,6 @@
             <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
           </div>
           <div id="apSugestoes" aria-live="polite"></div>
-          <div class="linha">
-            <label>Clima — manhã<select name="MANHA" class="selClima" required></select></label>
-            <label>Clima — tarde<select name="TARDE" class="selClima" required></select></label>
-          </div>
           <label>Por que sem a nota do dia (obrigatório para trecho)<input name="motivo_sem_ns" placeholder="ex.: a nota do dia molhou; lançado pela caderneta do encarregado"></label>
           <label>Trecho / nó / caixa
             <div class="busca"><input name="alvo_txt" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off" required><ul hidden></ul></div>
@@ -192,17 +188,6 @@
       </div>
     </div>
 
-    <!-- clima do dia da equipe, para o diário dos dias sem nota do dia -->
-    <div data-pagina="clima" hidden>
-      <form class="painel nota-dia" id="fClima" data-perm="campo">
-        <p class="vazio" style="margin:0">O clima do dia da equipe, para o diário. A nota de serviço é a fonte principal: se ela vier com o clima, vale o dela; se vier sem, vale o marcado aqui. Depois que a nota chega, só a engenharia muda o clima daquele dia.</p>
-        <div class="linha"><label>Equipe<select id="climaEquipe" required></select></label><label>Dia<input type="date" name="data" required></label></div>
-        <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
-        <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
-        <button class="btn prim grande">Gravar o clima do dia</button>
-      </form>
-    </div>
-
     <!-- apropriação direta: lançamento sem nota de serviço, direto no item do orçamento (só Engenharia e Administração) -->
     <div id="campoApr" data-pagina="apropriacao" hidden>
       <p class="vazio" style="margin:0 0 12px">Para o que não vem por nota de serviço: o canteiro feito por uma equipe de outra obra, os gastos do canteiro e outros lançamentos avulsos. Escolha o item como no BM Vertical (grupo, material ou serviço, item) ou pela busca.</p>
@@ -227,22 +212,23 @@
               <label>Data<input type="date" name="data" required></label>
               <label>Quantidade <span id="aprUnidade"></span><input type="number" step="any" min="0" name="quantidade" required></label>
             </div>
+            <div id="aprMedidas"></div>
             <div class="linha">
               <label>Local (opcional)<select name="local_tipo" id="aprLocalTipo"><option value="">Sem local</option><option value="CANTEIRO">Canteiro</option><option value="ZONA">Zona</option><option value="TRECHO">Trecho</option><option value="ATIVIDADE">Nó ou caixa</option></select></label>
               <label id="aprZonaRot" hidden>Zona<select id="aprZona"></select></label>
               <label id="aprAlvoRot" hidden>Trecho / nó / caixa<div class="busca"><input id="aprAlvo" placeholder="TR001, NÓ1.8, DF-33…" autocomplete="off"><ul hidden></ul></div></label>
             </div>
             <div class="linha">
-              <label>Quem executou<select name="executor_tipo" id="aprExecutor" required></select></label>
+              <label>Quem executou (opcional)<select name="executor_tipo" id="aprExecutor"></select></label>
               <label id="aprEquipeRot">Equipe da obra<select name="equipe_id" id="aprEquipe"></select></label>
               <label id="aprObraRot" hidden>Obra ou contrato da Ankara<input name="executor_obra" placeholder="ex.: CT 9702/2024 — ETE Paranoá"></label>
               <label id="aprNomeRot" hidden>Equipe<input name="executor_nome" placeholder="qual equipe ou nome do terceiro"></label>
             </div>
-            <label>O que foi feito<textarea name="o_que_foi_feito" rows="2" required></textarea></label>
-            <label>Memória de cálculo da quantidade<textarea name="memoria_calculo" rows="2" required placeholder="ex.: 2 contêineres × 1 instalação"></textarea></label>
-            <label>Justificativa técnica<textarea name="justificativa" rows="2" required></textarea></label>
-            <label>Evidências: fotos, croqui ou documento (pelo menos uma)<input type="file" name="evidencias" multiple accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label>
-            <p class="vazio" style="margin:0">As evidências vão para o memorial da medição (galeria de fotos/croqui e justificativa técnica) e para o Drive. Correção só por estorno, com motivo.</p>
+            <label>Descrição complementar (opcional)<textarea name="o_que_foi_feito" rows="2"></textarea></label>
+            <label>Complemento da memória (opcional)<textarea name="memoria_calculo" rows="2" placeholder="ex.: 2 contêineres × 1 instalação"></textarea></label>
+            <label>Justificativa técnica (opcional)<textarea name="justificativa" rows="2"></textarea></label>
+            <label>Evidências: fotos, croqui ou documento (opcional)<input type="file" name="evidencias" multiple accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"></label>
+            <p class="vazio" style="margin:0">As evidências vão para o memorial da medição (galeria de fotos/croqui e justificativa técnica) e para o Drive. A data pode ser corrigida; estorno exige motivo.</p>
             <div class="acoes"><button class="btn prim grande" id="aprGravar">Gravar a apropriação</button></div>
           </form>
           <form class="painel" id="fItemNovo" data-perm="apropriacao" hidden>
@@ -287,7 +273,7 @@
 
     <!-- interferência: relatar e as registradas (era a subaba Interferências; D-199) -->
     <div data-pagina="interferencia" hidden>
-      <p class="vazio" style="margin:0 0 12px">O que impede ou atrapalha o avanço — rede existente, falta de material, chuva, acesso — e o que precisa ser corrigido.</p>
+      <p class="vazio" style="margin:0 0 12px">Sem chuva é o padrão. Se chover, relate aqui a equipe, o dia e o turno; o trecho é opcional para chuva. Registre também redes existentes, falta de material, acesso e outros impedimentos.</p>
       <div class="grade-2">
       <div class="painel" style="min-width:0">
         <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Registradas</h3><span id="intContagem" class="vazio" style="padding:0"></span></div>
@@ -309,6 +295,10 @@
         <div class="linha"><label>Tipo<select name="tipo" id="intTipo"><option value="IMPEDIMENTO">Impedimento</option><option value="NAO_CONFORMIDADE">Não conformidade</option></select></label>
           <label>Categoria<select name="categoria" id="intCat"></select></label></div>
         <div class="linha"><label>Dia<input type="date" name="data" required></label><label>Equipe<select name="equipe_id" class="selEquipe"></select></label></div>
+        <div id="intChuva" class="linha" hidden>
+          <label>Quando choveu<select name="turno"><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option><option value="DIA_TODO">Dia todo</option></select></label>
+          <label>Efeito da chuva<select name="clima_condicao"><option value="CHUVA_FRACA_TENDA">Chuva fraca com tenda</option><option value="PARALISADO_CHUVA">Paralisado por chuva</option><option value="VALA_ALAGADA_BOMBA">Vala alagada / bomba</option></select></label>
+        </div>
         <label>O que foi encontrado<textarea name="descricao" rows="4" required placeholder="ex.: rede de esgoto cruzando a vala a 1,2 m, entre as estacas 3 e 4"></textarea></label>
         <div class="acoes"><button class="btn prim">Registrar</button></div>
         <p class="vazio" style="margin:0">Fica registrado com o seu usuário. Quem tem a permissão de verificar marca como resolvida.</p>
@@ -381,9 +371,7 @@
           <label>Equipe<select id="ndEquipe" required></select></label>
           <label>Nota de serviço (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
           <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
-          <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
-          <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
-          <p class="vazio" style="margin:0">Escolha o clima da data da nota. Se já estiver registrado para essa equipe, pode deixar sem tocar.</p>
+          <p class="vazio" style="margin:0">Sem chuva é o padrão. Se choveu, registre em Lançamento do dia › Interferências e chuva.</p>
           <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
           <button class="btn prim grande" id="ndEnviar">Registrar execução pela nota</button>
           <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
@@ -392,7 +380,7 @@
       </div>
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
         <div class="painel"><h3>Execução registrada pelas notas</h3><div class="linha"><label>Equipe<select id="ndVerEquipe"></select></label><label>Data da nota (opcional)<input type="date" id="ndDia"></label></div><div id="ndEnviadas" style="margin-top:8px"></div></div>
-        <div class="painel"><h3>Notas recebidas sem execução</h3><p class="vazio" style="margin:0 0 6px">Use os anexos já enviados: escolha a equipe e o clima no formulário acima e toque em Registrar execução na nota.</p><div id="ndServico"></div></div>
+        <div class="painel"><h3>Notas recebidas sem execução</h3><p class="vazio" style="margin:0 0 6px">Use os anexos já enviados: escolha a equipe no formulário acima e toque em Registrar execução na nota.</p><div id="ndServico"></div></div>
       </div>
     </div>
     <div class="painel" id="nsFilaPainel" style="margin-top:16px" hidden>
@@ -759,7 +747,7 @@
 
   <!-- ======================================================= ADMINISTRATIVO: RELATÓRIOS -->
   <section class="aba" id="aba-relatorios">
-    <header class="cab-tela"><h1>Relatórios</h1><p>Material, avanço e pendências na tela. O relatório mensal da medição sai em PDF.</p></header>
+    <header class="cab-tela"><h1>Relatórios</h1><p>Material, avanço e pendências na tela. O relatório mensal da medição sai em Word editável (.docx).</p></header>
     <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas de Relatórios" style="margin:0 0 16px"></div>
     <div class="painel">
       <div class="acoes" style="justify-content:space-between">
@@ -768,7 +756,7 @@
       </div>
       <div class="acoes" style="margin-top:10px">
         <label>Relatório mensal da medição<select id="rlMed"></select></label>
-        <a class="btn azul" id="rlPdf" href="#" aria-disabled="true">⬇ Relatório mensal (PDF)</a>
+        <a class="btn azul" id="rlPdf" href="#" aria-disabled="true">⬇ Relatório mensal (Word .docx)</a>
       </div>
       <p class="vazio" style="margin:4px 0 0">Tudo calculado a partir dos registros efetivos: sem movimentos estornados e sem intervalos anulados por retificação.</p>
     </div>

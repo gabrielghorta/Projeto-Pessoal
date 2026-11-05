@@ -49,6 +49,10 @@ class BaseAp(BaseReal):
                  o_que_foi_feito="montagem do canteiro", memoria_calculo="conforme croqui", justificativa="período entre obras",
                  evidencias=evidencia())
         d.update(kw)
+        # Medidas sintéticas explícitas: estes casos verificam medição/permissões, não o levantamento.
+        u = AP.item(self.c,item)["unidade"]
+        if R.normalizar_unidade(u) in ("M2","M3"):
+            d.setdefault("parcelas", [{"comprimento":str(quantidade),"largura":"1", **({"profundidade":"1"} if u=="M3" else {})}])
         return d
 
     def apropriar(self, item, quantidade, **kw):
@@ -211,13 +215,11 @@ class TestApropriacaoHttp(BaseAp):
         cli = self.cli("eng1")
         futuro = (RL.hoje() + timedelta(days=1)).isoformat()
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, data=futuro)), 422, "data futura")
-        self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, evidencias=[])), 422, "pelo menos uma evidência")
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, executor_obra="")), 422, "qual obra ou contrato")
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, executor_nome="")), 422, "qual obra ou contrato")
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, executor_tipo="TERCEIRO", executor_nome="")), 422, "nome")
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, executor_tipo="EQUIPE_OBRA")), 422, "equipe")
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 0)), 422, "maior que zero")
-        self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, justificativa=" ")), 422, "justificativa")
         self.recusa(cli.post("/api/apropriacao", self.corpo(CONTEINER, 2, evidencias=[{"nome": "x.gif", "conteudo_b64": b64(b"GIF89a")}])),
                     422, "")
         self.assertEqual(self.n("apropriacoes"), 0)

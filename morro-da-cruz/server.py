@@ -454,6 +454,9 @@ def p_etapa_anular(b, c):
 
 
 def p_ocorrencia(b, c):
+    if b.get("categoria") == "CHUVA" and b.get("clima_condicao"):
+        return {"id": S.abrir_chuva(c, b.get("data"), b.get("equipe_id"), b.get("turno"), b.get("clima_condicao"),
+                                   b.get("descricao"), b["aberta_por"], b.get("alvo_tipo"), b.get("alvo_id"))}
     return {"id": S.abrir_ocorrencia(c, b["alvo_tipo"], b["alvo_id"], b.get("tipo"), b.get("categoria"), b.get("descricao"),
                                      b.get("data"), b.get("aberta_por"), b.get("equipe_id"))}
 
@@ -1184,13 +1187,15 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/relatorios/mensal":           # o relatório mensal (RM) da medição em PDF (D-207)
             try:
                 with LOCK:
-                    nome, dados, _ = RMEN.gerar(CONN, int(q["id"]), dir_fotos=DIR_FOTOS)
+                    gerar_rm = RMEN.gerar if q.get("formato") == "pdf" else RMEN.gerar_docx
+                    nome, dados, _ = gerar_rm(CONN, int(q["id"]), dir_fotos=DIR_FOTOS)
                     A.auditar(CONN, usuario, "GET", u.path, 200, q, nome)
             except R.RegraViolada as e:
                 return self._send(422, {"erro": str(e)})
             except Exception as e:  # noqa: BLE001
                 return self._falha_download(e)
-            return self._send(200, dados, "application/pdf", {"Content-Disposition": f'attachment; filename="{nome}"'})
+            mime = "application/pdf" if nome.endswith(".pdf") else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            return self._send(200, dados, mime, {"Content-Disposition": f'attachment; filename="{nome}"'})
         if u.path == "/api/ns/arquivo":
             return self._ns_arquivo(q, usuario)
         if u.path == "/api/apropriacao/arquivo":

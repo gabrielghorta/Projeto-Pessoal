@@ -63,7 +63,6 @@ class TestNotaUnificada(BaseReal):
 
     def test_sem_croqui_ou_clima_nao_inventa_dados(self):
         self.recusa(self.enviar(croqui_b64=None), 422, "croqui")
-        self.recusa(self.enviar(clima=None), 422, "clima da manhã e da tarde")
         self.assertEqual((self.n("notas_servico"), self.n("intervalos_execucao"), self.n("clima")), (0, 0, 0))
 
     def test_aproveita_anexos_da_nota_antiga_sem_mudar_original(self):
@@ -104,7 +103,6 @@ class TestNotaUnificada(BaseReal):
     def test_aproveitamento_exige_equipe_clima_e_anexo_disponivel(self):
         nid = self.antiga()
         self.recusa(self.aproveitar(nid, equipe_id=None), 422, "equipe")
-        self.recusa(self.aproveitar(nid, clima=None), 422, "clima")
         self.c.execute("UPDATE documentos SET arquivo='../fora_da_pasta.pdf'")
         self.recusa(self.aproveitar(nid), 422, "não está disponível")
         self.assertEqual((self.n("intervalos_execucao"), self.n("clima"), self.n("ns_execucoes_origem")), (0, 0, 0))
@@ -126,7 +124,7 @@ class TestNotaUnificada(BaseReal):
         self.c.execute("INSERT OR IGNORE INTO schema_versao VALUES (24,'2026-11-05','estado anterior à D-213')")
         rel = importar.aplicar(self.db, I.DIR_PLANILHAS, cfg=cfg_teste_real(),
                               dir_relatorios=os.path.join(self.tmp, "migracao25"))
-        self.assertEqual((rel["esquema_antes"], rel["esquema_depois"]), (24, 25))
+        self.assertEqual((rel["esquema_antes"], rel["esquema_depois"]), (24, S.VERSAO_ESQUEMA))
         self.assertEqual([tuple(r) for r in self.c.execute("SELECT * FROM equipes ORDER BY id")], equipes)
         self.assertEqual((self.n("ns_execucoes_origem"), self.n("intervalos_execucao")), (0, 0))
         self.assertEqual(NS.detalhe(self.c, nid)["tipo"], "SERVICO")

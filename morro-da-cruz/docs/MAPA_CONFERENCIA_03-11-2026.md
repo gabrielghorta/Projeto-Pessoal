@@ -126,5 +126,5 @@ Como no HTML do projeto, a ficha mostra as coordenadas reais (UTM, SIRGAS 2000, 
 
 1. **DE 160:** os 78,25 m do quadro sem desenho. Confirmar com o projetista qual vale.
 2. **DE 125 no item 5.8.37:** validar a equivalência com a Caesb.
-3. **Os três desenhos incompletos** (TR001 da PB25, TR081 da PB23 e TR019 da PB19). O vetor do HTML não tem esses pedaços. A planta (imagem do DWG) mostra a linha, e a 06.1 dá a ponta certa. Fica como está até uma nova revisão do HTML.
+3. **Os três desenhos incompletos** (TR001 da PB25, TR081 da PB23 e TR019 da PB19). O vetor do HTML não tem esses pedaços. A planta (imagem do DWG) mostra a linha, e a 06.1 dá a ponta certa. Fica como está até uma nova revisão do HTML. **Atualização de 05/11/2026 (D-214):** a tela liga esses pedaços em linha reta (NÓ11.1) e pela junção J-098 (TR019). Continua pendência de desenho; ver `MAPA_CONTINUIDADE_05-11-2026.md`.
 4. **MND do BM sem lugar no desenho:** 6.687,69 m. Decidir com a Caesb onde entram, ou se o lugar vem da NS de campo.

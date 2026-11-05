@@ -400,7 +400,7 @@ do dia (`equipesDoDia`, `escalarEquipes`), no Mapa iluminado e na Programação;
 o 1º toque na etiqueta aproxima a área e o 2º abre a lista; na Programação, abre o dia da equipe. **Coordenadas reais (D-201):** a ficha do
 trecho (Mapa iluminado, painel da Programação e ficha completa) mostra as duas pontas com o nó, E e N da 06.1 e "abrir no
 mapa"; a do nó, E e N da 06.2 (`coordenadas.py`, `servicos.detalhe` → `coordenadas`). O vetor da PB25 é corrigido na
-tela (`mapa_geral.CORRECAO_VETOR_M`); conferência completa em `docs/MAPA_CONFERENCIA_03-11-2026.md`. Nada sem
+tela (`mapa_geral.CORRECAO_VETOR_M`); conferência completa em `docs/MAPA_CONFERENCIA_03-11-2026.md`. **Continuidade (D-214):** nenhum tubo solto no desenho. Com uma zona em foco, as outras frentes ficam cinza, finas e sem toque (`htmlFora`). As pontas do nó, as JUNTAR e as emendas de prancha se ligam (`mapa_geral._calcular`, `emendar`); ver `docs/MAPA_CONTINUIDADE_05-11-2026.md`. Nada sem
 posição no projeto ganha coordenada (MV-11, VTF-12, VTF-16 na bandeja, D-03).
 
 **Subadutora (D-182):** adutora + redes de 200 mm pra cima (DE 225 e 250) = 132 trechos (~10,5 km), executados pela
@@ -479,3 +479,12 @@ registram execução informada; intervalos alimentam mapa e verificação do sup
 `/api/ns/execucao` é o envio; `/api/ns/dia` continua alias. `/api/ns` com SERVICO exige equipe e executa.
 `/api/ns/registrar-execucao` reaproveita anexos de um SERVICO histórico e cria vínculo em `ns_execucoes_origem`.
 Migração só cria tabela; não adivinha fatos. Guia e testes em `docs/NOTAS_DE_SERVICO.md` e `tests/test_ns_unificada.py`.
+
+
+## Campo, memória e Word (D-215 a D-217, v26)
+
+Interferências e chuva substitui Clima do dia. Sem chuva é padrão identificado; relato guarda equipe/data/turno/efeito
+em `ocorrencia_chuvas`, sem apagar ao resolver. NS/apontamento não exigem clima. Apropriação guarda parcelas em
+`calculo_json`, confere o total e leva a memória à MC sem somar a quantidade duas vezes. Extras são opcionais.
+RM em DOCX pela rota existente; `formato=pdf` mantém PDF. stdlib + Pillow, sem Office no servidor.
+Guia `docs/CAMPO_MEMORIA_RM_WORD.md`. A D-214/§31 é reservada ao PR #34.

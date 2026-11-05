@@ -1,4 +1,4 @@
-"""Relatório mensal (RM) da medição, em PDF (D-207).
+"""Relatório mensal (RM) da medição, em PDF e Word editável (D-207, D-217).
 
 Os capítulos são os do RM do Lago Sul (modelo da Ankara, `references/modelo-lago-sul.md` §5) e o visual é o do
 relatório técnico de conexões RC 01/2026: capa com o mapa das zonas, cabeçalho com o logo e 3 campos, Arial Narrow
@@ -380,8 +380,10 @@ def dados(conn, medicao_id, dir_fotos=None):
             "efetivo": _efetivo(conn, ini, fim), "materiais": _materiais(conn, ini, fim),
             "fotos": fotos, "fotos_fora": fotos_fora, "proximo": _programado(conn, fim),
             "ocorrencias_abertas": conn.execute("SELECT COUNT(*) FROM ocorrencias WHERE resolvida_em IS NULL").fetchone()[0],
-            "chuva": conn.execute("SELECT COUNT(DISTINCT data) FROM clima WHERE condicao='PARALISADO_CHUVA' AND data BETWEEN ? "
-                                  "AND ?", (ini, fim)).fetchone()[0]}
+            "chuva": conn.execute("""SELECT COUNT(DISTINCT data) FROM (
+                SELECT data FROM clima WHERE condicao='PARALISADO_CHUVA'
+                UNION SELECT o.data FROM ocorrencia_chuvas c JOIN ocorrencias o ON o.id=c.ocorrencia_id
+                  WHERE c.condicao='PARALISADO_CHUVA') WHERE data BETWEEN ? AND ?""", (ini, fim)).fetchone()[0]}
 
 
 # ==================================================================== desenho
@@ -500,6 +502,24 @@ def gerar(conn, medicao_id, dir_fotos=None):
     nome = (f"RM_{med['numero']:02d}-{_d(d['fim']).year}_MORRO_DA_CRUZ_CT_{d['contrato'].replace('.', '').replace('/', '-')}"
             + ("_TESTE_NAO_OFICIAL" if d["teste"] else "") + ".pdf")
     return nome, doc.salvar(), d
+
+
+def gerar_docx(conn, medicao_id, dir_fotos=None):
+    """Mesmo conteúdo do RM em Word editável. Somente mapas, gráficos e fotos são imagens."""
+    import docx_simples as D
+    d = dados(conn, medicao_id, dir_fotos)
+    doc = D.Documento()
+    doc.paragrafo("Relatório mensal da obra Morro da Cruz", tam=22, alin="C", antes=28, depois=18, estilo="Title")
+    doc.paragrafo(f"Contrato {d['contrato']} · RM {d['medicao']['numero']:02d}/{d['fim'][:4]}", tam=15, alin="C", depois=12)
+    doc.paragrafo(f"Período de execução de {dbr(d['ini'])} a {dbr(d['fim'])}", tam=12, alin="C", depois=12)
+    if d["teste"]:
+        doc.paragrafo([("MEDIÇÃO DE TESTE – NÃO OFICIAL", {"negrito":True,"cor":"C00000"})], alin="C")
+    zonas = sorted({t["frente_id"] or "—" for t in d["trechos"].values()})
+    camadas = [(CORES_ZONA[i % len(CORES_ZONA)],1.1,[t["seg"] for t in d["trechos"].values() if t["seg"] and (t["frente_id"] or "—")==z]) for i,z in enumerate(zonas)]
+    doc.figura(doc.w,320,lambda dr,p,x,y,w,h:_mapa(dr,p,x,y,w,h,camadas,_rotulos_zona(d["trechos"]),borda=False),"Traçado das redes da obra por zona")
+    _corpo(d,doc,doc)
+    nome = f"RM_{d['medicao']['numero']:02d}-{d['fim'][:4]}_MORRO_DA_CRUZ_CT_{d['contrato'].replace('.','').replace('/','-')}" + ("_TESTE_NAO_OFICIAL" if d["teste"] else "") + ".docx"
+    return nome,doc.salvar(d),d
 
 
 def _montar(d, reservadas, cache):
@@ -1132,6 +1152,9 @@ def _ida(doc, p, x, y, w, h, meses, n):
 
 
 def _fotos_paginas(doc, fl, d):
+    if hasattr(fl,"fotos"):
+        fl.fotos(d["fotos"],d["fotos_fora"])
+        return
     fotos = d["fotos"]
     if not fotos:
         fl.paragrafo([("Sem foto registrada no período.", {"italico": True, "cor": CINZA})])

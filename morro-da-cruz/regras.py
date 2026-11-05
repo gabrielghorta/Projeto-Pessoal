@@ -14,6 +14,7 @@ FRENTES = [f"Zona{n:02d}" for n in range(1, 12)] + ["ADUTORA", "CH"]
 CONTINGENCIAS = ["Confecção de Bloquetes", "Execução de Calçadas/Asfalto"]
 PERFIL_PENDENTE = "A CONFIRMAR"
 CONDICOES_CLIMA = OrderedDict([
+    ("SEM_CHUVA", "Sem chuva (padrão)"),
     ("SOL", "Sol"),
     ("CHUVA_FRACA_TENDA", "Chuva Fraca c/ Tenda 3x3m"),
     ("PARALISADO_CHUVA", "Paralisado por Chuva"),

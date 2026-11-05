@@ -89,9 +89,10 @@ def diario(conn, data, equipe=None):
     metros = {e: round(sum(p["metros"] for p in producao if p["etapa"] == e), 2) for e in ETAPAS}
     ns_dia = NS.listar_dia(conn, data, equipe)
     equipes = sorted(set(equipes) | {n["equipe_id"] for n in ns_dia})
+    if equipe and equipe not in equipes:equipes.append(equipe)
     return {"data": data, "equipe": equipe, "ns_dia": ns_dia, "programado_executado": programado_executado(programacoes, producao),
             "alertas": alertas(checkins, ns_dia, nomes),
-            "equipes": [{"id": e, "nome": nomes.get(e, e), "clima": clima.get(e, {})} for e in equipes],
+            "equipes": [{"id": e, "nome": nomes.get(e, e), "clima": {t: R.CONDICOES_CLIMA[c] for t,c in S.clima_no_dia(conn,data,e).items()}} for e in equipes],
             "programacoes": programacoes, "checkins": checkins, "producao": producao, "liberacoes": liberacoes,
             "soldas": soldas, "fotos": fotos, "ocorrencias": ocorrencias, "apropriacoes": AP.listar(conn, data, data, equipe),
             "totais": {"assentado_m": metros["ASSENTADO"], "cadastro_m": metros["CADASTRO_CAMPO"], "reaterrado_m": metros["REATERRADO"],
@@ -151,6 +152,7 @@ def interferencias(conn, abertas=None, equipe=None, tipo=None, categoria=None, i
     lista = _rows(conn.execute(sql + " ORDER BY resolvida_em IS NOT NULL, data DESC, id DESC LIMIT ?", args + [int(limite)]))
     for o in lista:
         o["alvo_nome"] = S.nome_alvo(conn, o["alvo_tipo"], o["alvo_id"])
+        o["chuva"] = S._one(conn,"SELECT turno,condicao FROM ocorrencia_chuvas WHERE ocorrencia_id=?",o["id"])
     cont = conn.execute(f"""SELECT SUM(resolvida_em IS NULL), SUM(resolvida_em IS NOT NULL),
                                    SUM(resolvida_em IS NULL AND categoria='INTERFERENCIA')
                             FROM ({base_sql})""", base_args).fetchone()

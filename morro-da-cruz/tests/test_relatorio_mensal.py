@@ -110,7 +110,7 @@ class TestRelatorioMensal(BasePacote):
     def test_http_baixa_o_pdf_com_permissao_e_auditoria(self):
         self.executar(TRS[0])
         eng = self.cli("eng1")
-        st, pdf = eng.get(f"/api/relatorios/mensal?id={self.mid}")
+        st, pdf = eng.get(f"/api/relatorios/mensal?id={self.mid}&formato=pdf")
         self.assertEqual(st, 200)
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(PdfReader(io.BytesIO(pdf)).pages), 10)

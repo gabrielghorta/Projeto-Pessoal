@@ -5,7 +5,7 @@ description: Tudo o que é preciso para dar continuidade à obra Morro da Cruz (
 
 # Obra Morro da Cruz — web app, cronograma, contrato Caesb × Ankara e dados do projeto
 
-Estado em **05/11/2026**. Esquema do banco **v25**. Site no PythonAnywhere a partir do ramo
+Estado em **05/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a partir do ramo
 `claude/powerbi-modifications-wqxekj` do repositório `gabrielghorta/Projeto-Pessoal` (pasta `morro-da-cruz/`).
 
 ## 0. Como usar esta skill (e retomar numa sessão nova)
@@ -29,7 +29,13 @@ Estado em **05/11/2026**. Esquema do banco **v25**. Site no PythonAnywhere a par
 | `references/historico-e-pendencias.md` | quiser saber o que já foi feito (PRs), as decisões recentes, o que falta e o jeito de trabalhar com o responsável |
 | `scripts/zerar_dados_de_teste.sh` | o responsável pedir para zerar os dados de teste do site |
 
-## 1. Estado atual (03/11/2026)
+## 1. Estado atual (05/11/2026)
+
+- **Campo/memória/RM (D-215–217, v26):** sem chuva como premissa identificada; exceções em Interferências e chuva,
+  sem clima obrigatório na NS/apontamento. Apropriação com medidas m/m²/m³, extras opcionais e conta na MC do BM.
+  RM em DOCX nativo editável; PDF explícito ainda disponível. Migração não inventa medidas/chuva. D-214 pertence
+  ao PR #34 do mapa. Guia `docs/CAMPO_MEMORIA_RM_WORD.md`.
+
 
 - **Notas de serviço, 05/11/2026 (D-213, v25):** página única Nota de serviço registra execução a partir de PDF +
   croqui, equipe e clima. Acende o executado e aguarda o supervisor. SERVICO antigo é histórico, com ação Registrar

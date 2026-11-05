@@ -508,3 +508,40 @@ A API nova `/api/ns/execucao` reaproveita o motor existente; `/api/ns/dia` perma
 `tipo=SERVICO` passa a exigir equipe e registrar execução. Reutilização: `/api/ns/registrar-execucao`.
 Engenharia/Administração enviam; Supervisor/RH consultam; perfis de campo não acessam as notas (D-134).
 Guia: `docs/NOTAS_DE_SERVICO.md`; testes: `tests/test_ns_unificada.py`.
+
+## 31. Continuidade dos trechos nos dois mapas (05/11/2026)
+
+O responsável mostrou a Programação da Zona 03 com linhas de 160 que não se encontravam, mandou o recorte do CAD com o
+160 contínuo e pediu a revisão do mapa inteiro, no Mapa iluminado e na Programação.
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-214 | Trechos que aparecem soltos no mapa | deixar como no HTML / ligar no desenho o que a 06.1 e o arquivo de decisões já ligam | Com uma zona em foco, o tubo que a 06.1 passa para a zona vizinha ou para a Subadutora sumia, e a linha parava no meio da rua. Algumas pontas do mesmo nó ou de um tubo só (JUNTAR) ficavam afastadas. | Ligar no desenho, sem alterar o HTML nem a topologia. | **Correção (05/11/2026):** com uma zona em foco, as outras frentes aparecem cinza, finas e sem toque. Toda parte que termina na ponta do trecho vai para o nó. As pontas JUNTAR se encontram no ponto médio, até 6 m. As emendas entre pranchas se ligam, até 5 m. O desenho curto do NÓ11.1 (Zona 11) é completado em linha reta, porque a parte desenhada mais o que falta dá a extensão da 06.1; continua pendência de desenho. Ficam como estão os cruzamentos e as passagens (de propósito) e as junções J-099 e J-100 (em DÚVIDA). |
+
+Guia: `docs/MAPA_CONTINUIDADE_05-11-2026.md`; `mapa_geral.py` (`completavel`, `_pontas_perto`, `emendar`,
+`_calcular`) e `topologia.pontas_juntar`; telas: `htmlFora`, `grupoForaCopia` e `legendaFora` no `iluminado.js`.
+Testes: `tests/test_topologia.py` (continuidade) e `tests/test_telas.py`
+(`test_zona_em_foco_mostra_as_outras_frentes_em_cinza`).
+
+
+## 32. Chuva como interferência (05/11/2026)
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-215 | Clima e interferências | marcar Sol diariamente / assumir sem chuva e registrar exceções | Clima obrigatório criava passos sem informação nova. | Interferências e chuva na mesma página. | **Decidido pelo responsável:** sem chuva é o padrão; se chover, entra como interferência com equipe/data/turno/efeito. Sem preenchimento de clima no envio de NS ou apontamento. O padrão é identificado no diário e não cria observação fictícia no banco. Resolver não apaga a chuva ocorrida. Histórico e APIs antigas preservados. Atualiza D-131 para o novo fluxo. |
+
+## 33. Medidas na origem da apropriação (05/11/2026)
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-216 | Memória de cálculo e campos opcionais | somente total e texto obrigatório / parcelas dimensionais e extras opcionais | A MC precisa demonstrar como chegou à quantidade, inclusive perímetro × altura do tapume. | Calcular na origem e transportar a conta ao BM. | **Decidido pelo responsável:** m tem uma medida; m², comprimento/perímetro e largura/altura; m³ acrescenta profundidade. Soma de lados, múltiplas parcelas e repetições; servidor confere o total. Justificativa, descrição complementar, executor, local e anexos não são obrigatórios para apropriar. Aprovação de item, limites contratuais, estorno motivado e medição fechada mantidos. A migração não deduz medidas de totais antigos. |
+
+## 34. Relatório mensal editável (05/11/2026)
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-217 | Formato do RM | PDF / DOCX editável | O responsável quer editar o relatório no Word. | Baixar DOCX pela tela Relatórios. | **Decidido pelo responsável:** RM em Word, com texto/tabelas nativos e figuras inseridas. Mesmos dados e capítulos; teste e pendências continuam identificados. PDF permanece como formato explícito da API. Sem programa de escritório ou dependência nova no servidor. |
+
+Esquema **v26**: coluna `apropriacoes.calculo_json`, executor não informado, clima sem chuva e tabela
+`ocorrencia_chuvas`. A migração preserva dados, evidências e referências; não cria chuvas, dimensões ou aprovações.
+Guia: `docs/CAMPO_MEMORIA_RM_WORD.md`. A D-214/§31 é reservada ao PR #34 da continuidade dos mapas.

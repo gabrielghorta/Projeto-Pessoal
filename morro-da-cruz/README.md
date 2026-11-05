@@ -6,6 +6,7 @@ São Sebastião/DF*, Contrato Caesb × Ankara nº 10239/2026, LC 014/2026.
 - Tecnologia: Python (biblioteca padrão + `openpyxl` + `pypdf`, para ler a nota de serviço em PDF; `pillow` opcional, para o satélite do Mapa iluminado), banco SQLite e interface HTML/JS sem bibliotecas externas (só as fontes do Google Fonts, com fonte do sistema se faltar internet).
 - Com login, perfis e permissões checadas no servidor. Roda no computador (`MorroDaCruz.exe`) ou **na nuvem, com link fixo e sem depender de computador** (`nuvem.py`, passo a passo em `docs/NUVEM.md`). O layout funciona em tela de celular (360 px).
 - **Nota de serviço registra execução (D-213):** página única com PDF + croqui, equipe e clima; notas antigas têm Registrar execução para aproveitar os anexos. Guia: `docs/NOTAS_DE_SERVICO.md`.
+- **Campo, memória e RM (D-215–217):** chuva como interferência, apropriação por medidas com extras opcionais e RM editável em Word. Guia: `docs/CAMPO_MEMORIA_RM_WORD.md`.
 - **Implantação, backup e recuperação:** `docs/IMPLANTACAO.md`.
 - **Entrega para revisão** (situação, matriz, testes, decisões): `docs/ENTREGA_FINAL.md`. Ciclo completo da Zona01: `docs/EVIDENCIAS_CICLO_ZONA01.md`.
 - **Estado atual: piloto de TESTE.**
