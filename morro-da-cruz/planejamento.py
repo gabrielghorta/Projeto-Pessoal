@@ -24,8 +24,7 @@ TOL = 1e-6
 def programar(conn, data, equipe_id, alvo_tipo, ref, servico, por, ini_m=None, fim_m=None, materiais=(), obs=None):
     if not data:
         raise RegraViolada("Informe a data.")
-    if not _one(conn, "SELECT 1 FROM equipes WHERE id=?", equipe_id):
-        raise RegraViolada("Equipe não cadastrada.")
+    S.exigir_equipe(conn, equipe_id)
     if servico not in SERVICOS:
         raise RegraViolada("Serviço inválido.")
     a = S.alvo(conn, alvo_tipo, ref, operacao=True)

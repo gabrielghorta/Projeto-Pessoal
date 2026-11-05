@@ -259,15 +259,15 @@ class TestCadastro(BaseReal):
             self.assertEqual(NS.tipo_confere(tipo, bloco), ok, (bloco, tipo))
 
 
-class TestServico(BaseReal):
+class TestServicoHistorico(BaseReal):
     LIBERAR_TUDO = True
 
     def test_exige_croqui_e_nao_grava_registro(self):
         pdf = pdf_ns(numero="020", bloco="TOPOGRAFIA")
         libs = self.n("etapas_complementares")                                # as liberações de antes (D-20)
-        self.recusa(self.registrar("eng1", "SERVICO", pdf), 422, "croqui")
+        self.recusa(self.registrar_servico_historico("eng1", pdf), 422, "croqui")
         croqui = NSS.pdf_de_texto(["CROQUI NS 020"])
-        r = self.ok(self.registrar("eng1", "SERVICO", pdf, croqui_b64=b64(croqui), croqui_nome="croqui.pdf"))
+        r = self.ok(self.registrar_servico_historico("eng1", pdf, croqui_b64=b64(croqui), croqui_nome="croqui.pdf"))
         self.assertEqual((r["gravado_m"], self.n("etapas_complementares"), self.n("intervalos_execucao")), (0.0, libs, 0))
         self.assertEqual([s["situacao"] for s in r["segmentos"]], ["AUTOMATICO", "AUTOMATICO"])
         self.recusa(self.cli("eng1").post("/api/ns/anexo", {"ns_id": r["id"], "croqui_b64": b64(croqui)}), 422, "já está")
@@ -287,7 +287,7 @@ class TestServico(BaseReal):
         avisos = ["o croqui é da NS 019, e a nota é a 020", "a data do croqui (14/10/2026) não é a da nota (15/10/2026)"]
         self.assertEqual(self.ok(self.ler("eng1", "SERVICO", pdf, croqui_b64=b64(errado)))["avisos_croqui"], avisos)
         self.assertEqual(self.ok(self.ler("eng1", "SERVICO", pdf))["avisos_croqui"], [])
-        r = self.ok(self.registrar("eng1", "SERVICO", pdf, croqui_b64=b64(errado), croqui_nome="c.pdf"))
+        r = self.ok(self.registrar_servico_historico("eng1", pdf, croqui_b64=b64(errado), croqui_nome="c.pdf"))
         self.assertEqual(r["avisos_croqui"], avisos)
         self.assertEqual(self.ok(self.cli("eng1").get(f"/api/ns/detalhe?id={r['id']}"))["leitura"]["avisos_croqui"], avisos)
         certo = NSS.pdf_de_texto(["CROQUI DE LOCAÇÃO - N.S.020", "DATA: 15/10/2026"])
@@ -406,7 +406,7 @@ class TestPermissoes(BaseReal):
 
     def test_quem_ve_o_que(self):
         topo = self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns()))["id"]
-        serv = self.ok(self.registrar("eng1", "SERVICO", pdf_ns(numero="020"), croqui_b64=b64(NSS.pdf_de_texto(["CROQUI"]))))["id"]
+        serv = self.ok(self.registrar_servico_historico("eng1", pdf_ns(numero="020"), croqui_b64=b64(NSS.pdf_de_texto(["CROQUI"]))))["id"]
         # as equipes e o almoxarifado não têm acesso às notas (D-134); o supervisor e o RH consultam as da obra
         for login in ("enc3", "almox1"):
             self.assertEqual(self.cli(login).get("/api/ns")[0], 403, login)

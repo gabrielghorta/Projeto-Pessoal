@@ -157,7 +157,7 @@ class TestPaginaECodigo(unittest.TestCase):
     """Guarda contra tela quebrada: o menu, as seções e os elementos usados pelo JavaScript precisam existir no HTML."""
 
     def setUp(self):
-        self.html, self.js = ler("index.html"), ler("app.js") + ler("iluminado.js") + ler("planejamento.js") + ler("notas.js") + ler("apropriacao.js")
+        self.html, self.js = ler("index.html"), ler("app.js") + ler("equipes.js") + ler("iluminado.js") + ler("planejamento.js") + ler("notas.js") + ler("apropriacao.js")
         self.ids = set(re.findall(r'id="([^"]+)"', self.html))
 
     def test_cada_item_do_menu_abre_uma_tela_que_existe(self):
@@ -179,7 +179,7 @@ class TestPaginaECodigo(unittest.TestCase):
     def test_nomes_globais_sem_repeticao_entre_os_scripts(self):
         """Os scripts da página dividem o mesmo escopo global: um const/let repetido derruba o script que vem depois."""
         vistos = {}
-        for arq in ("app.js", "solicitacoes.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js"):
+        for arq in ("app.js", "equipes.js", "solicitacoes.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js"):
             for m in re.finditer(r"^(?:async\s+)?(?:function\s+|const\s+|let\s+)(\w+)", ler(arq), re.M):
                 self.assertNotIn(m.group(1), vistos, f"{m.group(1)} declarado em {vistos.get(m.group(1))} e em {arq}")
                 vistos[m.group(1)] = arq
@@ -281,7 +281,7 @@ class TestPaginaECodigo(unittest.TestCase):
         blocos = re.split(r"^\s{2}(\w+): \[", re.search(r"const PAGINAS = \{.*?\n\};", app, re.S).group(0), flags=re.M)[1:]
         paginas = {t: re.findall(r"\['(\w+)', '[^']+', \(\) =>", b) for t, b in zip(blocos[::2], blocos[1::2])}
         self.assertEqual(paginas["compras"], ["requisicoes", "notas", "fornecedores"])
-        self.assertEqual(paginas["notas"], ["dia", "servico", "topografia", "cadastro"])
+        self.assertEqual(paginas["notas"], ["servico", "topografia", "cadastro"])
         self.assertEqual(paginas["campo"], ["apropriacao", "apontamento", "fotos", "clima", "interferencia"])
         self.assertEqual(paginas["almox"], ["dia", "receber", "saldo", "inventario", "tubos"])
         self.assertEqual(paginas["lev"], ["lev", "cronograma"])
@@ -305,7 +305,7 @@ class TestPaginaECodigo(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("sem Node")
-        for arq in ("app.js", "solicitacoes.js", "iluminado.js", "mapa_fundo.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
+        for arq in ("app.js", "equipes.js", "solicitacoes.js", "iluminado.js", "mapa_fundo.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
             r = subprocess.run([node, "--check", os.path.join(WEB, arq)], capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 0, f"{arq}: {r.stderr[-400:]}")
 
@@ -441,7 +441,7 @@ console.log(JSON.stringify(r));
     def test_ids_unicos_e_scripts_carregados(self):
         todos = re.findall(r'id="([^"]+)"', self.html)
         self.assertEqual(len(todos), len(set(todos)))
-        self.assertIn('<script src="/app.js"></script>\n<script src="/solicitacoes.js"></script>\n<script src="/iluminado.js"></script>\n<script src="/mapa_fundo.js"></script>\n<script src="/planejamento.js"></script>\n'
+        self.assertIn('<script src="/app.js"></script>\n<script src="/equipes.js"></script>\n<script src="/solicitacoes.js"></script>\n<script src="/iluminado.js"></script>\n<script src="/mapa_fundo.js"></script>\n<script src="/planejamento.js"></script>\n'
                       '<script src="/notas.js"></script>\n<script src="/apropriacao.js"></script>', self.html)
 
 

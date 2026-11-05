@@ -17,6 +17,12 @@ Conteúdo:
 
 ## O ciclo da obra até a medição (ponta a ponta)
 
+**Equipes manuais (D-212, v24):** as equipes não são as zonas. O cadastro inicia vazio; Engenharia/Administração cria
+as equipes por empresa e designa integrantes antes de operar. Seis iniciais previstas, sem limite futuro. Migração
+retira todas as anteriores de operações novas e preserva as referências históricas. A Programação escolhe a equipe
+explicitamente. O encarregado mantém o vínculo do login e solicita só para frentes programadas/check-in aberto.
+Guia `docs/EQUIPES_CADASTRO_MANUAL.md`; API e validação em `equipes.py`.
+
 **Leitura do Mapa iluminado (D-211, 05/11/2026):** topografia em azul forte, etapas em cores saturadas e traço mais
 largo que o cinza tracejado de não iniciado. Contorno claro (escuro no branco de pronto) em Ruas, satélite e sem
 fundo; mesmo desenho durante o gesto. Paleta única para rede, nós e legenda. Não muda a etapa calculada nem as cores
@@ -464,3 +470,12 @@ operação.
 está em UTC (use `relogio`); openpyxl perde desenhos ao salvar (use `xlsx_modelo`); o LibreOffice só recalcula tudo
 sem os valores guardados das fórmulas; fotos de teste precisam ser imagens decodificáveis (`tests/fotos_teste.py`);
 `registrar_foto` recebe base64; o OK interno exige verificação, fotos e clima registrado nos testes.
+
+
+## Nota de serviço unificada (D-213, v25, 05/11/2026)
+
+Notas de serviço › Nota de serviço substitui a escolha NS do dia/Serviço de obra. PDF + croqui, equipe e clima
+registram execução informada; intervalos alimentam mapa e verificação do supervisor. Topografia e Cadastro mantidos.
+`/api/ns/execucao` é o envio; `/api/ns/dia` continua alias. `/api/ns` com SERVICO exige equipe e executa.
+`/api/ns/registrar-execucao` reaproveita anexos de um SERVICO histórico e cria vínculo em `ns_execucoes_origem`.
+Migração só cria tabela; não adivinha fatos. Guia e testes em `docs/NOTAS_DE_SERVICO.md` e `tests/test_ns_unificada.py`.

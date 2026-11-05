@@ -32,6 +32,7 @@ import recebimento as REC
 import cronograma as CR
 import dados_obra as DO
 import diario as DI
+import equipes as EQ
 import documentos as D
 import drive as DR
 import medicao as M
@@ -101,7 +102,8 @@ def r_resumo(q, c):
         "medicao_oficial_liberada": S.medicao_oficial_liberada(c),
         "ultima_importacao": dict(ultima) if ultima else None,
         "mapa_disponivel": os.path.exists(_mapa_path()),
-        "equipes": [dict(r) for r in c.execute("SELECT * FROM equipes")],
+        "equipes": EQ.listar(c),
+        "equipes_historicas": [e for e in EQ.listar(c, historicas=True) if not e["ativa"]],
         "clima": R.CONDICOES_CLIMA,
         "contingencias": R.CONTINGENCIAS,
         "etapas": R.ETAPAS,
@@ -201,16 +203,36 @@ def r_mapa_estado(q, c):
 # ------------------------------------------------------------------ planejamento (módulo D)
 def r_equipe(q, c):
     eid = q["id"]
-    return {"funcionarios": [dict(r) for r in c.execute("SELECT * FROM funcionarios WHERE equipe_id=? ORDER BY nome", (eid,))],
-            "maquinas": [dict(r) for r in c.execute("SELECT * FROM maquinas WHERE equipe_id=? ORDER BY descricao", (eid,))]}
+    return EQ.recursos(c, eid)
+
+
+def r_equipes(q, c):
+    return {"equipes": EQ.listar(c), "empresas": {k: v[0] for k, v in EQ.EMPRESAS.items()},
+            "disponiveis": EQ.disponiveis(c)}
+
+
+def p_equipe_criar(b, c):
+    return {"id": EQ.criar(c, b.get("empresa"), b.get("nome"), b["por"])}
+
+
+def p_equipe_excluir(b, c):
+    EQ.excluir(c, b.get("equipe_id"), b["por"])
+    return {"ok": True}
+
+
+def p_equipe_retirar(b, c):
+    EQ.retirar_membro(c, b.get("equipe_id"), b.get("funcionario_id"))
+    return {"ok": True}
 
 
 def p_funcionario(b, c):
-    return {"id": c.execute("INSERT INTO funcionarios(nome,funcao,equipe_id) VALUES (?,?,?)",
-                            (b["nome"], b.get("funcao"), b["equipe_id"])).lastrowid}
+    return {"id": EQ.membro(c, b["equipe_id"], b.get("nome"), b.get("funcao"), b.get("funcionario_id"))}
 
 
 def p_maquina(b, c):
+    EQ.exigir(c, b["equipe_id"], completa=False)
+    if not str(b.get("descricao") or "").strip():
+        raise R.RegraViolada("Informe a descrição da máquina.")
     return {"id": c.execute("INSERT INTO maquinas(descricao,equipe_id) VALUES (?,?)", (b["descricao"], b["equipe_id"])).lastrowid}
 
 
@@ -561,7 +583,7 @@ def _exigir_ns(usuario, ns_ou_tipo):
     """Registrar, aplicar e anular exigem também a permissão do tipo (topografia, cadastro de campo)."""
     tipo = ns_ou_tipo if isinstance(ns_ou_tipo, str) else ns_ou_tipo["tipo"]
     if tipo == "EXECUCAO":
-        raise A.AcessoNegado("A NS do dia é enviada e anulada em Notas de serviço › NS do dia.", 403)
+        raise A.AcessoNegado("A execução da nota é enviada e anulada em Notas de serviço › Nota de serviço.", 403)
     if NS.PERMISSAO_TIPO.get(tipo):
         A.exigir(usuario, NS.PERMISSAO_TIPO[tipo])
 
@@ -587,6 +609,11 @@ def p_ns_ler(b, c, usuario):
 
 
 def p_ns(b, c, usuario):
+    if b.get("tipo") == "SERVICO":
+        A.exigir(usuario,"ns_dia")
+        if not b.get("equipe_id"):
+            raise R.RegraViolada("A nota de serviço agora registra execução. Escolha a equipe e o clima em Notas de serviço › Nota de serviço e envie por lá.")
+        return p_ns_dia(b,c,usuario)
     _exigir_ns(usuario, b.get("tipo") or "")
     return NS.registrar(c, b.get("tipo"), b.get("pdf_b64"), b["por"], b.get("decisoes"), b.get("croqui_b64"),
                         b.get("planilha_b64"), {k: b.get(f"{k}_nome") for k in ("pdf", "croqui", "planilha")},
@@ -625,6 +652,13 @@ def p_ns_dia(b, c, usuario):
                          {k: b.get(f"{k}_nome") for k in ("pdf", "croqui", "planilha")}, b.get("clima"))
 
 
+def p_ns_executar_recebida(b, c, usuario):
+    origem = NS._ns(c,int(b["ns_id"]))
+    if not _ns_visivel(usuario,origem):
+        raise A.AcessoNegado("Seu perfil não abre esta nota de serviço.",403)
+    return NS.executar_recebida(c,origem['id'],b.get('equipe_id'),b.get('clima'),b['por'])
+
+
 def p_ns_numero(b, c, usuario):
     """Envio em lote: o número da NS escrito no PDF, no croqui ou na planilha (só lê, nada é gravado)."""
     return {"numeros": sorted(NS.L.numeros_documento(NS._bytes(b.get("arquivo_b64"), "o arquivo", NS.LIMITE_CROQUI)))}
@@ -648,7 +682,8 @@ def p_ns_dia_anular(b, c, usuario):
 
 
 ROTAS_NS_DIA = {"/api/ns/dia": ("ns_dia", p_ns_dia), "/api/ns/numero": ("campo", p_ns_numero), "/api/ns/dia/conferir": ("retificar_campo", p_ns_dia_conferir),
-                "/api/ns/dia/anular": ("ns_dia", p_ns_dia_anular)}
+                "/api/ns/dia/anular": ("ns_dia", p_ns_dia_anular),
+                "/api/ns/execucao": ("ns_dia",p_ns_dia), "/api/ns/registrar-execucao": ("ns_dia",p_ns_executar_recebida)}
 
 
 # ------------------------------------------------------------------ apropriação direta e base de custo (D-90 em diante)
@@ -872,7 +907,7 @@ GET_PERM = {"/api/usuarios": (r_usuarios, "usuarios"),
             "/api/campo/alvos-do-dia": (lambda q, c: S.alvos_da_equipe_no_dia(c, q.get("equipe_id"), q.get("data")), "lancar_sem_ns"),
             "/api/ns/fora-de-ordem": (lambda q, c: S.fora_de_ordem(c), "notas_servico")}      # o legado: só a engenharia
 GET_USUARIO = {"/api/solicitacoes": lambda q, c, u: {"solicitacoes": SOL.listar(c, u), "catalogo": SOL.catalogo(c),
-                    "frentes": S._rows(c.execute("SELECT id,nome FROM equipes ORDER BY id"))},
+                    "frentes": [f for f in S._rows(c.execute("SELECT id,nome FROM frentes ORDER BY id")) if f["id"] in SOL.frentes_do_usuario(c,u)]},
                "/api/solicitacao/foto": lambda q, c, u: SOL.foto(c, int(q.get("id") or 0), u),
                "/api/auditoria": r_auditoria, "/api/diario": r_diario,
                "/api/drive": lambda q, c, u: DR.resumo(c, completo="documentos" in u["permissoes"]),      # recebem o usuário da sessão
@@ -935,6 +970,12 @@ PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_NS_DIA.items()})
 AUTOR.update({rota: ("por",) for rota in ROTAS_NS_DIA})
 PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_APROPRIACAO.items()})
 AUTOR.update({rota: ("por",) for rota in ROTAS_APROPRIACAO})
+GET["/api/equipes"] = r_equipes
+POST.update({"/api/equipes/criar": p_equipe_criar, "/api/equipes/excluir": p_equipe_excluir,
+             "/api/equipes/retirar-integrante": p_equipe_retirar})
+for rota in ("/api/equipes/criar", "/api/equipes/excluir", "/api/equipes/retirar-integrante"):
+    PERMISSAO[rota] = "equipes"
+    AUTOR[rota] = ("por",)
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 # tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral", "/api/caminho"}
@@ -959,6 +1000,7 @@ TELA_GET = {"/api/solicitacoes": ("solicitar", "compras"), "/api/solicitacao/fot
             "/api/base-custo/busca": TELAS_BASE_CUSTO, "/api/base-custo/itens": TELAS_BASE_CUSTO,
             "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",), "/api/medicao/pacote": ("medicao",),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
+TELA_GET["/api/equipes"] = ("equipes",)
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
 TELA_ARQUIVO = {"/api/relatorios/mensal": ("relatorios",), "/api/medicao/exportar": ("medicao",), "/api/medicao/pacote/baixar": ("medicao",),   # downloads (/arquivos/: LEV)
                 "/api/ns/arquivo": TELAS_NS, "/api/apropriacao/arquivo": TELAS_APROPRIACAO}

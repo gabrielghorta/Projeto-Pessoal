@@ -101,7 +101,7 @@ class TestNuvem(unittest.TestCase):
         self.assertEqual(self.info["db"], os.path.join(self.dados, "dados_demo", "obra.db"))
         self.assertEqual((self.info["administrador_criado"], self.info["configurado"]), ("gabriel.horta", True))
         self.assertEqual(self.q("SELECT login FROM usuarios WHERE ativo=1 AND perfil='ADMINISTRACAO'"), [("gabriel.horta",)])
-        self.assertEqual(self.q("SELECT COUNT(*) FROM usuarios WHERE ativo=0 AND login LIKE '%.demo'"), [(8,)])
+        self.assertEqual(self.q("SELECT COUNT(*) FROM usuarios WHERE ativo=0 AND login LIKE '%.demo'"), [(len(__import__('demo').USUARIOS),)])
         self.assertEqual(self.q("SELECT COUNT(*) FROM trechos WHERE vigente=1"), [(1436,)])
         self.assertEqual(self.q("SELECT rota, status FROM auditoria WHERE metodo='NUVEM'"), [("/nuvem/administrador", 200)])
         with mock.patch.dict(os.environ, dict(ADMIN, MC_ADMIN_LOGIN="outro.admin")):   # reinício: nada muda

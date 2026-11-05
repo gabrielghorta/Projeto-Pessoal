@@ -14,17 +14,17 @@ from base_real import TR006, TR020, BaseReal, b64, pdf_ns  # noqa: E402
 from test_ns_dia import BaseDia, grupo, pdf_dia  # noqa: E402
 
 
-class TestNsDeServico(BaseReal):
+class TestNsDeServicoHistorica(BaseReal):
     def test_so_sobre_trecho_liberado_e_nada_gravado_quando_falta(self):
         pdf, croqui = pdf_ns(numero="020"), b64(NSS.pdf_de_texto(["CROQUI NS 020"]))
-        st, r = self.registrar("eng1", "SERVICO", pdf, croqui_b64=croqui, croqui_nome="croqui.pdf")
+        st, r = self.registrar_servico_historico("eng1", pdf, croqui_b64=croqui, croqui_nome="croqui.pdf")
         self.assertEqual(st, 422, r)
         self.assertIn("NS de serviço só sobre trecho liberado pela topografia", r["erro"])
         self.assertIn("Zona 03 · PB08 · TR020, de 0,0 m a 278,0 m: falta a liberação topográfica (registre a NS de topografia antes)",
                       r["erro"])
         self.assertEqual((self.n("notas_servico"), self.n("documentos", "tipo LIKE 'NS_%'")), (0, 0))       # nada gravado
         self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns(numero="012")))                                   # a ordem certa
-        self.ok(self.registrar("eng1", "SERVICO", pdf, croqui_b64=croqui, croqui_nome="croqui.pdf"))
+        self.ok(self.registrar_servico_historico("eng1", pdf, croqui_b64=croqui, croqui_nome="croqui.pdf"))
 
 
 class TestNumeroParaCasarNoLote(BaseReal):

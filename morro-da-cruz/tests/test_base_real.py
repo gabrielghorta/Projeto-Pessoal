@@ -62,6 +62,10 @@ class BaseReal(unittest.TestCase):
 
     def copia(self):
         backup.copiar_banco(self.db0, self.db)
+        from equipes_teste import cadastrar
+        c = S.conectar(self.db)
+        cadastrar(c)
+        c.close()
 
     def conectar(self):
         c = S.conectar(self.db)

@@ -33,7 +33,6 @@ USUARIOS = (("admin.demo", "Administração (demo)", "ADMINISTRACAO", None),
             ("eng2.demo", "Engenharia 2 (demo)", "ENGENHARIA", None),
             ("almox.demo", "Almoxarifado (demo)", "ALMOXARIFADO", None),
             ("almox2.demo", "Almoxarifado 2 (demo)", "ALMOXARIFADO", None),
-            ("equipe.demo", "Encarregado Zona01 (demo)", "EQUIPE", "Zona01"),
             ("topo.demo", "Topografia (demo)", "TOPOGRAFIA", None),
             ("cadastro.demo", "Cadastro (demo)", "CADASTRO", None))
 

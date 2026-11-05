@@ -93,7 +93,13 @@ class Base(unittest.TestCase):
     LIBERAR_TUDO = False          # testes de execução: a liberação topográfica de todos os trechos, antes (D-20)
 
     def aplicar(self, **kw):
+        nova = not os.path.exists(self.db)
         rel = importar.aplicar(self.db, self.planilhas, cfg=self.cfg, dir_relatorios=self.rels, **kw)
+        if nova:
+            from equipes_teste import cadastrar
+            c = S.conectar(self.db)
+            cadastrar(c)
+            c.close()
         if self.LIBERAR_TUDO and rel.get("status") == "CONCLUIDA":
             liberar_tudo(self.db)
         return rel
@@ -717,7 +723,7 @@ class TestA09MedicaoCongelada(Base):
         c.execute("INSERT INTO medicao_lancamentos(medicao_id,gaveta,servico,bm_item_id,unidade,quantidade,status) "
                   "VALUES (1,3,'CADASTRO',1,'M',2.5,'PROPOSTO')")
         # item importado no v2, com a chave antiga (descrição|DE|PN|nº)
-        c.execute("INSERT INTO equipes VALUES ('Zona01','EQUIPE ZONA 01',NULL)")
+        c.execute("INSERT INTO equipes(id,nome,cor) VALUES ('Zona01','EQUIPE ZONA 01',NULL)")
         c.execute("INSERT INTO elementos(id,chave_natural,numero,tipo,handle) VALUES ('EL-0001','H:5FD4F','NÓ1.8','NÓ','5FD4F')")
         c.execute("INSERT INTO atividades(id,elemento_id,tipo_frente,nomenclatura,frente_id) "
                   "VALUES ('AT-0001','EL-0001','Rede','Zona01_PB01_Rede_NÓ1.8','Zona01')")

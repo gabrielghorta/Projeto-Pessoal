@@ -347,8 +347,7 @@ def _executor(conn, d):
         raise RegraViolada("Diga quem executou: equipe da obra, equipe de outra obra da Ankara ou terceiro.")
     if tipo == "EQUIPE_OBRA":
         eq = str(d.get("equipe_id") or "").strip()
-        if not _one(conn, "SELECT 1 FROM equipes WHERE id=?", eq):
-            raise RegraViolada("Escolha a equipe da obra.")
+        S.exigir_equipe(conn, eq)
         return tipo, eq, None, None
     nome = str(d.get("executor_nome") or "").strip()
     if tipo == "OUTRA_OBRA":

@@ -40,6 +40,8 @@ class PilotoZona01(unittest.TestCase):
         cls.rel = importar.executar(cls.db, "APLICACAO", cfg=cfg_teste_real(), dir_relatorios=os.path.join(cls.tmp, "relatorios"))
         liberar_tudo(cls.db)                       # a execução exige a liberação topográfica (D-20)
         cls.c = S.conectar(cls.db)
+        from equipes_teste import cadastrar
+        cadastrar(cls.c)
         cls.fotos = os.path.join(cls.tmp, "fotos")
         cls.med = S.criar_medicao(cls.c, 1, "2026-10-01", "2026-10-31")
         for t in ("MANHA", "TARDE"):

@@ -85,13 +85,13 @@ class TestNotasDaObra(BaseDia):
             u = self.ok(self.cli(login).get("/api/sessao"))["usuario"]
             self.assertEqual(u["telas"], telas, login)
             self.assertNotIn("ns_dia", u["permissoes"])
-            self.assertEqual(paginas_abertas(u["permissoes"], u["telas"])["notas"]["usa"], ["dia"], login)          # a NS do dia, para consultar
+            self.assertEqual(paginas_abertas(u["permissoes"], u["telas"])["notas"]["usa"], ["servico"], login)          # a NS do dia, para consultar
             self.assertEqual([n["id"] for n in self.ok(self.cli(login).get("/api/ns/dia?equipe=Zona04"))], [r["id"]], login)
             self.assertEqual(self.enviar(login, pdf_dia(g, numero="016"))[0], 403, login)
             self.assertEqual(self.cli(login).get("/api/ns/fora-de-ordem")[0], 403, login)                 # o legado: a engenharia
         eng = self.ok(self.cli("eng1").get("/api/sessao"))["usuario"]
         p = paginas_abertas(eng["permissoes"], eng["telas"])
-        self.assertEqual(p["notas"]["usa"], ["dia", "servico", "topografia", "cadastro"])        # D-199
+        self.assertEqual(p["notas"]["usa"], ["servico", "topografia", "cadastro"])        # D-199
         self.assertEqual(p["campo"]["usa"], ["apropriacao", "apontamento", "fotos", "clima", "interferencia"])
         self.assertEqual(self.ok(self.cli("eng1").get("/api/ns/fora-de-ordem")), [])
 
@@ -102,7 +102,7 @@ class TestNotasDaObra(BaseDia):
         self.assertNotIn("notas", sessao["telas"])
         self.assertNotIn("ns_dia", sessao["permissoes"])
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
-        self.recusa(self.enviar("almox1", pdf_dia(g), equipe="Zona03"), 403, "Enviar e anular a NS do dia")
+        self.recusa(self.enviar("almox1", pdf_dia(g), equipe="Zona03"), 403, "Registrar e anular a execução pela nota de serviço")
         self.assertEqual(self.n("notas_servico"), 0)
         r = self.ok(self.enviar("eng1", pdf_dia(g)))
         self.assertEqual(alm.post("/api/ns/dia/anular", {"ns_id": r["id"], "motivo": "x"})[0], 403)
@@ -135,7 +135,7 @@ class TestClimaDoDia(BaseDia):
     def test_depois_da_ns_o_clima_do_dia_nao_muda_o_dela(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
         self.ok(self.enviar("eng1", pdf_dia(g), clima={"MANHA": "SOL", "TARDE": "PARALISADO_CHUVA"}))
-        self.recusa(self.marcar("enc3", "SOL", "SOL"), 422, "veio com a NS do dia 015, que é a fonte principal")
+        self.recusa(self.marcar("enc3", "SOL", "SOL"), 422, "veio com a nota de serviço 015, que é a fonte principal")
         self.recusa(self.marcar("sup1", "SOL", "SOL"), 422, "só a engenharia corrige")
         self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "PARALISADO_CHUVA")])
         self.ok(self.marcar("enc3", "SOL", "PARALISADO_CHUVA"))                       # o mesmo: nada muda
@@ -156,7 +156,7 @@ class TestTopografia(BaseReal):
         p = paginas_abertas(sessao["permissoes"], sessao["telas"])["notas"]           # D-199: a Topografia é página de Notas de serviço
         self.assertEqual(p, {"usa": ["topografia"], "abre": "topografia", "pedida": "topografia"})
         eng = self.ok(self.cli("eng1").get("/api/sessao"))["usuario"]
-        self.assertEqual(paginas_abertas(eng["permissoes"], eng["telas"])["notas"]["abre"], "dia")
+        self.assertEqual(paginas_abertas(eng["permissoes"], eng["telas"])["notas"]["abre"], "servico")
         # o resumo: os indicadores, as listas e as NS de topografia, só para consultar
         self.ok(self.registrar("eng1", "TOPOGRAFIA", pdf_ns()))
         self.assertEqual(topo.get("/api/topografia")[0], 200)

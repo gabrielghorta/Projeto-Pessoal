@@ -89,7 +89,7 @@ function posicaoAlvo(g, tipo, nome) {
   if (tipo === 'TRECHO') { const t = ix.trecho.get(nome); return t ? { xy: meioDoTrecho(t), trecho: t } : null; }
   const e = ix.el.get(nome); return e ? { xy: [e.x, e.y] } : null;
 }
-const rotuloEquipe = id => /^Zona(\d\d)$/.test(id) ? id.slice(4) : id === 'ADUTORA' ? 'AD' : String(id || '?').slice(0, 2).toUpperCase();
+const rotuloEquipe = id => /^(A\d+|E[12]\.\d+)$/.test(id) ? id : /^Zona(\d\d)$/.test(id) ? id.slice(4) : id === 'ADUTORA' ? 'AD' : String(id || '?').slice(0, 2).toUpperCase();
 /* onde cada equipe está hoje (D-200): uma etiqueta por equipe ("01 · 25 trechos"), no alvo do dia mais perto do centro
    deles, e um contorno largo e claro por baixo dos trechos e nós do dia. Antes era um pino em cada alvo: uma equipe com
    25 alvos punha 25 bolinhas no mapa. porEquipe: Map(equipe → [{ tipo, nome }]) */
@@ -740,7 +740,7 @@ function alvoNaFrenteIlu(tipo, nome) {
   const i = GERAL.els.findIndex(e => e.n.includes(nome));
   return i < 0 || (ILU.frentesNo[i] || new Set()).has(ILU.zona);
 }
-const equipeNome = id => ((RESUMO && RESUMO.equipes) || []).find(e => e.id === id)?.nome || id;
+const equipeNome = id => [...((RESUMO && RESUMO.equipes) || []), ...((RESUMO && RESUMO.equipes_historicas) || [])].find(e => e.id === id)?.nome || id;
 function aplicarCamadas() {
   satDe(ILU).style.display = ['sem', 'ruas'].includes(ILU.fundo) ? 'none' : '';
   aplicarFundoRuas(ILU);

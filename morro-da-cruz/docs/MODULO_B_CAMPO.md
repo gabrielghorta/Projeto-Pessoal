@@ -130,7 +130,7 @@ Testes: `tests/test_apropriacao.py` (`TestBusca`, `TestApropriacaoHttp`).
 
 **Caminho até a medição** (ficha do trecho, bloco "Para entrar na medição", `servicos.caminho_medicao`), cada item com quem faz e onde:
 1. liberação topográfica (Topografia, NS de topografia, em Topografia › Enviar NS de topografia);
-2. executado 100 %, assentado e reaterrado (a NS do dia da equipe, enviada pela engenharia em Notas de serviço › NS do dia);
+2. executado 100 %, assentado e reaterrado (a NS do dia da equipe, enviada pela engenharia em Notas de serviço › Nota de serviço);
 3. verificado pelo supervisor (botão "Verificar" na ficha; quem informou não verifica; `servicos.verificar_trecho`);
 4. as 3 fotos (sinalização, execução, concluído), enviadas pela equipe (Lançamento do dia › Fotos e soldas) ou pelo supervisor, no mesmo lugar da verificação;
 5. cadastro de campo (Cadastro, pela NS de cadastro, em Cadastro de campo › Enviar NS de cadastro);
@@ -160,7 +160,7 @@ páginas; cada perfil vê só as que pode usar:
 | Clima do dia | a equipe e os dois toques (manhã e tarde), gravados na tabela `clima`, onde a NS do dia grava. A NS do dia é a fonte principal (D-131): o clima tocado no envio dela substitui o daqui; sem toque, vale o daqui. Depois que a NS do dia chega, o Clima do dia só preenche o turno vazio, e mudar é correção da engenharia | quem tem `campo`; o encarregado, só a equipe dele |
 
 **Saiu daqui:** a NS do dia (o formulário, "Notas do dia enviadas" e "Notas de serviço da zona"), que foi para
-**Notas de serviço › NS do dia** (`docs/NOTAS_DE_SERVICO.md`, seção 6).
+**Notas de serviço › Nota de serviço** (`docs/NOTAS_DE_SERVICO.md`, seção 6).
 
 **Páginas dentro da aba** (um componente só em `web/app.js`: `PAGINAS`, `paginaDe`, `mostrarPagina`):
 - chips no topo, de 44 px, quebrando a linha no celular;
@@ -188,3 +188,13 @@ Lançar vários trechos a 100% de uma vez ficou como proposta (D-181). Testes: `
   parte.
 - Corrigir a posição de um avanço legado conciliado segue a regra do legado (não exige a liberação).
 - Detalhes: `CORRECOES_REVISAO_30-10-2026.md`.
+
+
+## Nota de serviço unificada (D-213, 05/11/2026)
+
+Não se escolhe mais entre NS do dia e Serviço de obra. Em Notas de serviço › Nota de serviço, Engenharia/Administração
+selecionam equipe e clima e enviam PDF + croqui. Os intervalos inequívocos são informados e entram no mapa e na lista
+de verificação do supervisor. Trechos pendentes de liberação ou de identificação ficam na fila da engenharia, com o
+motivo. Notas recebidas antes da mudança oferecem Registrar execução usando os anexos existentes, sem apagar o
+original nem inventar equipe/clima. Topografia, Cadastro, autoria, não sobreposição e verificação independente se
+mantêm. A migração v25 não lança execução sozinha. Guia: `NOTAS_DE_SERVICO.md`.

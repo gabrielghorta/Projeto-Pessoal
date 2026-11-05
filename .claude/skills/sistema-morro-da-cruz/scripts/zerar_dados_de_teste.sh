@@ -19,7 +19,7 @@ origem.backup(copia)
 copia.close()
 # o que vem das planilhas da obra (fica) e os usuários (ficam); o resto foi lançado no site (sai)
 FICA = {"alteracoes", "atividades", "avisos_origem", "bm_itens", "decisao_objetos", "decisao_vinculos", "decisoes",
-        "elementos", "equipes", "fontes_arquivo", "importacoes", "itens_projeto", "materiais", "nomes_historico",
+        "elementos", "equipes", "frentes", "fontes_arquivo", "importacoes", "itens_projeto", "materiais", "nomes_historico",
         "parametros", "proveniencia", "reajuste_indices", "schema_versao", "trechos", "pendencias_importacao",
         "migracao_mapa", "usuarios", "sessoes", "auditoria"}
 c = origem

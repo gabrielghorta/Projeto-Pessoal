@@ -292,7 +292,7 @@ class TestPermissoes(BaseDia):
             self.assertEqual([n["id"] for n in self.ok(self.cli(login).get("/api/ns/dia?equipe=Zona03"))], [r["id"]], login)
             self.assertEqual(self.abrir(login, f"/api/ns/arquivo?id={r['id']}&qual=pdf")[0], 200, login)
         self.assertEqual(self.cli("rh1").get("/api/ns?tipo=TOPOGRAFIA")[0], 403)                 # o RH: as notas da obra
-        self.recusa(self.cli("eng1").post("/api/ns/anular", {"ns_id": r["id"], "motivo": "x"}), 403, "Notas de serviço › NS do dia")
+        self.recusa(self.cli("eng1").post("/api/ns/anular", {"ns_id": r["id"], "motivo": "x"}), 403, "Notas de serviço › Nota de serviço")
         self.assertEqual(self.ok(self.enviar("adm", pdf_dia(g, numero="017"), equipe="Zona04"))["equipe_id"], "Zona04")
 
     def test_anular_so_a_engenharia_antes_e_depois_da_verificacao(self):

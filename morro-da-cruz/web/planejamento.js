@@ -499,7 +499,7 @@ document.addEventListener('keydown', ev => {
 });
 
 /* ---------------------------------------------------------------- painel ao lado do mapa */
-const htmlEquipes = sel => ((RESUMO && RESUMO.equipes) || []).map(e => `<option value="${esc(e.id)}"${e.id === sel ? ' selected' : ''}>${esc(e.nome)}</option>`).join('');
+const htmlEquipes = sel => ((RESUMO && RESUMO.equipes) || []).map(e => `<option value="${esc(e.id)}"${e.id === sel ? ' selected' : ''}${e.empresa && !e.integrantes ? ' disabled' : ''}>${esc(equipeRotulo(e))}${e.empresa && !e.integrantes ? ' — adicione integrantes' : ''}</option>`).join('');
 const futuro = () => PLN.dia > hoje();
 function abasPainel() {
   if (!PLN.resp) return [['dia', 'O dia'], pode('almox') && ['devolucao', 'Devolução']].filter(Boolean);

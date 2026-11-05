@@ -793,6 +793,7 @@ def devolver_ao_fornecedor(conn, nf_item_id, data, quantidade, motivo, por, docu
 def transferir(conn, data, material_id, quantidade, de_equipe, para_equipe, autorizacao, por, motivo=None):
     """Transferência entre equipes em campo (sessões abertas das duas), sem passar pelo almoxarifado."""
     S.exigir_data_ocorrida(data, "Transferência")
+    S.exigir_equipe(conn, para_equipe)
     if de_equipe == para_equipe:
         raise RegraViolada("Escolha equipes diferentes.")
     if not str(autorizacao or "").strip():
