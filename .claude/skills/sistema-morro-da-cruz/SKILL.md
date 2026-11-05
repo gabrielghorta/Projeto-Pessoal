@@ -31,6 +31,10 @@ Estado em **30/10/2026**. Esquema do banco **v22**. Site no PythonAnywhere a par
 
 ## 1. Estado atual (03/11/2026)
 
+- **Contraste do Mapa iluminado, 05/11/2026 (D-211):** cores saturadas e traço mais largo no que já teve trabalho,
+  com contorno nos quatro fundos e durante os gestos. Topografia em azul forte; não iniciado cinza fino tracejado.
+  Etapas, aprovação Caesb, filtros e Programação preservados. Ver seção 28 de `DECISOES_PENDENTES.md`.
+
 - **Mapas, 04/11/2026 (D-209):** fundo padrão contínuo OpenStreetMap gratuito nos dois mapas, enquadramento e limite
   da prancha 01 do DWG, canteiro real só para destacar/aproximar. Cores, opções e regras dos PRs anteriores preservadas;
   satélite como alternativa. Ver `references/webapp.md` e `morro-da-cruz/docs/MAPA_RUAS_PRANCHA01.md`.

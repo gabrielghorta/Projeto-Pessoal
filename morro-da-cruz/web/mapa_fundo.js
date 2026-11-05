@@ -117,6 +117,8 @@ function contrasteFundoRuas(ctx, px, zoom) {
   }
   const larg = larguraTrecho(zoom, ctx.prefixo === 'ilu' ? 1.1 : .75);
   espessura(ctx.contrasteEl, larg + 1.5);
+  // No Iluminado o traço colorido é mais largo que o não iniciado; seu contorno acompanha a mesma escala.
+  if (ctx.prefixo === 'ilu') $$('.ilu-tr', ctx.contrasteEl).forEach(p => espessura(p, larguraIlu(zoom, p.dataset.situ) + 1.5));
 }
 function aplicarFundoRuas(ctx) {
   const ruas = $(`#${ctx.prefixo}Ruas`), ativo = ILU.fundo === 'ruas';

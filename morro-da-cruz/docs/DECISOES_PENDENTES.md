@@ -449,3 +449,16 @@ Guia: `notas_servico.py` (`RAIZES_TIPO`, `tipo_confere`). Teste: `tests/test_not
 |---|---|---|---|---|---|
 | D-210 | Como o tipo escolhido confere com o bloco da NS | a palavra inteira (TOPOGRAFIA, CADASTRO) / a raiz da palavra | Com a palavra inteira, toda NS de "LIBERAÇÃO TOPOGRÁFICA" (ou "CADASTRAL") pede conferência sem motivo. | A raiz. | **Correção (05/11/2026):** TOPOGRAF ou LOCAÇÃO para topografia; CADASTR para cadastro. Bloco vazio não gera aviso. Bloco de outro tipo continua avisando ("CADASTRO" na aba de topografia, e o contrário). Conferido com as NS 7003 a 7007 enviadas: sem aviso, todos os segmentos automáticos, e o registro grava 20.316 m de liberação sem pendência. |
 
+## 28. Contraste das etapas no Mapa iluminado (05/11/2026)
+
+O responsável mostrou a topografia quase invisível sobre o fundo de ruas e pediu para distinguir facilmente cada
+trabalho já registrado. Esta decisão atualiza a apresentação da D-209, depois dos PRs #29 e #30.
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-211 | Leitura das etapas do Mapa iluminado | tons pastel e traços iguais / cores saturadas e destaque do trabalho registrado | O azul-claro da liberação se confundia com as zonas e o fundo de ruas. | Cores fortes, traço contínuo mais largo para etapas registradas e contorno de contraste. | **Decidido pelo responsável:** topografia em azul forte; execução em laranja; informado em amarelo-ocre; verificado em rosa; cadastro de campo em ciano; pronto em branco com borda escura; OK interno em roxo; cadastro em andamento em lilás; aprovação Caesb em verde. Não iniciado continua cinza, fino e tracejado. O contorno funciona em Ruas, satélite claro/escuro e sem fundo, também na cópia leve do gesto. A legenda e os nós usam a mesma paleta. Não muda o cálculo das etapas, verificação, aprovações, filtros, foco/seleção, equipe, topologia ou as cores DE/programação de Dados da obra. |
+
+Código: `web/iluminado.js`, `web/mapa_fundo.js`, `web/app.css`. Conferência visual e de interação:
+`ferramentas/desempenho/conferir_contraste_iluminado.cjs`. Verde continua exclusivo do cadastro aprovado pela Caesb;
+cadastro de campo não cria aprovação nem verificação.
+

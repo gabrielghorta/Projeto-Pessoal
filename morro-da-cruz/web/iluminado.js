@@ -221,19 +221,19 @@ function realcarRede(acesa) {
 
 /* ---------------------------------------------------------------- Mapa iluminado */
 // etapa de cada trecho, da mais atrasada à mais adiantada (calculada no servidor, regras.etapa_trecho). "Verificado" e
-// "OK interno" são conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada. Cores claras (26/10/2026:
-// o mesmo tom, 35 % mais perto do branco, para se destacarem sobre o satélite); a transparência é a de sempre
+// "OK interno" são conferência da Ankara; o verde só aparece com a aprovação da Caesb registrada.
+// D-211: tons saturados, traço mais largo no que já teve trabalho e contorno de contraste em qualquer fundo.
 const SITU = [
-  { id: 'nao', nome: 'Não iniciado', cor: '#B4B4B4', tracejado: true },
-  { id: 'liberado', nome: 'Liberado pela topografia', cor: '#9FD1F5' },
-  { id: 'execucao', nome: 'Em execução hoje', cor: '#F6936F' },
-  { id: 'executado', nome: 'Executado, aguardando verificação', cor: '#F7DC8B' },
-  { id: 'verificado', nome: 'Verificado pelo supervisor', cor: '#F7B3D6' },
-  { id: 'campo', nome: 'Cadastro de campo feito', cor: '#77D9E6' },
-  { id: 'pronto', nome: 'Pronto para o OK interno', cor: '#F7F7F7' },
-  { id: 'ok', nome: 'OK interno, na medição', cor: '#C6A9F7' },
-  { id: 'cad_andamento', nome: 'Cadastro em andamento', cor: '#E4D7FF' },
-  { id: 'cadastrado', nome: 'Cadastro aprovado pela Caesb', cor: '#82E4B6' },
+  { id: 'nao', nome: 'Não iniciado', cor: '#969DA5', tracejado: true },
+  { id: 'liberado', nome: 'Liberado pela topografia', cor: '#0072CE' },
+  { id: 'execucao', nome: 'Em execução hoje', cor: '#DF5B16' },
+  { id: 'executado', nome: 'Executado, aguardando verificação', cor: '#C59000' },
+  { id: 'verificado', nome: 'Verificado pelo supervisor', cor: '#CC2F88' },
+  { id: 'campo', nome: 'Cadastro de campo feito', cor: '#007E91' },
+  { id: 'pronto', nome: 'Pronto para o OK interno', cor: '#FFFFFF' },
+  { id: 'ok', nome: 'OK interno, na medição', cor: '#7133C6' },
+  { id: 'cad_andamento', nome: 'Cadastro em andamento', cor: '#AD7EE2' },
+  { id: 'cadastrado', nome: 'Cadastro aprovado pela Caesb', cor: '#138653' },
 ];
 const SITU_ID = Object.fromEntries(SITU.map(s => [s.id, s]));
 const etapaDe = (est, nome) => ((est.camadas || {}).etapas || {})[nome];
@@ -327,7 +327,9 @@ function copiaIlu(g, u) {
     g.restore();
   }
   if (ILU.cam.zonas) zonasCopia(g, u, z => opacidadeZonaIlu(z.id));
-  linhasCopia(g, u, SITU.filter(s => ILU.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado ? '5 4' : null, trechos: GERAL.trechos.filter(t => t.s === s.id && naFrenteIlu(t)) })));
+  linhasCopia(g, u, SITU.filter(s => ILU.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado ? '5 4' : null,
+    largura: larguraIlu(1, s.id), halo: s.id === 'nao' ? null : s.id === 'pronto' ? '#24303D' : '#FFFFFF',
+    trechos: GERAL.trechos.filter(t => t.s === s.id && naFrenteIlu(t)) })));
 }
 // as fotos em resolução cheia só são pedidas quando o mapa para (arrastar ou zoom): durante o gesto, fica o mosaico
 function satDepois(ctx, g, px) { clearTimeout(ctx.tSat); ctx.tSat = setTimeout(() => {
@@ -479,27 +481,31 @@ function zonasCopia(g, u, opacidade) {
   g.beginPath(); GERAL.zonas.forEach(z => poligonoCopia(g, z.p)); g.stroke();
   g.globalAlpha = 1; g.setLineDash([]);
 }
-function linhasCopia(g, u, grupos) {          // grupos: [{ cor, tracejado: '5 4' | null, opacidade, trechos }]
-  g.lineCap = g.lineJoin = 'round'; g.lineWidth = 1.2 * u;
-  grupos.forEach(({ cor, tracejado, opacidade, trechos }) => {
-    g.strokeStyle = cor; g.globalAlpha = opacidade || 1;
+function linhasCopia(g, u, grupos) {          // largura/halo opcionais: Programação mantém o desenho anterior
+  g.lineCap = g.lineJoin = 'round';
+  function pintar({ cor, tracejado, opacidade, trechos, largura = 1.2, halo }, contorno) {
+    g.lineWidth = (largura + (contorno ? 1.5 : 0)) * u;
+    g.strokeStyle = contorno ? halo : cor; g.globalAlpha = opacidade ?? 1;
     g.setLineDash(tracejado ? tracejado.split(' ').map(v => v * u) : []);
     g.beginPath();
     trechos.forEach(t => t.p.forEach(p => { g.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]); }));
     g.stroke();
-  });
+  }
+  grupos.filter(s => s.halo).forEach(s => pintar(s, true));
+  grupos.forEach(s => pintar(s, false));
   g.globalAlpha = 1; g.setLineDash([]);
 }
 // espessura que acompanha o zoom em degraus de 0,25 px: mudar a espessura do grupo refaz o estilo de todos os trechos
 const degrau = v => Math.round(v * 4) / 4;
 // a largura do trecho na tela: fina na obra inteira e crescendo pouco com o zoom, como no HTML do projeto
 const larguraTrecho = (zoom, base) => Math.max(base, Math.min(4, base * Math.pow(Math.max(zoom, 1), 0.6)));
+const larguraIlu = (zoom, situacao) => larguraTrecho(zoom, situacao === 'nao' ? 1 : 2.2);
 function espessura(el, px) { const v = degrau(px) + 'px'; if (el.style.strokeWidth !== v) el.style.strokeWidth = v; }
 function desenharIlu(px, zoom) {
   if (ILU.fundo !== 'sem') satDepois(ILU, GERAL, px);
   if (escalaMudou(ILU, px)) {                        // arrastar não muda a escala: só o zoom mexe em traços e textos
     $('#iluZonas').style.setProperty('--k', 1 / px);   // só no grupo do contorno: na raiz, refazia o estilo do mapa inteiro
-    espessura($('#iluLinhas'), larguraTrecho(zoom, 1.1));       // finas como no HTML: a rede não polui o mapa
+    $$('#iluLinhas .ilu-tr').forEach(p => espessura(p, larguraIlu(zoom, p.dataset.situ)));
     $$('#iluNomes text').forEach(t => { t.setAttribute('font-size', 14 * px); t.setAttribute('stroke-width', 3.5 * px); });
     escalarEquipes($('#iluPins'), $('#iluHalo'), px, larguraTrecho(zoom, 1.1));
     espessura($('#iluSel'), Math.min(8, 4 * Math.pow(Math.max(zoom, 1), 0.4)));

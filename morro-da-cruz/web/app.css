@@ -370,6 +370,11 @@ fieldset.clima-dia legend { padding: 0; margin-bottom: 6px; font-size: 13px; col
 .rede-contraste { pointer-events: none; display: none; fill: none; }
 .fundo-ruas .rede-contraste { display: inline; }
 .rede-contraste path { stroke: #24303D !important; stroke-opacity: .7 !important; }
+/* D-211: separar os serviços das ruas e das fotos; o branco de "pronto" recebe borda escura. */
+#iluSvg .rede-contraste { display: inline; }
+#iluSvg .rede-contraste path:not([data-situ="nao"]) { stroke: #fff !important; stroke-opacity: .95 !important; }
+#iluSvg .rede-contraste path[data-situ="pronto"] { stroke: #24303D !important; }
+#iluSvg .rede-contraste path[data-situ="nao"] { stroke-opacity: .35 !important; }
 .ilu-fundos { flex-wrap: wrap; }
 .ilu-fundos .ilu-fundo { flex-basis: 40%; min-height: 44px; }
 .ilu-ferr { position: absolute; top: 16px; left: 16px; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; max-width: calc(100% - 100px); }
