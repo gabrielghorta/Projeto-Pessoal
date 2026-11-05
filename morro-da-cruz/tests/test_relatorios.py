@@ -116,7 +116,7 @@ class TestRelatoriosPeloHTTP(BaseHTTP):
         self.assertEqual(set(r), {"materiais", "avanco", "pendencias", "faltantes", "medicoes"})
         self.assertEqual([f["frente_id"] for f in r["avanco"]["frentes"]], ["Zona01"])
         self.assertEqual([(m["id"], m["numero"], m["tipo"]) for m in r["medicoes"]], [(mid, 1, "TESTE")])
-        st, pdf = eng.get(f"/api/relatorios/mensal?id={mid}")                   # D-207: o PDF no lugar da planilha
+        st, pdf = eng.get(f"/api/relatorios/mensal?id={mid}&formato=pdf")                   # D-207: o PDF no lugar da planilha
         self.assertEqual(st, 200)
         self.assertTrue(pdf.startswith(b"%PDF-1.4"))
         self.assertEqual(self.q("SELECT COUNT(*) FROM auditoria WHERE rota='/api/relatorios/mensal'")[0][0], 1)

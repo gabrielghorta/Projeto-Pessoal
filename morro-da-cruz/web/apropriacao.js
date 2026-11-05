@@ -9,6 +9,50 @@ const APR = { listas: null, item: null, busca: 0, tBusca: null, rest: null };
 const APR_COR = { APROVADO: 'verde', A_APROVAR: 'vermelho', REPROVADO: 'cinza' };
 const APR_SIT = { PROPOSTA: ['verde', 'na medição'], PARCIAL: ['amarelo', 'em parte na medição'], PARADA: ['vermelho', 'parada'],
   ESTORNADA: ['cinza', 'estornada'] };
+const APR_DIM = {M:1,M2:2,M3:3};
+function aprParcelas() {
+  return $$('#aprMedidas [data-parcela]').map(l => Object.fromEntries($$('[data-medida]',l).map(i=>[i.dataset.medida,i.value])));
+}
+function aprMontarMedidas() {
+  const dim = APR_DIM[String(APR.item?.unidade || '').toUpperCase().replace('²','2').replace('³','3')], q=$('#fApr').quantidade;
+  q.readOnly=!!dim; q.value='';
+  $('#aprMedidas').innerHTML=dim ? `<h4>Memória de cálculo</h4><p class="vazio">Medidas em metros. Para perímetro, some os lados: 80 + 50 + 40. Em m² use comprimento/perímetro e largura/altura; em m³ acrescente a profundidade.</p><div id="aprParcelas"></div><button type="button" class="btn" id="aprMaisParcela">Adicionar parcela</button><p id="aprConta" aria-live="polite"></p>` : '';
+  if(dim) aprAdicionarParcela(dim);
+}
+function aprAdicionarParcela(dim) {
+  const n=$$('#aprMedidas [data-parcela]').length;
+  if(n>=30)return toast('No máximo 30 parcelas.','erro');
+  $('#aprParcelas').insertAdjacentHTML('beforeend',`<fieldset data-parcela><legend>Parcela ${n+1}</legend>
+    <label>Identificação (opcional)<input data-medida="descricao" placeholder="ex.: tapume da frente"></label><div class="linha">
+    <label>${dim>1?'Comprimento / perímetro':'Medida'} (m)<input data-medida="comprimento" inputmode="decimal" placeholder="80 + 50 + 40" required></label>
+    ${dim>1?'<label>Largura / altura (m)<input data-medida="largura" inputmode="decimal" required></label>':''}
+    ${dim>2?'<label>Profundidade (m)<input data-medida="profundidade" inputmode="decimal" required></label>':''}
+    <label>Repetições<input type="number" min="1" max="99999" step="1" data-medida="repeticoes" value="1" required></label></div>
+    <button type="button" class="btn" data-apr-tirar-parcela>Remover parcela</button></fieldset>`);
+}
+function aprSomarMedida(v) {
+  const p=String(v).split('+');
+  if(p.length>30 || p.some(t=>!/^\d+(?:[.,]\d+)?$/.test(t.trim())))return NaN;
+  return p.reduce((s,t)=>s+Number(t.trim().replace(',','.')),0);
+}
+function aprAtualizarConta() {
+  const parcelas=aprParcelas(), contas=[];let total=0;
+  for(const p of parcelas){
+    const vals=['comprimento','largura','profundidade'].filter(k=>p[k]!==undefined).map(k=>aprSomarMedida(p[k]));
+    const rep=Number(p.repeticoes), q=vals.reduce((a,b)=>a*b,rep);
+    if(vals.some(v=>!Number.isFinite(v)||v<=0)||!Number.isInteger(rep)||rep<1||!Number.isFinite(q)) {total=NaN;break;}
+    total+=q;contas.push(`${p.descricao?p.descricao+': ':''}${rep!==1?rep+' × ':''}${['comprimento','largura','profundidade'].filter(k=>p[k]!==undefined).map(k=>'('+p[k]+')').join(' × ')} = ${nf(q,4)} ${APR.item.unidade}`);
+  }
+  $('#fApr').quantidade.value=Number.isFinite(total)&&total>0?Number(total.toFixed(4)):'';
+  $('#aprConta').textContent=Number.isFinite(total)&&total>0?contas.join(' · '):'Preencha as medidas para calcular a quantidade.';
+  aprCartao();
+}
+$('#aprMedidas').addEventListener('input',aprAtualizarConta);
+$('#aprMedidas').addEventListener('click',ev=>{
+  if(ev.target.closest('#aprMaisParcela'))aprAdicionarParcela(APR_DIM[String(APR.item.unidade).toUpperCase().replace('²','2').replace('³','3')]);
+  if(ev.target.closest('[data-apr-tirar-parcela]'))ev.target.closest('[data-parcela]').remove();
+  aprAtualizarConta();
+});
 const APR_ATRIBUTOS = ['descricao_resumida', 'material', 'diametro', 'pressao', 'resina', 'tipo_conexao', 'solda', 'grupo_orcamento_ankara'];
 const aprEtiqueta = it => `<span class="chip ${APR_COR[it.situacao] || ''}">${esc(it.rotulo)}</span>`;
 const aprPreco = it => it.preco == null ? '—' : reais(it.preco) + (it.preco_estimado ? ' <small>(estimado)</small>' : '');
@@ -23,7 +67,6 @@ const aprGrupo = it => {                                 // "CANTEIRO - SERVIÇO
 function carregarLancamentoDia() {
   if (PAGINA.campo === 'apontamento') return carregarAlvosDoDia();
   if (PAGINA.campo === 'apropriacao') return carregarApropriacao();
-  if (PAGINA.campo === 'clima') return carregarClimaDia();
 }
 
 /* ---------------------------------------------------------------- aba Apropriação direta */
@@ -55,7 +98,7 @@ function aprExecutorCampos() {
   const t = $('#aprExecutor').value;
   $('#aprEquipeRot').hidden = t !== 'EQUIPE_OBRA';
   $('#aprObraRot').hidden = t !== 'OUTRA_OBRA';
-  $('#aprNomeRot').hidden = t === 'EQUIPE_OBRA';
+  $('#aprNomeRot').hidden = !t || ['EQUIPE_OBRA','NAO_INFORMADO'].includes(t);
   $('#aprNomeRot').firstChild.textContent = t === 'TERCEIRO' ? 'Nome do terceiro' : 'Equipe da outra obra';
 }
 $('#aprLocalTipo').addEventListener('change', aprLocalCampos);
@@ -101,7 +144,7 @@ async function aprEscolher(ref, preencher) {
   }
   $$('#aprResultados [data-apr-ref]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.aprRef === ref)));
   $('#fItemNovo').hidden = true; $('#novoParecidos').innerHTML = '';     // achou o item: o cadastro de item novo não é preciso
-  aprCartao();
+  aprMontarMedidas(); aprCartao();
 }
 function aprCartao() {
   const it = APR.item;
@@ -129,10 +172,9 @@ $('#fApr').addEventListener('submit', async ev => {
   ev.preventDefault();
   if (!APR.item) return toast('Escolha o item (pela busca ou pelo grupo, tipo e item).', 'erro');
   const f = ev.target, o = formObj(f), arqs = [...f.evidencias.files], lt = o.local_tipo, alvo = $('#aprAlvo');
-  if (!arqs.length) return toast('Envie pelo menos uma evidência (foto, croqui ou documento).', 'erro');
   const bt = $('#aprGravar'); bt.disabled = true;
   try {
-    const corpo = { item_ref: APR.item.ref, data: o.data, quantidade: o.quantidade, executor_tipo: o.executor_tipo, equipe_id: o.equipe_id,
+    const corpo = { parcelas: aprParcelas(), item_ref: APR.item.ref, data: o.data, quantidade: o.quantidade, executor_tipo: o.executor_tipo, equipe_id: o.equipe_id,
       executor_obra: o.executor_obra, executor_nome: o.executor_nome, o_que_foi_feito: o.o_que_foi_feito, memoria_calculo: o.memoria_calculo,
       justificativa: o.justificativa, local_tipo: lt || null,
       local_id: lt === 'ZONA' ? $('#aprZona').value : ['TRECHO', 'ATIVIDADE'].includes(lt) ? alvo.dataset.id || '' : null,

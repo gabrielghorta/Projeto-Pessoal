@@ -8,7 +8,7 @@ const NS_DESC = {
   TOPOGRAFIA: 'Gera a liberação topográfica dos trechos da nota, só no que ainda não está liberado. É a primeira etapa: sem ela, a execução é recusada.',
   CADASTRO: 'Gera o cadastro de campo só sobre o que já foi executado (assentado) até a data da nota. O resto é recusado, com o que falta; '
     + 'se o assentamento até essa data for registrado depois, use "Aplicar de novo" na nota.',
-  SERVICO: 'Nota já recebida sem execução. Use Registrar execução para aproveitar os mesmos anexos, indicando a equipe e o clima.',
+  SERVICO: 'Nota já recebida sem execução. Use Registrar execução para aproveitar os mesmos anexos, indicando a equipe.',
 };
 const NS_ETAPA = { TOPOGRAFIA: 'liberação topográfica', CADASTRO: 'cadastro de campo' };
 const NS_SITU = { AUTOMATICO: ['automático', 'azul'], CONFIRMAR: ['confirmar', 'amarelo'], ERRO: ['erro', 'vermelho'],
@@ -328,7 +328,7 @@ function renderNsPrevia() {
   const r = NSV.leitura, tipo = NSV.envio.tipo, faltas = nsFaltas();
   let html;
   if (r.mesmo_numero && r.mesmo_numero.mesma_impressao) html = '<p>Só o arquivo da NS já registrada é trocado. Os registros dela continuam como estão.</p>';
-  else if (!NS_ETAPA[tipo]) html = '<p>Nota recebida sem execução. Use Registrar execução para aproveitar os mesmos anexos, indicando equipe e clima.</p>';
+  else if (!NS_ETAPA[tipo]) html = '<p>Nota recebida sem execução. Use Registrar execução para aproveitar os mesmos anexos, indicando a equipe.</p>';
   else {
     let total = 0, pend = 0, ja = 0;
     const linhas = r.segmentos.filter(s => !['FORA', 'ERRO', 'SEM_CORRESPONDENCIA'].includes(nsSituacao(s))).flatMap(s => {
@@ -474,7 +474,6 @@ function htmlNdNota(n) {
 }
 
 /* ---------------------------------------------------------------- NS do dia (Notas de serviço › NS do dia: a engenharia envia pela equipe, sem digitar o que foi feito) */
-const ND = { clima: {} };
 const zonaDaEquipe = eq => /^(Zona\d\d|ADUTORA)$/.test(eq || '') ? eq : '';
 async function carregarNotaDia() {
   const sel = $('#ndEquipe'), ver = $('#ndVerEquipe'), antes = sel.value, filtro = ver.value;
@@ -484,19 +483,7 @@ async function carregarNotaDia() {
   if (RESUMO.equipes.some(e => e.id === antes && (!e.empresa || e.integrantes))) sel.value = antes;
   if (RESUMO.equipes.some(e => e.id === filtro)) ver.value = filtro;
   $('#ndEnvio').hidden = !pode('ns_dia'); $('#ndSoConsulta').hidden = pode('ns_dia');    // a engenharia envia; os outros consultam (D-134)
-  chipsClima($('#fNd'));
   await ndListas();
-}
-// os dois toques do clima (manhã e tarde): na NS do dia e no Clima do dia do Lançamento do dia
-function chipsClima(form) {
-  $$('[data-turno]', form).forEach(box => { if (!box.children.length) box.innerHTML = Object.entries(RESUMO.clima)
-    .map(([k, v]) => `<button type="button" data-clima="${esc(k)}" aria-pressed="false">${esc(v)}</button>`).join(''); });
-}
-function tocarClima(ev, guardar) {
-  const b = ev.target.closest('[data-clima]'); if (!b) return;
-  const box = b.closest('[data-turno]');
-  guardar[box.dataset.turno] = b.dataset.clima;
-  $$('button', box).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
 }
 // as notas de serviço enviadas: a equipe e o dia escolhidos na lista; sem dia, as mais recentes, sem ocultar notas antigas
 async function ndListas() {
@@ -513,13 +500,12 @@ async function ndListas() {
 $('#ndEquipe').addEventListener('change', () => { $('#ndVerEquipe').value = $('#ndEquipe').value; ndListas(); });   // enviando, a lista é a da equipe
 $('#ndVerEquipe').addEventListener('change', ndListas);
 $('#ndDia').addEventListener('change', ndListas);
-$('#fNd').addEventListener('click', ev => tocarClima(ev, ND.clima));
 // a NS do dia usa a mesma fila do envio em lote: cada nota é registrada ao enviar, e o resultado fica no cartão dela
 const ND_LOTE = criarFilaNs({ caixa: $('#ndLote'), tipo: () => 'EXECUCAO',
   extra: () => {
     const eq = $('#ndEquipe').value;
     if (!eq) throw new Error('Escolha a equipe.');
-    return { equipe_id: eq, clima: { ...ND.clima } };      // sem toque, vale o já marcado em Clima do dia (D-131)
+    return { equipe_id: eq };      // sem toque, vale o já marcado em Clima do dia (D-131)
   },
   depois: () => {
     const datas = [...new Set(ND_LOTE.cartoes.filter(c => c.estado === 'registrada' && c.resultado).map(c => c.resultado.data))];
@@ -537,10 +523,10 @@ $('#fNd').addEventListener('submit', async ev => {
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-ns-executar]'); if (!b) return;
   const equipe = $('#ndEquipe').value;
-  if (!equipe) { $('#ndEquipe').focus(); return toast('Escolha a equipe no formulário da nota e confira o clima antes de registrar a execução.', 'erro'); }
+  if (!equipe) { $('#ndEquipe').focus(); return toast('Escolha a equipe no formulário da nota antes de registrar a execução.', 'erro'); }
   b.disabled = true;
   try {
-    const r = await acao(() => api('/api/ns/registrar-execucao', {ns_id:+b.dataset.nsExecutar,equipe_id:equipe,clima:{...ND.clima}}));
+    const r = await acao(() => api('/api/ns/registrar-execucao', {ns_id:+b.dataset.nsExecutar,equipe_id:equipe,clima:null}));
     $('#ndDia').value = r.data || ''; $('#ndVerEquipe').value = equipe;
     toast(r.fila.length ? `Execução recebida; ${r.fila.length} segmento(s) aguardam a conferência da engenharia.` : 'Execução registrada. O mapa já pode mostrar o que foi executado.', r.fila.length ? 'info' : 'ok');
     recarregarTelaNs();
@@ -555,23 +541,6 @@ function ndAlvoEscolhido(nome) {
 $('#ndNoMapa').addEventListener('click', () => { abrirAba('iluminado'); toast('Toque no trecho e, na ficha, em "Lançar avanço".'); });
 
 /* ---------------------------------------------------------------- Lançamento do dia › Clima do dia (para o diário dos dias sem NS do dia) */
-const CLIMA_DIA = {};
-function carregarClimaDia() {
-  const f = $('#fClima'), sel = $('#climaEquipe');
-  if (sel.options.length < 2) sel.innerHTML = '<option value="">Escolha a equipe</option>' + RESUMO.equipes.map(e => `<option value="${esc(e.id)}">${esc(e.nome)}</option>`).join('');
-  if (USUARIO.restrito_a_equipe) { sel.value = USUARIO.equipe_id; sel.disabled = true; }
-  if (!f.data.value) f.data.value = hoje();
-  chipsClima(f);
-}
-$('#fClima').addEventListener('click', ev => tocarClima(ev, CLIMA_DIA));
-$('#fClima').addEventListener('submit', async ev => {
-  ev.preventDefault();
-  const f = ev.target, eq = $('#climaEquipe').value;
-  if (!eq) return toast('Escolha a equipe.', 'erro');
-  if (!CLIMA_DIA.MANHA || !CLIMA_DIA.TARDE) return toast('Toque no clima da manhã e no da tarde.', 'erro');
-  const r = await acao(() => api('/api/clima', { data: f.data.value, equipe_id: eq, ...CLIMA_DIA }), `Clima de ${dataBR(f.data.value)} gravado.`).catch(() => null);
-  if (r) { delete CLIMA_DIA.MANHA; delete CLIMA_DIA.TARDE; $$('[data-clima]', f).forEach(b => b.setAttribute('aria-pressed', 'false')); }
-});
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-nd-anular]'); if (!b) return;
   const motivo = prompt('Motivo da anulação (o que esta nota lançou também é anulado; nada é apagado):'); if (!motivo || !motivo.trim()) return;

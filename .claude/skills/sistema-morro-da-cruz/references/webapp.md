@@ -479,3 +479,12 @@ registram execução informada; intervalos alimentam mapa e verificação do sup
 `/api/ns/execucao` é o envio; `/api/ns/dia` continua alias. `/api/ns` com SERVICO exige equipe e executa.
 `/api/ns/registrar-execucao` reaproveita anexos de um SERVICO histórico e cria vínculo em `ns_execucoes_origem`.
 Migração só cria tabela; não adivinha fatos. Guia e testes em `docs/NOTAS_DE_SERVICO.md` e `tests/test_ns_unificada.py`.
+
+
+## Campo, memória e Word (D-215 a D-217, v26)
+
+Interferências e chuva substitui Clima do dia. Sem chuva é padrão identificado; relato guarda equipe/data/turno/efeito
+em `ocorrencia_chuvas`, sem apagar ao resolver. NS/apontamento não exigem clima. Apropriação guarda parcelas em
+`calculo_json`, confere o total e leva a memória à MC sem somar a quantidade duas vezes. Extras são opcionais.
+RM em DOCX pela rota existente; `formato=pdf` mantém PDF. stdlib + Pillow, sem Office no servidor.
+Guia `docs/CAMPO_MEMORIA_RM_WORD.md`. A D-214/§31 é reservada ao PR #34.

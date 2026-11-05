@@ -1,9 +1,9 @@
 # Notas de serviço (NS): execução por upload e diário de obra
 
-CT 10.239/2026 · atualizado em 05/11/2026 · esquema v25 · D-213.
+CT 10.239/2026 · atualizado em 05/11/2026 · esquema v26 · D-213 e D-215.
 
 **Uma nota de serviço da equipe significa serviço executado.** O envio não tem mais a escolha entre
-“NS do dia” e “Serviço de obra”. A engenharia escolhe a equipe, informa o clima e envia PDF + croqui em
+“NS do dia” e “Serviço de obra”. A engenharia escolhe a equipe e envia PDF + croqui em
 **Notas de serviço › Nota de serviço**. A execução inequívoca entra nos intervalos da 06.1 e no Mapa iluminado,
 aguardando verificação do supervisor. Conferência interna e aprovação da Caesb continuam sendo etapas próprias.
 A regra vale também para as notas sintéticas de serviço do pacote de 50%.
@@ -18,7 +18,7 @@ A regra vale também para as notas sintéticas de serviço do pacote de 50%.
 **Registrar execução** no cartão da nota. O servidor usa os anexos guardados. O original fica intacto e um vínculo
 registra qual execução veio dele. Repetir a ação não duplica intervalos nem transfere o trabalho para outra equipe.
 Uma execução idêntica já existente é vinculada. Reenviar o PDF antigo pelo formulário único também é aceito.
-Não há conversão automática: equipe e clima não podem ser adivinhados. Notas antigas continuam disponíveis no
+Não há conversão automática: equipe não podem ser adivinhados. Notas antigas continuam disponíveis no
 histórico; a lista corrente oculta o original depois de vinculada uma execução vigente. Anulação mantém o histórico.
 
 Na lista de execuções, a data é um filtro opcional. Sem data, aparecem as mais recentes, inclusive de meses passados.
@@ -144,9 +144,8 @@ Supervisor e RH consultam, sem formulário. **Lançamento do dia › Apontamento
 
 1. Escolha a equipe que executou (a nota é lançada em nome dela; quem informou é quem enviou).
 2. **Nota de serviço (PDF)** e **Croqui (PDF ou foto)**, os dois obrigatórios. Foto do celular vale.
-3. Toque no **clima de manhã** e no **clima à tarde**. A nota não traz o clima, e o diário precisa dele. A NS do dia é
-   a fonte principal (D-131): o clima tocado aqui substitui o marcado antes em Lançamento do dia › Clima do dia. Se já
-   foi marcado lá, pode deixar sem tocar: fica o marcado. Sem clima nenhum, o envio é recusado.
+3. Sem chuva é o padrão identificado no diário. Se choveu, registre a equipe, a data e o turno em
+   **Lançamento do dia › Interferências e chuva**. Não precisa preencher clima para enviar a nota.
 4. **Registrar execução pela nota**. A data é a da nota.
 
 Nada a digitar sobre o que foi feito: vem da nota. Mais de uma nota por equipe e dia é permitido (folhas ou frentes
@@ -154,8 +153,7 @@ diferentes). Soldas e fotos ficam em **Lançamento do dia › Fotos e soldas**.
 
 ### O que o sistema recusa
 
-Nota de outro contrato, PDF sem texto, data futura, a mesma nota de novo ("já foi enviada") e, sem o clima do dia, o
-envio (a menos que o clima já esteja registrado). Nota com data mais de 3 dias antes do envio entra com o aviso "NS
+Nota de outro contrato, PDF sem texto, data futura, a mesma nota de novo ("já foi enviada") ; clima não é obrigatório no envio (D-215). Nota com data mais de 3 dias antes do envio entra com o aviso "NS
 enviada com atraso".
 
 ### O que o sistema lança sozinho
@@ -259,7 +257,7 @@ exemplo não ficam no repositório: `MC_NS_EXEMPLOS=<pasta>` roda o teste deles 
 ## 6. Compatibilidade e permissões (D-213)
 
 A tela envia por `POST /api/ns/execucao`. A rota anterior `/api/ns/dia` continua como alias para clientes antigos.
-`POST /api/ns` com `tipo=SERVICO` também registra execução quando recebe equipe e clima; sem equipe, recusa com
+`POST /api/ns` com `tipo=SERVICO` também registra execução quando recebe equipe; sem equipe, recusa com
 orientação para a página única, em vez de arquivar silenciosamente como planejamento.
 `POST /api/ns/registrar-execucao` recebe `ns_id`, `equipe_id` e `clima` e reutiliza os anexos antigos.
 As novas rotas usam a permissão existente `ns_dia`, autoria da sessão e auditoria. Não há acesso novo para campo/RH.

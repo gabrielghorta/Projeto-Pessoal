@@ -198,3 +198,9 @@ de verificação do supervisor. Trechos pendentes de liberação ou de identific
 motivo. Notas recebidas antes da mudança oferecem Registrar execução usando os anexos existentes, sem apagar o
 original nem inventar equipe/clima. Topografia, Cadastro, autoria, não sobreposição e verificação independente se
 mantêm. A migração v25 não lança execução sozinha. Guia: `NOTAS_DE_SERVICO.md`.
+
+
+Atualização em 05/11/2026 (D-215 a D-217, v26): Interferências e chuva substitui a página de clima; sem chuva é
+premissa explícita, sem observação fabricada. Apropriação calcula m/m²/m³ por medidas e leva a conta à MC; extras
+ficam opcionais. O RM da tela Relatórios sai em DOCX editável, com os mesmos dados e totais. Histórico e medição
+fechada preservados. Guia: `CAMPO_MEMORIA_RM_WORD.md`.

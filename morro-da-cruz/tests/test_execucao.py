@@ -62,7 +62,7 @@ class TestNotasDaObra(BaseDia):
         sessao = self.ok(enc.get("/api/sessao"))["usuario"]
         self.assertNotIn("notas", sessao["telas"])
         self.assertEqual(sessao["permissoes"], ["campo", "compras_solicitar"])
-        self.assertEqual(paginas_abertas(sessao["permissoes"], sessao["telas"])["campo"]["usa"], ["fotos", "clima", "interferencia"])   # o Lançamento do dia
+        self.assertEqual(paginas_abertas(sessao["permissoes"], sessao["telas"])["campo"]["usa"], ["fotos", "interferencia"])   # o Lançamento do dia
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
         self.assertEqual(self.enviar("enc3", pdf_dia(g))[0], 403)
         r = self.ok(self.enviar("eng1", pdf_dia(g)))                                         # a engenharia envia pela equipe
@@ -92,7 +92,7 @@ class TestNotasDaObra(BaseDia):
         eng = self.ok(self.cli("eng1").get("/api/sessao"))["usuario"]
         p = paginas_abertas(eng["permissoes"], eng["telas"])
         self.assertEqual(p["notas"]["usa"], ["servico", "topografia", "cadastro"])        # D-199
-        self.assertEqual(p["campo"]["usa"], ["apropriacao", "apontamento", "fotos", "clima", "interferencia"])
+        self.assertEqual(p["campo"]["usa"], ["apropriacao", "apontamento", "fotos", "interferencia"])
         self.assertEqual(self.ok(self.cli("eng1").get("/api/ns/fora-de-ordem")), [])
 
     def test_almoxarifado_nao_envia_nem_ve_as_notas(self):
@@ -124,7 +124,9 @@ class TestClimaDoDia(BaseDia):
 
     def test_sem_toque_vale_o_marcado_e_com_toque_vale_a_ns(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98], obs=["ASSENTAMENTO", None])]
-        self.recusa(self.enviar("eng1", pdf_dia(g), clima=None), 422, "Informe o clima da manhã e da tarde")   # nada marcado
+        primeiro = self.ok(self.enviar("eng1", pdf_dia(g, numero="099"), clima=None))
+        self.assertEqual(self.clima(), [])  # sem chuva é premissa, sem gravar observação fictícia
+        self.ok(self.cli("eng1").post("/api/ns/dia/anular", {"ns_id":primeiro["id"],"motivo":"teste do padrão"}))
         self.ok(self.marcar("enc3", "SOL", "CHUVA_FRACA_TENDA"))                       # o encarregado marca o clima do dia
         r = self.ok(self.enviar("eng1", pdf_dia(g), clima=None))                       # sem toque: fica o marcado
         self.assertEqual(self.clima(), [("MANHA", "SOL"), ("TARDE", "CHUVA_FRACA_TENDA")])

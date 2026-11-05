@@ -98,10 +98,7 @@ class TestRetificacao(BaseRetif):
     def test_data_corrigida_respeita_a_cronologia(self):
         ap1 = self.ap(("ASSENTADO", 0, 20))
         self.ap(("REATERRADO", 0, 20))
-        with self.assertRaisesRegex(S.RegraViolada, "clima"):
-            self.ret(ap1, ("ASSENTADO", 0, 20), data=D2)
-        for t in ("MANHA", "TARDE"):
-            S.registrar_clima(self.c, D2, "Zona01", t, "SOL")
+        # D-215: sem chuva é padrão; a cronologia continua obrigatória.
         with self.assertRaisesRegex(S.RegraViolada, f"deixaria REATERRADO 0–20 m de {D}"):
             self.ret(ap1, ("ASSENTADO", 0, 20), data=D2)                              # reaterro de 15/10 sem suporte
         ap3 = self.ap(("ASSENTADO", 20, 30))

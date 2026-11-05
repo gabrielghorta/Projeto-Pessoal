@@ -28,7 +28,7 @@ import relogio as RL
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 25
+VERSAO_ESQUEMA = 26
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -81,7 +81,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "nota de serviço da obra registra execução; vínculo com notas anteriores"))
+                 (VERSAO_ESQUEMA, _agora(), "chuva como interferência, memória dimensional e relatório mensal editável"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -208,6 +208,8 @@ def _retirado(conn, alvo_tipo, alvo_id):
 
 
 def nome_alvo(conn, alvo_tipo, alvo_id):
+    if alvo_tipo == "EQUIPE":
+        return "Equipe " + str(alvo_id)
     if alvo_tipo == "APROPRIACAO":                     # gaveta 5: a parcela é a apropriação direta
         return f"Apropriação nº {alvo_id}"
     try:
@@ -873,6 +875,35 @@ def registrar_clima(conn, data, equipe_id, turno, condicao):
     conn.execute("INSERT OR REPLACE INTO clima VALUES (?,?,?,?)", (data, equipe_id, turno, condicao))
 
 
+def clima_no_dia(conn, data, equipe_id):
+    """Sem chuva é uma premissa explícita, não uma observação inventada. Relatos de chuva prevalecem."""
+    out = dict.fromkeys(("MANHA", "TARDE"), "SEM_CHUVA")
+    out.update(dict(conn.execute("SELECT turno, condicao FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))))
+    for turno, condicao in conn.execute("""SELECT c.turno,c.condicao FROM ocorrencia_chuvas c
+        JOIN ocorrencias o ON o.id=c.ocorrencia_id WHERE o.data=? AND o.equipe_id=? ORDER BY o.id""", (data, equipe_id)):
+        for t in ("MANHA", "TARDE") if turno == "DIA_TODO" else (turno,):
+            out[t] = condicao
+    return out
+
+
+def abrir_chuva(conn, data, equipe_id, turno, condicao, descricao, por, alvo_tipo=None, ref=None):
+    exigir_equipe(conn, equipe_id)
+    exigir_data_ocorrida(data, "Chuva")
+    if turno not in ("MANHA", "TARDE", "DIA_TODO"):
+        raise RegraViolada("Escolha se choveu de manhã, à tarde ou o dia todo.")
+    if condicao not in ("CHUVA_FRACA_TENDA", "PARALISADO_CHUVA", "VALA_ALAGADA_BOMBA"):
+        raise RegraViolada("Escolha o efeito da chuva no serviço.")
+    descricao = str(descricao or "").strip() or R.CONDICOES_CLIMA[condicao]
+    with transacao(conn):
+        if ref:
+            oid = abrir_ocorrencia(conn, alvo_tipo, ref, "IMPEDIMENTO", "CHUVA", descricao, data, por, equipe_id)
+        else:
+            oid = conn.execute("""INSERT INTO ocorrencias(alvo_tipo,alvo_id,tipo,categoria,descricao,data,equipe_id,aberta_por,aberta_em)
+                VALUES ('EQUIPE',?,'IMPEDIMENTO','CHUVA',?,?,?,?,?)""", (equipe_id, descricao, data, equipe_id, por, _agora())).lastrowid
+        conn.execute("INSERT INTO ocorrencia_chuvas VALUES (?,?,?)", (oid, turno, condicao))
+    return oid
+
+
 # ------------------------------------------------------------------ intervalos de execução (etapa 4)
 # Intervalo e apontamento nunca são apagados: a retificação os ANULA (anulado_por) e grava os substitutos.
 EFETIVO = "anulado_por IS NULL"
@@ -1169,9 +1200,6 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     """
     exigir_equipe(conn, equipe_id)
     exigir_data_ocorrida(data, "Apontamento")
-    turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
-    if turnos != {"MANHA", "TARDE"}:
-        raise RegraViolada("Clima do dia obrigatório nos dois turnos (manhã e tarde) antes do apontamento.")
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     tipo, aid = a["alvo_tipo"], a["id"]
     ex = execucao(conn, tipo, aid) or {"metros_executados": 0, "metros_reaterrados": 0, "concluido": 0}
@@ -1357,9 +1385,7 @@ def retificar_intervalos(conn, ref_tipo, ref_id, novos, motivo, responsavel, dat
     if ref_tipo == "APONTAMENTO":
         d = data or reg["data"]
         if d != reg["data"]:
-            turnos = {r[0] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (d, reg["equipe_id"]))}
-            if turnos != {"MANHA", "TARDE"}:
-                raise RegraViolada(f"Nova data {d}: registre antes o clima da equipe {reg['equipe_id']} nos dois turnos.")
+            exigir_data_ocorrida(d, "Retificação")
         lista = [{"etapa": n.get("etapa"), "ini_m": float(n["ini_m"]), "fim_m": float(n["fim_m"]), "data": d,
                   "referencia": (n.get("referencia") or "").strip() or None} for n in novos or []]
     elif ref_tipo == "CADASTRO_CAMPO":

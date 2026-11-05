@@ -132,9 +132,9 @@ def totais(conn, q_mes, vert=None):
 
 def _alvo_info(conn, tipo, aid):
     if tipo == "APROPRIACAO":
-        a = _one(conn, "SELECT local_texto, o_que_foi_feito FROM apropriacoes WHERE id=?", aid) or {}
+        a = _one(conn, "SELECT local_texto, o_que_foi_feito, memoria_calculo, quantidade FROM apropriacoes WHERE id=?", aid) or {}
         return {"nome": f"APROPRIAÇÃO Nº {aid}", "projeto": None, "ref": " · ".join(x for x in (a.get("local_texto"),
-                                                                                              a.get("o_que_foi_feito")) if x)}
+                       a.get("o_que_foi_feito")) if x), "memoria": a.get("memoria_calculo"), "apropriado": a.get("quantidade")}
     try:
         a = S.alvo(conn, tipo, aid)
     except RegraViolada:
@@ -161,7 +161,18 @@ def _linhas_memorial(conn, medicao_id, item, unidade):
             lin["estacas"] = (0, 0.0, est, round(q - est * ESTACA_M, 4))   # 4 casas, como a quantidade do lançamento
         elif ext and l["alvo_tipo"] == "TRECHO":
             lin["ref"] = " · ".join(x for x in (info["ref"], f"L = {ext:.2f} m".replace(".", ",")) if x)
-        out.append(lin)
+        if l["alvo_tipo"] == "APROPRIACAO" and info.get("memoria"):
+            import textwrap
+            texto = info["memoria"]
+            if abs(q - info["apropriado"]) > 0.00005:
+                texto += f"\nMemória da quantidade total apropriada; nesta medição: {R.fmt_num(q,4)} {unidade}."
+            partes = [p for linha in texto.splitlines() for p in textwrap.wrap(linha, width=64)]
+            for i, parte in enumerate(partes):
+                out.append(dict(lin, nomenclatura=lin["nomenclatura"] if i == 0 else None,
+                                ref=parte, quantidade=q if i == len(partes)-1 else 0,
+                                exibir_quantidade=i == len(partes)-1))
+        else:
+            out.append(lin)
     return out
 
 
@@ -562,7 +573,10 @@ def _memoria(p, conn, r, aba_mc, n, cq, ct, teste, num, ano, dir_fotos):
                     aba.numero(f"{col}{lin}", v)
                 aba.numero(f"U{lin}", 1)
             else:
-                aba.numero(f"U{lin}", l["quantidade"])
+                if l.get("exibir_quantidade", True):
+                    aba.numero(f"U{lin}", l["quantidade"])
+                else:
+                    aba.vazia(f"U{lin}")
                 aba.formula(f"W{lin}", f'IF(U{lin}="",0,U{lin})')
         if not cont:
             fotos_pos.append((r0, f))

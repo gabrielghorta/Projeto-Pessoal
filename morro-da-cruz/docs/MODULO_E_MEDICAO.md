@@ -261,3 +261,9 @@ aviso se o do sistema for outro (D-155). Item novo (fora do BM) não cabe no mod
 - Total do BM e valor da apropriação pelo ROUND do Excel; "CT 10.239/2026" lido como 10239/2026.
 - Apropriação antiga num item retirado do BM não trava mais a sincronização.
 - Detalhes: `CORRECOES_REVISAO_30-10-2026.md`.
+
+
+Atualização em 05/11/2026 (D-215 a D-217, v26): Interferências e chuva substitui a página de clima; sem chuva é
+premissa explícita, sem observação fabricada. Apropriação calcula m/m²/m³ por medidas e leva a conta à MC; extras
+ficam opcionais. O RM da tela Relatórios sai em DOCX editável, com os mesmos dados e totais. Histórico e medição
+fechada preservados. Guia: `CAMPO_MEMORIA_RM_WORD.md`.

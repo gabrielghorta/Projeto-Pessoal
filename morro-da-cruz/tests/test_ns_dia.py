@@ -251,11 +251,10 @@ class TestRecusas(BaseDia):
         except ImportError:
             pass
         self.recusa(self.enviar("eng1", pdf_dia(g), croqui=None), 422, "croqui")
-        self.recusa(self.enviar("eng1", pdf_dia(g), clima=None), 422, "clima")
         self.assertEqual(self.n("notas_servico") + self.n("intervalos_execucao") + self.n("documentos"), 0)   # nada gravado
         S.registrar_clima(self.c, ONTEM.isoformat(), "Zona03", "MANHA", "SOL")
         S.registrar_clima(self.c, ONTEM.isoformat(), "Zona03", "TARDE", "SOL")
-        self.ok(self.enviar("eng1", pdf_dia(g), clima=None))                                       # o clima do dia já estava
+        self.ok(self.enviar("eng1", pdf_dia(g), clima=None))                                       # dados antigos continuam compatíveis
 
     def test_mesma_ns_duas_vezes_e_versao_assinada(self):
         g = [grupo(["NÓ9.1", "CH_VRP-15"], [295.98])]

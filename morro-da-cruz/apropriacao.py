@@ -5,7 +5,7 @@
   formato da Caesb sem o oficial, ou item novo fora do BM). Vale para toda a medição: servicos._lancar segura o item a aprovar (restrição ITEM_A_APROVAR).
 * Busca por qualquer identificador (item, código, descrição, resumida, grupo, material, diâmetro…), sem acento e em
   qualquer ordem, com os sinônimos do orçamento (TÊ/TE, PEAD, FOFO, PVC, Ø/DE/DN/MM).
-* Apropriação: Engenharia e Administração; data já ocorrida; pelo menos uma evidência; correção só por estorno com
+* Apropriação: Engenharia e Administração; data já ocorrida; medidas por unidade; justificativa e anexos opcionais; estorno com
   motivo (o original fica). A apropriação em item aprovado, de serviço e dentro da quantidade do BM vira proposta na
   gaveta 5 da medição de TESTE aberta (a do mês da data ou a próxima), com a chave da parcela: não duplica.
 * corrigir_data(): a data errada se corrige sem estorno, com motivo, e a de antes fica guardada (D-204).
@@ -21,6 +21,7 @@ import unicodedata
 from collections import OrderedDict
 from datetime import date
 
+import memoria_calculo as MC
 import compras as C
 import regras as R
 import relogio as RL
@@ -30,7 +31,7 @@ from servicos import RegraViolada, _agora, _one, _rows, transacao
 GRUPOS = OrderedDict([("CANTEIRO", "Canteiro"), ("REDES", "Redes"), ("CAIXAS", "Caixas"), ("INTERLIGAÇÃO", "Interligação"),
                       ("LIGAÇÕES", "Ligações"), ("HIDROMECÂNICO", "Hidromecânico"), ("ADMINISTRAÇÃO LOCAL", "Administração local")])
 TIPOS = ("MATERIAL", "SERVIÇO")
-EXECUTORES = OrderedDict([("EQUIPE_OBRA", "equipe da obra"), ("OUTRA_OBRA", "equipe de outra obra da Ankara"),
+EXECUTORES = OrderedDict([("NAO_INFORMADO", "Não informado (opcional)"),("EQUIPE_OBRA", "equipe da obra"), ("OUTRA_OBRA", "equipe de outra obra da Ankara"),
                           ("TERCEIRO", "terceiro")])
 LOCAIS = OrderedDict([("CANTEIRO", "canteiro"), ("ZONA", "zona"), ("TRECHO", "trecho"), ("ATIVIDADE", "nó ou caixa")])
 FONTES_PRECO = OrderedDict([("COTACAO", "cotação"), ("NF", "nota fiscal"), ("SINAPI", "SINAPI"), ("SICRO", "SICRO")])
@@ -343,6 +344,8 @@ def _local(conn, d):
 
 def _executor(conn, d):
     tipo = (d.get("executor_tipo") or "").strip().upper()
+    if not tipo or tipo == "NAO_INFORMADO":
+        return "NAO_INFORMADO", None, None, None
     if tipo not in EXECUTORES:
         raise RegraViolada("Diga quem executou: equipe da obra, equipe de outra obra da Ankara ou terceiro.")
     if tipo == "EQUIPE_OBRA":
@@ -362,8 +365,6 @@ def _executor(conn, d):
 
 def _evidencias(conn, lista, por, dir_docs):
     lista = [e for e in (lista or []) if isinstance(e, dict) and e.get("conteudo_b64")]
-    if not lista:
-        raise RegraViolada("Envie pelo menos uma evidência: foto, croqui ou documento (PDF, JPG ou PNG).")
     if len(lista) > LIMITE_EVIDENCIAS:
         raise RegraViolada(f"No máximo {LIMITE_EVIDENCIAS} evidências por apropriação.")
     return list(dict.fromkeys(C.guardar_documento(conn, "OUTRO", e["conteudo_b64"], e.get("nome"), por, dir_docs) for e in lista))
@@ -378,11 +379,14 @@ def apropriar(conn, d, por, dir_docs):
     if it["situacao"] == "REPROVADO":
         raise RegraViolada(f"O item {it['item']} foi reprovado pela Caesb ({it['novo']['motivo']}): escolha outro item.")
     data = _data(d.get("data"), "Apropriação")
-    qtd = _num(d.get("quantidade"), "Quantidade")
+    calculo = MC.calcular(it["unidade"], d.get("parcelas"), d.get("quantidade"))
+    qtd = calculo["quantidade"] if calculo else _num(d.get("quantidade"), "Quantidade")
     local = _local(conn, d)
     exe = _executor(conn, d)
-    textos = [_texto(d, "o_que_foi_feito", "o que foi feito"), _texto(d, "memoria_calculo", "a memória de cálculo da quantidade"),
-              _texto(d, "justificativa", "a justificativa técnica")]
+    descricao = str(d.get("o_que_foi_feito") or "").strip() or it["descricao"]
+    complemento = str(d.get("memoria_calculo") or "").strip()
+    memoria = "\n".join(x for x in ((calculo or {}).get("memoria"), complemento) if x)
+    textos = [descricao, memoria, str(d.get("justificativa") or "").strip()]
     with transacao(conn):
         docs = _evidencias(conn, d.get("evidencias"), por, dir_docs)
         aid = conn.execute(
@@ -391,6 +395,8 @@ def apropriar(conn, d, por, dir_docs):
                  registrado_por,registrado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (data, it["id"] if it["tipo_ref"] == "BM" else None, it["id"] if it["tipo_ref"] == "NOVO" else None, it["item"],
              round(qtd, 4), it["unidade"], *local, *exe, *textos, por, _agora())).lastrowid
+        if calculo:
+            conn.execute("UPDATE apropriacoes SET calculo_json=? WHERE id=?", (json.dumps(calculo, ensure_ascii=False), aid))
         conn.executemany("INSERT INTO apropriacao_documentos(apropriacao_id, documento_id) VALUES (?,?)",
                          [(aid, doc) for doc in docs])
         _propor(conn, _ap(conn, aid), it)
@@ -513,6 +519,8 @@ def corrigir_data(conn, aid, data, motivo, por):
 
 
 def _rotulo_executor(conn, ap):
+    if ap["executor_tipo"] == "NAO_INFORMADO":
+        return "Executor não informado"
     if ap["executor_tipo"] == "EQUIPE_OBRA":
         eq = _one(conn, "SELECT nome FROM equipes WHERE id=?", ap["equipe_id"])
         return (eq or {}).get("nome") or ap["equipe_id"]
@@ -533,6 +541,7 @@ def resumo(conn, aid, cat=None):
                                               "preco_estimado", "classificacao", "grupo", "tipo", "situacao", "rotulo",
                                               "origem", "origem_rotulo", "codigo_oficial")}
     ap["executor"] = _rotulo_executor(conn, ap)
+    ap["calculo"] = json.loads(ap.pop("calculo_json", None) or "null")
     ap["documentos"] = _rows(conn.execute("""SELECT d.id, d.nome_original, d.mime, d.bytes FROM apropriacao_documentos x
                                              JOIN documentos d ON d.id=x.documento_id WHERE x.apropriacao_id=? ORDER BY d.id""",
                                           (ap["id"],)))
