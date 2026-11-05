@@ -1,5 +1,5 @@
 /* Traçado real da rede para a tela inicial e para o Mapa iluminado.
- * A geometria vem da visão geral do HTML REV02 (/api/mapa/geral: satélite das PBs, zonas oficiais, trechos, nós) e a situação
+ * A geometria vem da visão geral do HTML REV02 (/api/mapa/geral: zonas oficiais, trechos, nós, referência do fundo) e a situação
  * de cada trecho vem só dos registros do banco (/api/mapa/estado). Nenhuma coordenada é criada aqui: o que não tem
  * posição no projeto não aparece no mapa (continua na bandeja da Programação). */
 
@@ -246,18 +246,19 @@ const nomeSituacao = (est, nome, s) => SITU_ID[s].nome + ((etapaDe(est, nome) ||
 // o visor (arrastar, aproximar, clique) serve a este mapa e ao da Programação (planejamento.js): cada um passa o seu
 // contexto com svg(), caixa(), desenhar(px, zoom) e clique(alvo, ev)
 const ILU = { pronto: false, vb: null, base: null, zona: null, sel: null, pop: null, est: null, anim: 0,
-  vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true, nos: true }, fundo: 'escura',
+  vis: Object.fromEntries(SITU.map(s => [s.id, true])), cam: { zonas: true, nomes: true, equipes: true, nos: true }, fundo: 'ruas',
   prefixo: 'ilu', svg: () => $('#iluSvg'), caixa: () => $('#ilu'), desenhar: desenharIlu, clique: cliqueNoMapa,
   copia: (g, u) => copiaIlu(g, u), tocavel: t => naFrenteIlu(t) && (!t.s || ILU.vis[t.s]),   // situação escondida e fora da zona não se tocam
-  copiaChave: () => [ILU.fundo, ILU.cam.zonas, SITU.map(s => +ILU.vis[s.id]).join(''), ILU.cores || 0, !!ILU.mosaico, ILU.zona].join('|') };
+  copiaChave: () => [ILU.fundo, ILU.cam.zonas, SITU.map(s => +ILU.vis[s.id]).join(''), ILU.cores || 0, !!ILU.mosaico, ILU.zona, ILU.ruasVersao || 0].join('|') };
 // a zona em foco (D-185, como no HTML): só ela tem cor, trechos, nós e equipes; as outras ficam sem preenchimento, sem
 // trechos e sem toque, com o contorno e o satélite, até "Obra inteira" ou a troca de zona pela janela Zonas
 const naFrenteIlu = t => !ILU.zona || zonaDoTrecho(t) === ILU.zona;
 const opacidadeZonaIlu = id => !ILU.zona ? 0.26 : id === ILU.zona ? 0.36 : 0;
-// satélite escurecido por padrão: as cores da situação aparecem por cima, como no mapa do projeto. O escurecimento é um
+// Satélite como alternativa ao fundo de ruas: as cores da situação aparecem por cima. O escurecimento é um
 // véu preto por cima das fotos (opacidade): filtro CSS no satélite refazia a imagem inteira a cada quadro
-const FUNDOS = { escura: ['Escura', 0.58], clara: ['Clara', 0.15], sem: ['Sem satélite', 0] };
-try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') || '{}')); ILU.fundo = FUNDOS[localStorage.getItem('mc-ilu-fundo')] ? localStorage.getItem('mc-ilu-fundo') : 'escura'; } catch (_) { /* sem storage */ }
+const FUNDOS = { ruas: ['Ruas', 0], escura: ['Satélite escuro', 0.58], clara: ['Satélite claro', 0.15], sem: ['Sem fundo', 0] };
+// Nova preferência de fundo: a primeira abertura usa Ruas. Camadas e cores anteriores continuam guardadas.
+try { Object.assign(ILU.cam, JSON.parse(localStorage.getItem('mc-ilu-camadas') || '{}')); ILU.fundo = FUNDOS[localStorage.getItem('mc-ilu-fundo-v2')] ? localStorage.getItem('mc-ilu-fundo-v2') : 'ruas'; } catch (_) { /* sem storage */ }
 
 /* ---- satélite: as fotos das 25 PBs (o mesmo nos dois mapas) */
 // De longe, o mosaico montado no servidor (mapa_geral.mosaico: matriz completa de cada PB, cada uma recortada pelo seu
@@ -270,12 +271,16 @@ function htmlSatelite(g, p, corte = 'zonas') {
   const polis = corte === 'quadros' ? g.quadros.map(q => q.p) : g.zonas.map(z => z.p);
   return `<defs><clipPath id="${p}ZonasClip">${polis.map(q => `<polygon points="${pontos(q)}"/>`).join('')}</clipPath>
       ${g.quadros.map(q => `<clipPath id="${p}Q${esc(q.id)}"><polygon points="${pontos(q.p)}"/></clipPath>`).join('')}</defs>
-    <g id="${p}Sat" clip-path="url(#${p}ZonasClip)"><image class="sat-mosaico" href="/mapa/geral.webp?v=${g.versao}" x="0" y="0" width="${g.w}" height="${g.h}" preserveAspectRatio="none"/><g class="sat-detalhe"></g>
+    <g id="${p}Sat" clip-path="url(#${p}ZonasClip)"><image class="sat-mosaico" data-href="/mapa/geral.webp?v=${g.versao}" x="0" y="0" width="${g.w}" height="${g.h}" preserveAspectRatio="none"/><g class="sat-detalhe"></g>
       <rect class="sat-veu" x="0" y="0" width="${g.w}" height="${g.h}"/></g>`;
 }
 const satDe = ctx => $(`#${ctx.prefixo}Sat`);
 function ligarSatelite(ctx, g) {                     // sem Pillow no servidor não há mosaico: as PBs inteiras, sempre
-  $('.sat-mosaico', satDe(ctx)).addEventListener('error', () => { ctx.semMosaico = true; detalheSatelite(ctx, g, 0); }, { once: true });
+  const im = $('.sat-mosaico', satDe(ctx));
+  if (!im.hasAttribute('href')) {
+    im.addEventListener('error', () => { ctx.semMosaico = true; detalheSatelite(ctx, g, 0); }, { once: true });
+    im.setAttribute('href', im.dataset.href); carregarMosaicoCopia(g, ctx);
+  }
 }
 function detalheSatelite(ctx, g, px) {
   const box = satDe(ctx) && $('.sat-detalhe', satDe(ctx)); if (!box || !ctx.vb) return;
@@ -314,7 +319,8 @@ function carregarMosaicoCopia(g, ctx = ILU) {
 }
 // a cópia leve do Mapa iluminado: o mosaico com o véu, cortado nas zonas, as zonas e as linhas por situação
 function copiaIlu(g, u) {
-  if (ILU.fundo !== 'sem' && ILU.mosaico) {
+  if (ILU.fundo === 'ruas') copiarFundoRuas(ILU, g);
+  else if (ILU.fundo !== 'sem' && ILU.mosaico) {
     g.save(); g.beginPath(); GERAL.zonas.forEach(z => poligonoCopia(g, z.p)); g.clip();
     g.drawImage(ILU.mosaico, 0, 0, GERAL.w, GERAL.h);
     g.globalAlpha = FUNDOS[ILU.fundo][1]; g.fillStyle = '#000'; g.fillRect(0, 0, GERAL.w, GERAL.h);
@@ -324,7 +330,10 @@ function copiaIlu(g, u) {
   linhasCopia(g, u, SITU.filter(s => ILU.vis[s.id]).map(s => ({ cor: s.cor, tracejado: s.tracejado ? '5 4' : null, trechos: GERAL.trechos.filter(t => t.s === s.id && naFrenteIlu(t)) })));
 }
 // as fotos em resolução cheia só são pedidas quando o mapa para (arrastar ou zoom): durante o gesto, fica o mosaico
-function satDepois(ctx, g, px) { clearTimeout(ctx.tSat); ctx.tSat = setTimeout(() => detalheSatelite(ctx, g, px), 180); }
+function satDepois(ctx, g, px) { clearTimeout(ctx.tSat); ctx.tSat = setTimeout(() => {
+  if (ILU.fundo === 'ruas') atualizarFundoRuas(ctx);
+  else if (ILU.fundo !== 'sem') detalheSatelite(ctx, g, px);
+}, 180); }
 const iluSvg = () => $('#iluSvg');
 
 async function carregarIluminado() {
@@ -347,11 +356,11 @@ function montarIluminado(g) {
   const svg = iluSvg();
   const zonas = g.zonas.map(z => `<polygon class="ilu-zf" data-zona="${esc(z.id)}" points="${pontos(z.p)}" fill="${esc(z.cor)}"/>`).join('')
     + contornosTracejados(g.zonas.map(z => z.p), 'ilu-zl');
-  svg.innerHTML = `${htmlSatelite(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluHalo"></g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluNos"></g>
-    <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g><g id="iluPins"></g>`;
+  svg.innerHTML = `${htmlSatelite(g, 'ilu')}${htmlFundoRuas(g, 'ilu')}<g id="iluZonas">${zonas}</g><g id="iluHalo"></g><g id="iluSel"></g><g id="iluLinhas"></g><g id="iluNos"></g>
+    <g id="iluNomes">${g.nomes.map(n => `<text class="ilu-nome" data-zona="${esc(n.id)}" x="${n.x}" y="${n.y}">${esc(nomeZona(n.id))}</text>`).join('')}</g>${htmlCanteiro(g)}<g id="iluPins"></g>`;
   ILU.frentesNo = frentesDosNos(g);
-  ligarSatelite(ILU, g); carregarMosaicoCopia(g);
-  ILU.base = limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
+  ligarFundoRuas(ILU, g);
+  ILU.base = g.contexto ? g.contexto.limites : limites([...g.zonas.map(z => z.p), ...g.trechos.flatMap(t => t.p)], 0.02);
   ILU.vb = null; ajustarAspecto();
   ligarGestos(svg);
   aplicarCamadas();
@@ -363,7 +372,7 @@ function montarIluminado(g) {
 function ajustarAspecto(ctx = ILU) {
   const r = ctx.caixa().getBoundingClientRect(); if (!r.width || !r.height) return;   // a caixa: o SVG pode estar transformado
   const [x0, y0, x1, y1] = ctx.vb ? [ctx.vb[0], ctx.vb[1], ctx.vb[0] + ctx.vb[2], ctx.vb[1] + ctx.vb[3]] : ctx.base;
-  ctx.vb = encaixar([x0, y0, x1, y1], r.width / r.height);
+  ctx.vb = limitarVistaMapa(ctx, encaixar([x0, y0, x1, y1], r.width / r.height));
   pararAnimacao(ctx); redesenhar(ctx); agendarCopia(ctx);
 }
 function encaixar([x0, y0, x1, y1], asp) {
@@ -373,6 +382,7 @@ function encaixar([x0, y0, x1, y1], asp) {
 }
 // o desenho de verdade: o viewBox muda e o navegador refaz estilo, pintura e rasterização do SVG inteiro
 function desenharVista(ctx = ILU) {
+  ctx.vb = limitarVistaMapa(ctx, ctx.vb);
   const svg = ctx.svg(), [x, y, w, h] = ctx.vb, larg = ctx.caixa().getBoundingClientRect().width || 1;   // lido antes de escrever
   if (svg.style.transform || svg.style.willChange) { svg.style.transform = ''; svg.style.willChange = ''; }   // repinta na escala certa
   ctx.vbDes = ctx.vb.slice();
@@ -382,12 +392,15 @@ function desenharVista(ctx = ILU) {
   }
   ['x', 'y', 'width', 'height'].forEach((a, i) => ctx.fundoVista.setAttribute(a, ctx.vb[i]));
   posicionarCopia(ctx, larg);
+  contrasteFundoRuas(ctx, w / larg, (ctx.base[2] - ctx.base[0]) / w);
+  escalarCanteiro(ctx, w / larg);
   ctx.desenhar(w / larg, (ctx.base[2] - ctx.base[0]) / w);   // unidades do mapa por pixel e zoom
 }
 // gesto (arrastar, roda, pinça, botões + e −, animação de irPara): a placa de vídeo só move e amplia a imagem já
 // desenhada (transform), sem refazer o SVG; o desenho de verdade vem quando o gesto para (150 ms sem evento) ou, ao
 // soltar o dedo ou o botão do mouse, na hora
 function gestoVista(ctx, espera = 150) {
+  ctx.vb = limitarVistaMapa(ctx, ctx.vb);
   ctx.gesto = true; agendarVista(ctx);
   clearTimeout(ctx.tGesto); ctx.tGesto = setTimeout(() => soltarVista(ctx), espera);
 }
@@ -526,7 +539,7 @@ const trilha = (el, html) => { if (el.dataset.html !== html) { el.innerHTML = ht
 const IR_MS = 520, IR_PASSOS = 16;
 function irPara(alvo, animar = true, ctx = ILU) {
   const r = ctx.caixa().getBoundingClientRect();
-  const fim = encaixar(alvo, r.width / r.height), ini = ctx.vb.slice();
+  const fim = limitarVistaMapa(ctx, encaixar(alvo, r.width / r.height)), ini = ctx.vb.slice();
   const reduzir = matchMedia('(prefers-reduced-motion: reduce)').matches;
   pararAnimacao(ctx);
   if (!animar || reduzir) { ctx.vb = fim; return redesenhar(ctx); }
@@ -551,7 +564,8 @@ function pararAnimacao(ctx) {
 function zoomEm(fator, cx, cy, ctx = ILU) {
   pararAnimacao(ctx);
   const [x, y, w, h] = ctx.vb, larg = ctx.base[2] - ctx.base[0];
-  const nw = Math.max(larg / 60, Math.min(larg * 1.6, w * fator)); const k = nw / w;
+  const maxLarg = ctx.limiteMapa ? encaixar(ctx.limiteMapa, w / h)[2] : larg * 1.6;
+  const nw = Math.max(larg / 60, Math.min(maxLarg, w * fator)); const k = nw / w;
   if (cx == null) { cx = x + w / 2; cy = y + h / 2; }
   ctx.vb = [cx - (cx - x) * k, cy - (cy - y) * k, w * k, h * k];
   gestoVista(ctx);
@@ -650,6 +664,7 @@ function ligarGestos(svg, ctx = ILU) {
 // i: o trecho mais perto do toque (trechoPerto), ou -1; o pino fica por cima do trecho, como no desenho
 function cliqueNoMapa(alvo, ev, i) {
   fecharPop();
+  if (alvo.closest && alvo.closest('.mapa-canteiro')) return destacarCanteiro(ILU);
   const pin = alvo.closest && alvo.closest('.ilu-pin'), zona = alvo.closest && alvo.closest('.ilu-zf');
   const no = alvo.closest && alvo.closest('.ilu-no');
   if (pin) return pin.dataset.equipe ? focarEquipe(pin.dataset.equipe) : focarAlvo(pin.dataset.tipo, pin.dataset.alvo);
@@ -721,7 +736,9 @@ function alvoNaFrenteIlu(tipo, nome) {
 }
 const equipeNome = id => ((RESUMO && RESUMO.equipes) || []).find(e => e.id === id)?.nome || id;
 function aplicarCamadas() {
-  satDe(ILU).style.display = ILU.fundo === 'sem' ? 'none' : '';
+  satDe(ILU).style.display = ['sem', 'ruas'].includes(ILU.fundo) ? 'none' : '';
+  aplicarFundoRuas(ILU);
+  if (!['sem', 'ruas'].includes(ILU.fundo)) ligarSatelite(ILU, GERAL);
   $('.sat-veu', satDe(ILU)).setAttribute('fill-opacity', FUNDOS[ILU.fundo][1]);
   $('#iluZonas').style.display = ILU.cam.zonas ? '' : 'none';
   // a zona em foco com a sua cor; as outras sem preenchimento (D-185), só com o contorno
@@ -731,7 +748,7 @@ function aplicarCamadas() {
   $('#iluPins').style.display = $('#iluHalo').style.display = ILU.cam.equipes ? '' : 'none';
   $('#iluNos').style.display = ILU.cam.nos ? '' : 'none';
   $$('#iluLinhas .ilu-tr').forEach(p => p.style.display = ILU.vis[p.dataset.situ] ? '' : 'none');
-  try { localStorage.setItem('mc-ilu-camadas', JSON.stringify(ILU.cam)); localStorage.setItem('mc-ilu-fundo', ILU.fundo); } catch (_) { /* sem storage */ }
+  try { localStorage.setItem('mc-ilu-camadas', JSON.stringify(ILU.cam)); localStorage.setItem('mc-ilu-fundo-v2', ILU.fundo); } catch (_) { /* sem storage */ }
   agendarCopia(ILU);
 }
 
@@ -778,7 +795,7 @@ function abrirPop(nome, recarregar) {
   if (nome === 'lista') listaIlu(pop);
   if (nome === 'camadas') {
     const ch = (k, rot) => `<button type="button" class="ilu-linha" data-camada="${k}" aria-pressed="${ILU.cam[k]}"><span>${ILU.cam[k] ? '☑' : '☐'}</span><span>${rot}</span></button>`;
-    pop.innerHTML = '<h3>Fundo de satélite</h3><div class="ilu-fundos">' + Object.entries(FUNDOS).map(([k, [rot]]) =>
+    pop.innerHTML = '<h3>Fundo do mapa</h3><div class="ilu-fundos">' + Object.entries(FUNDOS).map(([k, [rot]]) =>
       `<button type="button" class="ilu-fundo" data-fundo="${k}" aria-pressed="${ILU.fundo === k}">${rot}</button>`).join('') + '</div>'
       + '<h3 style="margin-top:14px">Camadas</h3>' + ch('zonas', 'Zonas oficiais') + ch('nomes', 'Nomes das zonas') + ch('equipes', 'Equipes') + ch('nos', 'Nós e caixas');
   }

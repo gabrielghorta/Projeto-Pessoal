@@ -416,3 +416,22 @@ Guia: `relatorio_mensal.py` (dados e capítulos), `pdf_simples.py` (o PDF sem de
 |---|---|---|---|---|---|
 | D-207 | O arquivo da tela Relatórios | planilha (MATERIAIS, AVANÇO, PENDÊNCIAS, FALTANTES) / o relatório mensal em PDF / os dois | A planilha não servia para mandar à Caesb. O RM era montado à mão, em Word. | Trocar pelo PDF. | **Pedido e escolhido pelo responsável (04/11/2026):** o botão "Exportar .xlsx" e a rota `/api/relatorios/exportar` saíram. A tela tem a escolha da medição e o botão "Relatório mensal (PDF)" (`GET /api/relatorios/mensal?id=`, tela Relatórios, auditado). O período é o da medição escolhida. O PDF sai pronto, sem passar pelo Word (muda a D-146). Os painéis da tela (avanço, pendências, ciclo do material) continuam iguais. |
 | D-208 | Conteúdo e fontes do PDF | só o que tem no sistema / com dados digitados no mês | O RM tem dados que o sistema ainda não guarda. | Tudo do banco; o resto PENDENTE. | **Escolhido pelo responsável (04/11/2026):** capítulos do Lago Sul (1 a 19), visual do relatório de conexões (capa com o mapa das zonas, cabeçalho com o logo e 3 campos, Arial Narrow, títulos vinho, tabelas azul-marinho, borda dupla). Valores e itens como o pacote no BM REV04 (juntada, ADM proporcional); previsto da aba GRÁFICOS do BM; semanas como no modelo (a 1ª leva os dias antes da 1ª segunda-feira); equipes, efetivo, funções e máquinas pelo check-in; tubos da Caesb pelo almoxarifado; locação, cadastro aprovado e execução por diâmetro; mapas vetoriais do traçado (capa, figura 01, croqui de cada semana com zoom, mapa iluminado); **todas as fotos do mês** (campo e apropriação direta, 6 por página, até 60, com o carimbo). CNO, vigência, responsáveis, layout e instalações do canteiro saem PENDENTE em amarelo (a tela "Dados do contrato" da D-145 fica para depois). IDA e SAOB entram como no RM REV01, sem vistoria registrada (muda a D-149). Medição de teste sai marcada "MEDIÇÃO DE TESTE – NÃO OFICIAL" em toda página (D-56). |
+
+## 26. Fundo contínuo de ruas e enquadramento da prancha 01 (04/11/2026)
+
+Após ler os PRs #2, #6, #7, #9, #15 a #18 e #22 a #25, o responsável confirmou que as cores e opções atuais devem
+continuar: situação no Mapa iluminado; diâmetro ou programação do dia na Programação. Esta decisão troca o fundo padrão
+e amplia a área visível. Preserva as interações da D-185/D-186, a frente Subadutora, os nós automáticos, a equipe da
+zona, as etiquetas por equipe, a correção PB25 (D-201) e a separação MND/VCA (D-202).
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-209 | Fundo e área dos mapas do webapp | satélite recortado nas zonas / ruas contínuas no retângulo da prancha 01 | O recorte deixava áreas sem fundo e não mostrava o canteiro no contexto da obra. | Ruas contínuas gratuitas. | **Decidido pelo responsável (04/11/2026):** Mapa iluminado e Almoxarifado › Programação usam OpenStreetMap online como padrão, inclusive fora das zonas; sem custo, chave, biblioteca nova, curvas de nível ou imagens estáticas do CAD. O limite vem do viewport 381C4 do layout 01 do DWG, registrado em `config/mapa_contexto.json`. A visão geral mostra esse retângulo inteiro; no formato da tela sobra só a margem necessária para encaixá-lo. O centro e o zoom são limitados à prancha, inclusive na vista salva, busca e animações. O polígono A–F do canteiro vem do DWG; toque/teclado só destaca e aproxima, sem mudar a seleção ou abrir operação. O fundo não é o serviço Esri autenticado do AutoCAD: usa o OpenStreetMap público, para cumprir custo zero. Zonas suaves e cores atuais preservadas; contorno sob os traços claros mantém a leitura. Satélite escuro/claro e sem fundo continuam como alternativas. Depende de internet; sem fundo disponível a rede continua utilizável e o aviso permite tentar novamente. |
+
+O navegador pede somente tiles da vista atual, quando o gesto termina, com cache HTTP normal e atribuição visível.
+Não há proxy no PythonAnywhere, download offline, arquivo de tiles, pré-busca de níveis nem pedido da cópia leve do gesto.
+A projeção do fundo é Web Mercator → SIRGAS 2000 / UTM 23S → desenho REV02. A rede não é redesenhada a partir do DWG;
+o HTML de origem, as linhas da 06.1, a topologia, as quantidades e o banco não mudam.
+
+Guia: `docs/MAPA_RUAS_PRANCHA01.md`; `mapa_contexto.py`, `web/mapa_fundo.js`. Testes de projeção, limites e canteiro:
+`tests/test_mapa_fundo.py`; regressões das seleções, frentes e PB25 nos testes existentes.

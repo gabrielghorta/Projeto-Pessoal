@@ -423,6 +423,10 @@ def geometria(caminho):
         out["trechos"].append({"n": f["R"], "z": f.get("loc"), "tp": f.get("tipo"), "de": f.get("de"), "L": f.get("L"),
                                "pb": f.get("pb"), "met": f.get("met"), "a": f.get("ini"), "b": f.get("fim"),
                                "p": [[_r(v) for v in parte] for parte in partes]})
+    # O fundo novo recebe a referência do desenho já corrigido; os pontos da rede continuam os mesmos.
+    from mapa_contexto import contexto
+    ref = desenhos(caminho)["GERAL"]
+    out["contexto"] = contexto(ref["t"], ref["inv"])
     c["geometria"] = out
     return out
 

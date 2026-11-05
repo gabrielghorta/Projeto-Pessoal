@@ -2,6 +2,18 @@
 
 CT 10.239/2026 · 17/10/2026 · esquema v12 · plano: `docs/PLANO_ENTREGA_COMPLETA.md` §D
 
+## Atualização de 04/11/2026: fundo de ruas e prancha 01 (D-209)
+
+Mapa iluminado e Almoxarifado › Programação abrem com fundo contínuo gratuito do OpenStreetMap. A área é o retângulo
+do viewport 381C4 da prancha 01, com ruas também fora das zonas e sem curvas de nível. Navegação limitada a essa área,
+com a margem necessária ao formato da tela. Canteiro real A–F: toque só destaca e aproxima.
+
+Cores e opções continuam: situação no Iluminado; diâmetro ou programação do dia na Programação. As interações da
+D-185/D-186, nós automáticos, frente Subadutora, equipe da zona, etiquetas, PB25 e divisão MND/VCA são preservadas.
+Satélite claro/escuro continuam como opções. Sem internet, o aviso do fundo não bloqueia a rede ou a seleção.
+
+Arquitetura, fontes do DWG, limites exatos, testes e política de tiles: `MAPA_RUAS_PRANCHA01.md`.
+
 ## Atualização de 21/10/2026: grupo Planejamento, mapa do Dados da obra e cronograma (D-75 a D-77)
 
 **Grupo Planejamento** (antes Almoxarifado): Dados da obra, Programação das equipes, Cronograma da obra, Estoque e movimentos (com o aceite ou a recusa do material entregue, o mesmo da inspeção em Compras e notas), Compras e notas, Check-in e check-out.
