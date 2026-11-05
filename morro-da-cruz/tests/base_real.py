@@ -120,6 +120,15 @@ class BaseReal(unittest.TestCase):
     def registrar(self, login, tipo, pdf, **kw):
         return self.cli(login).post("/api/ns", dict(tipo=tipo, pdf_b64=b64(pdf), pdf_nome="nota.pdf", **kw))
 
+    def registrar_servico_historico(self, login, pdf, **kw):
+        """Fixture explícita do fluxo anterior à D-213; a API pública já registra execução."""
+        import notas_servico as NS
+        try:
+            return 200, NS.registrar(self.c, "SERVICO", b64(pdf), login,
+                croqui_b64=kw.get("croqui_b64"), nomes={"pdf": "nota.pdf", "croqui": kw.get("croqui_nome")})
+        except NS.RegraViolada as e:
+            return 422, {"erro": str(e)}
+
     def ok(self, resposta):
         st, r = resposta
         self.assertEqual(st, 200, r)

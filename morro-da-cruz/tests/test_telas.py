@@ -281,7 +281,7 @@ class TestPaginaECodigo(unittest.TestCase):
         blocos = re.split(r"^\s{2}(\w+): \[", re.search(r"const PAGINAS = \{.*?\n\};", app, re.S).group(0), flags=re.M)[1:]
         paginas = {t: re.findall(r"\['(\w+)', '[^']+', \(\) =>", b) for t, b in zip(blocos[::2], blocos[1::2])}
         self.assertEqual(paginas["compras"], ["requisicoes", "notas", "fornecedores"])
-        self.assertEqual(paginas["notas"], ["dia", "servico", "topografia", "cadastro"])
+        self.assertEqual(paginas["notas"], ["servico", "topografia", "cadastro"])
         self.assertEqual(paginas["campo"], ["apropriacao", "apontamento", "fotos", "clima", "interferencia"])
         self.assertEqual(paginas["almox"], ["dia", "receber", "saldo", "inventario", "tubos"])
         self.assertEqual(paginas["lev"], ["lev", "cronograma"])

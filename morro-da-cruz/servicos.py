@@ -28,7 +28,7 @@ import relogio as RL
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 24
+VERSAO_ESQUEMA = 25
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -81,7 +81,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "equipes criadas e montadas manualmente, independentes das zonas"))
+                 (VERSAO_ESQUEMA, _agora(), "nota de serviço da obra registra execução; vínculo com notas anteriores"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -1541,7 +1541,7 @@ def caminho_medicao(conn, ref):
         {"id": "execucao", "nome": "Executado 100 % (assentado" + ("" if mnd else " e reaterrado") + ")", "feito": concluido,
          "detalhe": f"assentado {m(ass)} m" + ("" if mnd else f" · reaterrado {m(rea)} m") + f" de {m(ext)} m"
                     + (" · avanço anterior sem posição: concilie antes" if legado else ""),
-         "quem": "Engenharia, pela NS do dia da equipe", "onde": "Notas de serviço › NS do dia"},
+         "quem": "Engenharia, pela nota de serviço da equipe", "onde": "Notas de serviço › Nota de serviço"},
         {"id": "verificacao", "nome": "Verificado pelo supervisor", "feito": bool(n) and not falta_ver,
          "detalhe": f"{n - len(falta_ver)} de {n} intervalo(s) verificado(s)" if n else "nada informado ainda",
          "quem": "Supervisor (quem informou não verifica)", "onde": "aqui: Verificar", "pendentes": len(falta_ver)},

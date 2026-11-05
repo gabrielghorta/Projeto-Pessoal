@@ -1,15 +1,14 @@
 'use strict';
 /* Notas de serviço (NS) por upload: enviar, ler, conferir cada segmento contra os trechos da obra e registrar.
  * "Ler a nota" não grava nada; o PDF e o croqui abrem no próprio navegador antes de registrar (URL.createObjectURL) e,
- * depois de registrados, pela rota /api/ns/arquivo. Cada tipo é enviado na sua aba: a NS do dia e a de serviço de obra
- * em Notas de serviço; a de topografia e a de cadastro nas abas Topografia e Cadastro de campo (montarEnvioNs). */
+ * depois de registrados, pela rota /api/ns/arquivo. A nota da equipe registra execução em um único envio; a de topografia e a de cadastro nas abas Topografia e Cadastro de campo (montarEnvioNs). */
 
-const NS_TIPOS = { TOPOGRAFIA: 'Topografia', CADASTRO: 'Cadastro de campo', SERVICO: 'Serviço de obra', EXECUCAO: 'Do dia (execução)' };
+const NS_TIPOS = { TOPOGRAFIA: 'Topografia', CADASTRO: 'Cadastro de campo', SERVICO: 'Nota de serviço', EXECUCAO: 'Nota de serviço' };
 const NS_DESC = {
   TOPOGRAFIA: 'Gera a liberação topográfica dos trechos da nota, só no que ainda não está liberado. É a primeira etapa: sem ela, a execução é recusada.',
   CADASTRO: 'Gera o cadastro de campo só sobre o que já foi executado (assentado) até a data da nota. O resto é recusado, com o que falta; '
     + 'se o assentamento até essa data for registrado depois, use "Aplicar de novo" na nota.',
-  SERVICO: 'NS de serviço de obra é o plano da zona: a nota e o croqui ficam para a equipe abrir na página NS do dia, e nada acende no mapa. O que acende o executado é a NS do dia.',
+  SERVICO: 'Nota já recebida sem execução. Use Registrar execução para aproveitar os mesmos anexos, indicando a equipe e o clima.',
 };
 const NS_ETAPA = { TOPOGRAFIA: 'liberação topográfica', CADASTRO: 'cadastro de campo' };
 const NS_SITU = { AUTOMATICO: ['automático', 'azul'], CONFIRMAR: ['confirmar', 'amarelo'], ERRO: ['erro', 'vermelho'],
@@ -28,8 +27,7 @@ const NS_DA_OBRA = ['EXECUCAO', 'SERVICO'];
 async function carregarNotas() {
   $$('#nsFiltro button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.nsFiltro === NSV.filtro)));
   $('#nsAnuladas').checked = NSV.anuladas;
-  if (PAGINA.notas === 'dia') { carregarNotaDia(); nsCarregarFila(); }
-  if (PAGINA.notas === 'servico') prepararEnvioNs('SERVICO');
+  if (PAGINA.notas === 'servico') await Promise.all([carregarNotaDia(), nsCarregarFila()]);
   await nsCarregarLista(NSV.filtro, '#nsLista', { anuladas: NSV.anuladas, tipos: NS_DA_OBRA });
   if (pode('notas_servico')) nsForaDeOrdem();
 }
@@ -132,7 +130,7 @@ function criarFilaNs(op) {
     const [pdf, cro, pla] = [await b64(c.pdf), await b64(c.croqui), await b64(c.planilha)];
     const corpo = { pdf_b64: pdf.b64, pdf_nome: pdf.nome, croqui_b64: cro.b64, croqui_nome: cro.nome, planilha_b64: pla.b64, planilha_nome: pla.nome, ...c.extra };
     try {
-      const r = c.tipo === 'EXECUCAO' ? await api('/api/ns/dia', corpo) : await api('/api/ns', { tipo: c.tipo, decisoes: c.decisoes || [], ...corpo });
+      const r = c.tipo === 'EXECUCAO' ? await api('/api/ns/execucao', corpo) : await api('/api/ns', { tipo: c.tipo, decisoes: c.decisoes || [], ...corpo });
       F.marcar(c, r);
     } catch (e) { Object.assign(c, { estado: 'recusada', motivo: e.message }); }
   };
@@ -249,7 +247,6 @@ function prepararEnvioNs(tipo) {
   if (z.options.length < 2) z.innerHTML += RESUMO.frentes.filter(f => /^(Zona\d\d|ADUTORA)$/.test(f)).map(f => `<option>${esc(f)}</option>`).join('');
   $('.grade-2', e.caixa).hidden = !podeNs(tipo); $('[data-so-consulta]', e.caixa).hidden = podeNs(tipo);
 }
-montarEnvioNs($('#nsEnvioServico'), 'SERVICO');
 montarEnvioNs($('#topEnvio'), 'TOPOGRAFIA');
 montarEnvioNs($('#cadEnvio'), 'CADASTRO');
 
@@ -331,7 +328,7 @@ function renderNsPrevia() {
   const r = NSV.leitura, tipo = NSV.envio.tipo, faltas = nsFaltas();
   let html;
   if (r.mesmo_numero && r.mesmo_numero.mesma_impressao) html = '<p>Só o arquivo da NS já registrada é trocado. Os registros dela continuam como estão.</p>';
-  else if (!NS_ETAPA[tipo]) html = '<p>Nada é gravado nos trechos: a nota e o croqui ficam para a equipe abrir em Notas de serviço, na página NS do dia.</p>';
+  else if (!NS_ETAPA[tipo]) html = '<p>Nota recebida sem execução. Use Registrar execução para aproveitar os mesmos anexos, indicando equipe e clima.</p>';
   else {
     let total = 0, pend = 0, ja = 0;
     const linhas = r.segmentos.filter(s => !['FORA', 'ERRO', 'SEM_CORRESPONDENCIA'].includes(nsSituacao(s))).flatMap(s => {
@@ -394,7 +391,8 @@ $('#nsRegistrar').addEventListener('click', async () => {
 async function nsCarregarLista(tipo, alvo, opcoes = {}) {
   const q = new URLSearchParams({ vigentes: opcoes.anuladas ? '0' : '1' }); if (tipo) q.set('tipo', tipo);
   const lista = await acao(() => api('/api/ns?' + q)).catch(() => null); if (!lista) return;
-  $(alvo).innerHTML = htmlNsLista(tipo || !opcoes.tipos ? lista : lista.filter(n => opcoes.tipos.includes(n.tipo)));
+  const visiveis = lista.filter(n => opcoes.anuladas || n.execucao_status !== 'REGISTRADA');
+  $(alvo).innerHTML = htmlNsLista(tipo || !opcoes.tipos ? visiveis : visiveis.filter(n => opcoes.tipos.includes(n.tipo)));
 }
 const situNs = n => n.segmentos.map(x => `${x.n} ${esc((NS_SITU[x.situacao] || [x.situacao])[0])}`).join(' · ');
 const driveNs = d => !d ? '' : d.status === 'ENVIADO' ? `<a href="${esc(d.drive_link || '#')}" target="_blank" rel="noopener">no Drive</a>`
@@ -405,11 +403,12 @@ function htmlNsLista(lista) {
   return tabelaHtml('<th>NS</th><th>Tipo</th><th>Onde</th><th>Data</th><th>Situação</th><th class="n">Gravou</th><th class="n">Pendente</th><th>Drive</th><th></th>',
     lista.map(n => `<tr${n.status === 'ANULADA' ? ' style="opacity:.6"' : ''}><td><b>${esc(n.referencia)}</b><br><small>${esc(n.titulo || '')}</small></td>
       <td>${esc(NS_TIPOS[n.tipo] || n.tipo)}</td><td>${esc([n.zona, n.pb, n.equipe_id && n.tipo === 'EXECUCAO' ? 'equipe ' + n.equipe_id : null].filter(Boolean).join(' · ') || '—')}</td>
-      <td>${dataBR(n.data)}</td><td>${n.status === 'ANULADA' ? `<span class="chip cinza" title="${esc(n.anulada_motivo || '')}">anulada</span>` : `<small>${situNs(n)}</small>`}</td>
+      <td>${dataBR(n.data)}</td><td>${n.status === 'ANULADA' ? `<span class="chip cinza" title="${esc(n.anulada_motivo || '')}">anulada</span>` : n.tipo === 'SERVICO' ? `<span class="chip ${n.execucao_status === 'REGISTRADA' ? 'verde' : 'amarelo'}">${n.execucao_status === 'REGISTRADA' ? 'execução registrada' : 'execução pendente'}</span>` : `<small>${situNs(n)}</small>`}</td>
       <td class="n">${NS_ETAPA[n.tipo] || n.tipo === 'EXECUCAO' ? mNs(n.aplicado_m) : '—'}</td><td class="n">${n.pendente_m > 0.001 ? `<b>${mNs(n.pendente_m)}</b>` : '—'}</td>
       <td>${driveNs((n.drive || {}).pdf)}</td>
       <td><div class="acoes">${linkNs(n.id, 'pdf', 'PDF')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Croqui') : ''}
         <button type="button" class="btn" data-ns-ver="${n.id}">Ver</button>
+        ${pode('ns_dia') && n.tipo === 'SERVICO' && n.status === 'REGISTRADA' && n.execucao_status !== 'REGISTRADA' ? `<button type="button" class="btn prim" data-ns-executar="${n.id}">Registrar execução</button>` : ''}
         ${podeNs(n.tipo) && n.status === 'REGISTRADA' && NS_ETAPA[n.tipo] && n.pendente_m > 0.001 ? `<button type="button" class="btn azul" data-ns-aplicar="${n.id}">Aplicar de novo</button>` : ''}
         ${podeNs(n.tipo) && n.status === 'REGISTRADA' && n.tipo !== 'EXECUCAO' ? `<button type="button" class="btn" data-ns-anular="${n.id}">Anular</button>` : ''}</div></td></tr>
       <tr hidden data-ns-detalhe="${n.id}"><td colspan="9"></td></tr>`));
@@ -457,11 +456,13 @@ const podeAnularDia = n => n.status === 'REGISTRADA' && (pode('retificar_campo')
   || (pode('ns_dia') && !n.verificada && (!USUARIO.restrito_a_equipe || n.equipe_id === USUARIO.equipe_id)));
 function htmlNdNota(n) {
   const fila = n.segmentos.filter(s => s.na_fila), ja = {};
+  const faltaSupervisor = n.segmentos.some(s => (s.registros || []).some(r => r.etapa !== 'CADASTRO_CAMPO' && !r.verificado));
   n.segmentos.forEach(s => Object.entries((s.agora || {}).ja || {}).forEach(([e, m]) => { ja[e] = (ja[e] || 0) + m; }));
   const pulado = [...new Set(n.segmentos.flatMap(s => (s.agora || {}).pulado || []))];
   const onde = [n.zona, n.pb].filter(Boolean).join(' ');
   return `<div class="registro"><div><b>${esc(n.referencia)} · ${dataBR(n.data)} · equipe ${esc(n.equipe_id)}${onde && onde !== n.equipe_id ? ' · ' + esc(onde) : ''}</b>
-      ${fila.length ? `<span class="chip amarelo">${fila.length} aguardando a engenharia</span>` : '<span class="chip verde">lançada</span>'}</div>
+      ${fila.length ? `<span class="chip amarelo">${fila.length} aguardando a engenharia</span>` : ''}
+      ${faltaSupervisor ? '<span class="chip amarelo">Aguardando verificação do supervisor</span>' : !fila.length ? '<span class="chip verde">registrada</span>' : ''}</div>
     <ul class="pend">${htmlLancado(n) || '<li>Nada lançado ainda.</li>'}
       ${Object.entries(ja).map(([e, m]) => `<li>${nf(m)} m já estavam lançados (${ETAPA_DIA[e]}).</li>`).join('')}
       ${pulado.map(p => `<li>${esc(p)}.</li>`).join('')}
@@ -476,9 +477,12 @@ function htmlNdNota(n) {
 const ND = { clima: {} };
 const zonaDaEquipe = eq => /^(Zona\d\d|ADUTORA)$/.test(eq || '') ? eq : '';
 async function carregarNotaDia() {
-  const sel = $('#ndEquipe'), ver = $('#ndVerEquipe'), eqs = RESUMO.equipes.map(e => `<option value="${esc(e.id)}">${esc(e.nome)}</option>`).join('');
-  if (sel.options.length < 2) sel.innerHTML = '<option value="">Escolha a equipe</option>' + eqs;
-  if (ver.options.length < 2) ver.innerHTML = '<option value="">Todas as equipes</option>' + eqs;
+  const sel = $('#ndEquipe'), ver = $('#ndVerEquipe'), antes = sel.value, filtro = ver.value;
+  sel.innerHTML = '<option value="">Escolha a equipe</option>' + RESUMO.equipes.map(e =>
+    `<option value="${esc(e.id)}"${e.empresa && !e.integrantes ? ' disabled' : ''}>${esc(equipeRotulo(e))}${e.empresa && !e.integrantes ? ' — adicione integrantes' : ''}</option>`).join('');
+  ver.innerHTML = '<option value="">Todas as equipes</option>' + RESUMO.equipes.map(e => `<option value="${esc(e.id)}">${esc(equipeRotulo(e))}</option>`).join('');
+  if (RESUMO.equipes.some(e => e.id === antes && (!e.empresa || e.integrantes))) sel.value = antes;
+  if (RESUMO.equipes.some(e => e.id === filtro)) ver.value = filtro;
   $('#ndEnvio').hidden = !pode('ns_dia'); $('#ndSoConsulta').hidden = pode('ns_dia');    // a engenharia envia; os outros consultam (D-134)
   chipsClima($('#fNd'));
   await ndListas();
@@ -494,17 +498,17 @@ function tocarClima(ev, guardar) {
   guardar[box.dataset.turno] = b.dataset.clima;
   $$('button', box).forEach(x => x.setAttribute('aria-pressed', String(x === b)));
 }
-// as notas do dia enviadas: a equipe e o dia escolhidos na lista; sem dia, os últimos 7
+// as notas de serviço enviadas: a equipe e o dia escolhidos na lista; sem dia, as mais recentes, sem ocultar notas antigas
 async function ndListas() {
   const eq = $('#ndVerEquipe').value, dia = $('#ndDia').value, z = zonaDaEquipe(eq);
-  const q = new URLSearchParams(dia ? { data: dia } : { desde: somarDia(hoje(), -7) });
+  const q = new URLSearchParams(dia ? { data: dia } : {});
   if (eq) q.set('equipe', eq);
   const [env, serv] = await Promise.all([api('/api/ns/dia?' + q).catch(() => null), api('/api/ns?tipo=SERVICO' + (z ? '&zona=' + z : '')).catch(() => null)]);
-  if (env) $('#ndEnviadas').innerHTML = env.slice(0, 10).map(htmlNdNota).join('') || `<p class="vazio">Nenhuma nota enviada ${dia ? 'em ' + dataBR(dia) : 'nos últimos 7 dias'}.</p>`;
-  if (serv) $('#ndServico').innerHTML = serv.slice(0, 8).map(n => `<div class="registro"><div><b>${esc(n.referencia)} · ${dataBR(n.data)}</b>
+  if (env) $('#ndEnviadas').innerHTML = env.slice(0, 20).map(htmlNdNota).join('') || `<p class="vazio">Nenhuma execução registrada ${dia ? 'em ' + dataBR(dia) : 'para esta seleção'}.</p>`;
+  if (serv) $('#ndServico').innerHTML = serv.filter(n => n.execucao_status !== 'REGISTRADA').slice(0, 20).map(n => `<div class="registro"><div><b>${esc(n.referencia)} · ${dataBR(n.data)}</b>
       <span>${esc([n.zona, n.pb].filter(Boolean).join(' '))}</span></div><small>${esc(n.titulo || '')}</small>
-      <div class="acoes" style="margin-top:6px">${linkNs(n.id, 'pdf', 'Abrir a nota')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Abrir o croqui') : ''}</div></div>`).join('')
-    || '<p class="vazio">Nenhuma nota de serviço da zona.</p>';
+      <div class="acoes" style="margin-top:6px">${linkNs(n.id, 'pdf', 'Abrir a nota')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Abrir o croqui') : ''}${pode('ns_dia') ? `<button type="button" class="btn prim" data-ns-executar="${n.id}">Registrar execução</button>` : ''}</div></div>`).join('')
+    || '<p class="vazio">Nenhuma nota recebida aguardando registro de execução.</p>';
 }
 $('#ndEquipe').addEventListener('change', () => { $('#ndVerEquipe').value = $('#ndEquipe').value; ndListas(); });   // enviando, a lista é a da equipe
 $('#ndVerEquipe').addEventListener('change', ndListas);
@@ -517,14 +521,30 @@ const ND_LOTE = criarFilaNs({ caixa: $('#ndLote'), tipo: () => 'EXECUCAO',
     if (!eq) throw new Error('Escolha a equipe.');
     return { equipe_id: eq, clima: { ...ND.clima } };      // sem toque, vale o já marcado em Clima do dia (D-131)
   },
-  depois: () => { ndListas(); recarregarCamadaMapa(); driveEmSegundoPlano(); } });
+  depois: () => {
+    const datas = [...new Set(ND_LOTE.cartoes.filter(c => c.estado === 'registrada' && c.resultado).map(c => c.resultado.data))];
+    $('#ndDia').value = datas.length === 1 ? datas[0] : '';
+    ndListas(); recarregarCamadaMapa(); driveEmSegundoPlano();
+  } });
 $('#fNd').addEventListener('submit', async ev => {
   ev.preventDefault();
   const f = ev.target, bt = $('#ndEnviar'); bt.disabled = true; bt.textContent = 'Enviando…';
   try {
     await ND_LOTE.adicionar([...f.pdf.files], [...f.croqui.files], [...f.planilha.files]);
     f.pdf.value = f.croqui.value = f.planilha.value = '';
-  } finally { bt.disabled = false; bt.textContent = 'Enviar a nota do dia'; }
+  } finally { bt.disabled = false; bt.textContent = 'Registrar execução pela nota'; }
+});
+document.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-ns-executar]'); if (!b) return;
+  const equipe = $('#ndEquipe').value;
+  if (!equipe) { $('#ndEquipe').focus(); return toast('Escolha a equipe no formulário da nota e confira o clima antes de registrar a execução.', 'erro'); }
+  b.disabled = true;
+  try {
+    const r = await acao(() => api('/api/ns/registrar-execucao', {ns_id:+b.dataset.nsExecutar,equipe_id:equipe,clima:{...ND.clima}}));
+    $('#ndDia').value = r.data || ''; $('#ndVerEquipe').value = equipe;
+    toast(r.fila.length ? `Execução recebida; ${r.fila.length} segmento(s) aguardam a conferência da engenharia.` : 'Execução registrada. O mapa já pode mostrar o que foi executado.', r.fila.length ? 'info' : 'ok');
+    recarregarTelaNs();
+  } finally { if (b.isConnected) b.disabled = false; }
 });
 ligarBusca($('#ndAlvo'), r => selecionarCampo(r.tipo, r.id));
 // o trecho (ou nó) das soldas e fotos é um só no Lançamento do dia, venha da busca, do apontamento sem NS ou da ficha do mapa
@@ -570,7 +590,7 @@ function renderDiarioNs(lista) {
           : `<div class="croqui-pdf">Croqui em PDF. ${linkNs(n.id, 'croqui', 'Abrir o croqui')}</div>`}</figure>
       <figure><figcaption>Croqui do sistema: os trechos que o sistema entendeu da nota</figcaption>
         <svg class="croqui-sistema" data-ns="${n.id}" role="img" aria-label="Trechos lançados a partir da ${esc(n.referencia)}"></svg></figure>
-    </div>`).join('') : '<p class="vazio">Nenhuma nota do dia enviada neste dia.</p>';
+    </div>`).join('') : '<p class="vazio">Nenhuma nota de serviço enviada neste dia.</p>';
   lista.forEach(n => desenharCroquiSistema($(`svg.croqui-sistema[data-ns="${n.id}"]`), n));
 }
 // mapa pequeno com as funções do iluminado.js (obterGeral, indexar, limites, encaixar, caminho): lançado aceso, fila tracejada
@@ -591,7 +611,7 @@ async function desenharCroquiSistema(svg, n) {
     ${[...feitos].map(([p, l]) => [ix.trecho.get(p), l]).filter(([t]) => t).map(([t, l]) => `<path class="cs-lancado" stroke-width="${4 * px}" d="${caminho(t.p)}"><title>${esc(linhaNs(t.n))}: ${esc(l.join('; '))}</title></path>`).join('')}`;
 }
 
-/* ---------------------------------------------------------------- Notas de serviço: a fila "NS do dia a conferir" (engenharia) */
+/* ---------------------------------------------------------------- Notas de serviço: a fila "Notas com execução a conferir" (engenharia) */
 const candTexto = c => `${lugarNs({ linhas: [c.de] })} · ${linhaNs(c.de)} → ${linhaNs(c.para)} · ${nf(c.ini_m)}–${nf(c.fim_m)} m do trecho físico`;
 function htmlFilaSeg(n, s) {
   const cands = s.situacao === 'CONFIRMAR' && !s.fisico_id ? (s.candidatos || []) : [];
@@ -618,7 +638,7 @@ async function nsCarregarFila() {
       ${n.segmentos.filter(s => s.na_fila).map(s => htmlFilaSeg(n, s)).join('')}
       <div class="acoes" style="margin-top:8px">${linkNs(n.id, 'pdf', 'Abrir a nota')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Abrir o croqui') : ''}
         <button type="button" class="btn prim" data-fila-registrar="${n.id}">Registrar o que foi conferido</button></div></div>`).join('')
-    : '<p class="vazio">Nenhuma nota do dia esperando a engenharia.</p>';
+    : '<p class="vazio">Nenhuma nota de serviço esperando a engenharia.</p>';
 }
 $('#nsFila').addEventListener('click', async ev => {
   const b = ev.target.closest('[data-fila-acao]'), reg = ev.target.closest('[data-fila-registrar]');
@@ -643,6 +663,6 @@ $('#nsFila').addEventListener('click', async ev => {
   const r = await acao(() => api('/api/ns/dia/conferir', { ns_id: id, decisoes: Object.values(NSV.fila[id] || {}) })).catch(() => null);
   if (!r) return;
   delete NSV.fila[id];
-  toast(r.fila.length ? `Registrado. Ainda aguardando: ${r.fila.length} segmento(s).` : 'Registrado: a nota do dia não tem mais nada na fila.', 'ok');
+  toast(r.fila.length ? `Registrado. Ainda aguardando: ${r.fila.length} segmento(s).` : 'Registrado: a nota de serviço não tem mais nada na fila.', 'ok');
   carregarNotas(); recarregarCamadaMapa();
 });

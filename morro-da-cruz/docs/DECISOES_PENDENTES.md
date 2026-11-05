@@ -488,3 +488,23 @@ Os pedidos do encarregado continuam limitados às frentes programadas para a sua
 Guia: `docs/EQUIPES_CADASTRO_MANUAL.md`; `equipes.py`, migração em `importacao.preparar_v24` e `web/equipes.js`.
 Testes: `tests/test_equipes.py` e regressões do campo, importação, programação, NS e permissões.
 
+
+
+## 30. Nota de serviço significa execução (05/11/2026)
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-213 | Envio da nota de serviço da equipe | separar plano da zona e NS do dia / um envio que informa execução | Uma nota aceita como planejamento não acendia o executado no mapa. | Uma única página Nota de serviço, com equipe e clima. | **Decidido pelo responsável:** se enviou a nota de serviço, o serviço já foi executado. Revoga a divisão da D-125 para o novo envio da obra. PDF + croqui registram execução informada, conforme os intervalos e etapas lidos; o mapa e a lista do supervisor usam esses registros. Topografia e Cadastro conservam seus fluxos. Notas antigas sem execução ganham Registrar execução, reaproveitando anexos após a escolha explícita de equipe e clima. Nenhuma execução, verificação ou aprovação é inventada. |
+
+Esquema **v25**: `ns_execucoes_origem` vincula o original histórico `SERVICO` ao registro `EXECUCAO`, com autor e data.
+A migração só cria a tabela. Original e anexos permanecem; repetir a ação não duplica intervalos. Uma execução
+idêntica já existente é vinculada, e o reenvio do PDF antigo pelo formulário único também registra execução.
+Equipe e clima são exigidos, respeitando o clima já registrado para a equipe/data. Topografia anterior, ausência de
+sobreposição, tratamento de MND, autoria, conferência por outra pessoa e aprovação Caesb continuam obrigatórios.
+Segmentos ambíguos ou recusados ficam na fila da engenharia com o motivo; receber a nota não significa fabricar
+intervalos sobre uma pendência. A tela distingue essa fila da verificação do supervisor.
+
+A API nova `/api/ns/execucao` reaproveita o motor existente; `/api/ns/dia` permanece como alias. A antiga API de
+`tipo=SERVICO` passa a exigir equipe e registrar execução. Reutilização: `/api/ns/registrar-execucao`.
+Engenharia/Administração enviam; Supervisor/RH consultam; perfis de campo não acessam as notas (D-134).
+Guia: `docs/NOTAS_DE_SERVICO.md`; testes: `tests/test_ns_unificada.py`.

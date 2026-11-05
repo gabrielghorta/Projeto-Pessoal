@@ -470,3 +470,12 @@ operação.
 está em UTC (use `relogio`); openpyxl perde desenhos ao salvar (use `xlsx_modelo`); o LibreOffice só recalcula tudo
 sem os valores guardados das fórmulas; fotos de teste precisam ser imagens decodificáveis (`tests/fotos_teste.py`);
 `registrar_foto` recebe base64; o OK interno exige verificação, fotos e clima registrado nos testes.
+
+
+## Nota de serviço unificada (D-213, v25, 05/11/2026)
+
+Notas de serviço › Nota de serviço substitui a escolha NS do dia/Serviço de obra. PDF + croqui, equipe e clima
+registram execução informada; intervalos alimentam mapa e verificação do supervisor. Topografia e Cadastro mantidos.
+`/api/ns/execucao` é o envio; `/api/ns/dia` continua alias. `/api/ns` com SERVICO exige equipe e executa.
+`/api/ns/registrar-execucao` reaproveita anexos de um SERVICO histórico e cria vínculo em `ns_execucoes_origem`.
+Migração só cria tabela; não adivinha fatos. Guia e testes em `docs/NOTAS_DE_SERVICO.md` e `tests/test_ns_unificada.py`.

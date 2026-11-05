@@ -44,7 +44,7 @@ OPERACIONAIS = ["movimentos", "checkins", "checkin_presencas", "clima", "apontam
                 "inventarios", "inventario_itens", "programacoes", "programacao_materiais", "conferencias_medicao",
                 "notas_servico", "ns_segmentos", "apropriacoes", "apropriacao_documentos", "itens_novos_base",
                 "codigos_oficiais", "checkin_alvos", "solicitacao_detalhes", "solicitacao_avulsos", "solicitacao_notas",
-                "nf_entregas_linhas", "nf_confirmacoes"]
+                "nf_entregas_linhas", "nf_confirmacoes", "ns_execucoes_origem"]
 
 
 class ImportacaoReprovada(RuntimeError):
@@ -143,6 +143,8 @@ def executar(caminho_db, modo, pasta_planilhas=I.DIR_PLANILHAS, backup_dir=None,
             I.preparar_v23(conn)
         if 0 < versao < 24:
             I.preparar_v24(conn)
+        if 0 < versao < 25:
+            I.preparar_v25(conn)
         S.aplicar_esquema(conn)
         if versao in (1, 2):
             congeladas = I.congelar_fechadas(conn)        # antes de o novo BM entrar

@@ -5,7 +5,7 @@ description: Tudo o que é preciso para dar continuidade à obra Morro da Cruz (
 
 # Obra Morro da Cruz — web app, cronograma, contrato Caesb × Ankara e dados do projeto
 
-Estado em **05/11/2026**. Esquema do banco **v24**. Site no PythonAnywhere a partir do ramo
+Estado em **05/11/2026**. Esquema do banco **v25**. Site no PythonAnywhere a partir do ramo
 `claude/powerbi-modifications-wqxekj` do repositório `gabrielghorta/Projeto-Pessoal` (pasta `morro-da-cruz/`).
 
 ## 0. Como usar esta skill (e retomar numa sessão nova)
@@ -30,6 +30,12 @@ Estado em **05/11/2026**. Esquema do banco **v24**. Site no PythonAnywhere a par
 | `scripts/zerar_dados_de_teste.sh` | o responsável pedir para zerar os dados de teste do site |
 
 ## 1. Estado atual (03/11/2026)
+
+- **Notas de serviço, 05/11/2026 (D-213, v25):** página única Nota de serviço registra execução a partir de PDF +
+  croqui, equipe e clima. Acende o executado e aguarda o supervisor. SERVICO antigo é histórico, com ação Registrar
+  execução para usar seus anexos; migração não inventa equipe/clima nem lança automaticamente. Topografia/Cadastro
+  preservados. Ver `docs/NOTAS_DE_SERVICO.md`.
+
 
 - **Equipes, 05/11/2026 (D-212, v24):** cadastro começa sem equipes ativas. O usuário cria A1/A2, E1.1/E1.2,
   E2.1/E2.2 e designa integrantes; pode criar outras. Zonas em `frentes`, independentes das equipes. Legado só no

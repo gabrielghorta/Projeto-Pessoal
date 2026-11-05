@@ -583,7 +583,7 @@ def _exigir_ns(usuario, ns_ou_tipo):
     """Registrar, aplicar e anular exigem também a permissão do tipo (topografia, cadastro de campo)."""
     tipo = ns_ou_tipo if isinstance(ns_ou_tipo, str) else ns_ou_tipo["tipo"]
     if tipo == "EXECUCAO":
-        raise A.AcessoNegado("A NS do dia é enviada e anulada em Notas de serviço › NS do dia.", 403)
+        raise A.AcessoNegado("A execução da nota é enviada e anulada em Notas de serviço › Nota de serviço.", 403)
     if NS.PERMISSAO_TIPO.get(tipo):
         A.exigir(usuario, NS.PERMISSAO_TIPO[tipo])
 
@@ -609,6 +609,11 @@ def p_ns_ler(b, c, usuario):
 
 
 def p_ns(b, c, usuario):
+    if b.get("tipo") == "SERVICO":
+        A.exigir(usuario,"ns_dia")
+        if not b.get("equipe_id"):
+            raise R.RegraViolada("A nota de serviço agora registra execução. Escolha a equipe e o clima em Notas de serviço › Nota de serviço e envie por lá.")
+        return p_ns_dia(b,c,usuario)
     _exigir_ns(usuario, b.get("tipo") or "")
     return NS.registrar(c, b.get("tipo"), b.get("pdf_b64"), b["por"], b.get("decisoes"), b.get("croqui_b64"),
                         b.get("planilha_b64"), {k: b.get(f"{k}_nome") for k in ("pdf", "croqui", "planilha")},
@@ -647,6 +652,13 @@ def p_ns_dia(b, c, usuario):
                          {k: b.get(f"{k}_nome") for k in ("pdf", "croqui", "planilha")}, b.get("clima"))
 
 
+def p_ns_executar_recebida(b, c, usuario):
+    origem = NS._ns(c,int(b["ns_id"]))
+    if not _ns_visivel(usuario,origem):
+        raise A.AcessoNegado("Seu perfil não abre esta nota de serviço.",403)
+    return NS.executar_recebida(c,origem['id'],b.get('equipe_id'),b.get('clima'),b['por'])
+
+
 def p_ns_numero(b, c, usuario):
     """Envio em lote: o número da NS escrito no PDF, no croqui ou na planilha (só lê, nada é gravado)."""
     return {"numeros": sorted(NS.L.numeros_documento(NS._bytes(b.get("arquivo_b64"), "o arquivo", NS.LIMITE_CROQUI)))}
@@ -670,7 +682,8 @@ def p_ns_dia_anular(b, c, usuario):
 
 
 ROTAS_NS_DIA = {"/api/ns/dia": ("ns_dia", p_ns_dia), "/api/ns/numero": ("campo", p_ns_numero), "/api/ns/dia/conferir": ("retificar_campo", p_ns_dia_conferir),
-                "/api/ns/dia/anular": ("ns_dia", p_ns_dia_anular)}
+                "/api/ns/dia/anular": ("ns_dia", p_ns_dia_anular),
+                "/api/ns/execucao": ("ns_dia",p_ns_dia), "/api/ns/registrar-execucao": ("ns_dia",p_ns_executar_recebida)}
 
 
 # ------------------------------------------------------------------ apropriação direta e base de custo (D-90 em diante)

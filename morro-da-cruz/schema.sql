@@ -1,5 +1,5 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v24. Banco SQLite local.
+-- Esquema v25. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
@@ -1228,3 +1228,11 @@ CREATE INDEX IF NOT EXISTS ix_soldas ON soldas(alvo_tipo, alvo_id);
 CREATE INDEX IF NOT EXISTS ix_fotos_alvo ON fotos(alvo_tipo, alvo_id);
 CREATE INDEX IF NOT EXISTS ix_lanc_med ON medicao_lancamentos(medicao_id, gaveta);
 CREATE INDEX IF NOT EXISTS ix_prov_fonte ON proveniencia(fonte_id);
+
+-- v25: a nota antes recebida só como planejamento pode registrar execução com equipe e clima indicados.
+CREATE TABLE IF NOT EXISTS ns_execucoes_origem (
+  ns_servico_id INTEGER PRIMARY KEY REFERENCES notas_servico(id),
+  ns_execucao_id INTEGER NOT NULL UNIQUE REFERENCES notas_servico(id),
+  registrada_em TEXT NOT NULL,
+  registrada_por TEXT NOT NULL
+);

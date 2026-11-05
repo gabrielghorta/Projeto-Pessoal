@@ -5,9 +5,8 @@ a pessoa conferiu, numa transação.
 * TOPOGRAFIA: liberação topográfica só no que ainda não está liberado.
 * CADASTRO: cadastro de campo só sobre o executado (assentado) até a data da nota; o resto é recusado, fica escrito no
   segmento e só entra à mão ("Aplicar de novo", aplicar()) se o assentamento até essa data for registrado depois.
-* SERVICO: o plano do serviço da zona (PDF + croqui); não grava nada, mas cada trecho precisa estar liberado pela
-  topografia até a data da nota (ordem obrigatória topografia → serviço → cadastro, D-20).
-* EXECUCAO: a NS do dia (ver a seção "NS do dia" mais abaixo).
+* SERVICO: histórico anterior à D-213, preservado sem inventar execução; executar_recebida reaproveita os anexos.
+* EXECUCAO: a nota de serviço da equipe registra execução informada, com PDF + croqui, equipe e clima (D-213).
 A 06.1 continua sendo a unidade do BM e da medição: o trecho físico (topologia.py) só converte metros da NS em metros de
 cada linha. Pesquisa: docs/ns/01_NS_x_trechos_e_registros.md e docs/ns/03_armazenamento_e_upload.md.
 """
@@ -15,6 +14,7 @@ import base64
 import binascii
 import hashlib
 import json
+import os
 import re
 from datetime import date
 
@@ -26,7 +26,7 @@ import servicos as S
 import topologia as TP
 from servicos import RegraViolada, _agora, _one, _rows, transacao
 
-TIPOS = {"TOPOGRAFIA": "Topografia", "CADASTRO": "Cadastro de campo", "SERVICO": "Serviço de obra", "EXECUCAO": "Do dia (execução)"}
+TIPOS = {"TOPOGRAFIA": "Topografia", "CADASTRO": "Cadastro de campo", "SERVICO": "Nota de serviço", "EXECUCAO": "Nota de serviço"}
 # Palavras do bloco da NS que confirmam o tipo escolhido (D-210), pela raiz: o bloco pode dizer "TOPOGRAFIA",
 # "LIBERAÇÃO TOPOGRÁFICA" ou "LOCAÇÃO" (topografia) e "CADASTRO" ou "CADASTRAL" (cadastro de campo).
 RAIZES_TIPO = {"TOPOGRAFIA": ("TOPOGRAF", "LOCACAO"), "CADASTRO": ("CADASTR",)}
@@ -499,7 +499,7 @@ def _aplicar_segmento(conn, ns, seg, por):
         if item["pendente"]:
             pendente += R.comprimento(item["pendente"])
             motivos.append("recusado: " + R.falta_na_ordem(item["ponto"], item["pendente"], f"a execução até {_data_br(ns['data'])}",
-                                                         "registre a NS do dia antes e use \"Aplicar de novo\""))
+                                                         "registre a execução pela nota antes e use \"Aplicar de novo\""))
     return round(gravado, 3), round(pendente, 3), motivos
 
 
@@ -884,6 +884,10 @@ def listar(conn, tipo=None, zona=None, vigentes=True, equipe=None, data=None, li
         n["aplicado_m"] = round(sum(x["aplicado_m"] or 0 for x in n["segmentos"]), 3)
         n["pendente_m"] = round(sum(x["pendente_m"] or 0 for x in n["segmentos"]), 3)
         n["drive"] = {q: drive.get(n[f"{q}_id"]) for q in ("pdf", "croqui", "planilha") if n.get(f"{q}_id")}
+        vinculo = _one(conn, """SELECT e.id,e.status FROM ns_execucoes_origem o JOIN notas_servico e ON e.id=o.ns_execucao_id
+                               WHERE o.ns_servico_id=?""", n["id"])
+        n["execucao_id"] = vinculo["id"] if vinculo else None
+        n["execucao_status"] = vinculo["status"] if vinculo else None
     return lista
 
 
@@ -920,7 +924,7 @@ def arquivo(conn, ns_id, qual):
 
 # ------------------------------------------------------------------ NS do dia (EXECUCAO): o que a equipe executou
 # A equipe envia a NS com o que foi executado e o croqui; o sistema lança sozinho o que é inequívoco, como execução
-# INFORMADA (amarela no mapa, sem verificação), e o resto vai, sem gravar, para a fila "NS do dia a conferir".
+# INFORMADA (amarela no mapa, sem verificação), e o resto vai, sem gravar, para a fila "Notas com execução a conferir".
 ETAPAS_DIA = {"ASSENTADO": ("ASSENT",), "REATERRADO": ("REATERR",), "ESCAVADO": ("ESCAV", "VALA ABERTA")}
 ROT_ETAPA = {"ASSENTADO": "assentado", "REATERRADO": "reaterrado", "ESCAVADO": "escavado"}
 FILA = ("CONFIRMAR", "ERRO", "SEM_CORRESPONDENCIA")
@@ -1230,7 +1234,7 @@ def gravar_clima(conn, data, equipe_id, clima, corrigir=False):
     atual = dict(conn.execute("SELECT turno, condicao FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id)).fetchall())
     muda = [t for t in ("MANHA", "TARDE") if (clima or {}).get(t) and atual.get(t) not in (None, clima[t])]
     if ns and muda and not corrigir:
-        raise RegraViolada(f"O clima de {_data_br(data)} da equipe {equipe_id} veio com a NS do dia {ns['numero']}, que é a "
+        raise RegraViolada(f"O clima de {_data_br(data)} da equipe {equipe_id} veio com a nota de serviço {ns['numero']}, que é a "
                            "fonte principal: só a engenharia corrige.")
     for turno in ("MANHA", "TARDE"):
         if (clima or {}).get(turno):
@@ -1247,6 +1251,14 @@ def enviar_dia(conn, equipe_id, pdf_b64, croqui_b64, por, planilha_b64=None, nom
         raise RegraViolada("NS recusada: " + "; ".join(ns["resultado"]["motivos"][:4]))
     cab = ns["cabecalho"]
     por_arquivo, mesma = _ja_registrada(conn, ns, "EXECUCAO", hashlib.sha256(pdf).hexdigest(), equipe_id)
+    # D-213: o mesmo PDF recebido no fluxo antigo pode agora registrar execução.
+    origem_servico = por_arquivo if por_arquivo and por_arquivo["tipo"] == "SERVICO" else None
+    if origem_servico:
+        vinculo = _one(conn, """SELECT n.id FROM ns_execucoes_origem o JOIN notas_servico n ON n.id=o.ns_execucao_id
+                                WHERE o.ns_servico_id=? AND n.status='REGISTRADA'""", origem_servico["id"])
+        if vinculo:
+            raise RegraViolada("A execução desta nota já foi registrada. Consulte o envio existente antes de reenviar.")
+        por_arquivo = None
     if por_arquivo:
         raise RegraViolada(f"Esta NS já foi enviada: NS {por_arquivo['numero']} ({TIPOS.get(por_arquivo['tipo'])}"
                            f"{', equipe ' + por_arquivo['equipe_id'] if por_arquivo['equipe_id'] else ''}, {_data_br(por_arquivo['data'])}).")
@@ -1274,7 +1286,53 @@ def enviar_dia(conn, equipe_id, pdf_b64, croqui_b64, por, planilha_b64=None, nom
         for s in segs:
             _inserir_segmento(conn, ns_id, s, por)
         lancamento = registrar_dia(conn, ns_id, por)
+        if origem_servico:
+            _vincular_execucao(conn, origem_servico["id"], ns_id, por)
     return dict(resumo_dia(conn, ns_id, lancamento), arquivo_trocado=False)
+
+
+def _vincular_execucao(conn, origem_id, execucao_id, por):
+    conn.execute("""INSERT INTO ns_execucoes_origem VALUES(?,?,?,?) ON CONFLICT(ns_servico_id) DO UPDATE
+                    SET ns_execucao_id=excluded.ns_execucao_id,registrada_em=excluded.registrada_em,registrada_por=excluded.registrada_por""",
+                 (origem_id, execucao_id, _agora(), por))
+
+
+def executar_recebida(conn, ns_id, equipe_id, clima, por, hoje=None):
+    """Usa os anexos já recebidos como SERVICO para registrar execução sem reenvio nem duplicar intervalos.
+    Equipe e clima são indicados pela engenharia. O original e suas conferências permanecem intactos."""
+    with transacao(conn):
+        origem = _ns(conn, int(ns_id))
+        if origem['tipo'] != 'SERVICO' or origem['status'] != 'REGISTRADA':
+            raise RegraViolada('Escolha uma nota de serviço recebida e vigente para registrar a execução.')
+        atual = _one(conn, """SELECT n.* FROM ns_execucoes_origem o JOIN notas_servico n ON n.id=o.ns_execucao_id
+                              WHERE o.ns_servico_id=? AND n.status='REGISTRADA'""", origem['id'])
+        if atual:
+            if equipe_id and atual['equipe_id'] != equipe_id:
+                raise RegraViolada(f"A execução desta nota já foi registrada para a equipe {atual['equipe_id']}. Não é transferida ao reenviar.")
+            return dict(resumo_dia(conn, atual['id']), origem_servico_id=origem['id'], ja_registrada=True)
+        S.exigir_equipe(conn, equipe_id)
+        existente = _one(conn, """SELECT id FROM notas_servico WHERE tipo='EXECUCAO' AND status='REGISTRADA'
+            AND contrato=? AND numero=? AND data=? AND equipe_id=? AND impressao=?""",
+            origem['contrato'], origem['numero'], origem['data'], equipe_id, origem['impressao'])
+        if existente:
+            resultado = resumo_dia(conn, existente['id'])
+        else:
+            anexos, nomes = {}, {}
+            base = os.path.realpath(C.documento_dir(conn))
+            for qual in ('pdf','croqui','planilha'):
+                if not origem.get(qual+'_id'):
+                    anexos[qual] = None
+                    continue
+                _, doc, nome = arquivo(conn, origem['id'], qual)
+                caminho = os.path.realpath(os.path.join(base,doc['arquivo']))
+                if os.path.commonpath([base,caminho]) != base or not os.path.isfile(caminho):
+                    raise RegraViolada(f'O arquivo {qual} desta nota não está disponível. Reenvie a nota com os anexos.')
+                with open(caminho,'rb') as arq:
+                    anexos[qual] = base64.b64encode(arq.read()).decode()
+                nomes[qual] = nome
+            resultado = enviar_dia(conn,equipe_id,anexos['pdf'],anexos['croqui'],por,anexos['planilha'],nomes,clima,hoje)
+        _vincular_execucao(conn, origem['id'], resultado['id'], por)
+        return dict(resultado,origem_servico_id=origem['id'])
 
 
 def _na_fila(s):

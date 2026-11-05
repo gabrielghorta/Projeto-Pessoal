@@ -195,7 +195,7 @@ const PAGINAS = {
   campo: [['apropriacao', 'Apropriação direta', () => pode('apropriacao')], ['apontamento', 'Apontamento sem NS', () => pode('lancar_sem_ns')],
     ['fotos', 'Fotos e soldas', () => podeTela('campo') && pode('campo')], ['clima', 'Clima do dia', () => podeTela('campo') && pode('campo')],
     ['interferencia', 'Interferência', () => podeTela('interferencias')]],
-  notas: [['dia', 'NS do dia', () => podeTela('notas')], ['servico', 'Serviço de obra', () => podeTela('notas') && pode('notas_servico')],
+  notas: [['servico', 'Nota de serviço', () => podeTela('notas')],
     ['topografia', 'Topografia', () => podeTela('topografia')], ['cadastro', 'Cadastro', () => podeTela('cadastro_campo')]],
   diario: [['resumo', 'Resumo do dia', () => true], ['programacao', 'Programação e check-in', () => true], ['ocorrencias', 'Ocorrências', () => true]],
   mapa: [['programar', 'Programar o dia', () => true], ['conciliar', 'Conciliar', () => pode('retificar_campo')]],
@@ -288,7 +288,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
-  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: o lançamento do dia (apropriação, apontamento, fotos, clima e interferência), as notas de serviço (a NS do dia, a de serviço de obra, a de topografia e a de cadastro) e o diário de obra.' },
+  'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: o lançamento do dia (apropriação, apontamento, fotos, clima e interferência), as notas de serviço, a topografia, o cadastro e o diário de obra.' },
   planejamento: { nome: 'Almoxarifado', desc: 'A programação do dia de cada equipe no mapa (programar, liberar o material e receber a devolução), o estoque (o dia, receber, saldo, inventário e tubos da Caesb) e as compras (requisições, notas fiscais e fornecedores).' },
   administrativo: { nome: 'Administrativo', desc: 'Medição de teste, equipes, relatórios, o projeto e o cronograma (planilhas do LEV e o MS Project) e os usuários com o histórico.' },
 };
@@ -2077,7 +2077,7 @@ async function iniciar() {
   RESUMO = await api('/api/resumo');
   preencherEquipes();
   $$('.selClima').forEach(s => s.innerHTML = '<option value="">—</option>' + Object.entries(RESUMO.clima).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''));
-  $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
+  $$('input[type=date]').forEach(i => { if (!i.value && i.id !== 'ndDia' && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   if (podeTela('medicao')) { const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }
   abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });
   setTimeout(() => driveEmSegundoPlano(), 4000);   // o que ficou na fila (sem rede, sem conexão) sobe agora

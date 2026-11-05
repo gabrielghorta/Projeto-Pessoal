@@ -119,7 +119,7 @@
 
   <!-- ======================================================= EXECUÇÃO: LANÇAMENTO DO DIA (o lançamento solto, sem nota de serviço) -->
   <section class="aba" id="aba-campo">
-    <header class="cab-tela"><h1>Lançamento do dia</h1><p>Lançamentos sem nota de serviço. A NS do dia é enviada em Execução › Notas de serviço.</p></header>
+    <header class="cab-tela"><h1>Lançamento do dia</h1><p>Lançamentos sem nota de serviço. Para registrar a execução pela nota, use Execução › Notas de serviço.</p></header>
     <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas do Lançamento do dia" style="margin:0 0 16px"></div>
 
     <!-- apontamento à mão, sem nota do dia (só Engenharia e Administração) -->
@@ -195,7 +195,7 @@
     <!-- clima do dia da equipe, para o diário dos dias sem nota do dia -->
     <div data-pagina="clima" hidden>
       <form class="painel nota-dia" id="fClima" data-perm="campo">
-        <p class="vazio" style="margin:0">O clima do dia da equipe, para o diário. A NS do dia é a fonte principal: se ela vier com o clima, vale o dela; se vier sem, vale o marcado aqui. Depois que a NS do dia chega, só a engenharia muda o clima daquele dia.</p>
+        <p class="vazio" style="margin:0">O clima do dia da equipe, para o diário. A nota de serviço é a fonte principal: se ela vier com o clima, vale o dela; se vier sem, vale o marcado aqui. Depois que a nota chega, só a engenharia muda o clima daquele dia.</p>
         <div class="linha"><label>Equipe<select id="climaEquipe" required></select></label><label>Dia<input type="date" name="data" required></label></div>
         <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
         <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
@@ -317,7 +317,7 @@
     </div>
   </section>
 
-  <!-- ======================================================= EXECUÇÃO: DIÁRIO DE OBRA (montado da NS do dia) -->
+  <!-- ======================================================= EXECUÇÃO: DIÁRIO DE OBRA (montado da nota de serviço) -->
   <section class="aba" id="aba-diario">
     <header class="cab-tela"><h1>Diário de obra</h1><p>O dia de cada equipe a partir da nota do dia e do croqui: o que o sistema lançou, o que espera a engenharia, programado × executado, clima, pessoas e material, soldas, fotos e ocorrências.</p></header>
     <div class="acoes" style="margin-bottom:16px;align-items:flex-end">
@@ -368,44 +368,38 @@
 
   <!-- ======================================================= EXECUÇÃO: NOTAS DE SERVIÇO (as do campo da obra) -->
   <section class="aba" id="aba-notas">
-    <header class="cab-tela"><h1>Notas de serviço</h1><p>As notas do campo da obra: a NS do dia (o que a equipe executou, com o croqui e o clima) e a NS de serviço de obra (o plano da zona). As de topografia e de cadastro são enviadas nas abas Topografia e Cadastro de campo.</p></header>
+    <header class="cab-tela"><h1>Notas de serviço</h1><p>Envie a nota e o croqui para registrar o que a equipe executou. O trecho passa a aguardar a verificação do supervisor. Topografia e Cadastro têm suas etapas próprias.</p></header>
     <div class="abas-chip grandes paginas-aba" role="group" aria-label="Tipo da nota" style="margin:0 0 16px"></div>
 
-    <!-- NS do dia: o que a equipe executou, enviado pela engenharia; o supervisor e o RH consultam (D-134) -->
-    <div data-pagina="dia" hidden>
-      <p class="vazio" style="margin:0 0 12px">A engenharia envia a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a fila "NS do dia a conferir".</p>
-    <p class="vazio" id="ndSoConsulta" hidden style="margin:0 0 12px">Só consulta: a NS do dia é enviada pela engenharia.</p>
+    <!-- nota de serviço: o que a equipe executou, enviado pela engenharia; o supervisor e o RH consultam (D-134) -->
+    <div data-pagina="servico" hidden>
+      <p class="vazio" style="margin:0 0 12px">A engenharia envia a nota de serviço do que a equipe executou e o croqui. O que o sistema não tiver certeza vai para a fila "Notas com execução a conferir".</p>
+    <p class="vazio" id="ndSoConsulta" hidden style="margin:0 0 12px">Só consulta: a nota de serviço é enviada pela engenharia.</p>
     <div class="grade-2">
       <div id="ndEnvio" style="display:grid;gap:16px;min-width:0;align-content:start">
         <form class="painel nota-dia" id="fNd" data-perm="ns_dia">
           <label>Equipe<select id="ndEquipe" required></select></label>
-          <label>Nota de serviço do dia (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
+          <label>Nota de serviço (PDF; pode ser mais de uma)<input type="file" name="pdf" accept="application/pdf,.pdf" multiple required></label>
           <label>Croqui de cada nota (PDF ou foto)<input type="file" name="croqui" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple required></label>
           <fieldset class="clima-dia"><legend>Clima de manhã</legend><div class="chips-grandes" data-turno="MANHA" role="group" aria-label="Clima de manhã"></div></fieldset>
           <fieldset class="clima-dia"><legend>Clima à tarde</legend><div class="chips-grandes" data-turno="TARDE" role="group" aria-label="Clima à tarde"></div></fieldset>
-          <p class="vazio" style="margin:0">O clima tocado aqui é o que vale. Se a equipe já marcou em Lançamento do dia › Clima do dia, pode deixar sem tocar: fica o marcado.</p>
+          <p class="vazio" style="margin:0">Escolha o clima da data da nota. Se já estiver registrado para essa equipe, pode deixar sem tocar.</p>
           <details><summary>Planilha da nota (.xlsx ou .xls, opcional)</summary><label>Planilha<input type="file" name="planilha" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" multiple></label></details>
-          <button class="btn prim grande" id="ndEnviar">Enviar a nota do dia</button>
+          <button class="btn prim grande" id="ndEnviar">Registrar execução pela nota</button>
           <p class="vazio" style="margin:0">O que foi feito vem da nota: nada a digitar. A data é a da nota.</p>
         </form>
         <div class="painel" id="ndLote" hidden aria-live="polite"></div>
       </div>
       <div style="display:grid;gap:16px;min-width:0;align-content:start">
-        <div class="painel"><h3>Notas do dia enviadas</h3><div class="linha"><label>Equipe<select id="ndVerEquipe"></select></label><label>Dia (vazio: os últimos 7)<input type="date" id="ndDia"></label></div><div id="ndEnviadas" style="margin-top:8px"></div></div>
-        <div class="painel"><h3>Notas de serviço da zona</h3><p class="vazio" style="margin:0 0 6px">O plano do serviço (nota e croqui) enviado pela engenharia.</p><div id="ndServico"></div></div>
+        <div class="painel"><h3>Execução registrada pelas notas</h3><div class="linha"><label>Equipe<select id="ndVerEquipe"></select></label><label>Data da nota (opcional)<input type="date" id="ndDia"></label></div><div id="ndEnviadas" style="margin-top:8px"></div></div>
+        <div class="painel"><h3>Notas recebidas sem execução</h3><p class="vazio" style="margin:0 0 6px">Use os anexos já enviados: escolha a equipe e o clima no formulário acima e toque em Registrar execução na nota.</p><div id="ndServico"></div></div>
       </div>
     </div>
     <div class="painel" id="nsFilaPainel" style="margin-top:16px" hidden>
-      <h3>NS do dia a conferir</h3>
-      <p class="vazio" style="margin:0 0 6px">O que o sistema não lançou sozinho das notas do dia das equipes. Escolha o trecho (e com ele o sentido) e aceite, ou deixe de fora com o motivo; depois, "Registrar o que foi conferido".</p>
+      <h3>Notas com execução a conferir</h3>
+      <p class="vazio" style="margin:0 0 6px">Trechos que precisam da conferência da engenharia para registrar a execução. Escolha o trecho correto e registre o que foi conferido.</p>
       <div id="nsFila"></div>
     </div>
-    </div>
-
-    <!-- NS de serviço de obra: o plano da zona, enviado pela engenharia -->
-    <div data-pagina="servico" hidden>
-      <div class="aviso info" style="margin:0 0 12px"><b>A NS de serviço de obra é o plano da zona: não acende o executado.</b> A nota e o croqui ficam para a equipe abrir aqui, na página NS do dia. O que acende o executado é a NS do dia.</div>
-      <div id="nsEnvioServico"></div>
     </div>
 
     <!-- a conferência dos segmentos de uma nota da fila: vai para a página que está conferindo (Serviço, Topografia ou Cadastro) -->
@@ -421,11 +415,11 @@
     </div>
     <div class="painel" style="margin-top:16px">
       <div class="acoes" style="justify-content:space-between"><h3 style="margin:0">Notas recebidas da obra</h3>
-        <label class="check"><input type="checkbox" id="nsAnuladas"> mostrar as anuladas</label></div>
+        <label class="check"><input type="checkbox" id="nsAnuladas"> mostrar histórico e anuladas</label></div>
       <div class="abas-chip" id="nsFiltro" role="group" aria-label="Tipo">
         <button type="button" data-ns-filtro="" aria-pressed="true">Todas da obra</button>
-        <button type="button" data-ns-filtro="EXECUCAO" aria-pressed="false">Do dia</button>
-        <button type="button" data-ns-filtro="SERVICO" aria-pressed="false">Serviço de obra</button>
+        <button type="button" data-ns-filtro="EXECUCAO" aria-pressed="false">Com execução registrada</button>
+        <button type="button" data-ns-filtro="SERVICO" aria-pressed="false">Para registrar execução</button>
       </div>
       <div id="nsLista" style="margin-top:10px"></div>
       <details id="nsForaPainel" hidden style="margin-top:14px"><summary>Fora de ordem (legado): <span id="nsForaN">0</span> registro(s)</summary>

@@ -1182,6 +1182,11 @@ def preparar_v24(conn):
     conn.execute("UPDATE equipes SET ativa=0,excluida_em=?,excluida_por='migração D-212: cadastro manual'", (S._agora(),))
 
 
+def preparar_v25(conn):
+    """Somente o vínculo entre a nota anterior e a execução; não presume equipe, clima ou execução."""
+    S.aplicar_esquema(conn)
+
+
 def preparar_v22(conn):
     """Só acrescenta tabelas. Guarda as notas antes de retirar o bloqueio do saldo, sem inventar aprovação."""
     S.aplicar_esquema(conn)
