@@ -1,5 +1,5 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v7. Banco SQLite local.
+-- Esquema v24. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
@@ -14,6 +14,7 @@
 --     validação da imagem antes de aceitar a foto como evidência.
 --   * v18: nota de serviço por upload (notas_servico, ns_segmentos; tipos NS_* em documentos) e a origem de cada
 --     liberação, cadastro de campo e intervalo executado gravados a partir dela (ns_segmento_id).
+--   * v24: frentes do projeto independentes das equipes; criação e composição manual, exclusão sem apagar histórico.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS schema_versao (
@@ -112,10 +113,22 @@ CREATE TABLE IF NOT EXISTS reajuste_indices (
 );
 
 -- ---------------------------------------------------------------- equipes
+CREATE TABLE IF NOT EXISTS frentes (
+  id TEXT PRIMARY KEY,
+  nome TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS equipes (
-  id TEXT PRIMARY KEY,                 -- Zona01..Zona11, ADUTORA, CH (frentes)
+  id TEXT PRIMARY KEY,                 -- sigla estável: A1, A2, E1.1, E1.2, E2.1...; legado preservado
   nome TEXT NOT NULL,
-  cor TEXT
+  cor TEXT,
+  empresa TEXT,
+  numero INTEGER,
+  ativa INTEGER NOT NULL DEFAULT 1 CHECK (ativa IN (0,1)),
+  criada_em TEXT,
+  criada_por TEXT,
+  excluida_em TEXT,
+  excluida_por TEXT
 );
 
 CREATE TABLE IF NOT EXISTS funcionarios (
@@ -137,7 +150,7 @@ CREATE TABLE IF NOT EXISTS trechos (
   ponto TEXT NOT NULL,                 -- nome visível vigente (col. R): Zona01_PB01_Rede_TR001
   vigente INTEGER NOT NULL DEFAULT 1,
   item INTEGER,
-  frente_id TEXT REFERENCES equipes(id),
+  frente_id TEXT REFERENCES frentes(id),
   equipe TEXT,
   tipo TEXT,
   pb TEXT,
@@ -187,7 +200,7 @@ CREATE TABLE IF NOT EXISTS atividades (
   elemento_id TEXT NOT NULL REFERENCES elementos(id),
   tipo_frente TEXT NOT NULL,           -- Rede / CH / Adutora (da nomenclatura)
   nomenclatura TEXT NOT NULL,          -- nome visível vigente (col. K)
-  frente_id TEXT REFERENCES equipes(id),  -- LOCAL (col. M)
+  frente_id TEXT REFERENCES frentes(id),  -- LOCAL (col. M)
   equipe TEXT,                         -- col. AE
   vigente INTEGER NOT NULL DEFAULT 1,
   UNIQUE (elemento_id, tipo_frente)
@@ -781,7 +794,7 @@ CREATE TABLE IF NOT EXISTS solicitacao_itens (
 -- Solicitação de material: destino por frente, itens descritos/fotografados e vínculo informativo com notas.
 CREATE TABLE IF NOT EXISTS solicitacao_detalhes (
   solicitacao_id INTEGER PRIMARY KEY REFERENCES solicitacoes_compra(id),
-  frente_id TEXT NOT NULL REFERENCES equipes(id)
+  frente_id TEXT NOT NULL REFERENCES frentes(id)
 );
 CREATE TABLE IF NOT EXISTS solicitacao_avulsos (
   id INTEGER PRIMARY KEY,

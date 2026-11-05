@@ -28,13 +28,18 @@ import relogio as RL
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 23
+VERSAO_ESQUEMA = 24
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
 
 class EsquemaAntigo(RuntimeError):
     """Banco em esquema anterior: precisa de migração (importar.py) antes de ser usado."""
+
+
+def exigir_equipe(conn, equipe_id, completa=True):
+    import equipes
+    return equipes.exigir(conn, equipe_id, completa)
 
 
 def exigir_data_ocorrida(data, o_que):
@@ -64,6 +69,10 @@ def aplicar_esquema(conn):
     with open(os.path.join(caminhos.RECURSOS, "schema.sql"), encoding="utf-8") as f:
         for cmd in comandos_sql(f.read()):
             conn.execute(cmd)
+    for frente in R.FRENTES:
+        conn.execute("INSERT OR IGNORE INTO frentes(id,nome) VALUES (?,?)",
+                     (frente, frente.replace("Zona", "Zona ") if frente.startswith("Zona") else
+                      "Subadutora" if frente == "ADUTORA" else "Caixas hidráulicas"))
     if "sha256" in {r[1] for r in conn.execute("PRAGMA table_info(fotos)")}:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_fotos_sha ON fotos(sha256) WHERE sha256 IS NOT NULL")
     if "chave" in {r[1] for r in conn.execute("PRAGMA table_info(medicao_lancamentos)")}:
@@ -72,7 +81,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "correção da data da apropriação, com a data de antes guardada"))
+                 (VERSAO_ESQUEMA, _agora(), "equipes criadas e montadas manualmente, independentes das zonas"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -490,8 +499,7 @@ def entrada_material(conn, data, material_id, quantidade, tipo, documento=None, 
 
 def reservar(conn, data, equipe_id, material_id, quantidade, alvo_tipo=None, alvo_id=None, responsavel=None):
     """Reserva do almoxarifado para a programação de uma equipe/dia. Não é saída: só tira do disponível."""
-    if equipe_id not in [r[0] for r in conn.execute("SELECT id FROM equipes")]:
-        raise RegraViolada(f"Equipe '{equipe_id}' não cadastrada.")
+    exigir_equipe(conn, equipe_id)
     m = _one(conn, "SELECT * FROM materiais WHERE id=?", material_id)
     if not m:
         raise RegraViolada(f"Material '{material_id}' não cadastrado.")
@@ -693,8 +701,9 @@ def checkin(conn, data, equipe_id, alvo_tipo=None, alvo_id=None, funcionarios=()
     """Presença + retirada do dia. A retirada consome primeiro a reserva da própria equipe para o dia;
     o restante precisa caber no disponível (saldo físico − reservas de outras equipes)."""
     exigir_data_ocorrida(data, "Check-in")
-    if equipe_id not in [r[0] for r in conn.execute("SELECT id FROM equipes")]:
-        raise RegraViolada(f"Equipe '{equipe_id}' não cadastrada.")
+    exigir_equipe(conn, equipe_id)
+    import equipes
+    equipes.validar_presencas(conn, equipe_id, funcionarios, maquinas)
     tipo = ref = None
     if contingencia:
         if contingencia not in R.CONTINGENCIAS:
@@ -857,6 +866,7 @@ def histograma(conn, data_ini, data_fim):
 
 # ------------------------------------------------------------------ campo
 def registrar_clima(conn, data, equipe_id, turno, condicao):
+    exigir_equipe(conn, equipe_id)
     exigir_data_ocorrida(data, "Clima")
     if condicao not in R.CONDICOES_CLIMA:
         raise RegraViolada("Condição de clima inválida.")
@@ -1157,6 +1167,7 @@ def apontar(conn, data, equipe_id, alvo_tipo, ref, metros_executados=0, metros_r
     avanço anterior sem posição, exige antes a conciliação. Estimativas (soldas ⌈L/6⌉) nunca viram quantidade
     confirmada: soldas têm controle próprio. `motivo_sem_ns`: lançamento à mão (sem nota de serviço), guardado junto.
     """
+    exigir_equipe(conn, equipe_id)
     exigir_data_ocorrida(data, "Apontamento")
     turnos = {r["turno"] for r in conn.execute("SELECT turno FROM clima WHERE data=? AND equipe_id=?", (data, equipe_id))}
     if turnos != {"MANHA", "TARDE"}:
@@ -1747,6 +1758,7 @@ def ocorrencias(conn, alvo_tipo=None, ref=None, abertas=None):
 # ------------------------------------------------------------------ soldas (informadas × verificadas)
 def registrar_soldas(conn, data, equipe_id, alvo_tipo, ref, tipo, quantidade, soldador, informado_por,
                      posicao_m=None, maquina=None, obs=None):
+    exigir_equipe(conn, equipe_id)
     exigir_data_ocorrida(data, "Solda")
     a = alvo(conn, alvo_tipo, ref, operacao=True)
     if tipo not in ("ELETROFUSAO", "TOPO"):

@@ -514,18 +514,10 @@
 
   <!-- ======================================================= ADMINISTRATIVO: EQUIPES -->
   <section class="aba" id="aba-equipes">
-    <header class="cab-tela"><h1>Equipes</h1><p>Integrantes e máquinas de cada equipe e o histograma diário de presença.</p></header>
+    <header class="cab-tela"><h1>Equipes</h1><p>Crie cada equipe e designe seus integrantes. As equipes podem trabalhar nas zonas escolhidas na Programação.</p></header>
     <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas de Equipes" style="margin:0 0 16px"></div>
     <div data-pagina="integrantes" hidden>
-      <div class="painel">
-        <h3>Integrantes e máquinas</h3>
-        <form id="fRecurso" data-perm="equipes">
-          <label>Equipe<select name="equipe_id" class="selEquipe" required></select></label>
-          <div class="linha"><label>Funcionário<input name="nome"></label><label>Função<input name="funcao"></label></div>
-          <label>Máquina<input name="descricao" placeholder="Retroescavadeira, compactador…"></label>
-          <div class="acoes"><button class="btn">Adicionar</button></div>
-        </form>
-      </div>
+      <div id="equipesCadastro"></div>
     </div>
     <div data-pagina="histograma" hidden>
       <div class="painel">
@@ -1016,13 +1008,14 @@
     <div id="dicaLocal" class="aviso sugestao" hidden><b>Você está no computador do sistema.</b>
       <div class="acoes" style="margin-top:6px"><button type="button" class="btn prim" id="entrarLocal">Entrar sem senha</button></div>
       <small>Só funciona neste computador. Pelo link, cada pessoa entra com o próprio usuário e senha.</small></div>
-    <div id="dicaDemo" class="aviso info" hidden><b>Demonstração:</b> usuário <code>eng.demo</code> (ou <code>eng2.demo</code>, <code>almox.demo</code>, <code>equipe.demo</code>, <code>admin.demo</code>, <code>topo.demo</code>, <code>cadastro.demo</code>) e senha <code>demo-morro-123</code>.</div>
+    <div id="dicaDemo" class="aviso info" hidden><b>Demonstração:</b> usuário <code>eng.demo</code> (ou <code>eng2.demo</code>, <code>almox.demo</code>, <code>admin.demo</code>, <code>topo.demo</code>, <code>cadastro.demo</code>) e senha <code>demo-morro-123</code>.</div>
     <div class="acoes"><button class="btn prim">Entrar</button></div>
     <p class="vazio" style="margin:0">Cada lançamento fica registrado com o seu usuário. Usuários são criados pela administração.</p>
   </form>
 </div>
 <div id="toast" role="status"></div>
 <script src="/app.js"></script>
+<script src="/equipes.js"></script>
 <script src="/solicitacoes.js"></script>
 <script src="/iluminado.js"></script>
 <script src="/mapa_fundo.js"></script>

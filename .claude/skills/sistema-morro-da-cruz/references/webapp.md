@@ -17,6 +17,12 @@ Conteúdo:
 
 ## O ciclo da obra até a medição (ponta a ponta)
 
+**Equipes manuais (D-212, v24):** as equipes não são as zonas. O cadastro inicia vazio; Engenharia/Administração cria
+as equipes por empresa e designa integrantes antes de operar. Seis iniciais previstas, sem limite futuro. Migração
+retira todas as anteriores de operações novas e preserva as referências históricas. A Programação escolhe a equipe
+explicitamente. O encarregado mantém o vínculo do login e solicita só para frentes programadas/check-in aberto.
+Guia `docs/EQUIPES_CADASTRO_MANUAL.md`; API e validação em `equipes.py`.
+
 **Leitura do Mapa iluminado (D-211, 05/11/2026):** topografia em azul forte, etapas em cores saturadas e traço mais
 largo que o cinza tracejado de não iniciado. Contorno claro (escuro no branco de pronto) em Ruas, satélite e sem
 fundo; mesmo desenho durante o gesto. Paleta única para rede, nós e legenda. Não muda a etapa calculada nem as cores

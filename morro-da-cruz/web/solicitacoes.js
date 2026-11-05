@@ -12,7 +12,7 @@ const solFrente = id => {
 const solUn = (q, nome) => Math.abs(q - 1) > 1e-9 ? nome : String(nome || '').replace(/(ões|s)\b/g, (m, f) => f === 'ões' ? 'ão' : '');
 async function carregarSolicitacoes() {
   SOL_UI.dados = await api('/api/solicitacoes');
-  if (USUARIO.restrito_a_equipe) SOL_UI.frente = USUARIO.equipe_id;
+  if (!SOL_UI.dados.frentes.some(f => f.id === SOL_UI.frente)) SOL_UI.frente = SOL_UI.dados.frentes.length === 1 ? SOL_UI.dados.frentes[0].id : '';
   const box = $('#solicitarConteudo');
   // quem compra vê a lista primeiro e abre o formulário em "Nova requisição"; quem só pede vê o formulário aberto
   const obra = podeTela('compras'), aberto = !obra || SOL_UI.novo || SOL_UI.carrinho.length > 0;
@@ -63,7 +63,7 @@ function renderSolCarrinho() {
     <button type="button" class="btn" data-sol-tirar>Retirar</button></div>`).join('') : '<p>Nenhum material escolhido.</p>';
 }
 function renderSolFrentes() {
-  $('#solFrentes').innerHTML = SOL_UI.dados.frentes.filter(f => !USUARIO.restrito_a_equipe || f.id === USUARIO.equipe_id).map(f => `<button type="button" class="btn" data-sol-frente="${esc(f.id)}" aria-pressed="${SOL_UI.frente === f.id}">${esc(solFrente(f.id))}</button>`).join('');
+  $('#solFrentes').innerHTML = SOL_UI.dados.frentes.map(f => `<button type="button" class="btn" data-sol-frente="${esc(f.id)}" aria-pressed="${SOL_UI.frente === f.id}">${esc(solFrente(f.id))}</button>`).join('') || '<p>A engenharia precisa programar a equipe em uma zona antes da requisição.</p>';
 }
 const solMeu = s => String(s.solicitante).toLowerCase() === String(USUARIO.login).toLowerCase();
 // D-196: a requisição não tem aprovação. Aberta (sem nota) → aguardando a entrega (a nota foi ligada) → recebida; ou cancelada

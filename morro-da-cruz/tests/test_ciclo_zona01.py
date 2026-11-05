@@ -82,6 +82,8 @@ class CicloZona01(unittest.TestCase):
         cls.rels = os.path.join(cls.dados, "relatorios")
         cls.rel_carga = importar.aplicar(cls.db, I.DIR_PLANILHAS, cfg=cfg_teste_real(), dir_relatorios=cls.rels)
         c = S.conectar(cls.db)
+        from equipes_teste import cadastrar
+        cadastrar(c)
         for login, perfil, eq in USUARIOS:
             A.criar_usuario(c, login, login.upper(), perfil, SENHA, eq, "demonstração isolada")
         t = S.alvo(c, "TRECHO", TR)

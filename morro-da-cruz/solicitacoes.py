@@ -133,12 +133,34 @@ def catalogo(conn):
     return sorted(out, key=lambda i: (ordem.index(i['tipo']) if i['tipo'] in ordem else len(ordem), bitola(i), i['nome']))
 
 
+def frentes_do_usuario(conn, usuario):
+    if not usuario.get('restrito_a_equipe'):
+        return set(S.R.FRENTES)
+    equipe = usuario.get('equipe_id')
+    e = _one(conn, 'SELECT * FROM equipes WHERE id=?', equipe)
+    if not e or not e['ativa']:
+        return set()
+    if not e['empresa'] and equipe in S.R.FRENTES:
+        return {equipe}  # referência legada de testes/instalações anteriores
+    frentes = set()
+    alvos = conn.execute("""SELECT alvo_tipo,alvo_id FROM programacoes WHERE equipe_id=? AND status='PLANEJADA' AND data>=?
+        UNION SELECT a.alvo_tipo,a.alvo_id FROM checkin_alvos a JOIN checkins c ON c.id=a.checkin_id
+              WHERE c.equipe_id=? AND c.encerrado=0""", (equipe, S.RL.hoje().isoformat(), equipe))
+    for tipo, ref in alvos:
+        a = S.alvo(conn, tipo, ref)
+        if a.get('frente_id'):
+            frentes.add(a['frente_id'])
+    return frentes
+
+
 def abrir(conn, corpo, usuario):
     frente = corpo.get('frente_id')
-    if not _one(conn, 'SELECT id FROM equipes WHERE id=?', frente):
+    if frente not in S.R.FRENTES:
         raise RegraViolada('Toque na zona ou frente de destino.')
-    if usuario.get('restrito_a_equipe') and frente != usuario.get('equipe_id'):
-        raise RegraViolada('O encarregado solicita para a frente da própria equipe.')
+    if usuario.get('restrito_a_equipe'):
+        S.exigir_equipe(conn, usuario.get('equipe_id'))
+        if frente not in frentes_do_usuario(conn, usuario):
+            raise RegraViolada('O encarregado solicita para a frente da própria equipe: programe a equipe nessa zona primeiro.')
     itens = corpo.get('itens') or []
     if not itens or len(itens) > 50:
         raise RegraViolada('Escolha de 1 a 50 materiais.')

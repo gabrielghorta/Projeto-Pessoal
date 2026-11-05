@@ -46,6 +46,8 @@ def modelo():
         db = os.path.join(raiz, "obra.db")
         importar.aplicar(db, I.DIR_PLANILHAS, cfg=cfg_teste_real(), dir_relatorios=os.path.join(raiz, "rel"))
         c = S.conectar(db)
+        from equipes_teste import cadastrar
+        cadastrar(c)
         for login, perfil, eq in USUARIOS:
             A.criar_usuario(c, login, login.upper(), perfil, SENHA, eq, "teste da nota de serviço")
         c.close()

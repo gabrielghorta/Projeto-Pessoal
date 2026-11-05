@@ -251,16 +251,19 @@ class TestF01AvancoLegado(Base):
         banco_legado(self).close()
         self.rel = self.aplicar()
         self.c = self.conectar()
+        import equipes
+        self.equipe_nova = equipes.criar(self.c, 'ANKARA', 'Equipe nova do teste', 'eng.teste')
+        equipes.membro(self.c, self.equipe_nova, 'Integrante do teste', 'Encarregado')
         for d in ("2026-10-15", "2026-10-16"):
             for t in ("MANHA", "TARDE"):
-                S.registrar_clima(self.c, d, "Zona01", t, "SOL")
+                S.registrar_clima(self.c, d, self.equipe_nova, t, "SOL")
 
     def ex(self):
         e = S.execucao(self.c, "TRECHO", TR_ID)
         return (e["metros_executados"], e["metros_reaterrados"])
 
     def iv(self, *t, data="2026-10-16"):
-        return S.apontar(self.c, data, "Zona01", "TRECHO", TR, intervalos_novos=[{"etapa": e, "ini_m": a, "fim_m": b} for e, a, b in t])
+        return S.apontar(self.c, data, self.equipe_nova, "TRECHO", TR, intervalos_novos=[{"etapa": e, "ini_m": a, "fim_m": b} for e, a, b in t])
 
     def test_reproducao_migracao_preserva_30_20_e_alerta(self):
         self.assertEqual(self.rel["esquema_antes"], 5)
@@ -271,7 +274,7 @@ class TestF01AvancoLegado(Base):
         with self.assertRaisesRegex(S.RegraViolada, "Concilie a posição"):
             self.iv(("ASSENTADO", 30, 40))                                     # antes virava 10/0
         with self.assertRaisesRegex(S.RegraViolada, "Concilie a posição"):
-            S.apontar(self.c, "2026-10-16", "Zona01", "TRECHO", TR, concluido_100=True)
+            S.apontar(self.c, "2026-10-16", self.equipe_nova, "TRECHO", TR, concluido_100=True)
         self.c.execute("UPDATE execucao SET concluido=1 WHERE alvo_id=?", (TR_ID,))
         with self.assertRaisesRegex(S.RegraViolada, "Concilie a posição"):
             S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng", "2026-10-16")

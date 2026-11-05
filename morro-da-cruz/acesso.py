@@ -122,8 +122,10 @@ def criar_usuario(conn, login, nome, perfil, senha, equipe_id=None, criado_por="
     if perfil not in perfis["perfis"]:
         raise R.RegraViolada(f"Perfil inválido. Perfis: {', '.join(perfis['perfis'])}.")
     if perfis["perfis"][perfil].get("restrito_a_equipe"):
-        if not equipe_id or not conn.execute("SELECT 1 FROM equipes WHERE id=?", (equipe_id,)).fetchone():
-            raise R.RegraViolada("Perfil de equipe exige a equipe (Zona01…Zona11, ADUTORA, CH).")
+        if not equipe_id:
+            raise R.RegraViolada("Perfil de equipe exige a equipe. Crie uma em Equipes e escolha-a para este encarregado.")
+        from servicos import exigir_equipe
+        exigir_equipe(conn, equipe_id, completa=False)
     _validar_senha(senha)
     if _usuario(conn, login):
         raise R.RegraViolada(f"Login '{login}' já existe.")
@@ -143,6 +145,9 @@ def alterar_usuario(conn, login, por, perfil=None, ativo=None, equipe_id=None, n
     nova_equipe = equipe_id if equipe_id is not None else u["equipe_id"]
     if perfis["perfis"][novo_perfil].get("restrito_a_equipe") and not nova_equipe:
         raise R.RegraViolada("Perfil de equipe exige a equipe.")
+    if perfis["perfis"][novo_perfil].get("restrito_a_equipe") and ativo is not False:
+        from servicos import exigir_equipe
+        exigir_equipe(conn, nova_equipe, completa=False)
     if u["login"] == str(por).lower() and ativo is not None and not ativo:
         raise R.RegraViolada("Você não pode desativar o próprio usuário.")
     conn.execute("UPDATE usuarios SET perfil=?, ativo=?, equipe_id=?, nome=? WHERE id=?",

@@ -292,8 +292,7 @@ def programar(conn, linhas, nos, equipe_id, servico, data, por, obs=None, confir
     (linha ou nó), todas com o mesmo carimbo de criação (o lote). Programação igual já existente é mantida. O alvo já
     programado para OUTRA equipe no mesmo dia não é gravado sem confirmação: devolve {"confirmar": texto} e nada muda;
     com confirmar=True grava assim mesmo (duas equipes no mesmo trecho)."""
-    if not _one(conn, "SELECT 1 FROM equipes WHERE id=?", equipe_id):
-        raise RegraViolada("Equipe não cadastrada.")
+    S.exigir_equipe(conn, equipe_id)
     if servico not in P.SERVICOS:
         raise RegraViolada("Serviço inválido.")
     dia = _data(data, "programação").isoformat()
@@ -365,8 +364,9 @@ def liberar(conn, data, equipe_id, linhas, nos, materiais, por, funcionarios=(),
     ou, se ela já tem check-in aberto nesse dia, soma a retirada a ele. As programações do dia da equipe para a seleção
     ficam realizadas por esse check-in (é o que pinta a equipe em campo no mapa)."""
     S.exigir_data_ocorrida(data, "Liberação de material")
-    if not _one(conn, "SELECT 1 FROM equipes WHERE id=?", equipe_id):
-        raise RegraViolada(f"Equipe '{equipe_id}' não cadastrada.")
+    S.exigir_equipe(conn, equipe_id)
+    import equipes
+    equipes.validar_presencas(conn, equipe_id, funcionarios, maquinas)
     sel = _selecao(conn, linhas, nos)
     alvos = _alvos(sel)
     if not alvos:

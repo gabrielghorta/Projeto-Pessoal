@@ -462,3 +462,29 @@ Código: `web/iluminado.js`, `web/mapa_fundo.js`, `web/app.css`. Conferência vi
 `ferramentas/desempenho/conferir_contraste_iluminado.cjs`. Verde continua exclusivo do cadastro aprovado pela Caesb;
 cadastro de campo não cria aprovação nem verificação.
 
+## 29. Cadastro manual das equipes e composição (05/11/2026)
+
+O responsável definiu seis equipes iniciais no planejamento: duas Ankara, duas Empreiteiro 1 e duas Empreiteiro 2.
+Pediu criar cada equipe e designar os membros, permitir mais equipes no futuro e excluir todas as equipes atuais.
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-212 | Equipes da obra | uma equipe automática por zona / equipes criadas e compostas pelo usuário | Zonas e equipes estavam misturadas; importar o projeto recriava equipes e sugeria uma equipe pelo código da zona. | Cadastro manual independente das zonas. | **Decidido pelo responsável (05/11/2026):** o cadastro inicia sem equipes ativas. Nenhuma das seis é criada automaticamente. Engenharia/Administração cria cada equipe escolhendo Ankara, Empreiteiro 1 ou Empreiteiro 2 e designa os integrantes; siglas sequenciais A1, A2… / E1.1, E1.2… / E2.1, E2.2…, sem limite de duas por empresa. Equipe sem integrantes não recebe programação, liberação, NS do dia ou lançamentos novos. Todas as equipes anteriores saem das opções de novos serviços, preservando suas referências históricas. Reimportar planilhas não cria ou restaura equipes. |
+
+Esquema **v24**: `frentes` guarda as zonas/Subadutora/CH do projeto; as referências de `trechos`, `atividades` e
+`solicitacao_detalhes` passam a ela. A migração confere a cópia e a integridade, preserva os IDs, os lançamentos e as
+presenças anteriores e marca as equipes antigas como excluídas. Não atribui lançamentos antigos às novas equipes.
+Exclusão posterior também retira a equipe das operações sem apagar histórico. Os códigos não são reutilizados.
+
+Em **Equipes › Integrantes e máquinas**, criar a equipe, designar pessoa já cadastrada ou cadastrar nome/função e
+adicionar as máquinas. Uma pessoa pertence a uma equipe por vez; retiradas e mudanças exigem encerrar o check-in em
+que ela está presente. O login do encarregado continua vinculado em **Usuários e histórico**. Engenharia/Administração
+mantêm a permissão `equipes`; nenhum acesso novo foi concedido ao campo ou ao RH.
+
+Na Programação, uma equipe nova é escolhida explicitamente; não é inferida do nome da zona (substitui a sugestão
+automática da D-179 para o cadastro novo). As siglas completas aparecem nas etiquetas dos mapas, inclusive E1.1/E1.2.
+Os pedidos do encarregado continuam limitados às frentes programadas para a sua equipe ou com check-in aberto.
+
+Guia: `docs/EQUIPES_CADASTRO_MANUAL.md`; `equipes.py`, migração em `importacao.preparar_v24` e `web/equipes.js`.
+Testes: `tests/test_equipes.py` e regressões do campo, importação, programação, NS e permissões.
+

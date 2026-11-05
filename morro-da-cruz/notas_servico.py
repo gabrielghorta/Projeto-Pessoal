@@ -1240,8 +1240,7 @@ def gravar_clima(conn, data, equipe_id, clima, corrigir=False):
 def enviar_dia(conn, equipe_id, pdf_b64, croqui_b64, por, planilha_b64=None, nomes=None, clima=None, hoje=None):
     """A NS do dia enviada pela equipe (ou em nome dela): lê, recusa o que não é desta obra, o PDF sem texto e a data
     futura, guarda os arquivos e a NS, casa os segmentos e lança sozinho o que é inequívoco (registrar_dia)."""
-    if not equipe_id or not _one(conn, "SELECT 1 FROM equipes WHERE id=?", equipe_id):
-        raise RegraViolada("Escolha a equipe da nota do dia.")
+    S.exigir_equipe(conn, equipe_id)
     nomes = nomes or {}
     pdf, planilha, ns = _ler_arquivos(conn, pdf_b64, planilha_b64, hoje)
     if not ns["resultado"]["aceita"]:

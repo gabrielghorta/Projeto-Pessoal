@@ -3,7 +3,7 @@
   "permissoes": {
     "usuarios": "Criar, alterar, desativar e excluir usuários",
     "auditoria": "Consultar o histórico de alterações de qualquer objeto",
-    "equipes": "Cadastrar funcionários e máquinas das equipes",
+    "equipes": "Criar e excluir equipes, designar integrantes e cadastrar máquinas",
     "almox": "Movimentos de almoxarifado, reservas, check-in/check-out, estorno e retificação de fechamento",
     "receber": "Recebimento e inspeção de notas fiscais (aceite e recusa), devolução ao fornecedor",
     "compras_solicitar": "Pedir material (requisição de material) e cancelar a própria",

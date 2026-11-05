@@ -283,10 +283,9 @@ class Importador:
 
     # -------------------------------------------------------------- cargas
     def equipes(self):
-        nomes = {f"Zona{n:02d}": f"EQUIPE ZONA {n:02d}" for n in range(1, 12)}
-        nomes.update({"ADUTORA": "EQUIPE ADUTORA", "CH": "EQUIPE CH — CAIXAS HIDRÁULICAS"})
-        for eid in R.FRENTES:
-            self.c.execute("INSERT OR IGNORE INTO equipes(id, nome) VALUES (?,?)", (eid, nomes[eid]))
+        # D-212: as frentes pertencem ao projeto; equipes são criadas e montadas pelo usuário.
+        # Reimportar planilhas não cria nem restaura equipes excluídas.
+        pass
 
     def bm(self, p):
         fid = self.fonte("bm", p)
@@ -1170,6 +1169,17 @@ def preparar_v23(conn):
     """Esquema v22 → v23: apropriacao_correcoes, a data de antes de cada apropriação corrigida (D-204). Tabela nova e
     vazia."""
     S.aplicar_esquema(conn)
+
+
+def preparar_v24(conn):
+    """Cadastro inicia vazio para novas operações. O legado permanece referenciável no histórico."""
+    S.aplicar_esquema(conn)
+    for coluna, tipo in (("empresa", "TEXT"), ("numero", "INTEGER"), ("ativa", "INTEGER NOT NULL DEFAULT 1"),
+                         ("criada_em", "TEXT"), ("criada_por", "TEXT"), ("excluida_em", "TEXT"), ("excluida_por", "TEXT")):
+        _add_coluna(conn, "equipes", coluna, tipo)
+    for tabela in ("trechos", "atividades", "solicitacao_detalhes"):
+        _recriar_tabela(conn, tabela, "REFERENCES frentes")
+    conn.execute("UPDATE equipes SET ativa=0,excluida_em=?,excluida_por='migração D-212: cadastro manual'", (S._agora(),))
 
 
 def preparar_v22(conn):

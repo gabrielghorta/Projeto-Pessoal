@@ -175,8 +175,11 @@ class TestRetificacaoDoLegado(Base):
         banco_legado(self).close()
         self.aplicar()
         self.c = self.conectar()
+        import equipes
+        self.equipe_nova = equipes.criar(self.c,'ANKARA','Equipe nova do teste','eng.teste')
+        equipes.membro(self.c,self.equipe_nova,'Integrante do teste','Encarregado')
         for t in ("MANHA", "TARDE"):
-            S.registrar_clima(self.c, D2, "Zona01", t, "SOL")
+            S.registrar_clima(self.c, D2, self.equipe_nova, t, "SOL")
 
     def test_conciliacao_retificada_mantem_os_mesmos_metros_sem_quantidades(self):
         cid = S.conciliar_legado(self.c, TR, [{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 30},
@@ -198,7 +201,7 @@ class TestRetificacaoDoLegado(Base):
         self.assertEqual(self.q("SELECT COUNT(*) FROM apontamentos")[0][0], 1)
         e = S.execucao(self.c, "TRECHO", TR_ID)
         self.assertEqual((e["metros_executados"], e["metros_reaterrados"]), (30, 20))
-        S.apontar(self.c, D2, "Zona01", "TRECHO", TR, intervalos_novos=[{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 5}])
+        S.apontar(self.c, D2, self.equipe_nova, "TRECHO", TR, intervalos_novos=[{"etapa": "ASSENTADO", "ini_m": 0, "fim_m": 5}])
         e = S.execucao(self.c, "TRECHO", TR_ID)
         self.assertEqual((e["metros_executados"], e["metros_reaterrados"]), (35, 20))
 
@@ -348,11 +351,14 @@ class TestMigracaoV7ParaV8(Base):
         self.assertEqual((sit["etapas"]["ASSENTADO"]["metros"], sit["etapas"]["ASSENTADO"]["verificado_m"]), (40, 10))
         self.assertEqual([(g["ref_tipo"], g["ref_id"]) for g in sit["registros"]], [("CONCILIACAO", 1), ("APONTAMENTO", 2)])
         self.assertEqual(S.estado_mapa(c2)["verificacao"][TR], "PARCIAL")
-        # continuidade: os dados migrados aceitam retificação e novos apontamentos
+        # continuidade: a equipe antiga fica no histórico; a nova recebe os novos apontamentos
+        import equipes
+        equipe_nova = equipes.criar(c2,'ANKARA','Equipe nova do teste','eng.teste')
+        equipes.membro(c2,equipe_nova,'Integrante do teste','Encarregado')
         for t in ("MANHA", "TARDE"):
-            S.registrar_clima(c2, D2, "Zona01", t, "SOL")
+            S.registrar_clima(c2, D2, equipe_nova, t, "SOL")
         S.retificar_intervalos(c2, "APONTAMENTO", 2, [{"etapa": "ASSENTADO", "ini_m": 30, "fim_m": 38}], "trena", "Eng.")
-        S.apontar(c2, D2, "Zona01", "TRECHO", TR, intervalos_novos=[{"etapa": "ASSENTADO", "ini_m": 38, "fim_m": 45}])
+        S.apontar(c2, D2, equipe_nova, "TRECHO", TR, intervalos_novos=[{"etapa": "ASSENTADO", "ini_m": 38, "fim_m": 45}])
         e = S.execucao(c2, "TRECHO", TR_ID)
         self.assertEqual((e["metros_executados"], e["metros_reaterrados"]), (45, 20))
         self.assertEqual(self.q("""SELECT SUM(q.confirmado) FROM apontamento_quantidades q JOIN apontamentos ap ON ap.id=q.apontamento_id

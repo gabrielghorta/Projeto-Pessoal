@@ -253,7 +253,8 @@ def _atividades(conn, trechos, ini, fim):
 
 
 def _equipes(conn, ini, fim):
-    eq = _rows(conn.execute("SELECT id, nome FROM equipes ORDER BY id"))
+    eq = _rows(conn.execute("""SELECT e.id,e.nome FROM equipes e WHERE e.ativa=1 OR EXISTS
+        (SELECT 1 FROM checkins c WHERE c.equipe_id=e.id AND c.data BETWEEN ? AND ?) ORDER BY e.id""", (ini,fim)))
     func = {r[0]: r[1] for r in conn.execute("SELECT equipe_id, COUNT(*) FROM funcionarios GROUP BY 1")}
     maq = {r[0]: r[1] for r in conn.execute("SELECT equipe_id, COUNT(*) FROM maquinas GROUP BY 1")}
     dias = {r[0]: r[1] for r in conn.execute("SELECT equipe_id, COUNT(DISTINCT data) FROM checkins WHERE data BETWEEN ? AND ? "

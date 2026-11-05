@@ -123,6 +123,15 @@ function toast(msg, tipo = '') {
   const t = $('#toast'); t.textContent = msg; t.className = tipo; t.style.display = 'block';
   clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', tipo === 'erro' ? 7000 : 3500);
 }
+const equipeRotulo = e => `${e.id} · ${e.nome}`;
+function preencherEquipes() {
+  $$('.selEquipe').forEach(s => {
+    const antes = s.value, cadastro = !!s.closest('#aba-admin');
+    s.innerHTML = '<option value="">Escolha a equipe</option>' + RESUMO.equipes.map(e =>
+      `<option value="${esc(e.id)}"${!cadastro && e.empresa && !e.integrantes ? ' disabled' : ''}>${esc(equipeRotulo(e))}${e.empresa && !e.integrantes ? ' — adicione integrantes' : ''}</option>`).join('');
+    if (RESUMO.equipes.some(e => e.id === antes)) s.value = antes;
+  });
+}
 async function acao(fn, okMsg) {
   try { const r = await fn(); if (okMsg) toast(okMsg, 'ok'); return r; } catch (e) { toast(e.message, 'erro'); e.exibido = true; throw e; }
 }
@@ -156,7 +165,7 @@ const TELAS = {
   compras: { titulo: 'Compras', grupo: 'planejamento', inclui: ['solicitar'],
     carregar: () => PAGINA.compras === 'requisicoes' ? carregarSolicitacoes() : carregarCompras() },
   medicao: { titulo: 'Medição', grupo: 'administrativo', carregar: () => carregarMedicoes() },
-  equipes: { titulo: 'Equipes', grupo: 'administrativo', carregar: () => carregarAlmox() },
+  equipes: { titulo: 'Equipes', grupo: 'administrativo', carregar: () => carregarEquipes() },
   relatorios: { titulo: 'Relatórios', grupo: 'administrativo', carregar: () => carregarRelatorios() },
   lev: { titulo: 'Projeto e cronograma', grupo: 'administrativo', inclui: ['cronograma'],
     carregar: () => PAGINA.lev === 'cronograma' ? carregarCronograma() : carregarLev() },
@@ -679,12 +688,6 @@ document.addEventListener('click', async ev => {
     }
     carregarAlmox();
   }
-});
-$('#fRecurso').addEventListener('submit', async ev => {
-  ev.preventDefault(); const o = formObj(ev.target);
-  if (o.nome) await acao(() => api('/api/funcionario', o));
-  if (o.descricao) await acao(() => api('/api/maquina', o));
-  toast('Equipe atualizada.', 'ok'); ev.target.reset();
 });
 
 async function carregarHistograma() {
@@ -2072,7 +2075,7 @@ async function iniciar() {
   if (INICIADO) return;
   INICIADO = true;
   RESUMO = await api('/api/resumo');
-  $$('.selEquipe').forEach(s => s.innerHTML = '<option value="">—</option>' + RESUMO.equipes.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join(''));
+  preencherEquipes();
   $$('.selClima').forEach(s => s.innerHTML = '<option value="">—</option>' + Object.entries(RESUMO.clima).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''));
   $$('input[type=date]').forEach(i => { if (!i.value && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   if (podeTela('medicao')) { const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }

@@ -15,7 +15,7 @@ SERVICOS_LIBERACAO = ("LOCACAO", "ESCAVACAO", "ASSENTAMENTO")      # programados
 
 
 def _trechos(conn, frente=None):
-    if frente and not conn.execute("SELECT 1 FROM equipes WHERE id=?", (frente,)).fetchone():
+    if frente and not conn.execute("SELECT 1 FROM frentes WHERE id=?", (frente,)).fetchone():
         raise RegraViolada(f"Frente '{frente}' não existe.")
     sql, args = "SELECT id, ponto, frente_id, extensao_m, metodologia FROM trechos WHERE vigente=1", []
     if frente:
