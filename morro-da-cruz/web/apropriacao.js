@@ -11,45 +11,68 @@ const APR_SIT = { PROPOSTA: ['verde', 'na medição'], PARCIAL: ['amarelo', 'em 
   ESTORNADA: ['cinza', 'estornada'] };
 const APR_DIM = {M:1,M2:2,M3:3};
 function aprParcelas() {
-  return $$('#aprMedidas [data-parcela]').map(l => Object.fromEntries($$('[data-medida]',l).map(i=>[i.dataset.medida,i.value])));
+  return $$('#aprMedidas [data-parcela]').map(parte => {
+    const p = Object.fromEntries($$('[data-medida]', parte).map(i => [i.dataset.medida, i.value]));
+    p.lados = $$('[data-lado]', parte).map(l => ({nome:$('[data-lado-nome]',l).value.trim(), comprimento:$('[data-lado-comprimento]',l).value.trim()}))
+      .filter(l => l.nome || l.comprimento);
+    return p;
+  });
 }
+function aprDimensao() { return APR_DIM[String(APR.item?.unidade || '').toUpperCase().replace('²','2').replace('³','3')]; }
 function aprMontarMedidas() {
-  const dim = APR_DIM[String(APR.item?.unidade || '').toUpperCase().replace('²','2').replace('³','3')], q=$('#fApr').quantidade;
+  const dim=aprDimensao(), q=$('#fApr').quantidade;
   q.readOnly=!!dim; q.value='';
-  $('#aprMedidas').innerHTML=dim ? `<h4>Memória de cálculo</h4><p class="vazio">Medidas em metros. Para perímetro, some os lados: 80 + 50 + 40. Em m² use comprimento/perímetro e largura/altura; em m³ acrescente a profundidade.</p><div id="aprParcelas"></div><button type="button" class="btn" id="aprMaisParcela">Adicionar parcela</button><p id="aprConta" aria-live="polite"></p>` : '';
+  $('#aprMedidas').innerHTML=dim ? `<h4>Medidas do serviço</h4><p class="vazio">Preencha os lados um por um ou digite a soma. A quantidade é calculada automaticamente.</p><div id="aprParcelas"></div><button type="button" class="btn" id="aprMaisParcela">+ outra parte</button><p id="aprConta" aria-live="polite"></p>` : '';
   if(dim) aprAdicionarParcela(dim);
+}
+function aprAdicionarLado(parte) {
+  if($$('[data-lado]',parte).length>=30) return toast('No máximo 30 lados por parte.','erro');
+  $('[data-lados]',parte).insertAdjacentHTML('beforeend',`<div data-lado class="apr-lado"><label>Nome do lado (opcional)<input data-lado-nome maxlength="40" placeholder="A-B"></label><label>Comprimento (m)<input data-lado-comprimento inputmode="decimal" placeholder="80,00"></label><button type="button" class="btn" data-apr-tirar-lado aria-label="Remover este lado">Remover</button></div>`);
 }
 function aprAdicionarParcela(dim) {
   const n=$$('#aprMedidas [data-parcela]').length;
-  if(n>=30)return toast('No máximo 30 parcelas.','erro');
-  $('#aprParcelas').insertAdjacentHTML('beforeend',`<fieldset data-parcela><legend>Parcela ${n+1}</legend>
-    <label>Identificação (opcional)<input data-medida="descricao" placeholder="ex.: tapume da frente"></label><div class="linha">
-    <label>${dim>1?'Comprimento / perímetro':'Medida'} (m)<input data-medida="comprimento" inputmode="decimal" placeholder="80 + 50 + 40" required></label>
-    ${dim>1?'<label>Largura / altura (m)<input data-medida="largura" inputmode="decimal" required></label>':''}
-    ${dim>2?'<label>Profundidade (m)<input data-medida="profundidade" inputmode="decimal" required></label>':''}
-    <label>Repetições<input type="number" min="1" max="99999" step="1" data-medida="repeticoes" value="1" required></label></div>
-    <button type="button" class="btn" data-apr-tirar-parcela>Remover parcela</button></fieldset>`);
+  if(n>=30)return toast('No máximo 30 partes.','erro');
+  $('#aprParcelas').insertAdjacentHTML('beforeend',`<fieldset data-parcela><legend>Parte ${n+1}</legend>
+    <label>Identificação (opcional)<input data-medida="descricao" maxlength="150" placeholder="ex.: tapume da frente"></label>
+    <div data-lados></div><button type="button" class="btn" data-apr-mais-lado>+ lado</button>
+    <label>Ou digite a soma dos lados (m)<input data-medida="soma" inputmode="decimal" placeholder="80 + 50 + 40 + 20 + 45" maxlength="400"></label>
+    <div class="linha">${dim>1?`<label>${dim===2?'Altura ou largura':'Largura'} (m)<input data-medida="largura" inputmode="decimal" placeholder="2,00" required></label>`:''}
+    ${dim>2?'<label>Profundidade ou espessura (m)<input data-medida="profundidade" inputmode="decimal" placeholder="0,10" required></label>':''}
+    <label>Repetições (opcional)<input type="number" min="1" max="99999" step="1" data-medida="repeticoes" value="1"></label></div>
+    <p data-resultado-parte aria-live="polite" class="apr-resultado"></p><button type="button" class="btn" data-apr-tirar-parcela>Remover parte</button></fieldset>`);
+  aprAdicionarLado($('#aprParcelas').lastElementChild);
 }
 function aprSomarMedida(v) {
-  const p=String(v).split('+');
-  if(p.length>30 || p.some(t=>!/^\d+(?:[.,]\d+)?$/.test(t.trim())))return NaN;
-  return p.reduce((s,t)=>s+Number(t.trim().replace(',','.')),0);
+  const ps=String(v).split('+');
+  if(String(v).length>400 || ps.length>30)return NaN;
+  const vs=ps.map(t=>{t=t.trim();return /^(?:\d+(?:[.,]\d+)?|\d{1,3}(?:\.\d{3})+,\d+)$/.test(t)?Number(t.includes(',')?t.replace(/\./g,'').replace(',','.'):t):NaN;});
+  return vs.every(n=>Number.isFinite(n)&&n>0&&n<=1e9)?vs.reduce((a,b)=>a+b,0):NaN;
 }
 function aprAtualizarConta() {
-  const parcelas=aprParcelas(), contas=[];let total=0;
-  for(const p of parcelas){
-    const vals=['comprimento','largura','profundidade'].filter(k=>p[k]!==undefined).map(k=>aprSomarMedida(p[k]));
-    const rep=Number(p.repeticoes), q=vals.reduce((a,b)=>a*b,rep);
-    if(vals.some(v=>!Number.isFinite(v)||v<=0)||!Number.isInteger(rep)||rep<1||!Number.isFinite(q)) {total=NaN;break;}
-    total+=q;contas.push(`${p.descricao?p.descricao+': ':''}${rep!==1?rep+' × ':''}${['comprimento','largura','profundidade'].filter(k=>p[k]!==undefined).map(k=>'('+p[k]+')').join(' × ')} = ${nf(q,4)} ${APR.item.unidade}`);
-  }
-  $('#fApr').quantidade.value=Number.isFinite(total)&&total>0?Number(total.toFixed(4)):'';
-  $('#aprConta').textContent=Number.isFinite(total)&&total>0?contas.join(' · '):'Preencha as medidas para calcular a quantidade.';
+  if(!aprDimensao())return;
+  const partes=aprParcelas(), dim=aprDimensao(), unidade=['','m','m²','m³'][dim];
+  const medida=n=>n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4});
+  let total=0, valido=partes.length>0;
+  partes.forEach((p,i)=>{
+    const box=$$('#aprMedidas [data-parcela]')[i]; let mensagem='';
+    if(p.lados.length && p.soma.trim()) mensagem='Escolha os lados ou a soma. Não preencha os dois na mesma parte.';
+    const comp=p.lados.length?p.lados.reduce((a,l)=>a+aprSomarMedida(l.comprimento),0):aprSomarMedida(p.soma);
+    const larg=dim>1?aprSomarMedida(p.largura):1, prof=dim>2?aprSomarMedida(p.profundidade):1, rep=Number(p.repeticoes||1);
+    const q=comp*larg*prof*rep;
+    if(!mensagem && (![comp,larg,prof,q].every(n=>Number.isFinite(n)&&n>0)||!Number.isInteger(rep)||rep<1||rep>99999)) mensagem='Preencha as medidas positivas para calcular esta parte.';
+    if(mensagem) valido=false; else total+=q;
+    $('[data-resultado-parte]',box).textContent=mensagem || `${dim>1?'Perímetro':'Comprimento'} ${medida(comp)} m${dim>1?' × '+(dim===2?'altura/largura ':'largura ')+medida(larg)+' m':''}${dim>2?' × espessura '+medida(prof)+' m':''}${rep!==1?' × '+rep+' vezes':''} = ${medida(q)} ${unidade}`;
+    box.classList.toggle('apr-medida-conflito',!!(p.lados.length && p.soma.trim()));
+  });
+  $('#fApr').quantidade.value=valido?Number(total.toFixed(4)):'';
+  $('#aprConta').textContent=valido?`Total: ${medida(total)} ${unidade}`:'Complete as medidas de todas as partes.';
   aprCartao();
 }
 $('#aprMedidas').addEventListener('input',aprAtualizarConta);
 $('#aprMedidas').addEventListener('click',ev=>{
-  if(ev.target.closest('#aprMaisParcela'))aprAdicionarParcela(APR_DIM[String(APR.item.unidade).toUpperCase().replace('²','2').replace('³','3')]);
+  if(ev.target.closest('#aprMaisParcela'))aprAdicionarParcela(aprDimensao());
+  if(ev.target.closest('[data-apr-mais-lado]'))aprAdicionarLado(ev.target.closest('[data-parcela]'));
+  if(ev.target.closest('[data-apr-tirar-lado]'))ev.target.closest('[data-lado]').remove();
   if(ev.target.closest('[data-apr-tirar-parcela]'))ev.target.closest('[data-parcela]').remove();
   aprAtualizarConta();
 });
@@ -171,6 +194,7 @@ $('#fApr').quantidade.addEventListener('input', aprCartao);
 $('#fApr').addEventListener('submit', async ev => {
   ev.preventDefault();
   if (!APR.item) return toast('Escolha o item (pela busca ou pelo grupo, tipo e item).', 'erro');
+  if(aprDimensao() && !$('#fApr').quantidade.value) return toast('Confira as medidas. Use lados ou soma em cada parte.', 'erro');
   const f = ev.target, o = formObj(f), arqs = [...f.evidencias.files], lt = o.local_tipo, alvo = $('#aprAlvo');
   const bt = $('#aprGravar'); bt.disabled = true;
   try {

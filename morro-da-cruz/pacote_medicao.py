@@ -132,9 +132,10 @@ def totais(conn, q_mes, vert=None):
 
 def _alvo_info(conn, tipo, aid):
     if tipo == "APROPRIACAO":
-        a = _one(conn, "SELECT local_texto, o_que_foi_feito, memoria_calculo, quantidade FROM apropriacoes WHERE id=?", aid) or {}
+        a = _one(conn, "SELECT local_texto, o_que_foi_feito, memoria_calculo, calculo_json, justificativa, quantidade FROM apropriacoes WHERE id=?", aid) or {}
         return {"nome": f"APROPRIAÇÃO Nº {aid}", "projeto": None, "ref": " · ".join(x for x in (a.get("local_texto"),
-                       a.get("o_que_foi_feito")) if x), "memoria": a.get("memoria_calculo"), "apropriado": a.get("quantidade")}
+                       a.get("o_que_foi_feito")) if x), "memoria": a.get("memoria_calculo"), "apropriado": a.get("quantidade"),
+                "calculo": a.get("calculo_json"), "descricao": a.get("o_que_foi_feito"), "justificativa": a.get("justificativa")}
     try:
         a = S.alvo(conn, tipo, aid)
     except RegraViolada:
@@ -161,17 +162,33 @@ def _linhas_memorial(conn, medicao_id, item, unidade):
             lin["estacas"] = (0, 0.0, est, round(q - est * ESTACA_M, 4))   # 4 casas, como a quantidade do lançamento
         elif ext and l["alvo_tipo"] == "TRECHO":
             lin["ref"] = " · ".join(x for x in (info["ref"], f"L = {ext:.2f} m".replace(".", ",")) if x)
-        if l["alvo_tipo"] == "APROPRIACAO" and info.get("memoria"):
-            import textwrap
-            texto = info["memoria"]
-            if abs(q - info["apropriado"]) > 0.00005:
-                texto += f"\nMemória da quantidade total apropriada; nesta medição: {R.fmt_num(q,4)} {unidade}."
-            partes = [p for linha in texto.splitlines() for p in textwrap.wrap(linha, width=64)]
-            for i, parte in enumerate(partes):
-                out.append(dict(lin, nomenclatura=lin["nomenclatura"] if i == 0 else None,
-                                ref=parte, quantidade=q if i == len(partes)-1 else 0,
-                                exibir_quantidade=i == len(partes)-1))
+        if l["alvo_tipo"] == "APROPRIACAO" and info.get("calculo"):
+            import memoria_calculo as MC
+            calculo = MC.ler(info["calculo"])
+            dim = MC.DIMENSOES[calculo["unidade"]]
+            for parte in calculo["parcelas"]:
+                out.append(dict(lin, ref=MC.referencia(parte, l["alvo_id"]), quantidade=parte["quantidade"],
+                    medidas={"dim": dim, "comprimento": parte["comprimento_m"],
+                             "largura": float(MC.medida(parte["largura"])[0]) if dim > 1 else None,
+                             "profundidade": float(MC.medida(parte["profundidade"])[0]) if dim > 2 else None,
+                             "repeticoes": parte["repeticoes"]},
+                    justificativa_auto=(info.get("justificativa") or "").strip() or
+                        ((info.get("descricao") or "") + ". " + MC.resumo_parte(parte, unidade)).upper()))
+            diferenca = sum(p["quantidade"] for p in calculo["parcelas"]) - q
+            if abs(diferenca) > 1e-9:
+                ref = ("ARREDONDAMENTO DA QUANTIDADE (4 CASAS)" if abs(calculo["quantidade"] - q) < 0.00005 else
+                       "PARCELA FORA DESTA MEDIÇÃO (saldo do contrato)")
+                out.append(dict(lin, ref=ref, quantidade=-diferenca,
+                                ajuste=True))
         else:
+            if l["alvo_tipo"] == "APROPRIACAO":
+                # Legado sem medidas: preserva o total, sem reconstruir dimensões nem cortar a conta.
+                lin["ref"] = (info.get("descricao") or info.get("ref") or "Apropriação direta")[:64]
+                lin["sem_medidas"] = R.normalizar_unidade(unidade) in ("M", "M2", "M3")
+                if lin["sem_medidas"]:
+                    lin["ref"] = "TOTAL REGISTRADO SEM DIMENSÕES – VER APROPRIAÇÃO"
+                lin["justificativa_auto"] = ((info.get("descricao") or "Apropriação direta") + ". " +
+                                            (info.get("memoria") or f"{R.fmt_num(q,4)} {unidade}")).upper()
             out.append(lin)
     return out
 
@@ -541,7 +558,7 @@ def _memoria(p, conn, r, aba_mc, n, cq, ct, teste, num, ano, dir_fotos):
         pedacos = [f["linhas"][i:i + LINHAS_MEMORIAL] for i in range(0, max(len(f["linhas"]), 1), LINHAS_MEMORIAL)]
         for i, ped in enumerate(pedacos):
             paginas.append((f, ped, i))
-    mesclas, quebras, fotos_pos = [], [], []
+    mesclas, quebras, fotos_pos, cab_dimensionais = [], [], [], []
     for k, (f, ped, cont) in enumerate(paginas):
         r0 = 1 + FOLHA * k
         d = r0 - 1
@@ -550,12 +567,16 @@ def _memoria(p, conn, r, aba_mc, n, cq, ct, teste, num, ano, dir_fotos):
         _cabecalho_folha(aba, r0, k + 1, cq(n), teste, num, ano)
         aba.texto(f"C{r0 + 6}", f["item"])
         just = (f["justificativa"] or "").strip()
+        if not just:
+            just = "\n".join(dict.fromkeys(l["justificativa_auto"] for l in f["linhas"] if l.get("justificativa_auto")))
         if f["excede"]:
             just = "ADITIVO PENDENTE — acumulado acima do contrato." + (f"\n{just}" if just else "")
         if cont:
             just = f"CONTINUAÇÃO DA FOLHA {k + 1 - cont:03d}." + (f"\n{just}" if just else "")
         if just:
             aba.texto(f"X{r0 + 8}", just)
+        if _titulos_dimensionais(p, aba, r0, f):
+            cab_dimensionais.append(r0 + MEMORIAL - 1)
         for i in range(LINHAS_MEMORIAL):           # sem encadear estacas: cada trecho começa na estaca 0
             lin = r0 + MEMORIAL + i
             aba.vazia(f"I{lin}")
@@ -572,11 +593,30 @@ def _memoria(p, conn, r, aba_mc, n, cq, ct, teste, num, ano, dir_fotos):
                 for col, v in zip("IJKL", l["estacas"]):
                     aba.numero(f"{col}{lin}", v)
                 aba.numero(f"U{lin}", 1)
-            else:
-                if l.get("exibir_quantidade", True):
-                    aba.numero(f"U{lin}", l["quantidade"])
+            elif l.get("medidas"):
+                m = l["medidas"]
+                for c in "IJKL":
+                    aba.vazia(f"{c}{lin}")
+                if m["dim"] == 3:
+                    aba.numero(f"I{lin}", m["comprimento"])
+                    aba.numero(f"J{lin}", m["largura"])
+                    aba.formula(f"T{lin}", f"I{lin}*J{lin}")
+                    aba.numero(f"U{lin}", m["profundidade"])
                 else:
-                    aba.vazia(f"U{lin}")
+                    aba.numero(f"T{lin}", m["comprimento"])
+                    aba.numero(f"U{lin}", m["largura"] if m["dim"] == 2 else m["repeticoes"])
+                if m["dim"] > 1 and m["repeticoes"] != 1:
+                    aba.numero(f"K{lin}", m["repeticoes"])
+                    aba.formula(f"W{lin}", f"T{lin}*U{lin}*K{lin}")
+                else:
+                    aba.formula(f"W{lin}", f'IF(OR(T{lin}="",U{lin}=""),0,T{lin}*U{lin})')
+            elif l.get("sem_medidas"):
+                aba.vazia(f"T{lin}")
+                aba.vazia(f"U{lin}")
+                aba.numero(f"W{lin}", l["quantidade"])
+            else:
+                aba.vazia(f"T{lin}")
+                aba.numero(f"U{lin}", l["quantidade"])
                 aba.formula(f"W{lin}", f'IF(U{lin}="",0,U{lin})')
         if not cont:
             fotos_pos.append((r0, f))
@@ -595,6 +635,8 @@ def _memoria(p, conn, r, aba_mc, n, cq, ct, teste, num, ano, dir_fotos):
     ultima = r0 + FOLHA - 1
     padrao = re.search(r'defaultRowHeight="([\d.]+)"', modelo.antes)
     aba.fixar_alturas(1, ultima, padrao.group(1) if padrao else "14.25")
+    for lin in cab_dimensionais:
+        aba.fixar_alturas(lin, lin, "28.5")  # dois títulos dimensionais legíveis, sem invadir a coluna vizinha
     aba.por_mesclagens(mesclas)
     aba.quebras_de_pagina(quebras[:-1])
     p.nome_definido("_xlnm.Print_Area", [a for a, _ in p.abas()].index(MC), f"'{aba_mc}'!$B$1:$X${ultima}")
@@ -607,6 +649,55 @@ def _memoria(p, conn, r, aba_mc, n, cq, ct, teste, num, ano, dir_fotos):
     _desenhos(p, conn, parte, modelo, len(paginas) + 1, fotos_pos, dir_fotos)
     r["linha_adm"] = r0 + 6
     return ultima
+
+
+def _estilo_cab_dimensional(p, celula):
+    """Clona só o estilo do cabeçalho; preserva os estilos e desenhos originais do BM."""
+    cache = getattr(p, "_cab_dim_estilos", {})
+    antigo = celula.atr.get("s", "0")
+    if antigo not in cache:
+        xml = p.texto("xl/styles.xml")
+        bloco = re.search(r'<cellXfs\b[^>]*>(.*?)</cellXfs>', xml, re.S)
+        estilos = re.findall(r'<xf\b[^>]*(?:/>|>.*?</xf>)', bloco[1], re.S)
+        novo = estilos[int(antigo)]
+        alinhamento = '<alignment horizontal="center" vertical="center" wrapText="1"/>'
+        if "<alignment" in novo:
+            novo = re.sub(r'<alignment\b[^>]*/>', alinhamento, novo)
+        elif novo.endswith("/>"):
+            novo = novo[:-2] + ">" + alinhamento + "</xf>"
+        else:
+            pos = novo.find("<protection") if "<protection" in novo else novo.rfind("</xf>")
+            novo = novo[:pos] + alinhamento + novo[pos:]
+        novo = re.sub(r' applyAlignment="[^"]*"', '', novo).replace('<xf ', '<xf applyAlignment="1" ', 1)
+        conteudo = re.sub(r'count="\d+"', f'count="{len(estilos)+1}"', bloco[0], count=1)
+        conteudo = conteudo.replace("</cellXfs>", novo+"</cellXfs>")
+        p.por_texto("xl/styles.xml", xml[:bloco.start()]+conteudo+xml[bloco.end():])
+        cache[antigo] = str(len(estilos))
+        p._cab_dim_estilos = cache
+    celula.atr["s"] = cache[antigo]
+
+
+def _titulos_dimensionais(p, aba, r0, folha):
+    linhas = folha["linhas"]
+    medidas = [l["medidas"] for l in linhas if l.get("medidas")]
+    if not medidas:
+        return
+    dim = medidas[0]["dim"]
+    if dim == 1 and any(l["estacas"] for l in linhas):
+        return  # assentamento com estacas conserva o cabeçalho do modelo
+    cab = r0 + MEMORIAL - 1
+    for c in "IJKL":
+        aba.vazia(f"{c}{cab}")
+    aba.texto(f"T{cab}", "ÁREA (M²)" if dim == 3 else "COMPRIMENTO (M)")
+    aba.texto(f"U{cab}", {1: "VEZES", 2: "ALTURA/LARGURA (M)", 3: "ESPESSURA (M)"}[dim])
+    if dim == 3:
+        aba.texto(f"I{cab}", "COMPRIMENTO (M)")
+        aba.texto(f"J{cab}", "LARGURA (M)")
+    if dim > 1 and any(m["repeticoes"] != 1 for m in medidas):
+        aba.texto(f"K{cab}", "VEZES")
+    for col in ("T", "U", *(("I", "J") if dim == 3 else ())):
+        _estilo_cab_dimensional(p, aba.celula(f"{col}{cab}"))
+    return True
 
 
 def _cabecalho_folha(aba, r0, numero, col_mes, teste, num, ano):

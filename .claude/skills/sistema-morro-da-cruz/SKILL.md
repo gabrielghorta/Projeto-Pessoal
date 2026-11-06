@@ -5,7 +5,7 @@ description: Tudo o que é preciso para dar continuidade à obra Morro da Cruz (
 
 # Obra Morro da Cruz — web app, cronograma, contrato Caesb × Ankara e dados do projeto
 
-Estado em **05/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a partir do ramo
+Estado em **06/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a partir do ramo
 `claude/powerbi-modifications-wqxekj` do repositório `gabrielghorta/Projeto-Pessoal` (pasta `morro-da-cruz/`).
 
 ## 0. Como usar esta skill (e retomar numa sessão nova)
@@ -29,7 +29,13 @@ Estado em **05/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a par
 | `references/historico-e-pendencias.md` | quiser saber o que já foi feito (PRs), as decisões recentes, o que falta e o jeito de trabalhar com o responsável |
 | `scripts/zerar_dados_de_teste.sh` | o responsável pedir para zerar os dados de teste do site |
 
-## 1. Estado atual (05/11/2026)
+## 1. Estado atual (06/11/2026)
+
+- **Revisão da memória e RM Word (D-218, v26):** apropriação por lados individuais ou soma, uma parte por linha
+  calculável na MC (perímetro/altura/volume e repetições). JSON v2 lê v1 sem inventar lados. Choveu é atalho para uma
+  equipe ou o lote distinto de check-ins do dia. Word com namespaces/ordem OOXML, visual REV01, conteúdo Lago Sul,
+  cabeçalho e datas brasileiros, croquis/estacas e checklists só para serviço registrado. PDF anterior preservado.
+  Guia `docs/CAMPO_MEMORIA_RM_WORD.md`; testes `tests/test_revisao_pr35.py`. Revisão em ramo próprio, sem push até OK.
 
 - **Campo/memória/RM (D-215–217, v26):** sem chuva como premissa identificada; exceções em Interferências e chuva,
   sem clima obrigatório na NS/apontamento. Apropriação com medidas m/m²/m³, extras opcionais e conta na MC do BM.

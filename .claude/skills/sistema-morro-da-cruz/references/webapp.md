@@ -488,3 +488,18 @@ em `ocorrencia_chuvas`, sem apagar ao resolver. NS/apontamento não exigem clima
 `calculo_json`, confere o total e leva a memória à MC sem somar a quantidade duas vezes. Extras são opcionais.
 RM em DOCX pela rota existente; `formato=pdf` mantém PDF. stdlib + Pillow, sem Office no servidor.
 Guia `docs/CAMPO_MEMORIA_RM_WORD.md`. A D-214/§31 é reservada ao PR #34.
+
+
+## Revisão da memória e RM Word (D-218, 06/11/2026)
+
+Apropriação: partes com lados individuais ou soma (não ambos), alturas/larguras, espessuras e repetições.
+`memoria_calculo` recalcula tudo; `calculo_json` v2 mantém v1 legível, sem reconstruir dimensões ausentes. Na MC, uma
+linha por parte, números nas colunas e fórmulas na W; saldo fora da medição e arredondamento aparecem explicitamente.
+Extras continuam opcionais. Choveu usa a mesma ocorrência/permissão; lote por check-in inclui devolvidos e não duplica
+a equipe, numa transação. Encarregado não grava lote de outras equipes.
+
+Word: `relatorio_word.py` complementa somente DOCX. Datas brasileiras, logo e campos rotulados, Heading 1/2/3,
+TOC/PAGEREF nativos, propriedades OOXML na ordem e namespaces padrão. Conteúdo das semanas por frente/PB/DN,
+estacas de 20 m e `config/rm_checklists.json`, sem inventar serviço nem aprovação. Canteiro pelo polígono cadastrado
+e apropriações; tubos/efetivo com origem explícita. Falta/atestado e ligações sem data não são inferidos. PDF original
+segue o caminho anterior. Guia `docs/CAMPO_MEMORIA_RM_WORD.md`; teste `test_revisao_pr35.py`.

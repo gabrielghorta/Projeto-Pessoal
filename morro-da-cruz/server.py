@@ -455,6 +455,8 @@ def p_etapa_anular(b, c):
 
 def p_ocorrencia(b, c):
     if b.get("categoria") == "CHUVA" and b.get("clima_condicao"):
+        if b.get("todas_equipes") is True:
+            return S.abrir_chuva_checkins(c, b.get("data"), b.get("turno"), b.get("clima_condicao"), b.get("descricao"), b["aberta_por"])
         return {"id": S.abrir_chuva(c, b.get("data"), b.get("equipe_id"), b.get("turno"), b.get("clima_condicao"),
                                    b.get("descricao"), b["aberta_por"], b.get("alvo_tipo"), b.get("alvo_id"))}
     return {"id": S.abrir_ocorrencia(c, b["alvo_tipo"], b["alvo_id"], b.get("tipo"), b.get("categoria"), b.get("descricao"),
@@ -1458,6 +1460,8 @@ class Handler(BaseHTTPRequestHandler):
                     if not str(body.get("motivo_sem_ns") or "").strip():
                         raise R.RegraViolada("Lançamento sem nota de serviço: informe o motivo (fica guardado junto do apontamento).")
                 if usuario["restrito_a_equipe"]:
+                    if rota == "/api/ocorrencia" and body.get("todas_equipes"):
+                        raise A.AcessoNegado("Seu usuário registra chuva só para a sua equipe.", 403)
                     if body.get("equipe_id") not in (None, "", usuario["equipe_id"]):
                         raise A.AcessoNegado(f"Seu usuário lança só para a equipe {usuario['equipe_id']}.", 403)
                     body["equipe_id"] = usuario["equipe_id"]      # sem equipe no pedido: vale a do usuário, nunca nenhuma

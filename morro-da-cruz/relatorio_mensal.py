@@ -508,6 +508,8 @@ def gerar_docx(conn, medicao_id, dir_fotos=None):
     """Mesmo conteúdo do RM em Word editável. Somente mapas, gráficos e fotos são imagens."""
     import docx_simples as D
     d = dados(conn, medicao_id, dir_fotos)
+    import relatorio_word as RW
+    RW.complementar(conn, d)
     doc = D.Documento()
     doc.paragrafo("Relatório mensal da obra Morro da Cruz", tam=22, alin="C", antes=28, depois=18, estilo="Title")
     doc.paragrafo(f"Contrato {d['contrato']} · RM {d['medicao']['numero']:02d}/{d['fim'][:4]}", tam=15, alin="C", depois=12)
@@ -625,6 +627,8 @@ def _celula_pend(v, texto="PENDENTE"):
 
 
 def _corpo(d, doc, fl):
+    import relatorio_word as RW
+    word = bool(getattr(fl, "editavel", False))
     cfg, med = d["cfg"], d["medicao"]
     ct, ob, cn = cfg["contratada"], cfg["obra"], cfg["contratante"]
     n = med["numero"]
@@ -736,15 +740,18 @@ def _corpo(d, doc, fl):
     fl.titulo(1, "Desenvolvimento dos Trabalhos", nova_pagina=True)
     fl.paragrafo("Montagem do canteiro de obra e disponibilização de máquinas, equipamentos e pessoal para execução das "
                  "atividades, conforme descritos no relatório abaixo:")
-    fl.paragrafo(_pend("croqui da área de instalação do canteiro (Imagem 01 – 1ª locação, Imagem 02 – localização e Imagem 03 – "
-                       "layout atual). O layout do canteiro ainda não é guardado no sistema."))
-    fl.titulo(2, "Composição do Canteiro de Obras")
-    aps_canteiro = [a for s in d["semanas"] for a in s["apropriacoes"] if a["local_tipo"] == "CANTEIRO"]
-    for a in aps_canteiro:
-        fl.paragrafo(f"{a['o_que_foi_feito']} – {br(a['quantidade'])} {a['unidade']} ({dbr(a['data'])});", marcador=True,
-                     depois=2)
-    fl.paragrafo(_pend("instalações do canteiro (contêineres, almoxarifado, refeitório, vestiário, WC, baias e depósitos), com "
-                       "as dimensões e as áreas, conforme o layout atualizado; área total e área construída."))
+    if word:
+        RW.canteiro(d, fl)
+    else:
+        fl.paragrafo(_pend("croqui da área de instalação do canteiro (Imagem 01 – 1ª locação, Imagem 02 – localização e Imagem 03 – "
+                           "layout atual). O layout do canteiro ainda não é guardado no sistema."))
+        fl.titulo(2, "Composição do Canteiro de Obras")
+        aps_canteiro = [a for s in d["semanas"] for a in s["apropriacoes"] if a["local_tipo"] == "CANTEIRO"]
+        for a in aps_canteiro:
+            fl.paragrafo(f"{a['o_que_foi_feito']} – {br(a['quantidade'])} {a['unidade']} ({dbr(a['data'])});", marcador=True,
+                         depois=2)
+        fl.paragrafo(_pend("instalações do canteiro (contêineres, almoxarifado, refeitório, vestiário, WC, baias e depósitos), com "
+                           "as dimensões e as áreas, conforme o layout atualizado; área total e área construída."))
     fl.titulo(1, "Organograma da Obra – 1ª parte", nova_pagina=True)
     fl.figura(fl.w, 330, lambda doc_, p, x, y, w, h: _org1(doc_, p, x, y, w, h, cfg),
               "Imagem 04 – Organograma da obra: contratada e fiscalização da CAESB.")
@@ -754,38 +761,41 @@ def _corpo(d, doc, fl):
 
     # 11 ------------------------------------------------------------------------------------------------------------
     fl.titulo(1, "Principais Atividades Realizadas no Período:", nova_pagina=True)
-    for s in d["semanas"]:
-        fl.titulo(2, f"Período de {dbr(s['ini'])} até {dbr(s['fim'])}:")
-        nada = True
-        for fr, et in s["execucao"].items():
-            nada = False
-            fl.paragrafo([(f"MORRO DA CRUZ – {_frente(fr)}:", {"negrito": True})], alin="E", depois=2, junto=True)
-            trs = s["trechos"].get(fr, [])
-            fl.paragrafo(f"Trechos: {', '.join(d['trechos'][t]['ponto'] for t in trs[:12] if t in d['trechos'])}"
-                         + ("…" if len(trs) > 12 else "") + ".", tam=8.5, depois=2)
-            for etapa, m in et.items():
-                fl.paragrafo(f"{_etapa(etapa)} – {br(m)} m;", marcador=True, depois=2)
-        for fr, m in s["liberacao"].items():
-            nada = False
-            fl.paragrafo(f"Locação topográfica com NS – {_frente(fr)} – {br(m)} m;", marcador=True, depois=2)
-        if s["apropriacoes"]:
-            nada = False
-            fl.paragrafo([("SERVIÇOS (apropriação direta):", {"negrito": True})], alin="E", depois=2, junto=True)
-            for a in s["apropriacoes"]:
-                fl.paragrafo(f"{a['o_que_foi_feito']} – {br(a['quantidade'])} {a['unidade']}"
-                             + (f" – {a['local_texto']}" if a["local_texto"] else "") + f" ({dbr(a['data'])}, item {a['item']});",
+    if word:
+        RW.semanas(d, fl)
+    else:
+        for s in d["semanas"]:
+            fl.titulo(2, f"Período de {dbr(s['ini'])} até {dbr(s['fim'])}:")
+            nada = True
+            for fr, et in s["execucao"].items():
+                nada = False
+                fl.paragrafo([(f"MORRO DA CRUZ – {_frente(fr)}:", {"negrito": True})], alin="E", depois=2, junto=True)
+                trs = s["trechos"].get(fr, [])
+                fl.paragrafo(f"Trechos: {', '.join(d['trechos'][t]['ponto'] for t in trs[:12] if t in d['trechos'])}"
+                             + ("…" if len(trs) > 12 else "") + ".", tam=8.5, depois=2)
+                for etapa, m in et.items():
+                    fl.paragrafo(f"{_etapa(etapa)} – {br(m)} m;", marcador=True, depois=2)
+            for fr, m in s["liberacao"].items():
+                nada = False
+                fl.paragrafo(f"Locação topográfica com NS – {_frente(fr)} – {br(m)} m;", marcador=True, depois=2)
+            if s["apropriacoes"]:
+                nada = False
+                fl.paragrafo([("SERVIÇOS (apropriação direta):", {"negrito": True})], alin="E", depois=2, junto=True)
+                for a in s["apropriacoes"]:
+                    fl.paragrafo(f"{a['o_que_foi_feito']} – {br(a['quantidade'])} {a['unidade']}"
+                                 + (f" – {a['local_texto']}" if a["local_texto"] else "") + f" ({dbr(a['data'])}, item {a['item']});",
+                                 marcador=True, depois=2)
+            for o in s["ocorrencias"]:
+                nada = False
+                fl.paragrafo(f"{o['tipo'].replace('_', ' ').title()} ({dbr(o['data'])}): {o['descricao'] or o['categoria'] or ''};",
                              marcador=True, depois=2)
-        for o in s["ocorrencias"]:
-            nada = False
-            fl.paragrafo(f"{o['tipo'].replace('_', ' ').title()} ({dbr(o['data'])}): {o['descricao'] or o['categoria'] or ''};",
-                         marcador=True, depois=2)
-        if nada:
-            fl.paragrafo([("Sem serviço registrado no sistema nesta semana.", {"italico": True, "cor": CINZA})], depois=4)
-        tr_sem = {t for v in s["trechos"].values() for t in v}
-        if tr_sem:
-            fl.paragrafo([("Croqui de locação da semana:", {"negrito": True})], alin="E", depois=2, junto=True)
-            fl.figura(fl.w, 230, lambda doc_, p, x, y, w, h, tr_sem=tr_sem: _croqui(doc_, p, x, y, w, h, d, tr_sem),
-                      "Vermelho: executado na semana · amarelo: executado antes · azul: não executado.")
+            if nada:
+                fl.paragrafo([("Sem serviço registrado no sistema nesta semana.", {"italico": True, "cor": CINZA})], depois=4)
+            tr_sem = {t for v in s["trechos"].values() for t in v}
+            if tr_sem:
+                fl.paragrafo([("Croqui de locação da semana:", {"negrito": True})], alin="E", depois=2, junto=True)
+                fl.figura(fl.w, 230, lambda doc_, p, x, y, w, h, tr_sem=tr_sem: _croqui(doc_, p, x, y, w, h, d, tr_sem),
+                          "Vermelho: executado na semana · amarelo: executado antes · azul: não executado.")
 
     # 12 ------------------------------------------------------------------------------------------------------------
     fl.titulo(1, "Materiais e Equipamentos", nova_pagina=True)
@@ -793,16 +803,19 @@ def _corpo(d, doc, fl):
     fl.paragrafo(f"Disposição de máquinas, ferramentas e acessórios das frentes de serviços para metodologia tipo \"VCA – vala "
                  f"a céu aberto\" ou tipo \"MND – método não destrutivo\", para andamento da execução dos serviços referentes à "
                  f"{ob['nome_caixa_alta']}, tais como apresentados na tabela abaixo:")
-    linhas = [["TIPOLOGIA", "ID EQUIPE", "DESCRIÇÃO", "FUNCIONÁRIOS (CADASTRO)", "MÁQUINAS (CADASTRO)", "DIAS COM CHECK-IN",
-               "SITUAÇÃO"]]
-    for e in d["equipes"]:
-        linhas.append(["ANKARA / EMPREITEIRA", e["id"], e["nome"], str(e["funcionarios"]), str(e["maquinas"]), str(e["dias"]),
-                       "ATIVA NO PERÍODO" if e["dias"] else "SEM CHECK-IN NO PERÍODO"])
-    for ide, desc in cfg["terceirizadas"]:
-        linhas.append(["TERCEIRIZADA", ide, desc, "—", "—", "—", "REGISTRADA PELA ENGENHARIA"])
-    fl.tabela([0.14, 0.1, 0.26, 0.12, 0.12, 0.11, 0.15], linhas, tam=7.5, alin=["C", "C", "E", "D", "D", "D", "C"])
-    fl.paragrafo([("Tabela 04 – Resumo ID-equipes (cadastro de equipes, funcionários e máquinas do sistema e check-in do "
-                   "período).", {"italico": True, "cor": CINZA})], tam=8, alin="C")
+    if word:
+        RW.equipes(d, fl)
+    else:
+        linhas = [["TIPOLOGIA", "ID EQUIPE", "DESCRIÇÃO", "FUNCIONÁRIOS (CADASTRO)", "MÁQUINAS (CADASTRO)", "DIAS COM CHECK-IN",
+                   "SITUAÇÃO"]]
+        for e in d["equipes"]:
+            linhas.append(["ANKARA / EMPREITEIRA", e["id"], e["nome"], str(e["funcionarios"]), str(e["maquinas"]), str(e["dias"]),
+                           "ATIVA NO PERÍODO" if e["dias"] else "SEM CHECK-IN NO PERÍODO"])
+        for ide, desc in cfg["terceirizadas"]:
+            linhas.append(["TERCEIRIZADA", ide, desc, "—", "—", "—", "REGISTRADA PELA ENGENHARIA"])
+        fl.tabela([0.14, 0.1, 0.26, 0.12, 0.12, 0.11, 0.15], linhas, tam=7.5, alin=["C", "C", "E", "D", "D", "D", "C"])
+        fl.paragrafo([("Tabela 04 – Resumo ID-equipes (cadastro de equipes, funcionários e máquinas do sistema e check-in do "
+                       "período).", {"italico": True, "cor": CINZA})], tam=8, alin="C")
     fl.titulo(2, "Materiais:")
     fl.titulo(3, "Materiais de Consumo Diário (Fornecimento ANKARA ENGENHARIA), tais como:")
     if d["materiais"]["consumo"]:
@@ -811,52 +824,62 @@ def _corpo(d, doc, fl):
     else:
         fl.paragrafo([("Sem saída de material da Ankara para as equipes registrada no período.", {"italico": True,
                                                                                                "cor": CINZA})])
-    fl.titulo(3, "Status Entrega de Materiais (Fornecimento CAESB – Tubos PEAD):")
+    fl.titulo(3, "Status Entrega de Materiais (Fornecimento CAESB – Tubos PEAD):", paisagem=True if word else None)
     fl.paragrafo(f"Situação referente à entrega / execução dos materiais para a {ob['nome_caixa_alta']}, conforme tabela abaixo:")
-    linhas = [["MATERIAL", "UNID.", "LEVANT. DE PROJETO", "RECEBIDO (ROMANEIO)", "EMPRESTADO", "COM AS EQUIPES", "APLICADO",
-               "SALDO ALMOX.", "% EXECUTADO"]]
-    for m in d["materiais"]["tubos"]:
-        linhas.append([m["descricao"], m["unidade"], br(m["previsto"]), br(m["recebido"]), br(m["emprestado"]),
-                       br(m["com_equipes"]), br(m["aplicado"]), br(m["saldo_almox"]),
-                       pct(m["aplicado"] / m["previsto"]) if m["previsto"] else "—"])
-    if len(linhas) == 1:
-        linhas.append([{"t": "Sem tubo da CAESB no cadastro de materiais.", "span": 9}])
-    fl.tabela([0.3, 0.06, 0.09, 0.1, 0.08, 0.09, 0.08, 0.09, 0.11], linhas, tam=7, alin=["E", "C"] + ["D"] * 7)
-    fl.paragrafo([("Tabela 05 – Compatibilização de tubos (almoxarifado: romaneios da CAESB, saídas, aplicado e saldo). "
-                   "% executado = aplicado ÷ levantamento de projeto.", {"italico": True, "cor": CINZA})], tam=8, alin="C")
+    if word:
+        RW.tubos(d, fl)
+    else:
+        linhas = [["MATERIAL", "UNID.", "LEVANT. DE PROJETO", "RECEBIDO (ROMANEIO)", "EMPRESTADO", "COM AS EQUIPES", "APLICADO",
+                   "SALDO ALMOX.", "% EXECUTADO"]]
+        for m in d["materiais"]["tubos"]:
+            linhas.append([m["descricao"], m["unidade"], br(m["previsto"]), br(m["recebido"]), br(m["emprestado"]),
+                           br(m["com_equipes"]), br(m["aplicado"]), br(m["saldo_almox"]),
+                           pct(m["aplicado"] / m["previsto"]) if m["previsto"] else "—"])
+        if len(linhas) == 1:
+            linhas.append([{"t": "Sem tubo da CAESB no cadastro de materiais.", "span": 9}])
+        fl.tabela([0.3, 0.06, 0.09, 0.1, 0.08, 0.09, 0.08, 0.09, 0.11], linhas, tam=7, alin=["E", "C"] + ["D"] * 7)
+        fl.paragrafo([("Tabela 05 – Compatibilização de tubos (almoxarifado: romaneios da CAESB, saídas, aplicado e saldo). "
+                       "% executado = aplicado ÷ levantamento de projeto.", {"italico": True, "cor": CINZA})], tam=8, alin="C")
 
     # 13 e 14 ---------------------------------------------------------------------------------------------------------
     fl.titulo(1, "Execução de Obras:")
     fl.titulo(2, "Redes de Água:")
-    fl.titulo(3, "Locação Topográfica (C/ NS) de Redes do Morro da Cruz;")
+    fl.titulo(3, "Locação Topográfica (C/ NS) de Redes do Morro da Cruz;", paisagem=True if word else None)
     t_prev = sum(v["previsto"] for v in pd.values())
-    linhas = [["DESCRIÇÃO", "DE (mm)", "PREVISTO PROJETO (m)", "LOCADO NO MÊS (m)", "LOCADO ACUMULADO (m)",
-               "CADASTRO TÉCNICO (m)", "PENDENTE LOCAÇÃO (m)", "% CADASTRADO", "% LOCADO"]]
-    for de, v in pd.items():
-        linhas.append(["TUBO PEAD", str(de), br(v["previsto"]), br(v["locado_mes"]), br(v["locado"]), br(v["cadastro"]),
-                       br(max(v["previsto"] - v["locado"], 0)), pct(v["cadastro"] / v["previsto"] if v["previsto"] else None),
-                       pct(v["locado"] / v["previsto"] if v["previsto"] else None)])
     s_ = lambda k: sum(v[k] for v in pd.values())
-    linhas.append(["TOTAL", "", br(t_prev), br(s_("locado_mes")), br(s_("locado")), br(s_("cadastro")),
-                   br(max(t_prev - s_("locado"), 0)), pct(s_("cadastro") / t_prev if t_prev else None),
-                   pct(s_("locado") / t_prev if t_prev else None)])
-    fl.tabela([0.14, 0.07, 0.12, 0.11, 0.12, 0.12, 0.12, 0.1, 0.1], linhas, tam=7, alin=["E", "C"] + ["D"] * 7, total=True)
-    fl.paragrafo([("Tabela 06 – Locação topográfica (liberações com NS registradas no sistema) e cadastro técnico aprovado.",
-                   {"italico": True, "cor": CINZA})], tam=8, alin="C")
-    fl.titulo(3, "Execução do Morro da Cruz, Rede Acumulada;")
-    linhas = [["DESCRIÇÃO", "DE (mm)", "LEVANT. DE PROJETO (m)", "EXECUTADO NO MÊS (m)", "EXECUTADO ACUMULADO (m)", "% PENDENTE",
-               "% EXECUTADO"]]
-    for de, v in pd.items():
-        p_ = v["acumulado"] / v["previsto"] if v["previsto"] else None
-        linhas.append(["TUBO PEAD", str(de), br(v["previsto"]), br(v["mes"]), br(v["acumulado"]),
-                       pct(1 - p_ if p_ is not None else None), pct(p_)])
-    p_ = s_("acumulado") / t_prev if t_prev else None
-    linhas.append(["TOTAL", "", br(t_prev), br(s_("mes")), br(s_("acumulado")), pct(1 - p_ if p_ is not None else None), pct(p_)])
-    fl.tabela([0.16, 0.08, 0.16, 0.16, 0.16, 0.14, 0.14], linhas, tam=7, alin=["E", "C"] + ["D"] * 5, total=True)
-    fl.paragrafo([("Tabela 07 – Execução das redes (assentado: intervalos efetivos do sistema).", {"italico": True,
-                                                                                                "cor": CINZA})], tam=8,
-                 alin="C")
-    fl.titulo(2, f"Serviços Medidos na {nª} Medição")
+    if word:
+        RW.redes(d, fl)
+    else:
+        linhas = [["DESCRIÇÃO", "DE (mm)", "PREVISTO PROJETO (m)", "LOCADO NO MÊS (m)", "LOCADO ACUMULADO (m)",
+                   "CADASTRO TÉCNICO (m)", "PENDENTE LOCAÇÃO (m)", "% CADASTRADO", "% LOCADO"]]
+        for de, v in pd.items():
+            linhas.append(["TUBO PEAD", str(de), br(v["previsto"]), br(v["locado_mes"]), br(v["locado"]), br(v["cadastro"]),
+                           br(max(v["previsto"] - v["locado"], 0)), pct(v["cadastro"] / v["previsto"] if v["previsto"] else None),
+                           pct(v["locado"] / v["previsto"] if v["previsto"] else None)])
+        s_ = lambda k: sum(v[k] for v in pd.values())
+        linhas.append(["TOTAL", "", br(t_prev), br(s_("locado_mes")), br(s_("locado")), br(s_("cadastro")),
+                       br(max(t_prev - s_("locado"), 0)), pct(s_("cadastro") / t_prev if t_prev else None),
+                       pct(s_("locado") / t_prev if t_prev else None)])
+        fl.tabela([0.14, 0.07, 0.12, 0.11, 0.12, 0.12, 0.12, 0.1, 0.1], linhas, tam=7, alin=["E", "C"] + ["D"] * 7, total=True)
+        fl.paragrafo([("Tabela 06 – Locação topográfica (liberações com NS registradas no sistema) e cadastro técnico aprovado.",
+                       {"italico": True, "cor": CINZA})], tam=8, alin="C")
+    fl.titulo(3, "Execução do Morro da Cruz, Rede Acumulada;", paisagem=True if word else None)
+    if word:
+        RW.redes(d, fl, execucao=True)
+    else:
+        linhas = [["DESCRIÇÃO", "DE (mm)", "LEVANT. DE PROJETO (m)", "EXECUTADO NO MÊS (m)", "EXECUTADO ACUMULADO (m)", "% PENDENTE",
+                   "% EXECUTADO"]]
+        for de, v in pd.items():
+            p_ = v["acumulado"] / v["previsto"] if v["previsto"] else None
+            linhas.append(["TUBO PEAD", str(de), br(v["previsto"]), br(v["mes"]), br(v["acumulado"]),
+                           pct(1 - p_ if p_ is not None else None), pct(p_)])
+        p_ = s_("acumulado") / t_prev if t_prev else None
+        linhas.append(["TOTAL", "", br(t_prev), br(s_("mes")), br(s_("acumulado")), pct(1 - p_ if p_ is not None else None), pct(p_)])
+        fl.tabela([0.16, 0.08, 0.16, 0.16, 0.16, 0.14, 0.14], linhas, tam=7, alin=["E", "C"] + ["D"] * 5, total=True)
+        fl.paragrafo([("Tabela 07 – Execução das redes (assentado: intervalos efetivos do sistema).", {"italico": True,
+                                                                                                    "cor": CINZA})], tam=8,
+                     alin="C")
+    fl.titulo(2, f"Serviços Medidos na {nª} Medição", paisagem=False if word else None)
     linhas = [["ITEM", "SERVIÇO", "UNID.", "QUANT.", "VALOR (SEM BDI)"]]
     for i in d["itens"]:
         linhas.append([i["item"], i["descricao"] + (" (acima do contrato: aditivo pendente)" if i["excede"] else ""),
@@ -872,7 +895,7 @@ def _corpo(d, doc, fl):
     fl.paragrafo([("Tabela 08 – Serviços medidos (lançamentos PROPOSTOS da medição, valores como a juntada do BM REV04, com a "
                    "administração local proporcional).", {"italico": True, "cor": CINZA})], tam=8, alin="C")
     fl.titulo(1, "Principais Atividades Previstas para o Próximo Mês")
-    prox = _proximo(d)
+    prox = _proximo(d) + (d.get("word_previstas", []) if word else [])
     for t in prox:
         fl.paragrafo(t, marcador=True, depois=2)
     if not prox:
@@ -934,9 +957,10 @@ def _corpo(d, doc, fl):
             "GRÁFICO PERCENTUAL MENSAL / ACUMULADO – MORRO DA CRUZ", (1, n - 1)), "Gráfico 04 – Físico percentual mensal e "
                                                                                  "acumulado (%)."),
     ]
-    for titulo, fn, leg in graficos:
+    for indice_grafico, (titulo, fn, leg) in enumerate(graficos):
         fl.titulo(2, titulo, nova_pagina=True)
-        fl.figura(gw, gh, fn, leg)
+        altura_grafico = (180 if indice_grafico == 0 else 355) if word else gh
+        fl.figura(gw, altura_grafico, fn, leg)
     fl.titulo(1, "Histograma Operacional:", nova_pagina=True)
     ef = d["efetivo"]
     fl.titulo(2, "Disposição das Equipes Operacionais / Administrativas;")
@@ -947,8 +971,8 @@ def _corpo(d, doc, fl):
     if ef["total"] == 0:
         linhas = [linhas[0], [{"t": "Sem presença registrada no check-in do período.", "span": 2}]]
     fl.tabela([0.6, 0.4], linhas, tam=8, alin=["E", "D"], total=ef["total"] > 0)
-    fl.paragrafo([("Tabela 10 – Disposição das equipes (presenças do check-in). A separação em direto e terceirizado ainda "
-                   "não é guardada no cadastro de funcionários.", {"italico": True, "cor": CINZA})], tam=8, alin="C")
+    fl.paragrafo([(("Tabela 10 – Disposição das equipes (presenças do check-in). Empresa da equipe identifica direto e terceirizado." if word else "Tabela 10 – Disposição das equipes (presenças do check-in). A separação em direto e terceirizado ainda "
+                   "não é guardada no cadastro de funcionários."), {"italico": True, "cor": CINZA})], tam=8, alin="C")
     fl.titulo(2, "Quadro Resumo de Funções Operacionais / Administrativas;")
     linhas = [["FUNÇÃO", "COLABORADORES"]] + [[f, str(q)] for f, q in ef["funcoes"].items()]
     if len(linhas) == 1:
@@ -966,26 +990,32 @@ def _corpo(d, doc, fl):
                                                                                                "cor": CINZA})], tam=8,
                  alin="C")
     fl.titulo(2, f"Gráfico Detalhado Mensal do Histograma - Mão de Obra – Mês {mes_nome};", nova_pagina=True)
-    if ef["colaboradores"]:
-        col = ef["colaboradores"][:40]
-        fl.figura(fl.w, 300, lambda doc_, p, x, y, w, h: _grafico(
-            doc_, p, x, y, w, h, [c for c, _ in col], [("DIAS PRESENTES", [q for _, q in col], AZUL)], [],
-            lambda v: br(v, 0), f"DIAS PRESENTES POR COLABORADOR (INICIAIS-MATRÍCULA) – {mes_nome.upper()}"),
-            "Gráfico 05 – Dias presentes por colaborador (check-in)." + (" Os 40 com mais dias." if len(ef["colaboradores"]) > 40
-                                                                          else ""))
+    if word:
+        RW.colaboradores(d, fl)
     else:
-        fl.paragrafo(_pend("Gráfico 05 – sem presença registrada no check-in do período."))
+        if ef["colaboradores"]:
+            col = ef["colaboradores"][:40]
+            fl.figura(fl.w, 240 if word else 300, lambda doc_, p, x, y, w, h: _grafico(
+                doc_, p, x, y, w, h, [c for c, _ in col], [("DIAS PRESENTES", [q for _, q in col], AZUL)], [],
+                lambda v: br(v, 0), f"DIAS PRESENTES POR COLABORADOR (INICIAIS-MATRÍCULA) – {mes_nome.upper()}"),
+                "Gráfico 05 – Dias presentes por colaborador (check-in)." + (" Os 40 com mais dias." if len(ef["colaboradores"]) > 40
+                                                                              else ""))
+        else:
+            fl.paragrafo(_pend("Gráfico 05 – sem presença registrada no check-in do período."))
     fl.titulo(2, f"Gráfico Mensal do Histograma - Mão de Obra – {mes_nome};")
     dias = [(_d(ini) + timedelta(days=i)).isoformat() for i in range((_d(fim) - _d(ini)).days + 1)]
-    if ef["por_dia"]:
-        fl.figura(fl.w, 260, lambda doc_, p, x, y, w, h: _grafico(
-            doc_, p, x, y, w, h, [dbr(x_)[:5] for x_ in dias], [("EFETIVO DO DIA", [ef["por_dia"].get(x_) for x_ in dias], AZUL)],
-            [], lambda v: br(v, 0), f"EFETIVO DO DIA – {mes_nome.upper()}"), "Gráfico 06 – Efetivo do dia (check-in).")
+    if word:
+        RW.efetivo(d, fl, dias)
     else:
-        fl.paragrafo(_pend("Gráfico 06 – sem presença registrada no check-in do período."))
+        if ef["por_dia"]:
+            fl.figura(fl.w, 260, lambda doc_, p, x, y, w, h: _grafico(
+                doc_, p, x, y, w, h, [dbr(x_)[:5] for x_ in dias], [("EFETIVO DO DIA", [ef["por_dia"].get(x_) for x_ in dias], AZUL)],
+                [], lambda v: br(v, 0), f"EFETIVO DO DIA – {mes_nome.upper()}"), "Gráfico 06 – Efetivo do dia (check-in).")
+        else:
+            fl.paragrafo(_pend("Gráfico 06 – sem presença registrada no check-in do período."))
     fl.titulo(2, "Gráfico de Produção Acumulada – Histórico Assentamento de Rede por Tipo de Tubo;", nova_pagina=True)
     des = list(pd)
-    fl.figura(fl.w, 300, lambda doc_, p, x, y, w, h: _grafico(
+    fl.figura(fl.w, 355 if word else 300, lambda doc_, p, x, y, w, h: _grafico(
         doc_, p, x, y, w, h, [f"PEAD DE {k}" for k in des],
         [("PREVISTO (m)", [pd[k]["previsto"] for k in des], AZUL), ("REALIZADO NO MÊS (m)", [pd[k]["mes"] for k in des], LARANJA),
          ("REALIZADO ACUMULADO (m)", [pd[k]["acumulado"] for k in des], VERDE)], [], lambda v: br(v, 0),
@@ -994,7 +1024,7 @@ def _corpo(d, doc, fl):
     fl.titulo(2, f"Gráfico do Indicador de Desempenho Ambiental (IDA) – Morro da Cruz – {mes_nome};", nova_pagina=True)
     meses_ida = [f"{MESES[(_d(d['modelo']['os'] or ini).month - 1 + i) % 12][:3]}/"
                  f"{str(_d(d['modelo']['os'] or ini).year + (_d(d['modelo']['os'] or ini).month - 1 + i) // 12)[2:]}" for i in range(nmes)]
-    fl.figura(fl.w, 260, lambda doc_, p, x, y, w, h: _ida(doc_, p, x, y, w, h, meses_ida, n),
+    fl.figura(fl.w, 355 if word else 260, lambda doc_, p, x, y, w, h: _ida(doc_, p, x, y, w, h, meses_ida, n),
               "Gráfico 08 – IDA CAESB × meta (70%). A vistoria ambiental da CAESB ainda não é registrada no sistema.")
     fl.paragrafo("O Relatório de Supervisão Ambiental de Obras (SAOB) do período não está registrado no sistema. A CONTRATADA "
                  "mantém a atenção com o meio em que trabalha, para garantir a segurança dos trabalhadores e o atendimento às "
@@ -1034,15 +1064,18 @@ def _corpo(d, doc, fl):
     fl.figura(fl.w, 480, lambda doc_, p, x, y, w, h: _iluminado(doc_, p, x, y, w, h, d),
               f"Anexo – Mapa iluminado da {nª} medição: rede executada no mês {br(s_('mes'))} m; acumulada {br(s_('acumulado'))} m.")
     fl.titulo(3, f"Caminhamento – Redes Referente à {nª} Medição – Período: {dbr(ini)} até {dbr(fim)};")
-    mes_tr = [(t, m) for t, m in d["assentado"]["mes"].items() if t in d["trechos"]]
-    if mes_tr:
-        linhas = [["TRECHO", "FRENTE", "DE (mm)", "MÉTODO", "ASSENTADO NO MÊS (m)"]]
-        for t, m in sorted(mes_tr, key=lambda x: d["trechos"][x[0]]["ponto"]):
-            tr = d["trechos"][t]
-            linhas.append([tr["ponto"], _frente(tr["frente_id"]), str(int(tr["de_mm"] or 0)), tr["metodologia"] or "—", br(m)])
-        fl.tabela([0.36, 0.2, 0.1, 0.12, 0.22], linhas, tam=7.5, alin=["E", "E", "C", "C", "D"])
+    if word:
+        RW.caminhamento(d, fl)
     else:
-        fl.paragrafo("Não houve rede executada no período; o caminhamento da medição não tem trechos.")
+        mes_tr = [(t, m) for t, m in d["assentado"]["mes"].items() if t in d["trechos"]]
+        if mes_tr:
+            linhas = [["TRECHO", "FRENTE", "DE (mm)", "MÉTODO", "ASSENTADO NO MÊS (m)"]]
+            for t, m in sorted(mes_tr, key=lambda x: d["trechos"][x[0]]["ponto"]):
+                tr = d["trechos"][t]
+                linhas.append([tr["ponto"], _frente(tr["frente_id"]), str(int(tr["de_mm"] or 0)), tr["metodologia"] or "—", br(m)])
+            fl.tabela([0.36, 0.2, 0.1, 0.12, 0.22], linhas, tam=7.5, alin=["E", "E", "C", "C", "D"])
+        else:
+            fl.paragrafo("Não houve rede executada no período; o caminhamento da medição não tem trechos.")
 
 
 def fl_rm(d):

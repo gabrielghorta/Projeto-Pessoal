@@ -103,14 +103,16 @@ class TestMemoriaNaOrigem(BaseAp):
         mid=self.medicao(ini='2026-10-01',fim='2026-10-31')
         a=self.lancar_tapume();linhas=PM._linhas_memorial(self.c,mid,a['item'],a['unidade'])
         self.assertEqual(sum(l['quantidade'] for l in linhas),470)
-        self.assertIn('H/largura = 2 m',' '.join(l['ref'] or '' for l in linhas))
+        self.assertIn('PERÍMETRO (80 + 50 + 40 + 20 + 45)',linhas[0]['ref'])
+        self.assertEqual(len(linhas),1)
+        self.assertEqual(linhas[0]['medidas']['comprimento'],235)
         nome,dados,_=PM.gerar(self.c,mid)
         from openpyxl import load_workbook
         w=load_workbook(io.BytesIO(dados),data_only=False)
         mc=next(s for s in w if s.title.endswith('MC'))
         textos=' '.join(str(c.value) for row in mc for c in row if c.value is not None)
         self.assertIn('80 + 50 + 40 + 20 + 45',textos)
-        self.assertIn('H/largura = 2 m',textos)
+        self.assertIn('ALTURA/LARGURA (M)',textos)
 
     def test_quantidade_sozinha_nao_basta_para_area(self):
         self.recusa(self.cli('eng1').post('/api/apropriacao',{'item_ref':self.tapume()['ref'],

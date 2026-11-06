@@ -273,6 +273,13 @@
 
     <!-- interferência: relatar e as registradas (era a subaba Interferências; D-199) -->
     <div data-pagina="interferencia" hidden>
+      <div class="acoes" style="margin-bottom:12px"><button type="button" class="btn prim" id="intChoveu" data-perm="campo">Choveu</button><button type="button" class="btn" id="intGeral">Relatar outra interferência</button></div>
+      <form id="fChuvaRapida" class="painel form" data-perm="campo" hidden style="margin-bottom:16px">
+        <h3>Chuva no dia</h3>
+        <div class="linha"><label>Dia<input type="date" name="data" required></label><label>Equipe<select name="equipe_id" id="chuvaEquipe" required></select></label></div>
+        <div class="linha"><label>Quando choveu<select name="turno"><option value="MANHA">Manhã</option><option value="TARDE">Tarde</option><option value="DIA_TODO">Dia todo</option></select></label><label>Efeito<select name="clima_condicao"><option value="CHUVA_FRACA_TENDA">Chuva fraca com tenda</option><option value="PARALISADO_CHUVA">Paralisado por chuva</option><option value="VALA_ALAGADA_BOMBA">Vala alagada / bomba</option></select></label></div>
+        <label>Observação (opcional)<textarea name="descricao" rows="2"></textarea></label><div class="acoes"><button class="btn prim">Registrar chuva</button></div>
+      </form>
       <p class="vazio" style="margin:0 0 12px">Sem chuva é o padrão. Se chover, relate aqui a equipe, o dia e o turno; o trecho é opcional para chuva. Registre também redes existentes, falta de material, acesso e outros impedimentos.</p>
       <div class="grade-2">
       <div class="painel" style="min-width:0">
