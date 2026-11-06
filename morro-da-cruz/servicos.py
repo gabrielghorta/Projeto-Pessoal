@@ -886,6 +886,20 @@ def clima_no_dia(conn, data, equipe_id):
     return out
 
 
+def abrir_chuva_checkins(conn, data, turno, condicao, descricao, por):
+    """Um registro por equipe com check-in no dia, aberto ou devolvido, num único lote atômico."""
+    try:
+        data = datetime.date.fromisoformat(str(data)).isoformat()
+    except ValueError:
+        raise RegraViolada("Informe o dia da chuva.") from None
+    eqs = [r[0] for r in conn.execute("SELECT DISTINCT equipe_id FROM checkins WHERE data=? ORDER BY equipe_id", (data,))]
+    if not eqs:
+        raise RegraViolada("Nenhuma equipe tem check-in nesse dia. Escolha uma equipe para registrar a chuva.")
+    with transacao(conn):
+        ids = [abrir_chuva(conn, data, eq, turno, condicao, descricao, por) for eq in eqs]
+    return {"ids": ids, "equipes": eqs}
+
+
 def abrir_chuva(conn, data, equipe_id, turno, condicao, descricao, por, alvo_tipo=None, ref=None):
     exigir_equipe(conn, equipe_id)
     exigir_data_ocorrida(data, "Chuva")

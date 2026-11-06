@@ -1710,6 +1710,23 @@ async function carregarInterferencias() {
   $('#intContagem').textContent = `${nf(k.abertas, 0)} aberta(s), ${nf(k.interferencias_abertas, 0)} delas interferência · ${nf(k.resolvidas, 0)} resolvida(s)`;
   $('#intLista').innerHTML = r.ocorrencias.map(htmlInterf).join('') || `<p class="vazio">${INT_SITUACAO === '1' ? 'Nenhuma interferência ou ocorrência aberta.' : 'Nada encontrado com esses filtros.'}</p>`;
 }
+const chuvaRapida = $('#fChuvaRapida');
+$('#intChoveu').addEventListener('click',()=>{
+  chuvaRapida.hidden=false; $('#fInterf').hidden=true;
+  opcoesEquipe($('#chuvaEquipe'),'Escolha a equipe');
+  if(!USUARIO.restrito_a_equipe) $('#chuvaEquipe').insertAdjacentHTML('afterbegin','<option value="TODAS_CHECKIN">Todas as equipes com check-in no dia</option>');
+  $('#chuvaEquipe').value=USUARIO.restrito_a_equipe?USUARIO.equipe_id:'TODAS_CHECKIN';
+  chuvaRapida.data.value=chuvaRapida.data.value||hoje();chuvaRapida.data.max=hoje();
+  chuvaRapida.scrollIntoView({behavior:'smooth',block:'start'});
+});
+$('#intGeral').addEventListener('click',()=>{chuvaRapida.hidden=true;$('#fInterf').hidden=false;});
+chuvaRapida.addEventListener('submit',async ev=>{
+  ev.preventDefault();const o=formObj(chuvaRapida),todas=o.equipe_id==='TODAS_CHECKIN',bt=$('button',chuvaRapida);bt.disabled=true;
+  try {
+    const r=await acao(()=>api('/api/ocorrencia',{...o,tipo:'IMPEDIMENTO',categoria:'CHUVA',equipe_id:todas?null:o.equipe_id,todas_equipes:todas}), 'Chuva registrada.').catch(()=>null);
+    if(r){chuvaRapida.descricao.value='';toast(r.ids?`Chuva registrada em ${r.ids.length} equipe(s).`:'Chuva registrada.');INT_SITUACAO='1';marcarSituacao();carregarInterferencias();}
+  }finally{bt.disabled=false;}
+});
 const fInt = $('#fInterf');
 ligarBusca($('input[name=alvo_txt]', fInt));
 $('#intTipo').addEventListener('change', catsInterf);

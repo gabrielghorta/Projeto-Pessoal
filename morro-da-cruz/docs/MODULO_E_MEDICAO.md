@@ -267,3 +267,16 @@ Atualização em 05/11/2026 (D-215 a D-217, v26): Interferências e chuva substi
 premissa explícita, sem observação fabricada. Apropriação calcula m/m²/m³ por medidas e leva a conta à MC; extras
 ficam opcionais. O RM da tela Relatórios sai em DOCX editável, com os mesmos dados e totais. Histórico e medição
 fechada preservados. Guia: `CAMPO_MEMORIA_RM_WORD.md`.
+
+
+## Memória dimensional e Word revisados (06/11/2026, D-218)
+
+A MC passa a receber medidas nas colunas: m² em T/U/W; m³ em I/J/T/U/W; repetições em K quando necessárias.
+Referência de uma linha por parte, sem cortar a conta; quantidade não medida em linha negativa explícita.
+Arredondamento dimensional e total antigo sem dimensões são identificados, sem fabricar altura/largura.
+Folhas com estacas, ADM, fotos e fórmulas de ligação ao vertical/juntada preservadas. Json dimensional v2 lê v1;
+sem mudança do esquema v26. Extras da apropriação continuam opcionais.
+
+O RM Word usa o mesmo total do pacote e complementa o conteúdo em `relatorio_word.py`, sem modificar o PDF.
+Roteiros semanais só para serviço registrado, com estacas e DN. Locação e execução medidas conciliadas com as
+linhas PROPOSTO; produção física continua identificada nas semanas. Guia `CAMPO_MEMORIA_RM_WORD.md`.

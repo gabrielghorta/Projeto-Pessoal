@@ -714,3 +714,12 @@ label.nota-confere:has(input:checked) { border-color: var(--verde); background: 
   .pln-frentes button { flex: none; }
 }
 .btn.desativado { opacity: .45; pointer-events: none; }
+
+/* D-218: medidas por parte, com lados ou soma. */
+.apr-lado {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end;margin-bottom:10px}
+#aprMedidas fieldset {min-width:0;margin:14px 0;padding:16px;border:1px solid var(--borda,#444);border-radius:10px}
+#aprMedidas input {min-width:0;width:100%}
+#aprMedidas [data-medida=soma] {margin-bottom:10px}
+.apr-resultado {font-weight:bold;margin:10px 0;overflow-wrap:anywhere}
+.apr-medida-conflito {border-color:#ff8f6a!important}
+@media(max-width:600px){.apr-lado {grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.apr-lado .btn {grid-column:2;justify-self:end}}

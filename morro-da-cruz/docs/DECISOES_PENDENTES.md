@@ -545,3 +545,27 @@ Testes: `tests/test_topologia.py` (continuidade) e `tests/test_telas.py`
 Esquema **v26**: coluna `apropriacoes.calculo_json`, executor não informado, clima sem chuva e tabela
 `ocorrencia_chuvas`. A migração preserva dados, evidências e referências; não cria chuvas, dimensões ou aprovações.
 Guia: `docs/CAMPO_MEMORIA_RM_WORD.md`. A D-214/§31 é reservada ao PR #34 da continuidade dos mapas.
+
+## 35. Revisão da memória dimensional e do RM em Word (06/11/2026)
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-218 | Medidas, MC, atalho da chuva e RM Word | conta como texto / medidas nas colunas e documento nativo completo | A MC precisa permitir conferir o cálculo; o Word precisa abrir em outros leitores e seguir as referências. | Aplicar as decisões do responsável de 06/11/2026. | **Decidido:** lados individuais com nome opcional ou soma, sem misturar os dois na mesma parte; várias partes e repetições, cálculo no servidor. Na MC, uma linha por parte com medidas numéricas e fórmulas; parcela fora da medição explicitada em linha negativa. Item, data e medidas/quantidade continuam sendo os únicos obrigatórios da apropriação. Atalho Choveu registra equipe ou lote das equipes com check-in no dia, incluindo encerrados e sem repetir equipe. RM Word: conteúdo do Lago Sul, visual REV01 e capa anterior com datas brasileiras; cabeçalho rotulado, estilos nativos, sumário por campos, tabelas, croquis e checklists por serviço registrado. Modifica D-216 e D-217. |
+
+`calculo_json` **v2** preserva lados ou soma e dimensões por parte. A versão 1 continua lida, sem deduzir lados de
+um total antigo. Não há alteração do esquema v26 nem migração de medidas. Na MC, comprimento × altura para m²;
+comprimento × largura × espessura para m³; comprimento × vezes para m. Folhas de trechos com estacas, fotos,
+administração local e cadeia MC → vertical → juntada preservadas. Justificativa da folha prevalece; sem ela, usa a
+informada na apropriação ou um resumo automático das medidas.
+
+O Word usa namespaces de pacote padrão e a sequência de propriedades OOXML. Datas em dd/mm/aaaa, Arial Narrow,
+títulos vinho, tabelas azul-marinho e moldura dupla. Capítulos seguem 1–19; semanas absorvem os dias anteriores à
+primeira segunda-feira. Roteiros de `config/rm_checklists.json` só acompanham serviços registrados. Os textos novos
+de eletrofusão, reaterro, cadastro e ligações ficam marcados para revisão. Ligações sem data não são atribuídas a
+uma semana. Nenhum roteiro constitui verificação, aprovação ou execução adicional. D-56 continua bloqueada.
+
+As tabelas de locação e execução medidas usam lançamentos PROPOSTO do BM; as semanas descrevem a produção física.
+Estoque virtual = romaneio − emprestado − retirada líquida; retirada líquida = custódia − sobra devolvida. O efetivo
+direto/terceirizado usa a empresa da equipe no check-in; empresa/categoria desconhecida, falta, abono e atestado
+continuam PENDENTES. O PDF anterior (`formato=pdf`) permanece no fluxo original. Referências pessoais não são
+versionadas. Guia: `CAMPO_MEMORIA_RM_WORD.md`; testes: `test_revisao_pr35.py`.
