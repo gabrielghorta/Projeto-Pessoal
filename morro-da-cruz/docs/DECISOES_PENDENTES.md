@@ -569,3 +569,20 @@ Estoque virtual = romaneio − emprestado − retirada líquida; retirada líqui
 direto/terceirizado usa a empresa da equipe no check-in; empresa/categoria desconhecida, falta, abono e atestado
 continuam PENDENTES. O PDF anterior (`formato=pdf`) permanece no fluxo original. Referências pessoais não são
 versionadas. Guia: `CAMPO_MEMORIA_RM_WORD.md`; testes: `test_revisao_pr35.py`.
+
+## 36. Assistente: a IA conversacional (14/11/2026)
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-219 | Quem interpreta e quem grava | a IA grava direto / a IA só interpreta e o código valida, calcula e grava | Uma IA que grava sozinha pode lançar errado e sem autoria clara. | O modelo lê a frase e preenche um rascunho; o código confere com as regras das rotinas e faz a conta; a pessoa confere o formulário e toca; a gravação é pela rota de sempre. | **Decidido pelo responsável:** tela “O que você quer fazer?”; escopo: dúvida de uso, pedido de material, chuva ou interferência e apropriação direta. O assistente não tem rota de gravação. |
+| D-220 | Custo da IA | serviço pago / modelo próprio / plano gratuito | Custo zero é obrigatório; o site está na conta gratuita do PythonAnywhere, sem placa de vídeo. | Groq, plano gratuito, modelo `openai/gpt-oss-20b`, chave `GROQ_API_KEY` só no servidor, modelo configurável. | **Decidido pelo responsável.** Sem troca automática para serviço pago: cota esgotada vira aviso na tela, com o texto e o rascunho guardados e o formulário manual disponível. Teto medido: 200 mil tokens por dia (cerca de 140 mensagens), 8 mil por minuto. |
+| D-221 | Quem conversa e quem lança | só quem lança conversa / todo login conversa | Dúvida de uso serve a todos; lançamento não. | Todo login conversa. O código confere a permissão em cada função: o modelo nunca decide quem pode. | **Decidido pelo responsável.** Apropriação: `apropriacao`; pedido: `compras_solicitar`; chuva e interferência: `campo`; o encarregado só a equipe e a frente dele. A rota que grava confere de novo. |
+| D-222 | Onde fica a conversa | tabela nova no banco / memória do servidor / navegador | Tabela nova é migração de esquema para um piloto; memória se perde ao recarregar o site. | A conversa e o rascunho ficam no navegador, por login; o servidor não guarda estado e confere o rascunho a cada pedido. | **Aplicado, provisório:** sem mudança de esquema (v26). Cada mensagem fica na auditoria (texto, funções chamadas, tokens). Se o piloto vingar, decidir se a conversa passa a ser guardada no banco. |
+| D-223 | Como poupar a cota gratuita | toda interação passa pelo modelo / o determinado é aplicado pelo sistema | A cota gratuita é pequena para a obra inteira. | Toque em botão, edição de campo, atalhos e a resposta depois de anotar no rascunho são do código; itens possíveis viram botões agrupados (Instalação × Locação) sem nova chamada. | **Aplicado:** uma chamada por mensagem na maioria dos casos (no máximo 3); freio de 8 mensagens por minuto por login. |
+| D-224 | Voz e privacidade | transcrição paga / a do navegador | Custo zero; a mensagem sai do sistema para ser interpretada. | Microfone pela transcrição do próprio navegador, onde existir. Aviso fixo na tela para não escrever dados pessoais; ao modelo vai o perfil, nunca o nome ou o login. | **Aplicado.** O piloto anterior de microfone não está no repositório: nada a reaproveitar. |
+
+Pendências desta entrega: (1) confirmar no console do PythonAnywhere se a conta gratuita alcança `api.groq.com`
+(`python3 assistente.py testar`); se não, pedir a inclusão na lista deles, que é gratuita; (2) o modelo gratuito é
+pequeno: acerta os casos comuns, mas o rascunho precisa ser conferido antes do toque; (3) acompanhar o consumo pela
+auditoria (`/api/assistente/mensagem`) nas primeiras semanas. Guia: `docs/ASSISTENTE_IA.md`; testes:
+`tests/test_assistente.py` (modelo simulado) e `ferramentas/assistente/validar_api_real.py` (API real).

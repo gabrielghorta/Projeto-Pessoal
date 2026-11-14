@@ -74,3 +74,12 @@ CT 10.239/2026 · 17/10/2026 · esquema v9 · plano: `docs/PLANO_ENTREGA_COMPLET
 - No computador, o acesso é só em `127.0.0.1`. Na nuvem (`nuvem.py`, D-60 revista), o servidor liga `COOKIE_SEGURO` e o HSTS, e nada é tratado como local.
 - Um processo e uma conexão: as gravações são serializadas. É seguro para o porte da obra, mas não é feito para muitos acessos simultâneos.
 - A matriz de perfis e as pessoas autorizadas dependem de você (D-10, D-11). Os usuários desta validação existem só no banco isolado.
+
+## Assistente (14/11/2026, D-221)
+
+Toda sessão abre a tela Assistente e usa `GET /api/assistente`, `POST /api/assistente/mensagem` e
+`POST /api/assistente/rascunho` (com sessão e o cabeçalho `X-MC`). Essas rotas **não gravam na obra**: devolvem a
+fala, os botões e o rascunho conferido. Cada consulta e cada rascunho conferem a permissão do login no código (o
+modelo de linguagem não decide quem pode), e a gravação continua nas rotas de sempre, com `PERMISSAO`, `AUTOR`,
+reenvio e auditoria. Cada mensagem é auditada com o texto, as funções chamadas e os tokens; a chave da IA nunca
+aparece em resposta, log ou auditoria. Guia: `docs/ASSISTENTE_IA.md`.

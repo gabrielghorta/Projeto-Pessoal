@@ -81,6 +81,11 @@ else
    Último passo (no navegador): abra "Web", ligue "Force HTTPS" e clique no botão verde "Reload $DOMINIO".
 FIM
 fi
+if [ -n "${GROQ_API_KEY:-}" ] || grep -q '^GROQ_API_KEY=.' "$PASTA/segredos.env" 2>/dev/null; then
+  echo "   Assistente (IA): chave encontrada. Teste: cd $PASTA && $PY assistente.py testar"
+else
+  echo "   Assistente (IA): desligado (sem a chave gratuita da Groq). Para ligar: docs/ASSISTENTE_IA.md"
+fi
 cat <<FIM
 
 =======================================================================

@@ -5,7 +5,7 @@ description: Tudo o que é preciso para dar continuidade à obra Morro da Cruz (
 
 # Obra Morro da Cruz — web app, cronograma, contrato Caesb × Ankara e dados do projeto
 
-Estado em **06/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a partir do ramo
+Estado em **14/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a partir do ramo
 `claude/powerbi-modifications-wqxekj` do repositório `gabrielghorta/Projeto-Pessoal` (pasta `morro-da-cruz/`).
 
 ## 0. Como usar esta skill (e retomar numa sessão nova)
@@ -29,7 +29,19 @@ Estado em **06/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a par
 | `references/historico-e-pendencias.md` | quiser saber o que já foi feito (PRs), as decisões recentes, o que falta e o jeito de trabalhar com o responsável |
 | `scripts/zerar_dados_de_teste.sh` | o responsável pedir para zerar os dados de teste do site |
 
-## 1. Estado atual (06/11/2026)
+O assistente (IA conversacional) tem guia próprio no repositório: `morro-da-cruz/docs/ASSISTENTE_IA.md`; o resumo está
+na seção "Assistente" de `references/webapp.md`.
+
+## 1. Estado atual (14/11/2026)
+
+- **Assistente, a IA conversacional (D-219 a D-224, 14/11/2026, sem mudança de esquema):** tela “O que você quer
+  fazer?” (menu e Início). O modelo (Groq gratuito, `openai/gpt-oss-20b`, chave `GROQ_API_KEY` em `segredos.env`, fora
+  do Git) só interpreta; o código valida, calcula e monta o rascunho (pedido de material, chuva ou interferência,
+  apropriação direta); a pessoa confere e o toque grava pela rota de sempre. Todo login conversa; a permissão é
+  conferida no código. Custo zero obrigatório: sem troca de serviço; teto de 200 mil tokens por dia (uns 140
+  mensagens) e 8 mil por minuto; sem cota, aviso e formulário manual. `assistente.py`, `web/assistente.js`,
+  `config/assistente.json`, `docs/ASSISTENTE_IA.md`. Pendente: confirmar se o PythonAnywhere gratuito alcança
+  `api.groq.com` (`python3 assistente.py testar`).
 
 - **Revisão da memória e RM Word (D-218, v26):** apropriação por lados individuais ou soma, uma parte por linha
   calculável na MC (perímetro/altura/volume e repetições). JSON v2 lê v1 sem inventar lados. Choveu é atalho para uma
@@ -221,6 +233,11 @@ o que foi lançado, mantém usuários e planilhas, guarda cópia antes, para se 
 `MPXJ=1 bash gerar_rev01.sh` (REV01, com as conferências).
 
 **Testes:** `cd morro-da-cruz && python -m unittest discover -s tests`.
+
+**Assistente:** `python3 assistente.py testar` (chave e saída para a internet, no console do servidor);
+`python3 ferramentas/assistente/validar_api_real.py` (os quatro usos com a API real, em banco descartável; gasta uns 55
+mil dos 200 mil tokens gratuitos do dia). Ao mexer no texto enviado ao modelo, meça de novo: o modelo é pequeno e muda
+de comportamento com pouca coisa.
 
 ## 9. Manter esta skill
 
