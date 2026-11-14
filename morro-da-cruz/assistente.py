@@ -1383,15 +1383,15 @@ Regras:
     return t
 
 
-def _opcoes_vistas(lista):
+def _opcoes_vistas(lista, grupo=True):
     """As opções que estavam na tela, uma por linha e com o id, para o modelo entender 'o segundo' ou 'o sanitário'.
     O grupo (Locação) entra pelos itens dele."""
     out = []
     for b in (lista if isinstance(lista, list) else [])[:8]:
         if not isinstance(b, dict) or not _limpo(b.get("rotulo"), 80):
             continue
-        if isinstance(b.get("sub"), list):
-            out += _opcoes_vistas(b["sub"])
+        if grupo and isinstance(b.get("sub"), list):                        # um nível só: o que vem do navegador não é confiável
+            out += _opcoes_vistas(b["sub"], grupo=False)
         elif _limpo(b.get("ctx")):
             out.append(_limpo(b["ctx"], 160))
         else:
