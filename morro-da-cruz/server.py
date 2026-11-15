@@ -38,6 +38,7 @@ import documentos as D
 import drive as DR
 import medicao as M
 import notas_servico as NS
+import ns_locacao as NLOC
 import pacote_medicao as PM
 import planejamento as P
 import relatorio_mensal as RMEN
@@ -606,6 +607,9 @@ def r_ns_detalhe(q, c, usuario):
     d = NS.detalhe(c, int(q["id"]))
     if not _ns_visivel(usuario, d):
         raise A.AcessoNegado("Esta nota de serviço não é de uma tela que o seu perfil abre.", 403)
+    if d["arquivo_locacao"] and d["status"] == "REGISTRADA" and any(
+            s["situacao"] in NLOC.A_CONFERIR for s in d["segmentos"]):
+        d["opcoes_locacao"] = NLOC.opcoes(c, d)
     return d
 
 
@@ -641,8 +645,20 @@ def p_ns_anular(b, c, usuario):
     return NS.anular(c, int(b["ns_id"]), b.get("motivo"), b["por"])
 
 
+def p_ns_locacao(b, c, usuario):
+    _exigir_ns(usuario, "TOPOGRAFIA")
+    return NLOC.enviar(c, b.get("planilha_b64"), b.get("planilha_nome"), b.get("croquis"), b["por"],
+                       b.get("zona"), b.get("pb"))
+
+
+def p_ns_locacao_vincular(b, c, usuario):
+    _exigir_ns(usuario, "TOPOGRAFIA")
+    return NLOC.vincular(c, int(b["ns_id"]), int(b["segmento_id"]), b.get("vinculos"), b["por"])
+
+
 ROTAS_NS = {"/api/ns/ler": p_ns_ler, "/api/ns": p_ns, "/api/ns/anexo": p_ns_anexo, "/api/ns/aplicar": p_ns_aplicar,
-            "/api/ns/anular": p_ns_anular}
+            "/api/ns/anular": p_ns_anular, "/api/ns/locacao": p_ns_locacao,
+            "/api/ns/locacao/vincular": p_ns_locacao_vincular}
 TELAS_NS = ("notas", "topografia", "cadastro_campo")
 
 

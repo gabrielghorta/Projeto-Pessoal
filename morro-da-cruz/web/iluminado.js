@@ -895,12 +895,17 @@ async function abrirFicha(tipo, nome) {
   ILU.sel.fisico = fis; marcarSelecao();
   const t = indexar(GERAL).trecho.get(nome), s = SITU_ID[t && t.s ? t.s : ILU.est ? situacao(ILU.est, nome) : 'nao'];
   const ex = d.execucao, faltam = d.fotos_faltando || [];
+  const topografia = (d.complementar || {}).LIBERACAO_TOPOGRAFICA || {};
+  const planilhasTopo = [...new Set((topografia.registros || []).map(l => l.referencia).filter(ref => /\.xlsx?$/i.test(ref || '')))];
+  const parcialTopo = topografia.metros < d.extensao_m - 0.01 ? ` · ${nf(topografia.metros)} de ${nf(d.extensao_m)} m` : '';
+  const referenciaTopo = planilhasTopo.length ? `Liberado pela topografia (${planilhasTopo.join(', ')})${parcialTopo}` : '';
   const pend = (d.pendencias || []).length;
   const linhas = tipo === 'TRECHO' ? [
     ['Zona e planta', `${esc(t ? localDoTrecho(t) : nomeZona(d.frente_id))} · ${esc(d.pb || (t && t.pb) || '')}${t && ehSubadutora(t) ? ' · frente Subadutora' : ''}`],
     ['Extensão', `${nf(d.extensao_m)} m`], ['Tubo', `DE ${esc(d.de_mm)} · ${esc(d.material || '')} · ${esc(d.metodologia || '')}`],
     ...pontasTxt(d, curto),
     ...(fis ? [['Trecho físico', esc(fis.texto.replace(/^Trecho físico:\s*/, ''))]] : []),
+    ...(referenciaTopo && s.id !== 'liberado' ? [['Topografia', esc(referenciaTopo)]] : []),
     ['Executado', ex ? `${nf(ex.metros_executados)} m assentados · ${nf(ex.metros_reaterrados)} m reaterrados` : 'nada lançado'],
     ['Fotos', faltam.length ? `faltam ${faltam.map(c => FOTO_NOME[c] || esc(c)).join(', ')}` : ex ? 'completas' : '—'],
     ['Pendências', pend ? `${pend} aberta${pend > 1 ? 's' : ''}` : 'nenhuma'],
@@ -909,7 +914,7 @@ async function abrirFicha(tipo, nome) {
   if (prox) linhas.push(['Programado', `${esc(prox.data.split('-').reverse().join('/'))} · ${esc(equipeNome(prox.equipe_id))}`]);
   f.innerHTML = `<button type="button" class="ilu-bt quadrado fechar" aria-label="Fechar">×</button>
     <h2>${esc(nomeCompleto(d.nome || nome))}</h2>
-    <span class="situ"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(ILU.est ? nomeSituacao(ILU.est, nome, s.id) : s.nome)}</span>
+    <span class="situ" style="overflow-wrap:anywhere"><i style="border-color:${s.cor}${s.tracejado ? ';border-top-style:dashed' : ''}"></i>${esc(s.id === 'liberado' && referenciaTopo ? referenciaTopo : ILU.est ? nomeSituacao(ILU.est, nome, s.id) : s.nome)}</span>
     ${d.retirado ? '<div class="aviso problema">Retirado da revisão vigente do projeto: só consulta.</div>' : ''}
     <dl>${linhas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
     <div class="acoes">${pode('campo') && !d.retirado ? `<button type="button" class="btn prim" data-ficha-campo>Lançar avanço</button>` : ''}

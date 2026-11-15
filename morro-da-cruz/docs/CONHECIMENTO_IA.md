@@ -48,8 +48,10 @@ aprovado pela Caesb). Só o verde é decisão da Caesb. Toque no trecho para abr
 onde ela está programada hoje, não a posição real.
 
 ## Notas de serviço
-<!-- palavras: nota notas servico ns pdf croqui enviar mandar registrar subir dia topografia cadastro numero | tela: notas/servico | botao: Notas de serviço | telas: notas, topografia, cadastro_campo -->
-Execução › Notas de serviço. Só a Engenharia e a Administração enviam. NS de topografia: libera o trecho. NS do dia
+<!-- palavras: nota notas servico ns pdf croqui enviar mandar registrar subir dia topografia cadastro numero planilha locacao topografo vincular faixa | tela: notas/servico | botao: Notas de serviço | telas: notas, topografia, cadastro_campo -->
+Execução › Notas de serviço. Só a Engenharia e a Administração enviam. Topografia: a planilha de locação (.xls ou
+.xlsx) com os croquis, ou a NS em PDF, libera as faixas que casam com a 06.1; as outras se vinculam à mão em Notas
+recebidas › Ver › Vincular faixa ao mapa (D-225). NS do dia
 (PDF + croqui, em nome da equipe): registra o assentado, reaterrado ou escavado; o trecho fica amarelo, esperando o
 supervisor. NS de cadastro: registra o cadastro de campo, só sobre o que já foi executado. O mesmo arquivo não entra
 duas vezes; o mesmo número com outro conteúdo exige anular a anterior, com motivo. O que a leitura do PDF não entende

@@ -18,6 +18,7 @@ import hashlib
 import io
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -306,28 +307,31 @@ def _abas_xlsx(dados):
     except Exception as e:  # noqa: BLE001
         raise LeituraRecusada(f'Planilha ilegível ({type(e).__name__}).') from None
     try:
-        return [[[(c.value, getattr(c, 'number_format', '')) for c in row] for row in ws.iter_rows()] for ws in wb.worksheets]
+        return [(ws.title, [[(c.value, getattr(c, 'number_format', '')) for c in row] for row in ws.iter_rows()])
+                for ws in wb.worksheets]
     finally:
         wb.close()
 
 
-def ler_planilha(dados):
-    """Páginas de texto da planilha da NS, .xlsx ou .xls (uma por aba com conteúdo de NS), com as células em colunas
-    fixas, como o pdftotext: passam pelo mesmo leitor do PDF."""
+def _abas_planilha(dados):
     tipo = tipo_planilha(dados or b'')
     if not tipo:
         raise LeituraRecusada('A planilha da NS precisa ser a do Excel (.xlsx ou .xls).')
     if len(dados) > LIMITE_PLANILHA:
         raise LeituraRecusada(f'Planilha da NS maior que {LIMITE_PLANILHA // 2 ** 20} MB.')
     if tipo == '.xlsx':
-        abas = _abas_xlsx(dados)
-    else:
-        try:
-            abas = [linhas for _, linhas in planilha_xls.abas(dados)]
-        except planilha_xls.XlsInvalido as e:
-            raise LeituraRecusada(f'Planilha .xls ilegível: {e}.') from None
+        return _abas_xlsx(dados)
+    try:
+        return planilha_xls.abas(dados)
+    except planilha_xls.XlsInvalido as e:
+        raise LeituraRecusada(f'Planilha .xls ilegível: {e}.') from None
+
+
+def ler_planilha(dados):
+    """Páginas de texto da planilha da NS, .xlsx ou .xls (uma por aba com conteúdo de NS), com as células em colunas
+    fixas, como o pdftotext: passam pelo mesmo leitor do PDF."""
     paginas = []
-    for aba in abas:
+    for _, aba in _abas_planilha(dados):
         linhas = [[_texto_celula(v, f or '') for v, f in row] for row in aba]
         linhas = [l for l in linhas if any(l)]
         if not any(re.search(r'N\.?\s?S\.?\s*n\s*[º°o]|NOTA\s+DE\s+SERVI', ' '.join(l), re.I) for l in linhas):
@@ -343,6 +347,123 @@ def ler_planilha(dados):
     if not paginas:
         raise LeituraRecusada('A planilha não tem nenhuma aba com a NS (cabeçalho "NS nº").')
     return paginas
+
+
+def _celula(linha, coluna):
+    return linha[coluna] if coluna < len(linha) else None
+
+
+def _numero_locacao(v):
+    try:
+        n = float(v) if isinstance(v, (float, int)) and not isinstance(v, bool) else num_br(str(v))
+    except ValueError:
+        return None
+    return n if n is not None and math.isfinite(n) else None
+
+
+def _locacao_cabecalho(linhas):
+    campos = {}
+    for linha in linhas:
+        for i, v in enumerate(linha):
+            if not isinstance(v, str) or ':' not in v:
+                continue
+            rotulo, valor = v.split(':', 1)
+            chave = norm_txt(rotulo)
+            if chave in ('NO FOLHA', 'FOLHA', 'TRECHO', 'LOCAL', 'DATA', 'CONTRATO NO', 'CONTRATO'):
+                campos[chave] = valor.strip() or _celula(linha, i + 1)
+    return campos
+
+
+def _locacao_folha(aba, celulas, contrato):
+    linhas = [[v for v, _ in row] for row in celulas]
+    tabela = next((i for i, l in enumerate(linhas[:16]) if
+                   norm_txt(str(_celula(l, 1) or '')) == 'PV'
+                   and norm_txt(str(_celula(l, 2) or '')) == 'ESTACAS'), None)
+    if tabela is None:
+        return None
+    inicio = next((i + 1 for i in range(tabela + 1, min(tabela + 6, len(linhas)))
+                   if norm_txt(str(_celula(linhas[i], 3) or '')) == 'FRACAO'), None)
+    if inicio is None:
+        raise LeituraRecusada(f'Aba {aba}: confira as colunas de estaca inteira e fração.')
+    campos = _locacao_cabecalho(linhas[:tabela])
+    folha = re.fullmatch(r'(\d+)\s*/\s*(\d+)', str(campos.get('NO FOLHA') or campos.get('FOLHA') or ''))
+    titulo = str(campos.get('TRECHO') or '')
+    rede = re.search(r'\b(?:SUB\s*ADUTORA\s+)?REDE\s*\d+\b', norm_txt(titulo))
+    tubo = RX_MAT_DESC.search(titulo)
+    local = campos.get('LOCAL') or ''
+    data = campos.get('DATA')
+    data = data.isoformat()[:10] if isinstance(data, date) else data_iso(str(data or ''))
+    if not (folha and rede and tubo and data):
+        raise LeituraRecusada(f'Aba {aba}: confira No. Folha, data, rede e diâmetro em milímetros no cabeçalho.')
+    informado = str(campos.get('CONTRATO NO') or campos.get('CONTRATO') or '').strip()
+    if informado and norm_contrato(informado) != contrato:
+        raise LeituraRecusada(f'Aba {aba}: o contrato informado ({informado}) diverge do contrato da obra ({contrato}).')
+    if not informado and 'MORRO DA CRUZ' not in norm_txt(str(local)):
+        raise LeituraRecusada(f'Aba {aba}: informe o contrato ou identifique Morro da Cruz no campo LOCAL.')
+    de = int(tubo['dn'])
+    pontos = []
+    for numero, linha in enumerate(linhas[inicio:], inicio + 1):
+        inteira, fracao = _celula(linha, 2), _celula(linha, 3)
+        if _celula(linha, 0) in (None, '') and fracao in (None, '') and _numero_locacao(inteira) is None:
+            continue
+        i, f = _numero_locacao(inteira), _numero_locacao(fracao)
+        if i is None or i < 0 or i != int(i) or f is None or not 0 <= f < ESTACA_M:
+            raise LeituraRecusada(f'Aba {aba}, linha {numero}: estaca inteira ou fração inválida.')
+        m = round(i * ESTACA_M + f, 3)
+        acum, diam = _celula(linha, 30), _celula(linha, 13)
+        if acum not in (None, '', '-'):
+            acumulada = _numero_locacao(acum)
+            if acumulada is None:
+                raise LeituraRecusada(f'Aba {aba}, linha {numero}: distância acumulada inválida.')
+            if abs(acumulada - m) > TOL:
+                raise LeituraRecusada(f'Aba {aba}, linha {numero}: a distância acumulada diverge da estaca.')
+        if diam not in (None, '', '-') and ((v := _numero_locacao(diam)) is None or abs(v * 1000 - de) > TOL):
+            raise LeituraRecusada(f'Aba {aba}, linha {numero}: diâmetro em metros diverge do cabeçalho.')
+        if pontos and m < pontos[-1]['dist_acumulada']:
+            raise LeituraRecusada(f'Aba {aba}, linha {numero}: estaca fora de ordem.')
+        pontos.append({'elemento': str(_celula(linha, 1) or '').strip(), 'dist_acumulada': m, 'dn_mm': de,
+                       'aba': aba, 'linha': numero})
+    if len(pontos) < 2 or pontos[0]['dist_acumulada'] == pontos[-1]['dist_acumulada']:
+        raise LeituraRecusada(f'Aba {aba}: informe pelo menos duas estacas distintas.')
+    return {'aba': aba, 'folha': int(folha[1]), 'total': int(folha[2]), 'data': data, 'rede': rede[0],
+            'de': de, 'material': tubo['mat'].upper(), 'local': str(local), 'contrato_informado': bool(informado),
+            'pontos': pontos}
+
+
+def ler_locacao(dados, contrato, hoje=None):
+    """Lê a tabela de estacas e preserva a aba e linha da origem para a conferência."""
+    folhas = [f for aba, linhas in _abas_planilha(dados) if (f := _locacao_folha(aba, linhas, contrato))]
+    if not folhas:
+        raise LeituraRecusada('A planilha de locação precisa ter as colunas PV e ESTACAS.')
+    folhas.sort(key=lambda f: f['folha'])
+    primeira = folhas[0]
+    n = primeira['total']
+    if n != len(folhas) or [f['folha'] for f in folhas] != list(range(1, n + 1)):
+        raise LeituraRecusada(f'Folhas de locação faltando ou repetidas. O cabeçalho indica {n} folha(s).')
+    chaves = ('total', 'data', 'rede', 'de', 'material')
+    if any(any(f[c] != primeira[c] for c in chaves) for f in folhas):
+        raise LeituraRecusada('Folhas da locação divergem na rede, data, diâmetro, material ou total de folhas.')
+    if primeira['data'] > (hoje or RL.hoje().isoformat()):
+        raise LeituraRecusada('A planilha de locação tem data futura.')
+    pontos, resumo = [], []
+    for f in folhas:
+        ini, fim = (f['pontos'][i]['dist_acumulada'] for i in (0, -1))
+        if pontos and ini != pontos[-1]['dist_acumulada']:
+            raise LeituraRecusada(f'Aba {f["aba"]}: a estaca inicial não coincide com o fim da folha anterior.')
+        pontos.extend(f['pontos'])
+        resumo.append({'aba': f['aba'], 'folha': f['folha'], 'ini_m': ini, 'fim_m': fim})
+    ext = round(pontos[-1]['dist_acumulada'] - pontos[0]['dist_acumulada'], 3)
+    titulo = f'{primeira["rede"]} · {primeira["material"]} DE {primeira["de"]}'
+    perfil = sorted({(p['dist_acumulada'], chave_elemento(p['elemento']) or '') for p in pontos})
+    impressao = hashlib.sha256(json.dumps([contrato, titulo, primeira['data'], perfil]).encode()).hexdigest()
+    avisos = [] if all(f['contrato_informado'] for f in folhas) else [f'Contrato em branco na planilha. Obra: {contrato}.']
+    return {'cabecalho': {'numero': f'locacao:{impressao}', 'contrato': contrato, 'data': primeira['data'],
+                          'total_folhas': n, 'titulo': titulo, 'localizacao': primeira['local'], 'bloco': 'LOCAÇÃO'},
+            'grupos': [{'titulo': titulo, 'linhas': pontos, 'extensao': ext, 'dn_mm': primeira['de'],
+                        'material': primeira['material']}],
+            'impressao_dados': impressao, 'total_geral': ext, 'resumo': resumo, 'assinaturas': [], 'notas': [],
+            'avisos': avisos, 'fonte': {'extrator': f'locação {tipo_planilha(dados)}', 'paginas': n},
+            'verificacoes': [], 'resultado': {'aceita': True, 'motivos': []}, 'leitor': VERSAO}
 
 
 # ------------------------------------------------------------------------------------------------ cabeçalho

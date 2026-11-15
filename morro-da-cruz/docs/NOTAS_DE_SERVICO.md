@@ -1,6 +1,6 @@
 # Notas de serviço (NS): execução por upload e diário de obra
 
-CT 10.239/2026 · atualizado em 05/11/2026 · esquema v26 · D-213 e D-215.
+CT 10.239/2026 · atualizado em 15/11/2026 · esquema v27 · D-213, D-215 e D-225.
 
 **Uma nota de serviço da equipe significa serviço executado.** O envio não tem mais a escolha entre
 “NS do dia” e “Serviço de obra”. A engenharia escolhe a equipe e envia PDF + croqui em
@@ -11,7 +11,7 @@ A regra vale também para as notas sintéticas de serviço do pacote de 50%.
 | Tipo | Página em Notas de serviço | Quem envia | Arquivos | O que gera |
 |---|---|---|---|---|
 | Nota de serviço | Nota de serviço | Engenharia e Administração, pela equipe | PDF + croqui; planilha opcional | execução informada, conforme a etapa escrita na nota |
-| Topografia | Topografia | Engenharia e Administração | PDF | liberação topográfica |
+| Topografia | Topografia | Engenharia e Administração | Planilha de locação (.xls ou .xlsx) com croquis, ou NS em PDF | liberação topográfica |
 | Cadastro de campo | Cadastro de campo | Engenharia e Administração | PDF | cadastro de campo, só sobre o assentado |
 
 **Notas recebidas anteriormente sem execução:** escolha a equipe e o clima no formulário e toque em
@@ -31,7 +31,22 @@ Código: `ns_leitura.py` (leitor), `notas_servico.py` (casamento, registro e exe
 
 ## 1. Topografia e cadastro de campo
 
-### Como enviar
+### Planilha de locação do topógrafo
+
+Em **Topografia › Enviar planilha de locação**, escolha a planilha e os croquis daquele levantamento. As abas
+de locação trazem o número da folha, a data, a rede, o diâmetro em milímetros e a tabela de estacas. Uma estaca
+repetida na divisa entre folhas conta uma vez na extensão. Os arquivos originais ficam em **Notas recebidas**.
+
+O envio pela engenharia registra a nota e libera as faixas com correspondência segura na 06.1. Na ficha do mapa
+aparece **Liberado pela topografia (nome original da planilha)**. Para as faixas pendentes, abra **Notas recebidas › Ver**,
+consulte os croquis e use **Vincular faixa ao mapa**. A tela aceita os intervalos de um ou mais trechos físicos da
+mesma bitola e material. Vincular registra a liberação da faixa, com o usuário e a data da planilha.
+
+A chave interna usa o conteúdo da locação, inclusive se a planilha for renomeada ou convertida entre os formatos.
+O contrato explícito divergente na planilha impede o registro. Para contrato em branco, a planilha precisa identificar
+Morro da Cruz. Os avisos de carimbo dos croquis ficam no registro para conferência.
+
+### Como enviar a NS em PDF
 
 1. Abra a página do tipo, com o tipo fixo:
    - **Topografia › Enviar NS de topografia**;

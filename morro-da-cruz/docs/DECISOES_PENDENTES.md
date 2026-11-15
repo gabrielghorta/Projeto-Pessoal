@@ -587,6 +587,14 @@ pequeno: acerta os casos comuns, mas o rascunho precisa ser conferido antes do t
 auditoria (`/api/assistente/mensagem`) nas primeiras semanas. Guia: `docs/ASSISTENTE_IA.md`; testes:
 `tests/test_assistente.py` (modelo simulado) e `ferramentas/assistente/validar_api_real.py` (API real).
 
+## 37. Liberação com planilha de locação (15/11/2026)
+
+**D-225 — Decidida pelo responsável.** A planilha de locação e os croquis formam a NS de topografia. O envio pela
+Engenharia ou Administração libera as faixas já identificadas na 06.1. A equipe de engenharia vincula à parte as
+faixas sem correspondência segura. A referência na liberação é o nome original da planilha. O sistema usa uma chave
+interna baseada nos dados lidos para impedir reenvios duplicados. As notas em PDF continuam registradas pelo fluxo
+anterior. O esquema v27 permite a nota com planilha como documento principal e guarda os vínculos com os croquis.
+
 ## 38. Assistente: histórico quase zero e conhecimento por seção (15/11/2026)
 
 | ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
