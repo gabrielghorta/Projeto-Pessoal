@@ -1152,7 +1152,7 @@ FERRAMENTAS = [                         # descrições curtas de propósito: o p
     _f("consultar_pedidos", "Pedidos de material que este login vê.", {"quais": {"type": "string", "enum": ["ABERTOS", "TODOS"]}}),
     _f("consultar_ajuda", "Guia de uso: onde fica e como se faz cada coisa no sistema.", {"assunto": _S}, ["assunto"]),
     _f("rascunho_apropriacao",
-       "Serviço que FOI FEITO ou item a lançar (fizemos, instalamos, lança, apropria): anota/corrige a apropriação direta. item (sempre): palavras do serviço no singular como a pessoa falou (ex.: "
+       "Serviço que FOI FEITO ou item a lançar (fizemos, instalamos, lança, apropria): anota/corrige a apropriação direta. Não serve para dar OK, liberar, verificar ou medir trecho. item (sempre): palavras do serviço no singular como a pessoa falou (ex.: "
        "'contêiner') ou o id do item já escolhido ou listado; o sistema procura. fatores: números que se multiplicam, com o nome do que contam, "
        "ex. [{nome:'contêineres',valor:3},{nome:'mês',valor:1}]. medidas: só para m, m², m³.",
        {"item": _S, "fatores": {"type": "array", "items": _FATOR}, "medidas": {"type": "array", "items": _MEDIDA},
@@ -1214,7 +1214,16 @@ def executar(conn, cfg, usuario, turno, nome, args):
             turno.fala, turno.botoes = SEM_PERMISSAO[tipo], []
             return {"erro": SEM_PERMISSAO[tipo]}, False
         turno.fala, turno.botoes, turno.candidatos = None, [], None          # a pergunta de uma tentativa anterior não vale mais
+        antes = json.loads(json.dumps(turno.rascunho))
         erros = aplicar_campos(conn, usuario, turno, tipo, args)
+        c = turno.rascunho["campos"]
+        if (tipo == "APROPRIACAO" and not (antes and antes["tipo"] == tipo) and not turno.botoes
+                and not any(c.get(k) for k in ("item_ref", "fatores", "medidas"))):
+            turno.rascunho = antes                                           # nada de concreto: o rascunho vazio não é aberto
+            return {"erro": "Nenhum item do orçamento nem quantidade para anotar. Se a pessoa quer outra ação do sistema (dar OK ou "
+                            "liberar trecho, verificar, nota de serviço, estoque, medição), isso não é apropriação: use "
+                            "consultar_ajuda e diga onde se faz. Se é um serviço feito, pergunte qual serviço e quanto.",
+                    "erros": erros}, True
         v = vista(conn, usuario, turno.rascunho)
         r = {"ok": not erros, "erros": erros, "rascunho": resumo(conn, v), "falta": [f["pergunta"] for f in v["faltam"]]}
         if turno.candidatos:                                                 # vários itens possíveis: os botões já estão montados
@@ -1410,7 +1419,7 @@ Regras:
 3. Dados de lançamento vão para rascunho_apropriacao, rascunho_pedido ou rascunho_ocorrencia: tudo o que a mensagem trouxe (serviço ou material, números com o nome do que contam, lugar, dia) e só isso. O sistema procura, valida, calcula e mostra o formulário; você não grava nem calcula.
 4. Se a pessoa escolhe uma das opções da tela por texto, anote o id dela (a de nome mais próximo do que ela disse, sem nada a mais). Na dúvida, pergunte.
 5. Correção ("na verdade foram três") muda só aquele campo do rascunho atual.
-6. Fora desses assuntos, diga em uma frase o que você faz
+6. Qualquer outra ação do sistema (dar OK ou liberar trecho, verificar, nota de serviço, apontamento, estoque, nota fiscal, cadastro, medição) NÃO é lançamento seu: não abra rascunho; use consultar_ajuda e diga onde a pessoa faz. Assunto fora da obra: diga em uma frase o que você faz.
 7. Não decida você se a pessoa pode ou não lançar: chame a função do assunto e o sistema confere a permissão do login."""
     if 0 < len(equipes) <= 8:
         t += "\nEquipes: " + "; ".join(equipes) + "."
@@ -1560,7 +1569,10 @@ def conversar(conn, trava, usuario, pedido):
         if fala_modelo and not turno.botoes:
             turno.fala = fala_modelo
             if turno.telas:                                                  # dúvida de uso: o botão que leva à tela
-                turno.botoes = [{"rotulo": "Abrir " + s["titulo"], "tela": s["tela"]} for s in turno.telas[:2]]
+                vistas = {}                                                  # um botão por tela, com o nome da tela
+                for sec in turno.telas:
+                    vistas.setdefault(sec["tela"], {"rotulo": "Abrir " + (sec.get("botao") or sec["titulo"]), "tela": sec["tela"]})
+                turno.botoes = list(vistas.values())[:2]
         elif not turno.fala and not turno.rascunho:
             turno.fala = "Não consegui entender. Pode dizer de outro jeito?"
         return _resposta(conn, usuario, turno, uso=uso)

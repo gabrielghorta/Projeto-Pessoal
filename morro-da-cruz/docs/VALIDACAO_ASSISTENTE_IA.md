@@ -36,6 +36,17 @@ cd morro-da-cruz && GROQ_API_KEY=... python3 ferramentas/assistente/validar_api_
 - Erro em campo opcional não pode travar a conversa: o modelo inventa “local” e “equipe” com facilidade.
 - O teto que aperta é o de **200 mil tokens por dia**, que só aparece na mensagem de recusa.
 
+## 15/11/2026: primeiro teste no site
+
+Frase do responsável: “eu quero dar o ok em TR confecionados, pra liberalos pra fiscalização”. O modelo abriu um
+rascunho de apropriação vazio e perguntou o item. O pedido era o OK interno, fora dos quatro lançamentos. Correção: o
+guia ganhou as seções do OK interno e da verificação; a regra do modelo manda consultar o guia para qualquer outra ação
+do sistema; o código não abre rascunho de apropriação sem item nem quantidade e devolve ao modelo que não é apropriação.
+Com a **API real**, depois da correção (2 de 2): a IA consulta o guia e responde onde se dá o OK interno, com o botão
+“Abrir Mapa iluminado” e sem rascunho. Repetidos com a API real, sem regressão: o exemplo dos contêineres (primeira
+mensagem), “quero lançar um serviço” (pergunta qual, sem rascunho vazio), o tapume com medidas (187 m²) e a dúvida do
+supervisor sobre verificar trecho. Teste simulado novo em `tests/test_assistente.py`.
+
 ## Transcrição da rodada final com a API real (exemplo de aceitação)
 
 As linhas com `·` são as chamadas de função do modelo e o que o código devolveu.
