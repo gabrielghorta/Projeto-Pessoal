@@ -413,6 +413,39 @@ class TestCotaEChave(BaseAssistente):
         # dados pessoais do usuário não vão para o serviço: só o perfil
         self.assertNotIn("ALMOX1", self.m.sistema().upper().replace("PERFIL DE QUEM FALA: ALMOXARIFADO", ""))
 
+    def test_erro_do_servico_o_motivo_vai_para_o_historico_e_nao_para_a_tela(self):
+        recusado = (400, {}, {"error": {"message": "Organization `org_abc123` has been restricted. Need more tokens? Upgrade at https://x",
+                                        "type": "invalid_request_error", "code": "organization_restricted"}})
+        self.modelo(recusado)
+        t = self.tela("eng1")
+        r = t.dizer("oi")
+        self.assertEqual((r["situacao"], r["aviso"]), ("INDISPONIVEL", "O serviço da IA respondeu com erro (400)."))
+        self.assertNotIn("motivo", r["uso"])
+        self.assertNotIn("organization_restricted", json.dumps(r))
+        resultado = self.um("SELECT resultado FROM auditoria WHERE rota='/api/assistente/mensagem' ORDER BY id DESC LIMIT 1")[0]
+        self.assertIn("HTTP 400 · organization_restricted: Organization `org_***` has been restricted.", resultado)
+        self.assertNotIn("Upgrade", resultado)
+        self.assertNotIn("org_abc123", resultado)
+        # resposta que não é da API (página de erro da borda do serviço, como quando o cabeçalho da chave vai inválido)
+        self.assertEqual(IA._motivo(400, {"nao_json": "400 Bad Request cloudflare"}),
+                         "HTTP 400 · a resposta não veio da API, e sim da borda do serviço: 400 Bad Request cloudflare")
+
+    def test_chave_colada_com_caracteres_invisiveis(self):
+        del os.environ["GROQ_API_KEY"]
+        with open(os.environ["MC_SEGREDOS"], "w", encoding="utf-8", newline="") as f:
+            f.write("GROQ_API_KEY=\x1b[200~gsk_abcDEF123\x1b[201~\r\n")       # marcas de colagem do terminal e fim de linha do Windows
+        self.assertEqual(IA.chave(), "gsk_abcDEF123")
+        tamanho, problemas = IA.forma_da_chave()
+        self.assertEqual(tamanho, 13)
+        self.assertEqual(len(problemas), 1)
+        self.assertIn("invisível", problemas[0])
+        self.modelo(resposta(texto="ok"))
+        self.tela("eng1").dizer("oi")
+        self.assertEqual(self.m.pedidos[0]["cabecalhos"]["Authorization"], "Bearer gsk_abcDEF123")
+        os.environ["GROQ_API_KEY"] = "sk-outra coisa gsk_a gsk_b"
+        self.assertEqual(IA.forma_da_chave()[1], ["vieram 3 caractere(s) invisível(is) ou espaço(s) junto com ela (foram ignorados)",
+                                                  "não começa com gsk_, como as chaves da Groq", "parece ter sido colada mais de uma vez"])
+
     def test_rota_exige_sessao_e_cabecalho_da_aplicacao(self):
         import urllib.error
         import urllib.request

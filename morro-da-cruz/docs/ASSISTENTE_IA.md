@@ -81,6 +81,11 @@ consulta o sistema ou pergunta o que falta. Todo login conversa; cada um só lan
      lista deles. **Não foi possível confirmar daqui se `api.groq.com` já está na lista.** Se não estiver, peça a
      inclusão pelo formulário gratuito do PythonAnywhere (“Requesting Allowlist additions”, na ajuda deles): a Groq tem
      API pública documentada, que é o critério. Até liberarem, a tela do assistente avisa e os formulários seguem.
+   - `NÃO FUNCIONOU` com `O que o serviço respondeu: …` → a linha diz o motivo que a Groq deu, sem mostrar a chave.
+     Os mais comuns: chave errada ou incompleta (gere outra no painel, copie pelo botão de copiar e grave de novo);
+     conta restringida pela Groq (`organization_restricted`: só o suporte deles resolve, ou outra conta gratuita);
+     modelo indisponível na conta (troque em `config/assistente.json`). O teste também diz o tamanho da chave e se ela
+     veio com caracteres estranhos da colagem.
 4. Abra **Web** e clique em **Reload**. A tela Assistente passa a responder.
 
 A chave fica só no arquivo `segredos.env` (fora do Git, ignorado pelo `.gitignore`; o comando de atualização do site
