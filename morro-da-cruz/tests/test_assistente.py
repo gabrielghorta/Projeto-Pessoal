@@ -309,6 +309,28 @@ class TestPerfisEConsultas(BaseAssistente):
         self.tela("sup1").dizer("quanto tem de tapume no orçamento?")
         self.assertIn("erro", json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"]))
 
+    def test_acao_fora_do_escopo_nao_abre_rascunho_e_explica_onde_se_faz(self):
+        """“Quero dar o OK nos trechos” é o OK interno, não apropriação: mesmo que o modelo tente o rascunho, o código não
+        abre rascunho vazio e manda consultar o guia; a resposta leva à tela certa, com um botão só."""
+        self.modelo(resposta(chamada("rascunho_apropriacao", item="TR confeccionados")),
+                    resposta(chamada("consultar_ajuda", assunto="dar OK ou liberar trecho para a fiscalização")),
+                    resposta(texto="O OK interno é dado na ficha do trecho, no Mapa iluminado."))
+        t = self.tela("eng1")
+        r = t.dizer("eu quero dar o ok em TR confeccionados, pra liberá-los pra fiscalização")
+        self.assertIsNone(t.rascunho)
+        self.assertEqual(r["resposta"], "O OK interno é dado na ficha do trecho, no Mapa iluminado.")
+        self.assertEqual(t.botoes, [{"rotulo": "Abrir Mapa iluminado", "tela": "iluminado"}])
+        recusa_, guia = [json.loads(m["content"]) for m in self.m.pedidos[2]["corpo"]["messages"] if m["role"] == "tool"]
+        self.assertIn("isso não é apropriação: use consultar_ajuda", recusa_["erro"])
+        self.assertEqual(guia["ajuda"][0]["titulo"], "OK interno (liberar o trecho para a medição)")
+        self.assertIn("O assistente não dá o OK", guia["ajuda"][0]["texto"])
+        self.assertEqual(self.um("SELECT COUNT(*) FROM apropriacoes"), (0,))
+        # o rascunho que já existia não é mexido por uma tentativa vazia de outro assunto
+        t.atalho("PEDIDO")
+        self.modelo(resposta(chamada("rascunho_apropriacao", item="coisa que não existe")), resposta(texto="Qual serviço?"))
+        t.dizer("outra coisa")
+        self.assertEqual(t.rascunho["tipo"], "PEDIDO")
+
     def test_duvida_de_uso_consulta_o_guia_e_oferece_a_tela_que_o_perfil_abre(self):
         self.modelo(resposta(chamada("consultar_ajuda", assunto="dar entrada em nota fiscal")), resposta(texto="A nota sobe em Compras › Notas fiscais."))
         t = self.tela("almox1")

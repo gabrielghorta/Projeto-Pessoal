@@ -30,6 +30,12 @@ consulta o sistema ou pergunta o que falta. Todo login conversa; cada um só lan
   campo, os atalhos da abertura (Pedir material, Choveu, Relatar interferência, Lançar um serviço) e o texto igual ao
   nome de um botão. Isso poupa a cota gratuita.
 
+**Fora desses quatro usos, ela explica e leva à tela, não lança.** “Quero dar o OK nos trechos prontos” é o OK interno:
+o assistente diz onde se faz (ficha do trecho, no Mapa iluminado), o que o trecho precisa ter e mostra o botão da tela.
+O mesmo vale para verificar trecho, nota de serviço, estoque, nota fiscal e medição. Rascunho de apropriação sem item
+nem quantidade não é aberto. As respostas saem do guia em `config/assistente.json` (`ajuda`): tela nova ou regra nova,
+acrescente a seção ali.
+
 ## Permissões
 
 - Qualquer login abre a tela e conversa (inclusive RH, Topografia e Cadastro, para dúvidas de uso).
@@ -64,12 +70,18 @@ consulta o sistema ou pergunta o que falta. Todo login conversa; cada um só lan
 ## Ligar a IA no PythonAnywhere (uma vez)
 
 1. Crie a chave gratuita em `console.groq.com` (menu API Keys). Não cadastre cartão.
-2. No PythonAnywhere, abra **Consoles › Bash** e cole (ele pede a chave sem mostrar na tela):
+2. No PythonAnywhere, abra **Consoles › Bash** e cole o comando abaixo. Ele pede a chave sem mostrar na tela: **cole
+   uma vez só e aperte Enter**. Ele só grava se o que chegou tiver a forma de uma chave da Groq (`gsk_` seguido de
+   letras e números) e diz quantos caracteres leu:
 
    ```bash
-   read -rsp "Cole a chave da Groq e aperte Enter: " K && printf 'GROQ_API_KEY=%s\n' "$K" > ~/Projeto-Pessoal/morro-da-cruz/segredos.env && chmod 600 ~/Projeto-Pessoal/morro-da-cruz/segredos.env; unset K; echo " gravada."
+   read -rsp "Cole a chave da Groq UMA vez e aperte Enter: " K; echo; if [[ "$K" =~ ^gsk_[A-Za-z0-9]{20,}$ ]]; then printf 'GROQ_API_KEY=%s\n' "$K" > ~/Projeto-Pessoal/morro-da-cruz/segredos.env && chmod 600 ~/Projeto-Pessoal/morro-da-cruz/segredos.env && echo "Gravada: ${#K} caracteres."; else echo "NÃO gravei: li ${#K} caracteres e isso não tem a forma de uma chave da Groq (gsk_ seguido de letras e números). Tente de novo."; fi; unset K
    ```
 
+   Se preferir ver o que está fazendo: aba **Files**, pasta `Projeto-Pessoal/morro-da-cruz`, arquivo `segredos.env`, com
+   uma linha só: `GROQ_API_KEY=` seguido da chave, sem espaços nem aspas. Salve.
+
+   A Groq mostra a chave uma única vez, na hora em que ela é criada. Se não copiou naquele momento, crie outra.
 3. Teste a chave e a saída para a internet:
 
    ```bash
