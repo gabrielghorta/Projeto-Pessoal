@@ -1798,7 +1798,7 @@ async function carregarTopografia() {
   const f = $('#topFrente').value;
   const r = await acao(() => api('/api/topografia' + (f ? '?frente=' + encodeURIComponent(f) : ''))).catch(() => null); if (!r) return;
   TOP_DADOS = r; const t = r.totais;
-  nsCarregarLista('TOPOGRAFIA', '#topNsLista');
+  await nsCarregarLista('TOPOGRAFIA', '#topNsLista');
   $('#topMacro').innerHTML = htmlFeitoFalta('Liberado', t.liberado_m, t.rede_m,
     `Falta liberar: <b>${nf(t.falta_liberar_m)} m</b> · ${nf(t.trechos_sem_liberacao, 0)} de ${nf(t.trechos, 0)} trechos sem nenhuma liberação`);
   $('#topKpis').innerHTML = [['Trechos liberados', nf(t.trechos_liberados, 0)], ['Liberados em parte', nf(t.trechos_parciais, 0)],

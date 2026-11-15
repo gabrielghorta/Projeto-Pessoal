@@ -97,6 +97,10 @@ def referencia(numero, folhas):
     return f"NS {numero} fl. {'01' if n == 1 else f'01–{n:02d}'}/{n:02d}"
 
 
+def _referencia_reg(ns):
+    return ns.get("arquivo_locacao") or referencia(ns["numero"], ns["folhas"])
+
+
 def _diferenca_ok(ns_m, proj_m):
     dif = ns_m - proj_m
     return abs(dif) <= max(TOL_ABS, TOL_REL * proj_m)
@@ -481,7 +485,7 @@ def _aplicar_segmento(conn, ns, seg, por):
     """Grava o plano de um segmento (TOPOGRAFIA ou CADASTRO), uma linha da 06.1 por vez: uma recusa numa linha (avanço
     legado sem posição, trecho retirado) fica como pendência dela sem desfazer as outras. Devolve (gravado, pendente,
     motivos)."""
-    ref = referencia(ns["numero"], ns["folhas"])
+    ref = _referencia_reg(ns)
     gravado, pendente, motivos = 0.0, 0.0, []
     for item in plano(conn, ns["tipo"], _fisico_salvo(seg), seg["ini_fisico_m"], seg["fim_fisico_m"], ns["data"], seg["id"]):
         for a, b in item["gravar"]:
@@ -660,11 +664,12 @@ def _inserir_ns(conn, tipo, ns, ctx, pdf_id, croqui_id, planilha_id, por, equipe
         leitura["avisos_croqui"] = ns["avisos_croqui"]
     return conn.execute(
         """INSERT INTO notas_servico(tipo,contrato,numero,folhas,data,localizacao,titulo,zona,pb,equipe_id,pdf_id,croqui_id,
-             planilha_id,impressao,leitura,extensao_m,status,substitui_id,registrada_por,registrada_em)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'REGISTRADA',?,?,?)""",
+             planilha_id,impressao,leitura,extensao_m,status,substitui_id,registrada_por,registrada_em,arquivo_locacao)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'REGISTRADA',?,?,?,?)""",
         (tipo, L.norm_contrato(cab.get("contrato")), str(cab.get("numero")), int(cab.get("total_folhas") or 1), cab["data"],
          cab.get("localizacao"), cab.get("titulo"), ctx.get("zona"), ctx.get("pb"), equipe_id, pdf_id, croqui_id, planilha_id,
-         ns["impressao_dados"], json.dumps(leitura, ensure_ascii=False, default=str), ext, substitui_id, por, _agora())).lastrowid
+         ns["impressao_dados"], json.dumps(leitura, ensure_ascii=False, default=str), ext, substitui_id, por, _agora(),
+         ns.get("arquivo_locacao"))).lastrowid
 
 
 def _inserir_segmento(conn, ns_id, s, por):
@@ -782,7 +787,7 @@ def aplicar(conn, ns_id, por):
     falta (nunca duas vezes o mesmo pedaço)."""
     ns = _ns(conn, int(ns_id))
     if ns["status"] != "REGISTRADA":
-        raise RegraViolada(f"NS {ns['numero']} está {ns['status'].lower()}: nada a aplicar.")
+        raise RegraViolada(f"{_referencia_reg(ns)} está {ns['status'].lower()}: nada a aplicar.")
     if ns["tipo"] not in PERMISSAO_TIPO:
         raise RegraViolada("Só a NS de topografia e a de cadastro gravam registros por aqui.")
     out = []
@@ -803,10 +808,10 @@ def anular(conn, ns_id, motivo, por):
     que um reaterro depende), nada muda."""
     ns = _ns(conn, int(ns_id))
     if ns["status"] != "REGISTRADA":
-        raise RegraViolada(f"NS {ns['numero']} já está {ns['status'].lower()}.")
+        raise RegraViolada(f"{_referencia_reg(ns)} já está {ns['status'].lower()}.")
     if not str(motivo or "").strip():
         raise RegraViolada("Informe o motivo da anulação.")
-    motivo = f"NS {ns['numero']} anulada: {str(motivo).strip()}"
+    motivo = f"{_referencia_reg(ns)} anulada: {str(motivo).strip()}"
     segs = [r["id"] for r in conn.execute("SELECT id FROM ns_segmentos WHERE ns_id=?", (ns["id"],))]
     marcas = ",".join("?" * len(segs)) or "NULL"
     with transacao(conn):
@@ -877,7 +882,7 @@ def listar(conn, tipo=None, zona=None, vigentes=True, equipe=None, data=None, li
     for n in lista:
         n.pop("leitura", None)
         n["tipo_nome"] = TIPOS.get(n["tipo"], n["tipo"])
-        n["referencia"] = referencia(n["numero"], n["folhas"])
+        n["referencia"] = _referencia_reg(n)
         n["segmentos"] = _rows(conn.execute(
             "SELECT situacao, COUNT(*) AS n, SUM(aplicado_m) AS aplicado_m, SUM(pendente_m) AS pendente_m FROM ns_segmentos "
             "WHERE ns_id=? GROUP BY situacao", (n["id"],)))
@@ -896,7 +901,11 @@ def detalhe(conn, ns_id):
     ns["leitura"] = json.loads(ns["leitura"])
     ns["segmentos"] = segmentos(conn, ns["id"])
     ns["tipo_nome"] = TIPOS.get(ns["tipo"], ns["tipo"])
-    ns["referencia"] = referencia(ns["numero"], ns["folhas"])
+    ns["referencia"] = _referencia_reg(ns)
+    if ns["arquivo_locacao"]:
+        ns["croquis_locacao"] = _rows(conn.execute(
+            """SELECT c.ordem, d.nome_original AS nome FROM ns_locacao_croquis c
+               JOIN documentos d ON d.id=c.documento_id WHERE c.ns_id=? ORDER BY c.ordem""", (ns["id"],)))
     versoes, sid = [], ns["substitui_id"]
     while sid and len(versoes) < 50:                  # a cadeia desta NS: cada versão aponta para a anterior
         v = _one(conn, "SELECT id, pdf_id, croqui_id, planilha_id, registrada_em, substitui_id, status FROM notas_servico "
@@ -911,12 +920,21 @@ def detalhe(conn, ns_id):
 
 def arquivo(conn, ns_id, qual):
     """(documento, nome para baixar) do PDF, croqui ou planilha da NS."""
+    ns = _ns(conn, int(ns_id))
+    croqui = re.fullmatch(r"croqui-(\d+)", qual)
+    if ns["arquivo_locacao"] and croqui:
+        doc = _one(conn, """SELECT d.* FROM ns_locacao_croquis c JOIN documentos d ON d.id=c.documento_id
+                            WHERE c.ns_id=? AND c.ordem=?""", ns["id"], int(croqui[1]))
+        if not doc:
+            raise RegraViolada("Croqui de locação não encontrado.")
+        return ns, doc, doc["nome_original"] or doc["arquivo"]
     if qual not in ("pdf", "croqui", "planilha"):
         raise RegraViolada("Arquivo inválido (pdf, croqui ou planilha).")
-    ns = _ns(conn, int(ns_id))
     doc = _one(conn, "SELECT * FROM documentos WHERE id=?", ns[f"{qual}_id"]) if ns[f"{qual}_id"] else None
     if not doc:
-        raise RegraViolada(f"A NS {ns['numero']} não tem {qual}.")
+        raise RegraViolada(f"{_referencia_reg(ns)} não tem {qual}.")
+    if ns["arquivo_locacao"] and qual == "planilha":
+        return ns, doc, ns["arquivo_locacao"]
     ext = doc["arquivo"].rsplit(".", 1)[-1]
     rot = {"pdf": "", "croqui": " - croqui", "planilha": " - planilha"}[qual]
     return ns, doc, f"NS {ns['numero']}{rot}.{ext}"
