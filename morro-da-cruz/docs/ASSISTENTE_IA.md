@@ -64,12 +64,18 @@ consulta o sistema ou pergunta o que falta. Todo login conversa; cada um só lan
 ## Ligar a IA no PythonAnywhere (uma vez)
 
 1. Crie a chave gratuita em `console.groq.com` (menu API Keys). Não cadastre cartão.
-2. No PythonAnywhere, abra **Consoles › Bash** e cole (ele pede a chave sem mostrar na tela):
+2. No PythonAnywhere, abra **Consoles › Bash** e cole o comando abaixo. Ele pede a chave sem mostrar na tela: **cole
+   uma vez só e aperte Enter**. Ele só grava se o que chegou tiver a forma de uma chave da Groq (`gsk_` seguido de
+   letras e números) e diz quantos caracteres leu:
 
    ```bash
-   read -rsp "Cole a chave da Groq e aperte Enter: " K && printf 'GROQ_API_KEY=%s\n' "$K" > ~/Projeto-Pessoal/morro-da-cruz/segredos.env && chmod 600 ~/Projeto-Pessoal/morro-da-cruz/segredos.env; unset K; echo " gravada."
+   read -rsp "Cole a chave da Groq UMA vez e aperte Enter: " K; echo; if [[ "$K" =~ ^gsk_[A-Za-z0-9]{20,}$ ]]; then printf 'GROQ_API_KEY=%s\n' "$K" > ~/Projeto-Pessoal/morro-da-cruz/segredos.env && chmod 600 ~/Projeto-Pessoal/morro-da-cruz/segredos.env && echo "Gravada: ${#K} caracteres."; else echo "NÃO gravei: li ${#K} caracteres e isso não tem a forma de uma chave da Groq (gsk_ seguido de letras e números). Tente de novo."; fi; unset K
    ```
 
+   Se preferir ver o que está fazendo: aba **Files**, pasta `Projeto-Pessoal/morro-da-cruz`, arquivo `segredos.env`, com
+   uma linha só: `GROQ_API_KEY=` seguido da chave, sem espaços nem aspas. Salve.
+
+   A Groq mostra a chave uma única vez, na hora em que ela é criada. Se não copiou naquele momento, crie outra.
 3. Teste a chave e a saída para a internet:
 
    ```bash
