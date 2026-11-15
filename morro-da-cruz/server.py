@@ -1355,10 +1355,13 @@ class Handler(BaseHTTPRequestHandler):
             LOG.exception("falha em POST %s", rota)
             return self._send(500, {"erro": f"Erro interno: {e}"})
         uso = r.get("uso") or {}
+        motivo = uso.pop("motivo", "")                   # o que o serviço respondeu numa falha: histórico e log, nunca a tela
+        if motivo:
+            LOG.warning("assistente indisponível: %s", motivo)
         with LOCK:                                       # o que fica no histórico: o pedido, o que foi consultado e o consumo
             A.auditar(CONN, usuario, "POST", rota, 200, {"texto": str(body.get("texto") or "")[:300]},
                       f"{r['situacao']}: {uso.get('chamadas', 0)} chamada(s), {uso.get('tokens', 0)} tokens; "
-                      + (", ".join(uso.get("ferramentas") or []) or "sem consulta"))
+                      + (", ".join(uso.get("ferramentas") or []) or "sem consulta") + (f" · {motivo}" if motivo else ""))
         return self._send(200, r)
 
     def _drive_post(self, rota):

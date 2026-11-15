@@ -80,7 +80,27 @@ class CotaExcedida(Exception):
 
 
 class IAIndisponivel(Exception):
-    """Sem chave, chave recusada, rede fora ou resposta inválida: a conversa para e o formulário manual continua."""
+    """Sem chave, chave recusada, rede fora ou resposta inválida: a conversa para e o formulário manual continua.
+    `detalhe` guarda o motivo que o serviço deu (para o console e o log; a tela mostra só a frase curta)."""
+
+    def __init__(self, mensagem, detalhe=""):
+        super().__init__(mensagem)
+        self.detalhe = detalhe
+
+
+def _motivo(status, dados):
+    """O que o serviço respondeu num erro, em uma linha: código e mensagem, sem o identificador da organização e sem o
+    convite para o plano pago."""
+    erro = (dados or {}).get("error")
+    if isinstance(erro, dict):
+        texto = f"{erro.get('code') or erro.get('type') or 'erro'}: {erro.get('message') or ''}"
+    elif (dados or {}).get("nao_json"):
+        texto = "a resposta não veio da API, e sim da borda do serviço: " + dados["nao_json"]
+    else:
+        texto = json.dumps(dados, ensure_ascii=False) if dados else "sem corpo"
+    texto = re.sub(r"org_[A-Za-z0-9]+", "org_***", texto)
+    texto = re.sub(r"\s*Need more tokens\?.*$", "", texto)
+    return f"HTTP {status} · {_limpo(texto, 400)}"
 
 
 # ------------------------------------------------------------------ configuração e chave
@@ -104,21 +124,41 @@ def arquivo_segredos():
     return os.environ.get("MC_SEGREDOS") or os.path.join(caminhos.PASTA, "segredos.env")
 
 
-def chave():
-    """GROQ_API_KEY: da variável de ambiente ou do segredos.env da pasta do programa (fora do Git). Nunca vai à tela,
-    ao log nem à auditoria."""
+def _chave_bruta():
     k = (os.environ.get("GROQ_API_KEY") or "").strip()
     if k:
         return k
     try:
-        with open(arquivo_segredos(), encoding="utf-8") as f:
+        with open(arquivo_segredos(), encoding="utf-8", errors="replace") as f:
             for linha in f:
                 nome, _, valor = linha.strip().partition("=")
-                if nome.strip() == "GROQ_API_KEY" and valor.strip():
+                if nome.strip().lstrip("\ufeff") == "GROQ_API_KEY" and valor.strip():
                     return valor.strip().strip("'\"")
     except OSError:
         pass
     return ""
+
+
+def chave():
+    """GROQ_API_KEY: da variável de ambiente ou do segredos.env da pasta do programa (fora do Git). Nunca vai à tela,
+    ao log nem à auditoria. Saem os caracteres invisíveis que colar no terminal pode deixar (marcas de colagem, CR)."""
+    k = re.sub(r"\x1b\[20[01]~", "", _chave_bruta())
+    return "".join(c for c in k if c.isprintable() and not c.isspace())
+
+
+def forma_da_chave():
+    """Diagnóstico sem mostrar a chave: o tamanho, se começa como as chaves da Groq e o que há de estranho nela."""
+    bruta, k = _chave_bruta(), chave()
+    problemas = []
+    if bruta != k:
+        problemas.append(f"vieram {len(bruta) - len(k)} caractere(s) invisível(is) ou espaço(s) junto com ela (foram ignorados)")
+    if not k.startswith("gsk_"):
+        problemas.append("não começa com gsk_, como as chaves da Groq")
+    if re.search(r"[^A-Za-z0-9_\-]", k):
+        problemas.append("tem caractere que não é letra, número, _ ou -")
+    if k.count("gsk_") > 1:
+        problemas.append("parece ter sido colada mais de uma vez")
+    return len(k), problemas
 
 
 def _pode(usuario, tipo):
@@ -1281,11 +1321,12 @@ def _http(url, cabecalhos, corpo, tempo):
         with urllib.request.urlopen(req, timeout=tempo) as r:
             return r.status, dict(r.headers.items()), json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
+        bruto = e.read().decode("utf-8", "replace")
         try:
-            dados = json.loads(e.read().decode("utf-8") or "{}")
-        except ValueError:
-            dados = {}
-        return e.code, dict(e.headers.items()), dados
+            dados = json.loads(bruto or "{}")
+        except ValueError:                               # não veio da API (ex.: página "400 Bad Request" da borda do serviço)
+            dados = {"nao_json": re.sub(r"<[^>]+>|\s+", " ", bruto).strip()[:200]}
+        return e.code, dict(e.headers.items()), dados if isinstance(dados, dict) else {}
 
 
 TRANSPORTE = _http                      # os testes trocam por um modelo simulado; a rede só existe aqui
@@ -1348,8 +1389,8 @@ def chamar_modelo(cfg, mensagens, ferramentas=None):
             falhou_formato = True                                            # o modelo errou o formato da chamada: tenta outra vez
             continue
         if status in (401, 403):
-            raise IAIndisponivel("A chave da IA foi recusada pelo serviço: confira a GROQ_API_KEY no servidor.")
-        raise IAIndisponivel(f"O serviço da IA respondeu com erro ({status}).")
+            raise IAIndisponivel("A chave da IA foi recusada pelo serviço: confira a GROQ_API_KEY no servidor.", _motivo(status, dados))
+        raise IAIndisponivel(f"O serviço da IA respondeu com erro ({status}).", _motivo(status, dados))
     raise IAIndisponivel("O serviço da IA não respondeu de forma válida.")
 
 
@@ -1513,6 +1554,7 @@ def conversar(conn, trava, usuario, pedido):
     except IAIndisponivel as e:
         with trava:
             v = vista(conn, usuario, turno.rascunho)
+        uso["motivo"] = e.detalhe                                            # vai para a auditoria e o log, não para a tela
         return {"situacao": "INDISPONIVEL", "aviso": str(e), "rascunho": v, "uso": uso}
     with trava:
         if fala_modelo and not turno.botoes:
@@ -1527,12 +1569,14 @@ def conversar(conn, trava, usuario, pedido):
 # ------------------------------------------------------------------ teste pelo console (python assistente.py testar)
 def testar():
     """Uma chamada mínima ao serviço, para conferir no console do servidor a chave e a saída para a internet. Não usa o
-    banco e gasta uma chamada da cota gratuita."""
+    banco e gasta uma chamada da cota gratuita. Diz o motivo que o serviço deu, sem mostrar a chave."""
     cfg = config()
     print(f"Modelo: {cfg['modelo']}  ·  Endereço: {cfg['base_url']}")
     if not chave():
         print(f"SEM CHAVE: defina GROQ_API_KEY ou grave {arquivo_segredos()} (docs/ASSISTENTE_IA.md).")
         return 1
+    tamanho, problemas = forma_da_chave()
+    print(f"Chave: {tamanho} caracteres" + ("; " + "; ".join(problemas) if problemas else ", com a forma esperada") + ".")
     try:
         msg, uso = chamar_modelo(dict(cfg, espera_maxima_s=0), [{"role": "user", "content": "Responda só: ok"}])
     except CotaExcedida as e:
@@ -1541,9 +1585,20 @@ def testar():
     except IAIndisponivel as e:
         causa = repr(e.__cause__) if e.__cause__ else ""
         print(f"NÃO FUNCIONOU: {e} {causa}")
+        if e.detalhe:
+            print(f"O que o serviço respondeu: {e.detalhe}")
         if "403" in causa or "Tunnel" in causa or "Forbidden" in causa:
             print("A hospedagem bloqueou a saída para api.groq.com. Na conta gratuita do PythonAnywhere o endereço precisa "
                   "estar na lista de sites liberados: peça a inclusão pelo formulário deles (é grátis; docs/ASSISTENTE_IA.md).")
+        elif "organization_restricted" in e.detalhe:
+            print("A Groq restringiu a conta dona desta chave. Isso é do lado deles: fale com o suporte da Groq ou gere a "
+                  "chave em outra conta gratuita.")
+        elif "model" in e.detalhe and ("not_found" in e.detalhe or "decommissioned" in e.detalhe or "terms" in e.detalhe):
+            print("O problema é o modelo nesta conta: veja a mensagem acima (aceite de termos no painel da Groq, ou troque "
+                  "o modelo em config/assistente.json).")
+        elif problemas or "borda do serviço" in e.detalhe or "401" in e.detalhe[:9]:
+            print("A chave gravada parece errada ou incompleta: gere uma nova no painel da Groq, copie pelo botão de copiar "
+                  "e grave de novo com o comando de docs/ASSISTENTE_IA.md.")
         return 1
     print(f"OK: a IA respondeu “{_limpo(msg.get('content'), 60)}” ({uso.get('total_tokens', '?')} tokens). "
           f"Restam hoje {USO['restam_chamadas']} chamadas; neste minuto, {USO['restam_tokens']} tokens.")
