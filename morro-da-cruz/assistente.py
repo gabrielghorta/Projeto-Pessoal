@@ -461,6 +461,33 @@ def _abre(usuario, secao):
     return bool(set(secao.get("telas_perfil") or ()) & set(usuario["telas"]))
 
 
+TELAS_ESTOQUE = ("almox", "equipes", "mapa", "compras")      # as mesmas de /api/estoque em server.TELA_GET (teste confere)
+
+
+def ve_estoque(usuario):
+    return bool(set(TELAS_ESTOQUE) & set(usuario["telas"]))
+
+
+def saldo_estoque(conn, usuario, texto):
+    """O saldo agora no almoxarifado de um material (servicos.saldo_almox e reservado), só para quem abre o estoque.
+    Mesma conta da tela Estoque: disponível = físico − reservas."""
+    if not ve_estoque(usuario):
+        return {"erro": "Este login não vê o estoque: o almoxarifado informa o saldo."}
+    achados = buscar_materiais(conn, texto, limite=5)
+    if not achados:
+        return {"materiais": [], "dica": "nada achado no catálogo: tente outras palavras (ex.: 'luva 63')"}
+    out = []
+    for m in achados:
+        fisico, quarentena = S.saldo_almox(conn, m["id"])
+        reservado = S.reservado(conn, m["id"])
+        item = {"material": rotulo_material(m), "unidade": m["unidade_nome"], "no_almoxarifado": round(fisico, 3),
+                "reservado": round(reservado, 3), "disponivel": round(fisico - reservado, 3)}
+        if quarentena:
+            item["em_quarentena"] = round(quarentena, 3)
+        out.append(item)
+    return {"materiais": out, "faca": "responda com os números; se vier mais de um material, diga cada um"}
+
+
 def situacao_trecho(conn, usuario, texto, pergunta=""):
     """O que já foi feito e o que falta no trecho para o OK interno (servicos.caminho_medicao), em poucas palavras. Sem um
     trecho de verdade no texto, a pessoa quer saber como se faz: vai junto a seção do guia, sem outra chamada."""
@@ -1229,6 +1256,8 @@ FERRAMENTAS = [                         # curtas de propósito: o plano gratuito
     _f("consultar_orcamento", "Itens do orçamento por palavras, com saldo.", {"busca": _S}, ["busca"]),
     _f("consultar_catalogo", "Materiais do catálogo de pedido por palavras.", {"busca": _S}, ["busca"]),
     _f("consultar_pedidos", "Pedidos de material que este login vê.", {"quais": {"type": "string", "enum": ["ABERTOS", "TODOS"]}}),
+    _f("consultar_estoque", "Saldo de um material no almoxarifado agora (físico, reservado, disponível).",
+       {"material": {"type": "string", "description": "ex.: luva 63"}}, ["material"]),
     _f("rascunho_apropriacao",
        "Serviço feito ou item a lançar (apropriação direta). item (sempre): o serviço como foi dito, no singular, ou o id listado. "
        "fatores: só os números ditos NESTA mensagem, cada um com o que conta; '3 contêineres por um mês' → [{nome:'contêineres',valor:3},{nome:'mês',valor:1}]; "
@@ -1269,6 +1298,8 @@ def ferramentas_do_login(usuario, rascunho=None):
             nomes += [f for f in funcoes if f.startswith("rascunho_") or not aberto or aberto == tipo]
     if _pode(usuario, "PEDIDO") and {"solicitar", "compras"} & set(usuario["telas"]) and not aberto:
         nomes.append("consultar_pedidos")
+    if ve_estoque(usuario) and aberto in (None, "PEDIDO"):                    # saldo: só quem abre o estoque
+        nomes.append("consultar_estoque")
     nomes.append("descartar_rascunho" if aberto else "oferecer_opcoes")     # no rascunho, os botões vêm do código
     out = [_POR_NOME[n] for n in nomes]
     nao = [t for t in TIPOS if not _pode(usuario, t)]
@@ -1317,6 +1348,8 @@ def executar(conn, cfg, usuario, turno, nome, args):
         return {"ajuda": [{"titulo": s["titulo"], "texto": s["texto"],
                            "este_login_abre_a_tela": _abre(usuario, s) if s.get("tela") else None} for s in secoes],
                 "faca": "explique com este texto, em até 3 frases"}, True
+    if nome == "consultar_estoque":
+        return saldo_estoque(conn, usuario, args.get("material")), True
     if nome == "consultar_trecho":
         r = situacao_trecho(conn, usuario, args.get("trecho"), turno.texto)
         if r.get("ajuda"):
@@ -1532,7 +1565,7 @@ def instrucoes(conn, usuario, turno, opcoes, texto=""):
 Hoje: {_DIAS[hoje.weekday()]}, {hoje.isoformat()} (ontem: {(hoje - datetime.timedelta(days=1)).isoformat()}). Perfil: {usuario['perfil_nome']}{equipe}.
 Você tira dúvida de uso{' e anota rascunhos de ' + ', '.join(lanca) if lanca else ''}. O sistema procura, valida, calcula e mostra o formulário; você não grava nem calcula.
 - Leia a mensagem inteira e decida: responder, consultar ou perguntar o que falta (uma pergunta por vez).
-- Não invente item, material, zona, equipe, número, data, regra ou tela. Como fazer algo no sistema (inclusive dar OK, verificar): consultar_ajuda. Situação de um trecho citado com número: consultar_trecho.
+- Não invente item, material, zona, equipe, número, data, regra ou tela. Como fazer algo no sistema (inclusive dar OK, verificar): consultar_ajuda. Situação de um trecho citado com número: consultar_trecho.{' Quanto tem de um material no estoque: consultar_estoque (não mande a pessoa olhar a tela).' if ve_estoque(usuario) else ''}
 - Lançamento: passe à função de rascunho o que esta mensagem trouxe (serviço ou material, cada número com o que conta, lugar, dia), e só isso. Correção ("na verdade, foram três") troca só o número corrigido no rascunho atual.
 - OK interno, verificar, nota de serviço, estoque, nota fiscal e medição não são rascunho: explique com consultar_ajuda.
 - Opção da tela escolhida por texto: anote o id dela."""

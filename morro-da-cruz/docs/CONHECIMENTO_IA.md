@@ -142,7 +142,8 @@ motivo, fica com a equipe). Dia futuro vira reserva.
 Almoxarifado › Estoque: Dia, Receber, Saldo e movimentos, Inventário e transferência, Tubos Caesb. Disponível = físico
 menos reservas. Em Receber, cada nota tem Aceitar, Recusar (com o porquê) ou Aceite parcial. Inventário: o ajuste entra
 na contagem e outra pessoa dá ciência (D-197). Correção é por estorno com motivo. O tubo da Caesb entra pelo romaneio.
-Material recebido nunca vira lançamento de medição.
+Material recebido nunca vira lançamento de medição. Quem abre o Estoque ou Compras pode perguntar ao assistente
+quanto tem de um material: ele consulta o saldo na hora.
 
 ## Notas fiscais e fornecedores
 <!-- palavras: nota fiscal nf xml danfe fornecedor fornecedores conferir conferencia linha reconhecida identificar compras entrada dar entrada | tela: compras/notas | botao: Notas fiscais | telas: compras -->
@@ -192,7 +193,8 @@ ficha; “avanço anterior sem posição” → conciliar o legado; “medição
 ## Valores, prazos, saldos e situação atual
 <!-- palavras: valor valores prazo prazos saldo quanto falta situacao status contrato data termino medido contratado andamento | tela: | telas: -->
 Esses números mudam e não ficam neste guia. O assistente consulta na hora a situação de um trecho (o que já foi feito e
-o que falta para o OK) e o saldo de um item do orçamento. Contrato, valores e prazos ficam em Administrativo › Medição e
+o que falta para o OK), o saldo de um item do orçamento e, para quem abre o Estoque ou Compras, o saldo de um material no
+almoxarifado. Contrato, valores e prazos ficam em Administrativo › Medição e
 › Projeto e cronograma; o andamento, no Mapa iluminado e em Relatórios › Avanço.
 
 ## Glossário da obra

@@ -566,6 +566,30 @@ class TestHistoricoEConhecimento(BaseAssistente):
         self.assertTrue(sem_numero["ajuda"][0]["titulo"].startswith("OK interno"))
         self.assertIn("Peça o nome", IA.situacao_trecho(self.srv_conn, u, "TR999 da zona 99")["erro"])
 
+    def test_consultar_estoque_so_para_quem_abre_o_estoque(self):
+        import server
+        import servicos as S
+        self.assertEqual(set(IA.TELAS_ESTOQUE), set(server.TELA_GET["/api/estoque"]))     # a mesma regra da tela
+        S.entrada_material(self.srv_conn, RL.hoje().isoformat(), "CAESB-PEAD-DE63", 120, "ROMANEIO_CAESB", "romaneio de teste", "almox1")
+        almox = self.tela("almox1").usuario
+        r = IA.saldo_estoque(self.srv_conn, almox, "tubo pead 63 da caesb")
+        tubo = next(m for m in r["materiais"] if "Caesb" in m["material"])
+        self.assertEqual((tubo["no_almoxarifado"], tubo["reservado"], tubo["disponivel"], tubo["unidade"]), (120, 0, 120, "metros"))
+        self.assertIn("consultar_estoque", [f["function"]["name"] for f in IA.ferramentas_do_login(almox)])
+        self.assertIn("consultar_estoque", self.m.sistema() if self.m.pedidos else IA.instrucoes(self.srv_conn, almox, IA._Turno(), []))
+        sup = self.tela("sup1").usuario                                       # supervisor não abre o estoque
+        self.assertIn("erro", IA.saldo_estoque(self.srv_conn, sup, "tubo 63"))
+        self.assertNotIn("consultar_estoque", [f["function"]["name"] for f in IA.ferramentas_do_login(sup)])
+        self.assertNotIn("consultar_estoque", IA.instrucoes(self.srv_conn, sup, IA._Turno(), []))
+        # pela conversa: o modelo pede o saldo e responde com o número, sem mandar a pessoa à tela
+        self.modelo(resposta(chamada("consultar_estoque", material="tubo pead 63 caesb")),
+                    resposta(texto="Tem 120 metros de tubo PEAD 63 da Caesb no almoxarifado, todos disponíveis."))
+        t = self.tela("almox1")
+        r = t.dizer("quanto tubo de 63 da caesb tem no almoxarifado?")
+        self.assertIn("120 metros", r["resposta"])
+        enviado = json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])
+        self.assertEqual(next(m for m in enviado["materiais"] if "Caesb" in m["material"])["disponivel"], 120)
+
     def test_medida_com_unidade_escrita(self):
         t = self.tela("eng1")
         t.atalho("APROPRIACAO")
@@ -620,7 +644,7 @@ class TestRegrasPuras(unittest.TestCase):
         self.assertNotIn("conversa:", js.split("/api/assistente/mensagem")[1].split("\n")[0])
         # o tamanho das funções enviadas a cada chamada é o que mais pesa nos 8.000 tokens por minuto
         todas = {"permissoes": ["apropriacao", "compras_solicitar", "campo"], "telas": ["solicitar", "compras"]}
-        self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas), ensure_ascii=False)), 4600)          # no #39: 4.953 para todos
+        self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas), ensure_ascii=False)), 4800)          # com o estoque; no #39: 4.953 para todos
         self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas, {"tipo": "APROPRIACAO"}), ensure_ascii=False)), 3700)
         self.assertLess(len(json.dumps(IA.ferramentas_do_login({"permissoes": [], "telas": ["iluminado"]}), ensure_ascii=False)), 1500)
 
