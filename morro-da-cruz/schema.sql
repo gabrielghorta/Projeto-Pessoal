@@ -1,5 +1,5 @@
 -- Sistema de Gestão e Mapa Iluminado — Morro da Cruz (CT Caesb × Ankara 10239/2026, LC 014/2026)
--- Esquema v26. Banco SQLite local.
+-- Esquema v27. Banco SQLite local.
 --   * Identidades estáveis próprias (TR-/EL-/AT-/IP-) separadas dos nomes visíveis, que são versionados.
 --   * Toda linha importada guarda proveniência (arquivo + hash + aba + linha + células).
 --   * Importação nunca apaga: o que sai de uma revisão fica com vigente = 0.
@@ -987,7 +987,7 @@ CREATE TABLE IF NOT EXISTS notas_servico (
   localizacao TEXT, titulo TEXT,
   zona TEXT, pb TEXT,
   equipe_id TEXT REFERENCES equipes(id),   -- NS do dia: a equipe que executou
-  pdf_id INTEGER NOT NULL REFERENCES documentos(id),
+  pdf_id INTEGER REFERENCES documentos(id),
   croqui_id INTEGER REFERENCES documentos(id),
   planilha_id INTEGER REFERENCES documentos(id),
   impressao TEXT NOT NULL,             -- impressão dos dados lidos: a mesma NS em outro arquivo tem a mesma impressão
@@ -996,7 +996,10 @@ CREATE TABLE IF NOT EXISTS notas_servico (
   status TEXT NOT NULL DEFAULT 'REGISTRADA' CHECK (status IN ('REGISTRADA','SUBSTITUIDA','ANULADA')),
   substitui_id INTEGER REFERENCES notas_servico(id),
   registrada_por TEXT NOT NULL, registrada_em TEXT NOT NULL,
-  anulada_por TEXT, anulada_em TEXT, anulada_motivo TEXT
+  anulada_por TEXT, anulada_em TEXT, anulada_motivo TEXT,
+  arquivo_locacao TEXT,
+  CHECK ((pdf_id IS NOT NULL AND arquivo_locacao IS NULL)
+      OR (tipo='TOPOGRAFIA' AND pdf_id IS NULL AND planilha_id IS NOT NULL AND arquivo_locacao IS NOT NULL))
 );
 -- uma NS vigente por número; a NS do dia, por número, equipe e dia (mais de uma por equipe e dia é permitido)
 CREATE UNIQUE INDEX IF NOT EXISTS ux_ns_numero ON notas_servico(contrato, tipo, numero)
@@ -1004,6 +1007,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_ns_numero ON notas_servico(contrato, tipo, 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_ns_dia_numero ON notas_servico(contrato, numero, equipe_id, data)
   WHERE status = 'REGISTRADA' AND tipo = 'EXECUCAO';
 CREATE INDEX IF NOT EXISTS ix_ns_dia ON notas_servico(tipo, data, equipe_id);
+
+CREATE TABLE IF NOT EXISTS ns_locacao_croquis (
+  ns_id INTEGER NOT NULL REFERENCES notas_servico(id),
+  ordem INTEGER NOT NULL,
+  documento_id INTEGER NOT NULL REFERENCES documentos(id),
+  PRIMARY KEY(ns_id, ordem),
+  UNIQUE(ns_id, documento_id)
+);
+
 -- Segmento da NS (de elemento a elemento; juntado quando passa por um cruzamento) casado com o trecho físico de
 -- topologia.py. A cópia dos membros do trecho físico é a da conferência: a topologia pode mudar depois.
 -- situacao: AUTOMATICO (casamento único, mesmo DE, diferença dentro da tolerância) · CONFIRMAR (mais de um candidato ou

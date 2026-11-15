@@ -21,6 +21,7 @@ const elNs = t => String(t || '').split(/\s+\(|\s+-\s+/)[0].trim() || '?';      
 const PERM_NS = { TOPOGRAFIA: 'topografia', CADASTRO: 'cadastro_campo' };     // registrar, aplicar e anular pedem também a do tipo
 const podeNs = tipo => pode('notas_servico') && (!PERM_NS[tipo] || pode(PERM_NS[tipo]));
 const linkNs = (id, qual, rot) => `<a class="btn" href="/api/ns/arquivo?id=${id}&qual=${qual}" target="_blank" rel="noopener">${rot}</a>`;
+const NS_LOCACAO_PENDENTE = ['CONFIRMAR', 'SEM_CORRESPONDENCIA', 'ERRO'];
 
 /* ---------------------------------------------------------------- a aba Notas de serviço (as do campo da obra) */
 const NS_DA_OBRA = ['EXECUCAO', 'SERVICO'];
@@ -246,9 +247,53 @@ function prepararEnvioNs(tipo) {
   const e = ENVIO_NS[tipo], z = e.form.zona;
   if (z.options.length < 2) z.innerHTML += RESUMO.frentes.filter(f => /^(Zona\d\d|ADUTORA)$/.test(f)).map(f => `<option>${esc(f)}</option>`).join('');
   $('.grade-2', e.caixa).hidden = !podeNs(tipo); $('[data-so-consulta]', e.caixa).hidden = podeNs(tipo);
+  if (tipo === 'TOPOGRAFIA') {
+    const locacao = $('[data-envio-locacao]', e.caixa);
+    locacao.hidden = !podeNs(tipo);
+    locacao.zona.innerHTML = z.innerHTML;
+    locacao.zona.options[0].textContent = 'Buscar na obra inteira';
+  }
 }
 montarEnvioNs($('#topEnvio'), 'TOPOGRAFIA');
 montarEnvioNs($('#cadEnvio'), 'CADASTRO');
+
+$('#topEnvio').insertAdjacentHTML('afterbegin', `<form class="painel" data-envio-locacao hidden>
+  <h3 style="margin:0">Enviar planilha de locação</h3>
+  <p class="vazio" style="margin:0">Envie a planilha do topógrafo com os croquis. Os trechos identificados são liberados no envio.</p>
+  <div class="linha">
+    <label>Planilha de locação<input type="file" name="planilha" accept=".xls,.xlsx" required></label>
+    <label>Croquis<input type="file" name="croquis" accept=".pdf,.jpg,.jpeg,.png" multiple required></label>
+  </div>
+  <details><summary>Indicar a zona ou planta, se souber</summary>
+    <div class="linha"><label>Zona<select name="zona"><option value="">Buscar na obra inteira</option></select></label>
+      <label>PB<input name="pb" placeholder="ex.: PB08" autocomplete="off"></label></div>
+  </details>
+  <div class="acoes"><button class="btn prim">Enviar e liberar trechos</button></div>
+  <div data-locacao-resultado aria-live="polite"></div>
+</form>`);
+
+$('[data-envio-locacao]').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const f = ev.currentTarget, acaoEnviar = $('button', f), res = $('[data-locacao-resultado]', f);
+  const planilha = f.planilha.files[0], croquis = [...f.croquis.files];
+  if (!planilha || !croquis.length) return;
+  acaoEnviar.disabled = true; res.textContent = 'Lendo a planilha e os croquis…';
+  try {
+    const r = await acao(async () => api('/api/ns/locacao', { planilha_b64: await lerOriginal(planilha),
+      planilha_nome: planilha.name, croquis: await Promise.all(croquis.map(async arq => ({ nome: arq.name, croqui_b64: await lerOriginal(arq) }))),
+      zona: f.zona.value, pb: f.pb.value }));
+    f.planilha.value = f.croquis.value = '';
+    const msg = r.repetida ? 'Planilha já registrada.' : `${nf(r.gravado_m)} m liberados de ${nf(r.total_m)} m na planilha.`
+      + (r.conferir ? ` ${r.conferir} faixa(s) para identificar em Notas recebidas.` : '');
+    res.innerHTML = `<p><b>${esc(r.referencia)}</b> · ${esc(msg)}${r.pendente_m > 0 ? ` · ${mNs(r.pendente_m)} pendentes` : ''}</p>
+      ${(r.avisos || []).map(a => `<div class="aviso info">${esc(a)}</div>`).join('')}`;
+    recarregarTelaNs();
+  } catch (e) {
+    res.textContent = e.message;
+  } finally {
+    acaoEnviar.disabled = false;
+  }
+});
 
 function renderNsLeitura() {
   const r = NSV.leitura, l = r.leitura, a = NSV.envio.arquivos, res = l.resultado;
@@ -405,38 +450,106 @@ function htmlNsLista(lista) {
       <td>${esc(NS_TIPOS[n.tipo] || n.tipo)}</td><td>${esc([n.zona, n.pb, n.equipe_id && n.tipo === 'EXECUCAO' ? 'equipe ' + n.equipe_id : null].filter(Boolean).join(' · ') || '—')}</td>
       <td>${dataBR(n.data)}</td><td>${n.status === 'ANULADA' ? `<span class="chip cinza" title="${esc(n.anulada_motivo || '')}">anulada</span>` : n.tipo === 'SERVICO' ? `<span class="chip ${n.execucao_status === 'REGISTRADA' ? 'verde' : 'amarelo'}">${n.execucao_status === 'REGISTRADA' ? 'execução registrada' : 'execução pendente'}</span>` : `<small>${situNs(n)}</small>`}</td>
       <td class="n">${NS_ETAPA[n.tipo] || n.tipo === 'EXECUCAO' ? mNs(n.aplicado_m) : '—'}</td><td class="n">${n.pendente_m > 0.001 ? `<b>${mNs(n.pendente_m)}</b>` : '—'}</td>
-      <td>${driveNs((n.drive || {}).pdf)}</td>
-      <td><div class="acoes">${linkNs(n.id, 'pdf', 'PDF')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Croqui') : ''}
+      <td>${driveNs((n.drive || {})[n.arquivo_locacao ? 'planilha' : 'pdf'])}</td>
+      <td><div class="acoes">${n.pdf_id ? linkNs(n.id, 'pdf', 'PDF') : linkNs(n.id, 'planilha', 'Planilha')}${n.croqui_id ? linkNs(n.id, 'croqui', 'Croqui') : ''}
         <button type="button" class="btn" data-ns-ver="${n.id}">Ver</button>
         ${pode('ns_dia') && n.tipo === 'SERVICO' && n.status === 'REGISTRADA' && n.execucao_status !== 'REGISTRADA' ? `<button type="button" class="btn prim" data-ns-executar="${n.id}">Registrar execução</button>` : ''}
-        ${podeNs(n.tipo) && n.status === 'REGISTRADA' && NS_ETAPA[n.tipo] && n.pendente_m > 0.001 ? `<button type="button" class="btn azul" data-ns-aplicar="${n.id}">Aplicar de novo</button>` : ''}
+        ${podeNs(n.tipo) && n.status === 'REGISTRADA' && NS_ETAPA[n.tipo] && n.segmentos.some(s => ['AUTOMATICO', 'CONFIRMADO'].includes(s.situacao) && s.pendente_m > 0.001) ? `<button type="button" class="btn azul" data-ns-aplicar="${n.id}">Aplicar de novo</button>` : ''}
         ${podeNs(n.tipo) && n.status === 'REGISTRADA' && n.tipo !== 'EXECUCAO' ? `<button type="button" class="btn" data-ns-anular="${n.id}">Anular</button>` : ''}</div></td></tr>
       <tr hidden data-ns-detalhe="${n.id}"><td colspan="9"></td></tr>`));
+}
+function nsLocacaoFaixa(fisicos) {
+  return `<div class="linha" data-locacao-faixa>
+    <label>Trecho físico<select name="fisico_id" required>
+      <option value="">Escolha o trecho no projeto</option>${fisicos.map(f => `<option value="${esc(f.id)}" data-extensao="${f.extensao_m}">
+        ${esc(f.linhas.map(nomeCompleto).join(' + '))} · ${mNs(f.extensao_m)}</option>`).join('')}
+    </select></label>
+    <label>De (m)<input name="ini_m" type="number" value="0" min="0" step="0.001" required></label>
+    <label>Até (m)<input name="fim_m" type="number" min="0" step="0.001" required></label>
+    <button type="button" class="btn" data-locacao-tirar aria-label="Retirar trecho">Retirar</button>
+  </div>`;
+}
+function nsLocacaoForm(nota, s) {
+  if (!nota.arquivo_locacao || nota.status !== 'REGISTRADA' || !podeNs('TOPOGRAFIA') || !NS_LOCACAO_PENDENTE.includes(s.situacao)) return '';
+  const opcoes = nota.opcoes_locacao || [];
+  if (!opcoes.length) return '<p class="vazio">A 06.1 não tem trechos com o mesmo diâmetro e material.</p>';
+  const sugeridos = new Set(s.candidatos.filter(c => c.situacao !== 'ERRO').map(c => c.fisico_id));
+  const fisicos = [...opcoes].sort((a, b) => Number(sugeridos.has(b.id)) - Number(sugeridos.has(a.id)));
+  const faixa = nsLocacaoFaixa(fisicos);
+  return `<details style="margin-top:8px"><summary>Vincular faixa ao mapa</summary>
+    <form data-locacao-vincular="${nota.id}" data-segmento="${s.id}">
+      <div data-locacao-faixas>${faixa}</div><template>${faixa}</template>
+      <div class="acoes"><button type="button" class="btn" data-locacao-outra>Adicionar trecho</button>
+        <button class="btn prim">Vincular e liberar</button></div>
+    </form>
+  </details>`;
 }
 async function nsVer(id, linha) {
   if (!linha.hidden) { linha.hidden = true; return; }
   const d = await acao(() => api('/api/ns/detalhe?id=' + id)).catch(() => null); if (!d) return;
   linha.hidden = false;
   $('td', linha).innerHTML = `${((d.leitura || {}).avisos_croqui || []).map(t => `<div class="aviso problema">Confira o croqui: ${esc(t)}.</div>`).join('')}
+    ${d.croquis_locacao ? `<div class="acoes">${d.croquis_locacao.map(c => linkNs(d.id, 'croqui-' + c.ordem, esc(c.nome || 'Croqui ' + c.ordem))).join('')}</div>` : ''}
     ${d.status === 'ANULADA' ? `<div class="aviso problema">Anulada por ${esc(d.anulada_por)} em ${dataBR(String(d.anulada_em).slice(0, 10))}: ${esc(d.anulada_motivo)}</div>` : ''}
-    ${d.segmentos.map(s => `<div class="registro"><div><b>${s.ordem}. ${esc(elNs(s.de))} → ${esc(elNs(s.para))} · ${mNs(s.metros_ns)} na nota</b> ${chipNs(s.situacao)}</div>
+    ${d.segmentos.map(s => `<div class="registro"><div><b>${s.ordem}. ${esc(elNs(s.de))} → ${esc(elNs(s.para))}${s.metros_ns != null ? ` · ${mNs(s.metros_ns)} na nota` : ''}</b> ${chipNs(s.situacao)}</div>
       <small>${s.linhas.length ? s.linhas.map(l => `${esc(linhaNs(l.ponto))} ${nf(l.ini_m)}–${nf(l.fim_m)} m`).join(' · ') : 'sem trecho da obra'}
         ${s.aplicado_m > 0.001 ? ` · gravado ${nf(s.aplicado_m)} m` : ''}${s.pendente_m > 0.001 ? ` · <b>pendente ${nf(s.pendente_m)} m</b>` : ''}${s.confirmado_por ? ` · conferido por ${esc(s.confirmado_por)}` : ''}</small>
-      ${[s.motivo, s.pendente, ...(s.avisos || [])].filter(Boolean).map(t => `<div><small>${esc(t)}</small></div>`).join('')}</div>`).join('') || '<p class="vazio">Sem segmentos.</p>'}
+      ${[s.motivo, s.pendente, ...(s.avisos || [])].filter(Boolean).map(t => `<div><small>${esc(t)}</small></div>`).join('')}
+      ${nsLocacaoForm(d, s)}</div>`).join('') || '<p class="vazio">Sem segmentos.</p>'}
     ${d.versoes.length ? `<p style="margin:6px 0 0"><small>Versões anteriores do arquivo: ${d.versoes.length} (guardadas, registradas em ${d.versoes.map(v => dataBR(String(v.registrada_em).slice(0, 10))).join(', ')})</small></p>` : ''}`;
 }
 document.addEventListener('click', async ev => {
+  const outra = ev.target.closest('[data-locacao-outra]'), tirar = ev.target.closest('[data-locacao-tirar]');
+  if (outra) {
+    const f = outra.form;
+    if ($$('[data-locacao-faixa]', f).length < 50) $('[data-locacao-faixas]', f).append($('template', f).content.cloneNode(true));
+    return;
+  }
+  if (tirar) {
+    if ($$('[data-locacao-faixa]', tirar.form).length > 1) tirar.closest('[data-locacao-faixa]').remove();
+    return;
+  }
   const ver = ev.target.closest('[data-ns-ver]'), apl = ev.target.closest('[data-ns-aplicar]'), anu = ev.target.closest('[data-ns-anular]');
   if (ver) return nsVer(ver.dataset.nsVer, ver.closest('table').querySelector(`[data-ns-detalhe="${ver.dataset.nsVer}"]`));
   let r = null;
   if (apl) r = await acao(() => api('/api/ns/aplicar', { ns_id: +apl.dataset.nsAplicar }), null).catch(() => null);
   if (apl && r) toast(r.gravado_m > 0.001 ? `Gravados mais ${nf(r.gravado_m)} m.${r.pendente_m > 0.001 ? ` Ainda pendentes: ${nf(r.pendente_m)} m.` : ''}`
-    : 'Nada novo a gravar: o que falta ainda não foi assentado até a data da nota.', 'ok');
+    : 'Nenhum intervalo novo foi gravado. Confira as pendências da nota.', 'ok');
   if (anu) {
     const motivo = prompt('Motivo da anulação (os registros desta nota também são anulados; nada é apagado):'); if (!motivo || !motivo.trim()) return;
     r = await acao(() => api('/api/ns/anular', { ns_id: +anu.dataset.nsAnular, motivo: motivo.trim() }), 'Nota anulada com os registros dela.').catch(() => null);
   }
   if (r) recarregarTelaNs();
+});
+
+document.addEventListener('change', ev => {
+  const s = ev.target.closest('[data-locacao-vincular] select[name=fisico_id]');
+  if (!s) return;
+  const faixa = s.closest('[data-locacao-faixa]');
+  const ext = s.selectedOptions[0].dataset.extensao || '';
+  $('input[name=ini_m]', faixa).value = '0';
+  const fim = $('input[name=fim_m]', faixa);
+  fim.value = fim.max = ext;
+});
+document.addEventListener('submit', async ev => {
+  const f = ev.target.closest('[data-locacao-vincular]');
+  if (!f) return;
+  ev.preventDefault();
+  const b = $('button[type=submit],button:not([type])', f), id = Number(f.dataset.locacaoVincular);
+  b.disabled = true;
+  try {
+    const vinculos = $$('[data-locacao-faixa]', f).map(div => ({
+      fisico_id: $('[name=fisico_id]', div).value, ini_m: $('[name=ini_m]', div).valueAsNumber, fim_m: $('[name=fim_m]', div).valueAsNumber
+    }));
+    const r = await acao(() => api('/api/ns/locacao/vincular', { ns_id: id, segmento_id: Number(f.dataset.segmento), vinculos }));
+    toast(r.repetida ? 'Esta faixa já foi vinculada.' : `${mNs(r.gravado_m)} liberados.${r.pendente_m > 0 ? ` ${mNs(r.pendente_m)} ainda pendentes.` : ''}`, 'ok');
+    recarregarCamadaMapa();
+    await carregarTopografia();
+    const linha = $(`#topNsLista [data-ns-detalhe="${id}"]`);
+    if (linha) await nsVer(id, linha);
+  } finally {
+    b.disabled = false;
+  }
 });
 $('#nsFiltro').addEventListener('click', ev => {
   const b = ev.target.closest('[data-ns-filtro]'); if (!b) return;
