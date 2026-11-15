@@ -1190,6 +1190,11 @@ def preparar_v26(conn):
     S.aplicar_esquema(conn)
 
 
+def preparar_v27(conn):
+    """Aceita a planilha como documento principal da locação, preservando as notas anteriores e seus vínculos."""
+    _recriar_tabela(conn, "notas_servico", "arquivo_locacao TEXT")
+
+
 def preparar_v25(conn):
     """Somente o vínculo entre a nota anterior e a execução; não presume equipe, clima ou execução."""
     S.aplicar_esquema(conn)
