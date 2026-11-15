@@ -111,10 +111,10 @@ class TestAceitacao(BaseAssistente):
         self.assertEqual(len(self.m.pedidos), 1)
         self.assertEqual([b["rotulo"][:5] for b in t.botoes], ["6.1.1", "6.1.2", "6.1.3"])
         t.dizer("sanitário por um mês")
-        self.assertIn("a opção mais próxima é: id 1.1_6.1.3 = LOCAÇÃO CONTAINER SANITÁRIO", self.m.sistema())
+        self.assertIn("Mais próxima do que foi dito: id 1.1_6.1.3 = LOCAÇÃO CONTAINER SANITÁRIO (unidade MES)", self.m.sistema())
         self.assertEqual(t.linhas()["Memória de cálculo"], "2 contêineres × 1 mês = 2 MES")
         t.dizer("na verdade, foram três")
-        self.assertIn("fatores contêineres=2, mês=1", self.m.sistema())      # o modelo recebe o rascunho atual para corrigir só um campo
+        self.assertIn("anotado: 2 contêineres × 1 mês", self.m.sistema())   # o modelo recebe o rascunho atual para corrigir só um campo
         li = t.linhas()
         self.assertTrue(li["Item"].startswith("6.1.3 · LOCAÇÃO CONTAINER SANITÁRIO"))
         self.assertTrue(li["Grupo"].startswith("Canteiro"))
@@ -262,9 +262,14 @@ class TestPerfisEConsultas(BaseAssistente):
             self.assertEqual({u["tipo"] for u in estado["usos"]}, {IA._RASCUNHOS[f] for f in tem}, login)
             r = t.dizer("oi, o que você faz?")
             self.assertEqual(r["situacao"], "OK", login)
-            # o modelo recebe as mesmas funções para todo login: quem confere a permissão é o código, não o modelo
-            self.assertEqual(self.m.funcoes(), [f["function"]["name"] for f in IA.FERRAMENTAS], login)
-            self.assertIn("o sistema confere a permissão do login", self.m.sistema())
+            # D-226: o modelo recebe só as funções de lançamento do perfil; o que ele não lança vira a função mínima
+            # sem_permissao, e o código continua conferindo a permissão em cada função
+            enviadas = set(self.m.funcoes())
+            self.assertEqual({f for f in enviadas if f.startswith("rascunho_")}, tem, login)
+            self.assertEqual("sem_permissao" in enviadas, len(tem) < 3, login)
+            self.assertEqual("consultar_orcamento" in enviadas, "rascunho_apropriacao" in tem, login)
+            self.assertTrue({"consultar_ajuda", "consultar_trecho"} <= enviadas, login)
+            self.assertNotIn("descartar_rascunho", enviadas, login)               # sem rascunho aberto, não há o que descartar
             for funcao, tipo in IA._RASCUNHOS.items():
                 turno = IA._Turno()
                 r, _ = IA.executar(self.srv_conn, IA.config(), t.usuario, turno, funcao, {"item": "tapume", "categoria": "CHUVA"})
@@ -323,7 +328,7 @@ class TestPerfisEConsultas(BaseAssistente):
         recusa_, guia = [json.loads(m["content"]) for m in self.m.pedidos[2]["corpo"]["messages"] if m["role"] == "tool"]
         self.assertIn("isso não é apropriação: use consultar_ajuda", recusa_["erro"])
         self.assertEqual(guia["ajuda"][0]["titulo"], "OK interno (liberar o trecho para a medição)")
-        self.assertIn("O assistente não dá o OK", guia["ajuda"][0]["texto"])
+        self.assertIn("O OK é um toque da pessoa, trecho a trecho, não do assistente", guia["ajuda"][0]["texto"])
         self.assertEqual(self.um("SELECT COUNT(*) FROM apropriacoes"), (0,))
         # o rascunho que já existia não é mexido por uma tentativa vazia de outro assunto
         t.atalho("PEDIDO")
@@ -336,7 +341,7 @@ class TestPerfisEConsultas(BaseAssistente):
         t = self.tela("almox1")
         r = t.dizer("onde dou entrada numa nota fiscal?")
         self.assertEqual(r["resposta"], "A nota sobe em Compras › Notas fiscais.")
-        self.assertIn({"rotulo": "Abrir Notas fiscais e fornecedores", "tela": "compras/notas"}, t.botoes)
+        self.assertIn({"rotulo": "Abrir Notas fiscais", "tela": "compras/notas"}, t.botoes)
         self.assertIsNone(t.rascunho)
         self.modelo(resposta(chamada("consultar_ajuda", assunto="nota fiscal")), resposta(texto="Quem cuida disso é o almoxarifado."))
         s = self.tela("rh1")
@@ -480,6 +485,96 @@ class TestCotaEChave(BaseAssistente):
         self.assertEqual(self.m.pedidos, [])
 
 
+class TestHistoricoEConhecimento(BaseAssistente):
+    def test_historico_quase_zero(self):
+        """D-226: vão ao modelo só a mensagem atual e, se houver, a última pergunta da IA sem resposta. O que a tela antiga
+        mandava como conversa é ignorado; o rascunho e as opções vão nas instruções."""
+        self.modelo(resposta(texto="Qual serviço?"), resposta(chamada("rascunho_apropriacao", item="tapume")),
+                    resposta(texto="Oi!"))
+        t = self.tela("eng1")
+        r = t.dizer("quero lançar um serviço")
+        self.assertEqual(r["pergunta"], "Qual serviço?")
+        self.assertEqual([m["role"] for m in self.m.pedidos[0]["corpo"]["messages"]], ["system", "user"])
+        t.dizer("tapume")
+        self.assertEqual([(m["role"], m["content"]) for m in self.m.pedidos[1]["corpo"]["messages"][1:]],
+                         [("assistant", "Qual serviço?"), ("user", "tapume")])
+        self.assertTrue(t.linhas()["Item"].startswith("5.1.2"))
+        self.assertIsNone(t.pergunta and None)
+        # a conversa velha, se vier, não vai ao modelo; e sem pergunta pendente vai só a mensagem
+        st, r = t.req("/api/assistente/mensagem", {"texto": "oi", "rascunho": None, "pergunta": None,
+                                                   "conversa": [{"de": "u", "texto": "SEGREDO_DA_CONVERSA_ANTIGA"}]})
+        self.assertEqual(st, 200, r)
+        enviado = json.dumps(self.m.pedidos[2]["corpo"], ensure_ascii=False)
+        self.assertNotIn("SEGREDO_DA_CONVERSA_ANTIGA", enviado)
+        self.assertEqual([m["role"] for m in self.m.pedidos[2]["corpo"]["messages"]], ["system", "user"])
+        self.assertIsNone(r["pergunta"])                                       # "Oi!" não é pergunta
+
+    def test_funcoes_mudam_com_o_rascunho_aberto(self):
+        eng = self.tela("eng1").usuario
+        sem = {f["function"]["name"] for f in IA.ferramentas_do_login(eng)}
+        com = {f["function"]["name"] for f in IA.ferramentas_do_login(eng, {"tipo": "APROPRIACAO", "campos": {}})}
+        self.assertIn("consultar_catalogo", sem)
+        self.assertNotIn("consultar_catalogo", com)                            # consulta de outro tipo sai
+        self.assertIn("rascunho_pedido", com)                                  # a troca de assunto continua possível
+        self.assertIn("descartar_rascunho", com)
+        self.assertNotIn("descartar_rascunho", sem)
+        self.assertNotIn("oferecer_opcoes", com)                               # no rascunho, os botões vêm do código
+
+    def test_conhecimento_por_secao(self):
+        secoes = IA.conhecimento()
+        self.assertGreaterEqual(len(secoes), 20)
+        for sec in secoes:                                                     # toda seção com tela diz quem a abre
+            self.assertTrue(not sec["tela"] or sec["telas_perfil"], sec["titulo"])
+            self.assertLess(len(sec["texto"]), 1100, sec["titulo"])            # curta: é ela que vai ao modelo
+        cfg = IA.config()
+        u = self.tela("eng1").usuario
+        for pergunta, titulo in (("eu quero dar o ok em TR confecionados, pra liberalos pra fiscalização", "OK interno"),
+                                 ("dar OK em TR", "OK interno"), ("onde dou entrada numa nota fiscal", "Notas fiscais"),
+                                 ("choveu de tarde", "Registrar chuva"), ("o que é MND", "Glossário"),
+                                 ("como verifico um trecho executado", "Verificar")):
+            achadas = IA.ajuda(cfg, u, pergunta)
+            self.assertTrue(achadas and achadas[0]["titulo"].startswith(titulo), (pergunta, [a["titulo"] for a in achadas]))
+        self.assertEqual(IA.ajuda(cfg, u, "receita de bolo de cenoura"), [])
+        with open(IA.arquivo_conhecimento(), encoding="utf-8") as f:
+            bruto = f.read()
+        for proibido in ("drive.google.com", "docs.google.com", "@gmail", "@ankara"):     # arquivo público e enviado ao serviço
+            self.assertNotIn(proibido, bruto.lower())
+
+    def test_ok_interno_no_conhecimento_segue_a_regra_do_servidor(self):
+        """O guia não pode exigir o que o servidor não exige: o OK interno não depende do cadastro de campo."""
+        import inspect
+        import regras as R
+        import servicos as S
+        ok = next(s for s in IA.conhecimento() if s["titulo"].startswith("OK interno"))
+        self.assertIn("O cadastro de campo não é exigido para o OK", ok["texto"])
+        for frase in ("execução 100 %", "verificados pelo supervisor", "fotos obrigatórias", "avanço antigo sem posição"):
+            self.assertIn(frase, ok["texto"])
+        regra = inspect.getsource(S.ok_fiscalizacao) + inspect.getsource(R.validar_ok_fiscal)
+        self.assertNotIn("CADASTRO_CAMPO", regra)                              # se mudar no servidor, mude o guia
+        self.assertIn("sem_verificacao", regra)
+        self.assertIn("fotos_faltando", regra)
+        self.assertIn("_exigir_sem_legado", regra)
+
+    def test_consultar_trecho(self):
+        u = self.tela("eng1").usuario
+        r = IA.situacao_trecho(self.srv_conn, u, "Zona 03 PB08 TR020")
+        self.assertEqual(r["trecho"], "Zona 03 · PB08 · TR020")
+        self.assertFalse(r["pronto_para_ok"])
+        self.assertTrue(any(f.startswith("Executado 100 %") for f in r["falta"]), r)
+        self.assertEqual(r["lembrete"], "o OK interno não exige o cadastro de campo")
+        sem_numero = IA.situacao_trecho(self.srv_conn, u, "TR confeccionados", "quero dar o ok nos trechos")
+        self.assertTrue(sem_numero["ajuda"][0]["titulo"].startswith("OK interno"))
+        self.assertIn("Peça o nome", IA.situacao_trecho(self.srv_conn, u, "TR999 da zona 99")["erro"])
+
+    def test_medida_com_unidade_escrita(self):
+        t = self.tela("eng1")
+        t.atalho("APROPRIACAO")
+        turno = IA._Turno(IA.normalizar(self.srv_conn, t.usuario, {"tipo": "APROPRIACAO", "campos": {}}))
+        IA.aplicar_campos(self.srv_conn, t.usuario, turno, "APROPRIACAO", {"item": "5.1.2", "medidas": [{"comprimento": "4m", "largura": "2,5 m"}]})
+        v = IA.vista(self.srv_conn, t.usuario, turno.rascunho)
+        self.assertIn("Q = 4 × 2,5 = 10 m²", dict(v["linhas"])["Memória de cálculo"])
+
+
 class TestRegrasPuras(unittest.TestCase):
     OPCOES = ["id 1.1_6.1.1 = LOCAÇÃO CONTAINER ESCRITÓRIO C/ 01 SANITÁRIO", "id 1.1_6.1.2 = LOCAÇÃO CONTAINER ESCRITÓRIO S/ SANITÁRIO",
               "id 1.1_6.1.3 = LOCAÇÃO CONTAINER SANITÁRIO"]
@@ -508,8 +603,7 @@ class TestRegrasPuras(unittest.TestCase):
         self.assertNotIn("gsk_", bruto)
         cfg = json.loads(bruto)
         self.assertEqual(cfg["base_url"], "https://api.groq.com/openai/v1")
-        for s in cfg["ajuda"]:                                       # toda seção com tela diz quem a abre
-            self.assertTrue(not s.get("tela") or s.get("telas_perfil"), s["titulo"])
+        self.assertNotIn("ajuda", cfg)                               # o guia mudou para docs/CONHECIMENTO_IA.md (D-226)
         with open(os.path.join(raiz, ".gitignore"), encoding="utf-8") as f:
             self.assertIn("segredos.env", f.read())
         with open(os.path.join(raiz, "web", "index.html"), encoding="utf-8") as f:
@@ -521,8 +615,14 @@ class TestRegrasPuras(unittest.TestCase):
             js = f.read()
         self.assertIn("api(v.rota, corpo)", js)                      # o toque grava pela rota de sempre (X-MC, X-Idem)
         self.assertNotIn("groq", js.lower())                         # a tela não fala com o serviço nem conhece a chave
+        self.assertNotIn("localStorage.setItem(iaChave(), JSON.stringify({ conversa", js)   # a conversa não é guardada (D-226)
+        self.assertIn("pergunta: IA.pergunta", js)
+        self.assertNotIn("conversa:", js.split("/api/assistente/mensagem")[1].split("\n")[0])
         # o tamanho das funções enviadas a cada chamada é o que mais pesa nos 8.000 tokens por minuto
-        self.assertLess(len(json.dumps(IA.FERRAMENTAS, ensure_ascii=False)), 5200)
+        todas = {"permissoes": ["apropriacao", "compras_solicitar", "campo"], "telas": ["solicitar", "compras"]}
+        self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas), ensure_ascii=False)), 4600)          # no #39: 4.953 para todos
+        self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas, {"tipo": "APROPRIACAO"}), ensure_ascii=False)), 3700)
+        self.assertLess(len(json.dumps(IA.ferramentas_do_login({"permissoes": [], "telas": ["iluminado"]}), ensure_ascii=False)), 1500)
 
 
 if __name__ == "__main__":

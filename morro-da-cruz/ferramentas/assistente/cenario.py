@@ -84,6 +84,7 @@ class Tela:
         assert st == 200, r
         self.usuario = r["usuario"]
         self.conversa, self.rascunho, self.botoes, self.ultima, self.chamadas, self.tokens = [], None, [], None, 0, 0
+        self.pergunta = None                      # a única parte da conversa que volta ao servidor (D-226)
 
     def req(self, rota, corpo=None):
         r = urllib.request.Request(self.url + rota, data=None if corpo is None else json.dumps(corpo).encode(),
@@ -103,6 +104,7 @@ class Tela:
             self.rascunho = r["rascunho"]
         if r.get("situacao", "OK") == "OK":
             self.botoes = r.get("botoes") or []
+            self.pergunta = r.get("pergunta")
             if r.get("resposta"):
                 self.conversa.append({"de": "a", "texto": r["resposta"]})
                 self._nota("IA", r["resposta"] + (" [" + " | ".join(b["rotulo"] for b in self.botoes) + "]" if self.botoes else ""))
@@ -115,7 +117,7 @@ class Tela:
 
     def dizer(self, texto):
         self._nota(self.login, texto)
-        st, r = self.req("/api/assistente/mensagem", {"texto": texto, "conversa": self.conversa[-8:], "rascunho": self._cru(),
+        st, r = self.req("/api/assistente/mensagem", {"texto": texto, "pergunta": self.pergunta, "rascunho": self._cru(),
                                                      "opcoes": self.botoes})
         assert st == 200, (st, r)
         if r.get("situacao") == "OK":
@@ -137,7 +139,7 @@ class Tela:
         self._nota(self.login, f"[toca em “{b['rotulo']}”]")
         self.conversa.append({"de": "u", "texto": b["rotulo"]})
         if b.get("sub"):                                # grupo: os itens dele aparecem sem chamar ninguém
-            self.botoes = b["sub"]
+            self.botoes, self.pergunta = b["sub"], b["pergunta"]
             self.conversa.append({"de": "a", "texto": b["pergunta"]})
             self._nota("IA", b["pergunta"] + " [" + " | ".join(x["rotulo"] for x in self.botoes) + "]")
             return {"situacao": "OK", "resposta": b["pergunta"], "botoes": self.botoes}
