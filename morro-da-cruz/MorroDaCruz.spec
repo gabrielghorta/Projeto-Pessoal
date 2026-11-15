@@ -5,7 +5,7 @@ a = Analysis(
     ["iniciar.py"],
     pathex=["."],
     datas=[("web", "web"), ("schema.sql", "."), ("config", "config"),
-           ("planilhas/LEIA-ME.md", "planilhas"), ("mapa/LEIA-ME.md", "mapa")],
+           ("docs/CONHECIMENTO_IA.md", "docs"), ("planilhas/LEIA-ME.md", "planilhas"), ("mapa/LEIA-ME.md", "mapa")],
     hiddenimports=["server", "demo", "importar", "usuarios", "backup"],
     excludes=["tkinter", "unittest", "pydoc"],
 )

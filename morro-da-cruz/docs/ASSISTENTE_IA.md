@@ -3,7 +3,7 @@
 14/11/2026 · D-219 a D-224 · esquema v26 (sem mudança no banco)
 
 A tela **Assistente** (menu lateral e botão no Início) começa com **“O que você quer fazer?”**. A pessoa escreve ou
-fala do jeito dela. Um modelo de linguagem lê a mensagem inteira, com o contexto da conversa, e decide se responde,
+fala do jeito dela. Um modelo de linguagem lê a mensagem inteira, com o rascunho em andamento, e decide se responde,
 consulta o sistema ou pergunta o que falta. Todo login conversa; cada um só lança o que já podia lançar nas telas.
 
 ## O que ela faz
@@ -33,8 +33,34 @@ consulta o sistema ou pergunta o que falta. Todo login conversa; cada um só lan
 **Fora desses quatro usos, ela explica e leva à tela, não lança.** “Quero dar o OK nos trechos prontos” é o OK interno:
 o assistente diz onde se faz (ficha do trecho, no Mapa iluminado), o que o trecho precisa ter e mostra o botão da tela.
 O mesmo vale para verificar trecho, nota de serviço, estoque, nota fiscal e medição. Rascunho de apropriação sem item
-nem quantidade não é aberto. As respostas saem do guia em `config/assistente.json` (`ajuda`): tela nova ou regra nova,
-acrescente a seção ali.
+nem quantidade não é aberto. As respostas saem de `docs/CONHECIMENTO_IA.md`: tela nova ou regra nova, acrescente ou
+corrija a seção ali (o cabeçalho do arquivo explica o formato).
+
+## O que vai ao modelo em cada mensagem (D-225, 15/11/2026)
+
+**Histórico quase zero.** A conversa não é guardada no navegador nem enviada ao servidor. Em cada mensagem vão só:
+
+- a mensagem atual;
+- o rascunho em andamento, resumido em uma linha (“anotado: 2 contêineres × 1 mês”);
+- as opções que estão na tela, com o id de cada uma;
+- se houver, **só a última pergunta da IA ainda sem resposta** (“Qual serviço?”), para “tapume” fazer sentido.
+
+A conversa some ao recarregar a página; o rascunho e o texto que está sendo digitado ficam guardados no navegador. A
+correção no meio (“na verdade, foram três”) continua funcionando, porque a memória é o rascunho.
+
+**Conhecimento por seção.** `docs/CONHECIMENTO_IA.md` reúne, a partir dos documentos do repositório, como usar cada
+tela, quem pode fazer cada ação, o que trava e como resolver, e as regras da obra e da medição que explicam o fluxo.
+O arquivo inteiro nunca vai ao modelo: a cada dúvida o código escolhe a seção que mais casa (às vezes duas). Valores,
+prazos, saldos e a situação atual de um trecho não ficam no arquivo: o assistente consulta o sistema na hora
+(`consultar_trecho`, saldo em `consultar_orcamento`). Os documentos do Drive ficam para quando faltar algo específico.
+
+**Conteúdo fixo menor.** Instruções curtas, descrições de função curtas e só as funções que fazem sentido: as de
+lançamento dos tipos que o perfil lança; com um rascunho aberto, saem as consultas dos outros tipos e a de oferecer
+opções (os botões vêm do código). O que o perfil não lança vira uma função mínima, e o código explica quem lança. Não
+há chamada extra para classificar a mensagem.
+
+Medido com a API real nas mesmas seis conversas (`ferramentas/assistente/medir_tokens.py`): **22 % menos tokens**
+(18.861 → 14.683), as mesmas 12 chamadas, e 6 de 6 certas (antes, 5 de 6). Detalhe em `docs/VALIDACAO_ASSISTENTE_IA.md`.
 
 ## Permissões
 
@@ -45,8 +71,9 @@ acrescente a seção ali.
 - O encarregado (login preso à equipe) pede só para a frente em que a equipe está programada e relata só para a
   equipe dele; “todas as equipes” não existe para ele. As mesmas travas continuam na rota que grava.
 - Consultas por função específica, sempre com o login da sessão: `consultar_catalogo` (materiais de Pedir material),
-  `consultar_orcamento` (itens do BM, só para quem apropria), `consultar_frentes` (zonas e equipes do login),
-  `consultar_pedidos` (as requisições que o login vê) e `consultar_ajuda` (guia de uso em `config/assistente.json`).
+  `consultar_orcamento` (itens do BM com o saldo, só para quem apropria), `consultar_pedidos` (as requisições que o
+  login vê), `consultar_trecho` (o que foi feito e o que falta para o OK interno num trecho citado pelo nome) e
+  `consultar_ajuda` (a seção de `docs/CONHECIMENTO_IA.md`).
 
 ## Custo zero (obrigatório)
 
@@ -105,8 +132,8 @@ não o apaga). Ela nunca vai para a tela, o log ou a auditoria. Em outras hosped
 ambiente `GROQ_API_KEY`. Para desligar a IA, apague o arquivo e recarregue: a tela avisa e os formulários continuam.
 
 **Trocar o modelo ou o endereço:** `config/assistente.json` (`modelo`, `base_url`) ou as variáveis `MC_IA_MODELO` e
-`MC_IA_BASE_URL`. O arquivo também guarda os limites (`chamadas_por_mensagem`, `mensagens_por_minuto`), os parâmetros
-do modelo e o guia de uso que responde às dúvidas (`ajuda`): mudou uma tela, ajuste o texto ali.
+`MC_IA_BASE_URL`. O arquivo também guarda os limites (`chamadas_por_mensagem`, `mensagens_por_minuto`) e os parâmetros
+do modelo. O que o assistente sabe sobre o sistema fica em `docs/CONHECIMENTO_IA.md`.
 
 ## Privacidade
 
@@ -119,15 +146,17 @@ pessoais**. Cada mensagem fica na auditoria (`/api/assistente/mensagem`: o texto
 | Arquivo | O que faz |
 |---|---|
 | `assistente.py` | configuração e chave, chamada ao modelo (`urllib`, sem dependência nova), as funções de consulta, o rascunho (campos, validação, conta, corpo da rota), a conversa e o teste pelo console |
-| `config/assistente.json` | modelo, endereço, limites e o guia de uso |
+| `config/assistente.json` | modelo, endereço e limites |
+| `docs/CONHECIMENTO_IA.md` | o que o assistente sabe, em seções curtas (vai ao modelo só a seção da pergunta) |
 | `server.py` | `GET /api/assistente` (estado), `POST /api/assistente/mensagem` (conversa; o modelo é chamado fora da trava do banco) e `POST /api/assistente/rascunho` (botão e campo, sem modelo) |
 | `web/assistente.js`, `web/index.html`, `web/app.css` | a tela: conversa, botões, microfone, rascunho, aviso de cota |
-| `tests/test_assistente.py` | 22 testes com o modelo **simulado** (nenhum usa a rede) |
+| `tests/test_assistente.py` | testes com o modelo **simulado** (nenhum usa a rede) |
 | `ferramentas/assistente/validar_api_real.py` | os quatro usos com a **API real**, em banco de demonstração descartável |
+| `ferramentas/assistente/medir_tokens.py` | as mesmas seis conversas com a **API real**: chamadas e tokens até o resultado certo |
 | `ferramentas/assistente/conferir_tela.cjs` | a tela no navegador, em 390 e 1280 px |
 
-- **Sem estado no servidor e sem mudança no banco:** a conversa e o rascunho ficam no navegador (por login) e voltam a
-  cada mensagem; o servidor confere o rascunho de novo toda vez. Recarregar a página não perde nada.
+- **Sem estado no servidor e sem mudança no banco:** o rascunho e o texto digitado ficam no navegador (por login) e o
+  rascunho volta a cada mensagem; o servidor confere o rascunho de novo toda vez. Recarregar a página apaga só a conversa.
 - **Uma chamada por mensagem, na maioria das vezes:** quando o modelo anota dados no rascunho, quem responde é o
   código (“Anotei: … Falta: …”), com os botões da próxima pergunta. Só consulta ou erro voltam ao modelo (no máximo 3
   chamadas por mensagem).

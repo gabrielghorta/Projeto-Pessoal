@@ -516,7 +516,12 @@ avisos, rota e corpo). A tela grava só no toque, chamando `/api/solicitacao`, `
 
 - Rotas: `GET /api/assistente` (estado), `POST /api/assistente/mensagem` (modelo fora da trava do banco; auditada) e
   `POST /api/assistente/rascunho` (botão, campo, atalho, descartar: sem modelo). Nenhuma grava na obra.
-- Sem estado no servidor: conversa e rascunho no `localStorage` por login; o rascunho é conferido de novo a cada pedido.
+- Sem estado no servidor e histórico quase zero (D-225): só o rascunho e o texto digitado ficam no `localStorage` por
+  login; vão ao modelo a mensagem, o rascunho resumido, as opções da tela e só a última pergunta da IA sem resposta.
+- Conhecimento: `docs/CONHECIMENTO_IA.md`, por seção (`## Título` + `<!-- palavras | tela | botao | telas | permissao -->`);
+  `ajuda()` escolhe a seção pelas palavras-chave (duas letras contam: OK, TR, NS). Funções por perfil e etapa
+  (`ferramentas_do_login`); `consultar_trecho` usa `servicos.caminho_medicao`. Ao mexer no texto enviado ao modelo,
+  meça antes e depois com `ferramentas/assistente/medir_tokens.py` (≈15 mil tokens por rodada).
 - Economia: uma chamada por mensagem quando o modelo só anota (a fala é do código); itens possíveis viram botões
   agrupados pela primeira palavra (Instalação × Locação); texto igual ao botão é toque.
 - Cota (429): por minuto, a tela conta e tenta de novo; por dia (200 mil tokens, só aparece na mensagem do 429), avisa.

@@ -3,8 +3,11 @@
  * fala, os botões e o rascunho já conferido pelo código. O que está determinado (toque num botão, campo do rascunho) o
  * próprio sistema aplica, sem chamar o modelo. Nada é gravado até o toque no botão do rascunho, que envia o corpo à rota
  * de sempre (/api/solicitacao, /api/ocorrencia, /api/apropriacao). Sem cota da IA, o texto e o rascunho ficam guardados e
- * o formulário manual continua a um toque. */
-const IA = { estado: null, conversa: [], rascunho: null, botoes: [], ocupado: false, aviso: null, relogio: null, tentativas: 0, voz: null, falando: false };
+ * o formulário manual continua a um toque.
+ * Histórico quase zero (D-225): a conversa fica só na tela (some ao recarregar) e NÃO vai ao servidor. Vão a mensagem,
+ * o rascunho, os botões da tela e, se houver, só a última pergunta da IA ainda sem resposta. Ficam guardados no
+ * navegador apenas o rascunho e o texto que está sendo digitado. */
+const IA = { estado: null, conversa: [], rascunho: null, botoes: [], pergunta: null, ocupado: false, aviso: null, relogio: null, tentativas: 0, voz: null, falando: false };
 const iaChave = () => 'mc-assistente-' + (USUARIO ? USUARIO.login : '');
 const iaNorm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const iaCru = () => IA.rascunho ? { tipo: IA.rascunho.tipo, campos: IA.rascunho.campos } : null;
@@ -12,8 +15,8 @@ const iaTela = id => podeAba(String(id).split('/')[0]);
 
 function iaGuardar() {
   try {
-    localStorage.setItem(iaChave(), JSON.stringify({ conversa: IA.conversa.slice(-40), rascunho: iaCru(), botoes: IA.botoes, texto: $('#iaTexto').value }));
-  } catch (_) { /* sem storage: a conversa vale só enquanto a tela está aberta */ }
+    localStorage.setItem(iaChave(), JSON.stringify({ rascunho: iaCru(), texto: $('#iaTexto').value }));
+  } catch (_) { /* sem storage: o rascunho vale só enquanto a tela está aberta */ }
 }
 function iaLer() {
   try { return JSON.parse(localStorage.getItem(iaChave()) || 'null'); } catch (_) { return null; }
@@ -35,11 +38,11 @@ async function carregarAssistente() {
     IA.estado = await api('/api/assistente');
     IA.dono = USUARIO.login;
     const g = iaLer();
-    IA.conversa = (g && g.conversa) || []; IA.botoes = (g && g.botoes) || []; IA.rascunho = null; IA.aviso = null;
+    IA.conversa = []; IA.botoes = []; IA.pergunta = null; IA.rascunho = null; IA.aviso = null;
     $('#iaTexto').value = (g && g.texto) || '';
-    if (g && g.rascunho) {                               // o rascunho guardado volta conferido de novo pelo servidor
-      const r = await iaPost('/api/assistente/rascunho', { rascunho: g.rascunho, mudar: {} });
-      if (r.situacao === 'OK') IA.rascunho = r.rascunho;
+    if (g && g.rascunho) {                               // o rascunho guardado volta conferido de novo pelo servidor,
+      const r = await iaPost('/api/assistente/rascunho', { rascunho: g.rascunho, mudar: {} });     // com a pergunta do que falta
+      if (r.situacao === 'OK') iaReceber(r);
     }
     iaMicrofone();
   }
@@ -113,6 +116,7 @@ function iaReceber(r, opcoes = {}) {
   if (r.situacao === 'OK') {
     IA.aviso = IA.estado.disponivel ? null : IA.aviso; IA.tentativas = 0;
     IA.botoes = r.botoes || [];
+    IA.pergunta = r.pergunta || null;                    // só ela volta ao servidor na próxima mensagem
     if (r.resposta && !opcoes.calado) IA.conversa.push({ de: 'a', texto: r.resposta });
     return true;
   }
@@ -126,7 +130,7 @@ async function iaEnviar(texto, automatico) {
   if (!IA.estado.disponivel) { IA.aviso = { texto: IA.estado.motivo + ' Você pode seguir pelo formulário.', manual: true }; return iaDesenhar(); }
   iaPararEspera();
   IA.ocupado = true; IA.aviso = null; iaDesenhar();
-  const r = await iaPost('/api/assistente/mensagem', { texto, conversa: IA.conversa.slice(-8), rascunho: iaCru(), opcoes: IA.botoes });
+  const r = await iaPost('/api/assistente/mensagem', { texto, pergunta: IA.pergunta, rascunho: iaCru(), opcoes: IA.botoes });
   IA.ocupado = false;
   if (r.situacao === 'OK') {
     IA.conversa.push({ de: 'u', texto });
@@ -169,7 +173,7 @@ async function iaTocar(b) {
   if (b.tela) return abrirAba(b.tela);
   if (b.sub) {                                          // grupo (ex.: Locação): abre os itens dele, sem chamar ninguém
     IA.conversa.push({ de: 'u', texto: b.rotulo }, { de: 'a', texto: b.pergunta });
-    IA.botoes = b.sub;
+    IA.botoes = b.sub; IA.pergunta = b.pergunta;
     return iaDesenhar();
   }
   if (b.iniciar) return iaAplicar({ iniciar: b.iniciar, chuva: !!b.chuva }, b.rotulo);
@@ -188,7 +192,7 @@ $('#iaBotoes').addEventListener('click', ev => { const b = ev.target.closest('[d
 $('#iaAviso').addEventListener('click', ev => { if (ev.target.closest('#iaCancelarEspera')) { iaPararEspera(); IA.tentativas = 0; iaDesenhar(); } });
 $('#iaNova').addEventListener('click', () => {
   if (IA.rascunho && !confirm('Começar uma conversa nova apaga o rascunho. Continuar?')) return;
-  iaPararEspera(); IA.conversa = []; IA.botoes = []; IA.rascunho = null; IA.tentativas = 0;
+  iaPararEspera(); IA.conversa = []; IA.botoes = []; IA.pergunta = null; IA.rascunho = null; IA.tentativas = 0;
   IA.aviso = IA.estado.disponivel ? null : IA.aviso; $('#iaTexto').value = '';
   iaDesenhar();
 });
@@ -215,7 +219,7 @@ $('#iaRascunho').addEventListener('click', async ev => {
       : r.ids ? `Chuva registrada em ${r.ids.length} equipe(s).` : v.corpo.categoria === 'CHUVA' ? 'Chuva registrada.' : `Registro nº ${r.id} gravado.`;
     toast(feito, 'ok');
     IA.conversa.push({ de: 'a', texto: 'Gravado. ' + feito });
-    IA.rascunho = null;
+    IA.rascunho = null; IA.pergunta = null;
     IA.botoes = iaTela(v.manual.tela) ? [{ rotulo: 'Ver em ' + v.manual.rotulo, tela: v.manual.tela }] : [];
     iaDesenhar();
     if (arqs.length && typeof driveEmSegundoPlano === 'function') driveEmSegundoPlano();
