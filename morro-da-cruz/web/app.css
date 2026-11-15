@@ -723,3 +723,52 @@ label.nota-confere:has(input:checked) { border-color: var(--verde); background: 
 .apr-resultado {font-weight:bold;margin:10px 0;overflow-wrap:anywhere}
 .apr-medida-conflito {border-color:#ff8f6a!important}
 @media(max-width:600px){.apr-lado {grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.apr-lado .btn {grid-column:2;justify-self:end}}
+
+/* ---------- Assistente (D-219): a conversa à esquerda, o rascunho à direita; no celular, um embaixo do outro */
+.inicio-assistente { margin: 0 0 28px; }
+.ia { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-width: 1180px; padding-bottom: 24px; }
+.ia.com-rascunho { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; }
+.ia-conversar { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ia-conversar .cab-tela { padding-bottom: 4px; }
+.ia-conversa { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; scrollbar-width: thin; }
+.ia-conversa:empty { display: none; }
+.ia-msg { max-width: 88%; padding: 10px 14px; border-radius: var(--raio); font-size: 16px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ia-msg.a { align-self: flex-start; background: var(--painel); border: 1px solid var(--borda); }
+.ia-msg.u { align-self: flex-end; background: var(--laranja-claro); border: 1px solid var(--laranja); }
+.ia-pensando { color: var(--suave); }
+.ia-botoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.ia-botoes .btn.grande { min-height: 56px; height: auto; padding: 12px 16px; white-space: normal; text-align: left; line-height: 1.3; }
+.ia-manuais { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.ia-entrada { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; position: sticky; bottom: 0; padding: 10px 0;
+  background: var(--bg); z-index: 5; }
+.ia-rotulo { grid-column: 1 / -1; }
+.ia-entrada textarea { font-size: 17px; min-height: 56px; resize: vertical; }
+.ia-entrada-acoes { display: flex; gap: 8px; align-items: center; }
+.ia-entrada-acoes .btn.prim { min-height: 56px; padding: 8px 22px; font-size: 17px; }
+.ia-mic { width: 56px; height: 56px; border: 1px solid var(--borda2); }
+.ia-mic[aria-pressed="true"] { background: var(--vermelho-claro); border-color: var(--vermelho); color: var(--vermelho); }
+.ia-pe { justify-content: space-between; }
+.ia-pe .vazio { font-size: 13px; padding: 0; }
+.ia-rascunho { display: flex; flex-direction: column; gap: 12px; }
+.ia-rascunho-topo { justify-content: space-between; }
+.ia-rascunho-topo h2 { margin: 0; }
+.ia-linhas { display: grid; gap: 8px; margin: 0; }
+.ia-linhas div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 10px; }
+.ia-linhas dt { color: var(--suave); font-size: 13px; font-weight: 700; }
+.ia-linhas dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.ia-form { display: grid; gap: 12px; }
+.ia-numero { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 400; color: var(--texto); }
+.ia-numero input { width: 120px; font-size: 20px; text-align: center; min-height: 48px; }
+.ia-falta { margin: 0; color: var(--amarelo-texto); }
+.ia-status { margin: 0; color: var(--suave); }
+.ia-status:empty { display: none; }
+.ia-nota { margin: 0; padding: 0; font-size: 13px; }
+@media (max-width: 900px) {
+  .ia, .ia.com-rascunho { grid-template-columns: minmax(0, 1fr); }
+  .ia-conversar .cab-tela h1 { font-size: 30px; }
+  .ia-botoes { grid-template-columns: minmax(0, 1fr); }
+  .ia-linhas div { grid-template-columns: 104px minmax(0, 1fr); }
+  .ia-msg { max-width: 94%; }
+}
+.ia { padding-top: 8px; }
+.ia-rascunho { margin-top: 14px; }

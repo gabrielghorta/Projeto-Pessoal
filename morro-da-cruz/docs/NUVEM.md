@@ -49,6 +49,11 @@ Os limites acima foram conferidos nas páginas públicas em 18/10/2026: [PythonA
 - Uma vez por mês, abra **Web** e clique em **Run until 1 month from today**. O PythonAnywhere manda e-mail antes de desligar.
 - Para receber uma versão nova do sistema, cole de novo o comando do passo 3. Os dados não são apagados: ficam em `morro-da-cruz/dados_demo`, fora do Git.
 
+**Assistente (IA), opcional e gratuito:** para ligar a tela “O que você quer fazer?”, grave a chave gratuita da Groq no
+servidor e teste com `python3 assistente.py testar`. O passo a passo, os limites do plano gratuito e o que fazer se a
+conta gratuita do PythonAnywhere não alcançar `api.groq.com` estão em `docs/ASSISTENTE_IA.md`. Sem a chave, o site
+funciona igual e a tela do assistente só avisa.
+
 ## 2. Render (pago, sem manutenção)
 
 1. Crie a conta em https://render.com, entrando com o GitHub. Cadastre o cartão em **Billing**.

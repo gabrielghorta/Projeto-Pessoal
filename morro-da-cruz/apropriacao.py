@@ -60,7 +60,8 @@ CADASTRO_PARADO = {"4_GDOC_ANALISE": "CADASTRO_GDOC", "3_RECEBIDO": "CADASTRO_PR
 
 
 # ------------------------------------------------------------------ texto da busca
-SINONIMOS = (("POLIETILENO DE ALTA DENSIDADE", "PEAD"), ("FERRO FUNDIDO", "FOFO"), ("POLICLORETO DE VINILA", "PVC"))
+SINONIMOS = (("POLIETILENO DE ALTA DENSIDADE", "PEAD"), ("FERRO FUNDIDO", "FOFO"), ("POLICLORETO DE VINILA", "PVC"),
+             ("CONTAINER", "CONTEINER"))          # o orçamento escreve dos dois jeitos (locação × instalação)
 PARADAS = {"DE", "DA", "DO", "DAS", "DOS", "E", "EM", "COM", "PARA", "P", "A", "O", "AS", "OS", "NA", "NO", "DN", "D"}
 _TOKEN = re.compile(r"[A-Z0-9]+(?:[._,/-][A-Z0-9]+)*")
 

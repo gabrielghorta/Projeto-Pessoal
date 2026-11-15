@@ -28,6 +28,10 @@ responsável gosta de receber o trabalho. A lista completa e oficial das decisõ
 | #21 | 30/10 | claude/cronograma-rev01 | REV01 do cronograma (só o cenário B): a obra sai do reservatório da Zona 11; grafo da água, carga, aba CARGA, marcos no Project, Gantt e animação novos. Empilhado sobre o #20 | **aberto** |
 | — | 30/10 | claude/pensive-lamport-szymez | Revisão do código inteiro e dos PRs #18 a #20: 69 correções (segurança do servidor, medição, compras e estoque, NS, campo, importação, telas, cronograma) e as regras D-188 a D-195 (`docs/CORRECOES_REVISAO_30-10-2026.md`); e a REV02 do cronograma (a REV01 com a análise crítica, fim em 10/01/2029). Empilhado sobre o #21 | **aberto** (#22) |
 
+Em 14/11/2026: o assistente (IA conversacional, D-219 a D-224), no ramo `claude/upbeat-noether-izqtnc`, sobre o
+PR #36 já mesclado (`docs/ASSISTENTE_IA.md`). O piloto anterior de IA feito fora deste repositório não foi enviado ao
+GitHub; nada dele foi reaproveitado.
+
 Os PRs empilhados devem ser mesclados na ordem (#18, #19, #20, #21, depois o da revisão). Fora do Git: em 29/10/2026, o
 cronograma físico executivo base (dois cenários) e a animação; em 30/10/2026, a REV01 (`cronograma-executivo.md`).
 

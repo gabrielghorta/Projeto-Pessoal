@@ -17,3 +17,5 @@ mapa/cache/
 # saída do cronograma executivo (refeita por cronograma_executivo/gerar_tudo.sh)
 cronograma_executivo/saida/
 poppler/
+# a chave gratuita da IA (GROQ_API_KEY) fica só no servidor (docs/ASSISTENTE_IA.md)
+segredos.env

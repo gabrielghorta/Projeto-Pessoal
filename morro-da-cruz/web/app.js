@@ -154,6 +154,7 @@ aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escur
 // "inclui": telas de permissão (config/perfis.json) que viraram página desta subaba; quem abre uma delas abre a subaba
 const TELAS = {
   inicio: { titulo: 'Início', carregar: () => renderInicio() },
+  assistente: { titulo: 'Assistente', carregar: () => carregarAssistente() },      // D-219: todo login conversa
   iluminado: { titulo: 'Mapa iluminado', carregar: () => carregarIluminado() },
   campo: { titulo: 'Lançamento do dia', grupo: 'grupo-campo', inclui: ['interferencias'],
     carregar: () => PAGINA.campo === 'interferencia' ? carregarInterferencias() : carregarLancamentoDia() },
@@ -173,7 +174,7 @@ const TELAS = {
 };
 const GRUPOS = { 'grupo-campo': 'Execução', planejamento: 'Almoxarifado', administrativo: 'Administrativo' };
 // telas que o perfil abre (config/perfis.json); o servidor confere de novo em cada consulta
-const podeTela = id => id === 'inicio' || !!(USUARIO && USUARIO.telas.includes(id));
+const podeTela = id => id === 'inicio' || id === 'assistente' || !!(USUARIO && USUARIO.telas.includes(id));
 // a subaba abre para quem abre ela ou uma das telas que viraram página dela
 const podeAba = id => podeTela(id) || ((TELAS[id] || {}).inclui || []).some(podeTela);
 const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeAba(t));

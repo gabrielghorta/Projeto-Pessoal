@@ -503,3 +503,26 @@ TOC/PAGEREF nativos, propriedades OOXML na ordem e namespaces padrão. Conteúdo
 estacas de 20 m e `config/rm_checklists.json`, sem inventar serviço nem aprovação. Canteiro pelo polígono cadastrado
 e apropriações; tubos/efetivo com origem explícita. Falta/atestado e ligações sem data não são inferidos. PDF original
 segue o caminho anterior. Guia `docs/CAMPO_MEMORIA_RM_WORD.md`; teste `test_revisao_pr35.py`.
+
+## Assistente: a IA conversacional (D-219 a D-224, 14/11/2026)
+
+Tela “O que você quer fazer?” (`#assistente`, todo login). `assistente.py` conversa com a Groq (plano gratuito,
+`openai/gpt-oss-20b`, só `urllib`) e oferece ao modelo funções de leitura (`consultar_catalogo`, `consultar_orcamento`,
+`consultar_frentes`, `consultar_pedidos`, `consultar_ajuda`) e de rascunho (`rascunho_pedido`, `rascunho_ocorrencia`,
+`rascunho_apropriacao`, `oferecer_opcoes`, `descartar_rascunho`). **O modelo só interpreta**: o código procura o item
+ou o material, confere a permissão do login, valida com as regras das rotinas, faz a conta (fatores para MES, H, CHP;
+`memoria_calculo` para m, m², m³) e devolve a “vista” do rascunho (linhas, campos editáveis, o que falta com botões,
+avisos, rota e corpo). A tela grava só no toque, chamando `/api/solicitacao`, `/api/ocorrencia` ou `/api/apropriacao`.
+
+- Rotas: `GET /api/assistente` (estado), `POST /api/assistente/mensagem` (modelo fora da trava do banco; auditada) e
+  `POST /api/assistente/rascunho` (botão, campo, atalho, descartar: sem modelo). Nenhuma grava na obra.
+- Sem estado no servidor: conversa e rascunho no `localStorage` por login; o rascunho é conferido de novo a cada pedido.
+- Economia: uma chamada por mensagem quando o modelo só anota (a fala é do código); itens possíveis viram botões
+  agrupados pela primeira palavra (Instalação × Locação); texto igual ao botão é toque.
+- Cota (429): por minuto, a tela conta e tenta de novo; por dia (200 mil tokens, só aparece na mensagem do 429), avisa.
+  Em qualquer caso o texto e o rascunho ficam e os formulários manuais aparecem. Nunca há outro serviço.
+- Chave: `GROQ_API_KEY` no ambiente ou em `segredos.env` (ignorado pelo Git). Modelo e endereço em
+  `config/assistente.json` ou `MC_IA_MODELO`/`MC_IA_BASE_URL`. O guia de uso que responde dúvidas também mora ali.
+- Armadilhas: o modelo é pequeno (frases novas podem ser mal lidas; por isso erro em campo opcional nunca trava a
+  conversa e a permissão nunca depende dele); as descrições das funções pesam nos tokens (teste limita o tamanho);
+  `tests/test_assistente.py` troca só `assistente.TRANSPORTE`, sem rede.

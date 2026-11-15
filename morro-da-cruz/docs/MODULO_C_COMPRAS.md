@@ -208,3 +208,11 @@ Não muda o banco. Substitui o que vem acima sobre aprovar, recusar, "A comprar"
 Testes: `tests/test_fluxo_v22.py` (`TestSolicitacoesHTTP`), `tests/test_compras.py`
 (`test_inventario_ajusta_na_hora_e_outra_pessoa_da_ciencia`, `test_contagem_de_antes_da_d197_ainda_se_aplica`) e
 `tests/test_telas.py` (`test_requisicoes_em_compras_e_estoque_em_paginas`).
+
+## Assistente: pedido de material pela conversa (14/11/2026, D-219 a D-224)
+
+Na tela **Assistente**, “tô sem luva de 110, manda 25” vira o rascunho da requisição: o material é procurado no
+catálogo de Pedir material (o mesmo de `solicitacoes.catalogo`; mais de um resultado vira botão), a quantidade pode
+ser corrigida por texto ou no campo, e a zona segue a regra de sempre (o encarregado só pede para a frente em que a
+equipe está programada). O toque em “Enviar requisição” usa `/api/solicitacao`: a requisição entra aberta, sem
+aprovação (D-196). Pedido por foto continua só na página Requisições. Guia: `docs/ASSISTENTE_IA.md`.

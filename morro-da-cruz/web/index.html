@@ -26,6 +26,7 @@
   </div>
   <div class="rail-itens">
       <button type="button" class="rail-item" data-tela="inicio" title="Início"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg><span class="rail-rot">Início</span></button>
+      <button type="button" class="rail-item" data-tela="assistente" title="Assistente"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4zM8 9h8M8 12.5h5"/></svg><span class="rail-rot">Assistente</span></button>
       <div class="rail-div" aria-hidden="true"></div>
       <button type="button" class="rail-item" data-tela="iluminado" title="Mapa iluminado"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg><span class="rail-rot">Mapa iluminado</span></button>
       <button type="button" class="rail-item rail-grupo" data-grupo="administrativo" title="Administrativo"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h16v11H4zM9 8V5h6v3M4 13h16"/></svg><span class="rail-rot">Administrativo</span></button>
@@ -83,6 +84,7 @@
         <section class="inicio-menu">
           <div class="inicio-titulo"><svg class="a-grande" role="img" aria-label="Ankara Engenharia"><use href="#logoA"/></svg><h1>Morro<br>da Cruz</h1></div>
           <p class="inicio-desc" id="inicioDesc">Rede de água em São Sebastião (DF) para a Caesb.</p>
+          <button type="button" class="btn prim grande inicio-assistente" data-tela="assistente">O que você quer fazer?</button>
           <h2>Menu</h2>
           <div class="menu-lista" id="menuLista"></div>
         </section>
@@ -91,6 +93,30 @@
         </section>
       </div>
       <footer class="inicio-pe" id="inicioPe" hidden><span class="ponto-amarelo" aria-hidden="true"></span>Banco de demonstração: os lançamentos ainda não valem como registro oficial.</footer>
+    </div>
+  </section>
+
+  <!-- ======================================================= ASSISTENTE (a IA conversacional, D-219) -->
+  <section class="aba" id="aba-assistente">
+    <div class="ia">
+      <div class="ia-conversar">
+        <header class="cab-tela"><h1>O que você quer fazer?</h1>
+          <p>Escreva ou fale do seu jeito: tirar uma dúvida, pedir material, relatar chuva ou interferência, lançar um serviço. O assistente monta o rascunho; você confere e grava.</p></header>
+        <div class="ia-conversa" id="iaConversa" aria-live="polite" aria-label="Conversa com o assistente"></div>
+        <div class="ia-botoes" id="iaBotoes" role="group" aria-label="Opções"></div>
+        <div id="iaAviso" class="aviso info" role="status" hidden></div>
+        <form id="iaForm" class="ia-entrada">
+          <label class="ia-rotulo" for="iaTexto">Sua mensagem</label>
+          <textarea id="iaTexto" rows="2" maxlength="1200" placeholder="Ex.: preciso de 20 luvas de 110 na Zona 3"></textarea>
+          <div class="ia-entrada-acoes">
+            <button type="button" class="btn-icone ia-mic" id="iaMic" aria-pressed="false" aria-label="Falar" title="Falar" hidden><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7"/></svg></button>
+            <button class="btn prim" id="iaEnviar">Enviar</button>
+          </div>
+        </form>
+        <div class="acoes ia-pe"><button type="button" class="btn-texto" id="iaNova" hidden>Começar conversa nova</button>
+          <span class="vazio">O assistente usa um serviço gratuito de IA: a mensagem sai do sistema para ser interpretada. Não escreva dados pessoais.</span></div>
+      </div>
+      <div class="painel ia-rascunho" id="iaRascunho" aria-live="polite" hidden></div>
     </div>
   </section>
 
@@ -1011,5 +1037,6 @@
 <script src="/planejamento.js"></script>
 <script src="/notas.js"></script>
 <script src="/apropriacao.js"></script>
+<script src="/assistente.js"></script>
 </body>
 </html>

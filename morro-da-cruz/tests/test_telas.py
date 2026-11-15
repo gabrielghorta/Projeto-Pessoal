@@ -157,12 +157,12 @@ class TestPaginaECodigo(unittest.TestCase):
     """Guarda contra tela quebrada: o menu, as seções e os elementos usados pelo JavaScript precisam existir no HTML."""
 
     def setUp(self):
-        self.html, self.js = ler("index.html"), ler("app.js") + ler("equipes.js") + ler("iluminado.js") + ler("planejamento.js") + ler("notas.js") + ler("apropriacao.js")
+        self.html, self.js = ler("index.html"), ler("app.js") + ler("equipes.js") + ler("iluminado.js") + ler("planejamento.js") + ler("notas.js") + ler("apropriacao.js") + ler("assistente.js")
         self.ids = set(re.findall(r'id="([^"]+)"', self.html))
 
     def test_cada_item_do_menu_abre_uma_tela_que_existe(self):
         telas = set(re.findall(r"^\s{2}(\w+): \{ titulo:", self.js, re.M))
-        self.assertEqual(len(telas), 13)                    # D-199: Início, Mapa iluminado e as 11 subabas
+        self.assertEqual(len(telas), 14)                    # D-199: Início, Mapa iluminado e as 11 subabas; D-219: o Assistente
         for t in telas:
             self.assertIn("aba-" + t, self.ids, t)
         for t in set(re.findall(r'data-tela="(\w+)"', self.html)):

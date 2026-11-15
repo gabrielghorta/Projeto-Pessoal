@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import acesso as A
 import apropriacao as AP
+import assistente as IA
 import caminhos
 import backup
 import compras as C
@@ -976,6 +977,9 @@ AUTOR.update({rota: ("por",) for rota in ROTAS_NS_DIA})
 PERMISSAO.update({rota: perm for rota, (perm, _) in ROTAS_APROPRIACAO.items()})
 AUTOR.update({rota: ("por",) for rota in ROTAS_APROPRIACAO})
 GET["/api/equipes"] = r_equipes
+# o assistente (D-219): qualquer login conversa; cada consulta e cada rascunho conferem a permissão de quem está logado
+GET_USUARIO["/api/assistente"] = lambda q, c, u: IA.estado(u)
+ROTAS_ASSISTENTE = ("/api/assistente/mensagem", "/api/assistente/rascunho")       # não gravam: o rascunho é gravado pela rota de sempre
 POST.update({"/api/equipes/criar": p_equipe_criar, "/api/equipes/excluir": p_equipe_excluir,
              "/api/equipes/retirar-integrante": p_equipe_retirar})
 for rota in ("/api/equipes/criar", "/api/equipes/excluir", "/api/equipes/retirar-integrante"):
@@ -983,7 +987,8 @@ for rota in ("/api/equipes/criar", "/api/equipes/excluir", "/api/equipes/retirar
     AUTOR[rota] = ("por",)
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 # tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
-COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral", "/api/caminho"}
+COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral", "/api/caminho",
+          "/api/assistente"}
 _CAMPO = ("campo", "diario", "interferencias")
 _ALMOX = ("almox", "equipes", "mapa")                   # Equipes e o Dados da obra (liberar e devolver) também montam o almoxarifado
 TELA_GET = {"/api/solicitacoes": ("solicitar", "compras"), "/api/solicitacao/foto": ("solicitar", "compras"),
@@ -1296,7 +1301,7 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         rota = u.path
         if rota not in POST and rota not in POST_USUARIO and rota not in ("/api/login", "/api/logout", "/api/configurar-acesso",
-                                                                          "/api/entrar-local", *ROTAS_DRIVE_ESPECIAIS):
+                                                                          "/api/entrar-local", *ROTAS_DRIVE_ESPECIAIS, *ROTAS_ASSISTENTE):
             return self._send(404, {"erro": "rota inexistente"})
         if self.headers.get("X-MC") != "1":            # só a própria aplicação grava (proteção contra CSRF)
             return self._send(403, {"erro": "Requisição recusada: origem não reconhecida."})
@@ -1328,7 +1333,33 @@ class Handler(BaseHTTPRequestHandler):
                                             "suspensas. Tente de novo quando terminar."})
         if rota in ROTAS_DRIVE_ESPECIAIS:
             return self._drive_post(rota)
+        if rota in ROTAS_ASSISTENTE:
+            return self._assistente_post(rota, body)
         self._gravar(rota, body)
+
+    def _assistente_post(self, rota, body):
+        """A conversa com o assistente (D-219). Não grava nada na obra: devolve a fala, os botões e o rascunho conferido;
+        quem grava é a rota de sempre, depois do toque da pessoa. A chamada ao modelo fica fora da trava do banco."""
+        with LOCK:
+            usuario = self._usuario()
+        if not usuario:
+            return self._send(401, {"erro": "Sessão encerrada: entre de novo."})
+        try:
+            if rota == "/api/assistente/rascunho":       # botão ou campo do rascunho: o próprio sistema aplica, sem o modelo
+                with LOCK:
+                    return self._send(200, IA.aplicar(CONN, usuario, body))
+            r = IA.conversar(CONN, LOCK, usuario, body)
+        except R.RegraViolada as e:
+            return self._send(422, {"erro": str(e)})
+        except Exception as e:  # noqa: BLE001 — a conversa nunca derruba o servidor; o formulário manual continua
+            LOG.exception("falha em POST %s", rota)
+            return self._send(500, {"erro": f"Erro interno: {e}"})
+        uso = r.get("uso") or {}
+        with LOCK:                                       # o que fica no histórico: o pedido, o que foi consultado e o consumo
+            A.auditar(CONN, usuario, "POST", rota, 200, {"texto": str(body.get("texto") or "")[:300]},
+                      f"{r['situacao']}: {uso.get('chamadas', 0)} chamada(s), {uso.get('tokens', 0)} tokens; "
+                      + (", ".join(uso.get("ferramentas") or []) or "sem consulta"))
+        return self._send(200, r)
 
     def _drive_post(self, rota):
         with LOCK:

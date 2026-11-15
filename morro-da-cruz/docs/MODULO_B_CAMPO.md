@@ -204,3 +204,12 @@ Atualização em 05/11/2026 (D-215 a D-217, v26): Interferências e chuva substi
 premissa explícita, sem observação fabricada. Apropriação calcula m/m²/m³ por medidas e leva a conta à MC; extras
 ficam opcionais. O RM da tela Relatórios sai em DOCX editável, com os mesmos dados e totais. Histórico e medição
 fechada preservados. Guia: `CAMPO_MEMORIA_RM_WORD.md`.
+
+## Assistente: chuva, interferência e apropriação pela conversa (14/11/2026, D-219 a D-224)
+
+A tela **Assistente** (“O que você quer fazer?”) monta o rascunho do relato de chuva ou interferência e da apropriação
+direta a partir do que a pessoa escreve ou fala. As regras são as mesmas desta página: quem tem `campo` relata; o
+encarregado só para a equipe dele (sem “todas as equipes”); apropriação só para `apropriacao`; data não futura; item
+do orçamento pela busca da base de custo; medidas e contas por `memoria_calculo`. O rascunho é um formulário editável
+e só o toque da pessoa grava, pelas rotas `/api/ocorrencia` e `/api/apropriacao`. Sem cota da IA, o rascunho fica
+guardado e os formulários daqui continuam. Guia: `docs/ASSISTENTE_IA.md`.
