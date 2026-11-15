@@ -4,7 +4,7 @@
  * próprio sistema aplica, sem chamar o modelo. Nada é gravado até o toque no botão do rascunho, que envia o corpo à rota
  * de sempre (/api/solicitacao, /api/ocorrencia, /api/apropriacao). Sem cota da IA, o texto e o rascunho ficam guardados e
  * o formulário manual continua a um toque.
- * Histórico quase zero (D-225): a conversa fica só na tela (some ao recarregar) e NÃO vai ao servidor. Vão a mensagem,
+ * Histórico quase zero (D-226): a conversa fica só na tela (some ao recarregar) e NÃO vai ao servidor. Vão a mensagem,
  * o rascunho, os botões da tela e, se houver, só a última pergunta da IA ainda sem resposta. Ficam guardados no
  * navegador apenas o rascunho e o texto que está sendo digitado. */
 const IA = { estado: null, conversa: [], rascunho: null, botoes: [], pergunta: null, ocupado: false, aviso: null, relogio: null, tentativas: 0, voz: null, falando: false };

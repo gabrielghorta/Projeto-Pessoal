@@ -1,5 +1,5 @@
 """Mede o custo das mesmas conversas com a API REAL da Groq: chamadas ao modelo e tokens até chegar à resposta ou ao
-rascunho correto (D-225). Serve para comparar antes e depois de qualquer mudança no que é enviado ao modelo.
+rascunho correto (D-226). Serve para comparar antes e depois de qualquer mudança no que é enviado ao modelo.
 
     GROQ_API_KEY=... python ferramentas/assistente/medir_tokens.py [--modelo-db obra.db] [--saida medida.json] [--rotulo antes]
 

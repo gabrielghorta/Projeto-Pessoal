@@ -1,6 +1,6 @@
 # Conhecimento do assistente (IA)
 
-15/11/2026 · D-225. Este arquivo é o que o assistente sabe sobre o sistema. Ele **não vai inteiro** para o modelo: a cada
+15/11/2026 · D-226. Este arquivo é o que o assistente sabe sobre o sistema. Ele **não vai inteiro** para o modelo: a cada
 dúvida, o código escolhe a seção que mais casa com a pergunta (às vezes duas) e manda só ela. Por isso cada seção é
 curta e se explica sozinha.
 

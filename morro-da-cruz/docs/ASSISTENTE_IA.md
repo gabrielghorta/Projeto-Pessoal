@@ -36,7 +36,7 @@ O mesmo vale para verificar trecho, nota de serviço, estoque, nota fiscal e med
 nem quantidade não é aberto. As respostas saem de `docs/CONHECIMENTO_IA.md`: tela nova ou regra nova, acrescente ou
 corrija a seção ali (o cabeçalho do arquivo explica o formato).
 
-## O que vai ao modelo em cada mensagem (D-225, 15/11/2026)
+## O que vai ao modelo em cada mensagem (D-226, 15/11/2026)
 
 **Histórico quase zero.** A conversa não é guardada no navegador nem enviada ao servidor. Em cada mensagem vão só:
 

@@ -47,7 +47,7 @@ Com a **API real**, depois da correção (2 de 2): a IA consulta o guia e respon
 mensagem), “quero lançar um serviço” (pergunta qual, sem rascunho vazio), o tapume com medidas (187 m²) e a dúvida do
 supervisor sobre verificar trecho. Teste simulado novo em `tests/test_assistente.py`.
 
-## 15/11/2026: histórico quase zero e conhecimento por seção (D-225), antes × depois
+## 15/11/2026: histórico quase zero e conhecimento por seção (D-226), antes × depois
 
 Mesmas seis conversas, **API real** da Groq (plano gratuito), banco de demonstração descartável, servidor de verdade,
 conversa pelo HTTP como a tela faz (`ferramentas/assistente/medir_tokens.py`). Conta chamadas ao modelo e tokens até

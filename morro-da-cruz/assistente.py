@@ -39,7 +39,7 @@ import solicitacoes as SOL
 from servicos import RegraViolada
 
 LIMITE_TEXTO = 1200                    # caracteres de uma mensagem da pessoa
-LIMITE_PERGUNTA = 300                  # a última pergunta da IA, ainda sem resposta: o único histórico enviado (D-225)
+LIMITE_PERGUNTA = 300                  # a última pergunta da IA, ainda sem resposta: o único histórico enviado (D-226)
 TIPOS = {"PEDIDO": "Pedido de material", "OCORRENCIA": "Interferência ou chuva", "APROPRIACAO": "Apropriação direta"}
 PERMISSAO = {"PEDIDO": "compras_solicitar", "OCORRENCIA": "campo", "APROPRIACAO": "apropriacao"}
 ROTA = {"PEDIDO": "/api/solicitacao", "OCORRENCIA": "/api/ocorrencia", "APROPRIACAO": "/api/apropriacao"}
@@ -408,7 +408,7 @@ def _tokens_busca(texto, minimo=2):
 
 
 def conhecimento():
-    """As seções de docs/CONHECIMENTO_IA.md (D-225): título, metadados da linha <!-- ... --> e o texto. Relido quando o
+    """As seções de docs/CONHECIMENTO_IA.md (D-226): título, metadados da linha <!-- ... --> e o texto. Relido quando o
     arquivo muda. O arquivo inteiro nunca vai ao modelo: só a seção que casa com a pergunta."""
     p = arquivo_conhecimento()
     chave_ = (p, os.path.getmtime(p)) if p else None
@@ -1187,7 +1187,7 @@ def _fechar(conn, usuario, turno):
 def _resposta(conn, usuario, turno, **extra):
     v = _fechar(conn, usuario, turno)
     fala = turno.fala or ""
-    # a pergunta que fica pendente: a tela devolve só ela na próxima mensagem (D-225)
+    # a pergunta que fica pendente: a tela devolve só ela na próxima mensagem (D-226)
     pergunta = fala if fala.rstrip().endswith("?") else None
     return {"situacao": "OK", "resposta": fala, "pergunta": pergunta, "botoes": turno.botoes, "rascunho": v, **extra}
 
@@ -1259,7 +1259,7 @@ _DO_TIPO = {"APROPRIACAO": ("rascunho_apropriacao", "consultar_orcamento"), "PED
 
 
 def ferramentas_do_login(usuario, rascunho=None):
-    """As funções que fazem sentido agora (D-225): as de lançamento só dos tipos que o perfil lança; com um rascunho
+    """As funções que fazem sentido agora (D-226): as de lançamento só dos tipos que o perfil lança; com um rascunho
     aberto, as consultas dos outros tipos saem (a troca de assunto continua pela função de rascunho do outro tipo) e
     entra descartar. O que o perfil não lança vira uma função mínima: o código explica quem lança, sem o modelo decidir."""
     aberto = (rascunho or {}).get("tipo")
@@ -1632,7 +1632,7 @@ def conversar(conn, trava, usuario, pedido):
     with trava:
         sistema = instrucoes(conn, usuario, turno, _opcoes_vistas(pedido.get("opcoes")), texto)
         ferramentas = ferramentas_do_login(usuario, turno.rascunho)
-    # histórico quase zero (D-225): a mensagem atual, o rascunho e as opções da tela (nas instruções) e, se houver, só a
+    # histórico quase zero (D-226): a mensagem atual, o rascunho e as opções da tela (nas instruções) e, se houver, só a
     # última pergunta da IA ainda sem resposta, para "tapume" fazer sentido depois de "Qual serviço?"
     mensagens = [{"role": "system", "content": sistema}]
     pergunta = _limpo(pedido.get("pergunta"), LIMITE_PERGUNTA)

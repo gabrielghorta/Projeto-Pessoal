@@ -262,7 +262,7 @@ class TestPerfisEConsultas(BaseAssistente):
             self.assertEqual({u["tipo"] for u in estado["usos"]}, {IA._RASCUNHOS[f] for f in tem}, login)
             r = t.dizer("oi, o que você faz?")
             self.assertEqual(r["situacao"], "OK", login)
-            # D-225: o modelo recebe só as funções de lançamento do perfil; o que ele não lança vira a função mínima
+            # D-226: o modelo recebe só as funções de lançamento do perfil; o que ele não lança vira a função mínima
             # sem_permissao, e o código continua conferindo a permissão em cada função
             enviadas = set(self.m.funcoes())
             self.assertEqual({f for f in enviadas if f.startswith("rascunho_")}, tem, login)
@@ -487,7 +487,7 @@ class TestCotaEChave(BaseAssistente):
 
 class TestHistoricoEConhecimento(BaseAssistente):
     def test_historico_quase_zero(self):
-        """D-225: vão ao modelo só a mensagem atual e, se houver, a última pergunta da IA sem resposta. O que a tela antiga
+        """D-226: vão ao modelo só a mensagem atual e, se houver, a última pergunta da IA sem resposta. O que a tela antiga
         mandava como conversa é ignorado; o rascunho e as opções vão nas instruções."""
         self.modelo(resposta(texto="Qual serviço?"), resposta(chamada("rascunho_apropriacao", item="tapume")),
                     resposta(texto="Oi!"))
@@ -603,7 +603,7 @@ class TestRegrasPuras(unittest.TestCase):
         self.assertNotIn("gsk_", bruto)
         cfg = json.loads(bruto)
         self.assertEqual(cfg["base_url"], "https://api.groq.com/openai/v1")
-        self.assertNotIn("ajuda", cfg)                               # o guia mudou para docs/CONHECIMENTO_IA.md (D-225)
+        self.assertNotIn("ajuda", cfg)                               # o guia mudou para docs/CONHECIMENTO_IA.md (D-226)
         with open(os.path.join(raiz, ".gitignore"), encoding="utf-8") as f:
             self.assertIn("segredos.env", f.read())
         with open(os.path.join(raiz, "web", "index.html"), encoding="utf-8") as f:
@@ -615,7 +615,7 @@ class TestRegrasPuras(unittest.TestCase):
             js = f.read()
         self.assertIn("api(v.rota, corpo)", js)                      # o toque grava pela rota de sempre (X-MC, X-Idem)
         self.assertNotIn("groq", js.lower())                         # a tela não fala com o serviço nem conhece a chave
-        self.assertNotIn("localStorage.setItem(iaChave(), JSON.stringify({ conversa", js)   # a conversa não é guardada (D-225)
+        self.assertNotIn("localStorage.setItem(iaChave(), JSON.stringify({ conversa", js)   # a conversa não é guardada (D-226)
         self.assertIn("pergunta: IA.pergunta", js)
         self.assertNotIn("conversa:", js.split("/api/assistente/mensagem")[1].split("\n")[0])
         # o tamanho das funções enviadas a cada chamada é o que mais pesa nos 8.000 tokens por minuto

@@ -84,7 +84,7 @@ class Tela:
         assert st == 200, r
         self.usuario = r["usuario"]
         self.conversa, self.rascunho, self.botoes, self.ultima, self.chamadas, self.tokens = [], None, [], None, 0, 0
-        self.pergunta = None                      # a única parte da conversa que volta ao servidor (D-225)
+        self.pergunta = None                      # a única parte da conversa que volta ao servidor (D-226)
 
     def req(self, rota, corpo=None):
         r = urllib.request.Request(self.url + rota, data=None if corpo is None else json.dumps(corpo).encode(),

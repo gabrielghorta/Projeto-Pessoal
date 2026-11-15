@@ -1,5 +1,5 @@
 {
-  "_leia": "Assistente (IA conversacional), D-219 a D-224. Custo de API zero: só o plano gratuito da Groq. A chave NUNCA fica aqui nem no Git: vai na variável GROQ_API_KEY ou no arquivo segredos.env da pasta do programa (docs/ASSISTENTE_IA.md). O modelo e o endereço também podem vir de MC_IA_MODELO e MC_IA_BASE_URL. Não há troca automática de serviço: sem cota, a tela avisa e o formulário manual continua. O que o assistente sabe sobre o sistema fica em docs/CONHECIMENTO_IA.md (D-225), não aqui.",
+  "_leia": "Assistente (IA conversacional), D-219 a D-224. Custo de API zero: só o plano gratuito da Groq. A chave NUNCA fica aqui nem no Git: vai na variável GROQ_API_KEY ou no arquivo segredos.env da pasta do programa (docs/ASSISTENTE_IA.md). O modelo e o endereço também podem vir de MC_IA_MODELO e MC_IA_BASE_URL. Não há troca automática de serviço: sem cota, a tela avisa e o formulário manual continua. O que o assistente sabe sobre o sistema fica em docs/CONHECIMENTO_IA.md (D-226), não aqui.",
   "base_url": "https://api.groq.com/openai/v1",
   "modelo": "openai/gpt-oss-20b",
   "parametros": {
