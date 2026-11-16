@@ -26,7 +26,7 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
-from collections import deque
+from collections import OrderedDict, deque
 
 import apropriacao as AP
 import caminhos
@@ -375,17 +375,19 @@ def _resolver_item(conn, texto):
     t = _limpo(texto, 120)
     if not t:
         return None, []
-    try:
-        return AP.item(conn, t), []
-    except RegraViolada:
-        pass
+    # o código pode vir no meio do texto (o modelo copia do resumo "item 1.1_6.1.3 (6.1.3 LOCAÇÃO...)")
+    for chave_ in [t] + re.findall(r"\b(?:BM|NOVO):\d+\b|\b\d+\.\d+_\d+(?:\.\d+)+\b", t):
+        try:
+            return AP.item(conn, chave_), []
+        except RegraViolada:
+            pass
     cat = AP.catalogo(conn, com_reprovados=False)
     iguais = [it for it in cat if _norm(it["item_bm"]) == _norm(t)]
     if len(iguais) == 1:
         return iguais[0], []
     if iguais:
         return None, iguais[:8]
-    achados = buscar_orcamento(conn, t)
+    achados = buscar_orcamento(conn, t, limite=60)
     if len(achados) == 1:
         return AP.item(conn, achados[0]["ref"]), []
     return None, achados
@@ -882,7 +884,7 @@ class _Turno:
 
     def __init__(self, rascunho=None):
         self.rascunho, self.fala, self.botoes, self.telas, self.ferramentas = rascunho, None, [], [], []
-        self.itens, self.candidatos, self.pediu_item, self.notas, self.texto = {}, None, False, [], ""
+        self.itens, self.candidatos, self.pediu_item, self.notas, self.texto, self.pergunta = {}, None, False, [], "", ""
 
 
 def _iniciar(turno, usuario, tipo):
@@ -1069,6 +1071,18 @@ def _papel(nome):
     return next((papel for papel, rx in _RX_PAPEL if re.search(rf"(?<![A-Z0-9])(?:{rx})(?![A-Z0-9])", t)), "CONTAGEM")
 
 
+def _do_canteiro(candidatos, c, args, texto=""):
+    """Estreita os itens possíveis pelo que já foi dito: o diâmetro citado no serviço ('tubo PEAD 63' fica com os de DE 63)
+    e, no canteiro, o orçamento do Canteiro (se houver)."""
+    numeros = set(re.findall(r"\d+", str(texto or "")))
+    com_de = [it for it in candidatos if _de_item(it) and set(re.findall(r"\d+", _de_item(it))) & numeros]
+    if com_de and len({_de_item(it) for it in com_de}) == 1:
+        candidatos = com_de
+    canteiro = c.get("local_tipo") == "CANTEIRO" or "CANTEIRO" in _norm(args.get("local"))
+    so = [it for it in candidatos if it["grupo"] == "CANTEIRO"]
+    return so if canteiro and so else candidatos
+
+
 def _aplicar_apropriacao(conn, usuario, turno, c, args, erros):
     if args.get("item") not in (None, ""):
         it, candidatos = _resolver_item(conn, args["item"])
@@ -1077,9 +1091,13 @@ def _aplicar_apropriacao(conn, usuario, turno, c, args, erros):
                 c.pop("medidas", None)                                        # outro item: as medidas eram do anterior
             c["item_ref"] = it["ref"]
         elif candidatos:
-            turno.fala = f"O orçamento tem mais de um item para “{_limpo(args['item'], 60)}”. Qual é?"
-            turno.botoes = _botoes_itens(candidatos[:8])
-            turno.candidatos = [_item_curto(x) for x in candidatos[:8]]
+            candidatos = _do_canteiro(candidatos, c, args, args["item"])
+            if len(candidatos) == 1:
+                c["item_ref"] = AP.item(conn, candidatos[0]["item"])["ref"]
+            else:
+                turno.fala = f"O orçamento tem mais de um item para “{_limpo(args['item'], 60)}”. Qual é?"
+                turno.botoes = _botoes_itens(candidatos)
+                turno.candidatos = [_item_curto(x) for x in candidatos[:8]]
         else:
             erros.append(f"Item '{args['item']}' não encontrado no orçamento: use consultar_orcamento com outras palavras.")
     fat = c.setdefault("fatores", {})
@@ -1091,8 +1109,12 @@ def _aplicar_apropriacao(conn, usuario, turno, c, args, erros):
             if it:
                 c["item_ref"] = it["ref"]
             elif candidatos:
-                turno.fala = f"O orçamento tem mais de um item para “{_limpo(contado, 60)}”. Qual é?"
-                turno.botoes, turno.candidatos = _botoes_itens(candidatos[:8]), [_item_curto(x) for x in candidatos[:8]]
+                candidatos = _do_canteiro(candidatos, c, args, contado)
+                if len(candidatos) == 1:
+                    c["item_ref"] = AP.item(conn, candidatos[0]["item"])["ref"]
+                else:
+                    turno.fala = f"O orçamento tem mais de um item para “{_limpo(contado, 60)}”. Qual é?"
+                    turno.botoes, turno.candidatos = _botoes_itens(candidatos), [_item_curto(x) for x in candidatos[:8]]
     if args.get("quantidade") not in (None, ""):
         q = _numero(args["quantidade"])
         if q:
@@ -1170,31 +1192,77 @@ def _aplicar_apropriacao(conn, usuario, turno, c, args, erros):
         c["o_que_foi_feito"] = _limpo(args.get("descricao"))
 
 
-def _botoes_itens(candidatos):
-    """Os itens possíveis como botões. Quando a primeira palavra do nome separa os itens em poucos grupos (Instalação ×
-    Locação), o botão é o grupo e o toque abre os itens dele: a pessoa decide em dois toques, sem outra chamada."""
-    grupos = {}
-    for it in candidatos:
-        palavra = (it.get("resumida") or it["descricao"]).split()[0].strip(",.;:")
-        grupos.setdefault(_norm(palavra), (palavra.capitalize(), []))[1].append(it)
-    if not 2 <= len(grupos) < len(candidatos):
-        return [dict(_botao_item(it), tipo="APROPRIACAO") for it in candidatos]
-    botoes = []
-    for rotulo, itens in grupos.values():
-        if len(itens) == 1:
-            botoes.append(dict(_botao_item(itens[0]), rotulo=rotulo, tipo="APROPRIACAO"))
-        else:
-            botoes.append({"rotulo": rotulo, "pergunta": f"Qual {rotulo.lower()}?", "tipo": "APROPRIACAO",
-                           "sub": [dict(_botao_item(it), tipo="APROPRIACAO") for it in itens],
-                           "ctx": "; ".join(_botao_item(it)["ctx"] for it in itens)})
-    return botoes
+def _nome_item(it):
+    """O nome do item para o botão, sem gritar e sem o que é igual em todos ('(EXCLUSÕES NA DESCRIÇÃO OFICIAL)')."""
+    nome = re.sub(r"\s*\(EXCLUS[ÕO]ES NA DESCRI[ÇC][ÃA]O OFICIAL\)", "", it.get("resumida") or it["descricao"][:70]).strip()
+    return nome[:1].upper() + nome[1:].lower().replace("pead", "PEAD").replace("pvc", "PVC") if nome.isupper() else nome
+
+
+def _de_item(it):
+    """O diâmetro do item (63, 110X63); outra coisa no campo (as dimensões de um contêiner) não é diâmetro."""
+    d = str((it.get("atributos") or {}).get("diametro") or "").strip().upper()
+    return d if re.fullmatch(r"\d+(?:X\d+)?", d) else ""
+
+
+def _grupo_item(it):
+    return AP.GRUPOS.get(it["grupo"], it["grupo"].capitalize())
+
+
+def _botoes_itens(candidatos, nivel=0):
+    """Os itens possíveis como botões, sem repetir o que é igual (D-226). O mesmo serviço aparece no BM uma vez por
+    orçamento parcial (5.8.44 no Canteiro, nas Redes e nas Caixas) e o mesmo nome serve a vários diâmetros (5.8.35 a
+    5.8.44). A escolha vai em etapas, só onde há diferença: o tipo de serviço pela primeira palavra (Instalação ×
+    Locação), o serviço, o diâmetro e o orçamento. Cada toque abre a etapa seguinte sem chamar o modelo."""
+    return _etapas_itens(candidatos, nivel)[0]
+
+
+_ETAPAS = (("tipo", lambda it: _nome_item(it).split()[0].strip(",.;:").capitalize(), "Qual {r}?"),
+           ("servico", lambda it: _nome_item(it), "Qual serviço?"),
+           ("diametro", lambda it: _de_item(it), "Qual diâmetro?"),
+           ("orcamento", lambda it: _grupo_item(it), "Em qual orçamento?"))
+
+
+def _etapas_itens(candidatos, nivel=0):
+    """(botões, pergunta da etapa que eles respondem)."""
+    if len(candidatos) == 1:
+        return [_botao_item(candidatos[0])], ""
+    for n in range(nivel, len(_ETAPAS)):
+        nome, chave_, pergunta = _ETAPAS[n]
+        grupos = OrderedDict()
+        for it in candidatos:
+            grupos.setdefault(chave_(it), []).append(it)
+        if len(grupos) < 2 or (nome == "tipo" and len(grupos) >= len({_nome_item(x) for x in candidatos})):
+            continue                                                         # sem diferença nesta etapa: a próxima
+        ordem = list(grupos.items())
+        if nome == "diametro":                                              # do menor para o maior
+            ordem.sort(key=lambda kv: [int(x) for x in re.findall(r"\d+", kv[0])] or [10 ** 9])
+        botoes = []
+        for valor, itens in ordem[:12]:
+            rotulo = {"diametro": f"DE {valor}" if valor else "Sem diâmetro", "orcamento": _rotulo_orcamento(itens)}.get(nome, valor)
+            if len(itens) == 1:
+                folha = _botao_item(itens[0])
+                botoes.append(folha if nome == "servico" else dict(folha, rotulo=rotulo))     # Instalação · Locação · DE 63 · Redes
+            else:
+                sub, pergunta_sub = _etapas_itens(itens, n + 1)
+                if nome == "tipo":
+                    pergunta_sub = pergunta.format(r=rotulo.lower())
+                botoes.append({"rotulo": rotulo, "pergunta": pergunta_sub, "tipo": "APROPRIACAO", "sub": sub,
+                               "ctx": "; ".join(_botao_item(it)["ctx"] for it in itens[:4])})
+        return botoes, pergunta
+    return [_botao_item(it) for it in candidatos[:8]], "Qual item?"          # iguais em tudo: um botão por item
+
+
+def _rotulo_orcamento(itens):
+    it = itens[0]
+    contratado = f" · {_fmt(it['contratado'])} {it['unidade'].lower()} no contrato" if it.get("contratado") is not None else ""
+    return _grupo_item(it) + contratado
 
 
 def _botao_item(it):
-    grupo = AP.GRUPOS.get(it["grupo"], it["grupo"].capitalize())
-    nome = it.get("resumida") or it["descricao"][:70]
-    return {"rotulo": f"{it['item_bm'] or it['item']} · {nome} ({grupo}, {it['unidade']})", "aplicar": {"item": it["item"]},
-            "ctx": f"id {it['item']} = {nome} (unidade {it['unidade']})"}
+    de = _de_item(it)
+    rotulo = f"{it['item_bm'] or it['item']} · {_nome_item(it)}{' · DE ' + de if de else ''} ({_grupo_item(it)}, {it['unidade'].lower()})"
+    return {"rotulo": rotulo, "aplicar": {"item": it["item"]}, "tipo": "APROPRIACAO",
+            "ctx": f"id {it['item']} = {_nome_item(it)}{' DE ' + de if de else ''}, {_grupo_item(it)} (unidade {it['unidade']})"}
 
 
 def _fechar(conn, usuario, turno):
@@ -1256,10 +1324,10 @@ FERRAMENTAS = [                         # curtas de propósito: o plano gratuito
     _f("consultar_orcamento", "Itens do orçamento por palavras, com saldo.", {"busca": _S}, ["busca"]),
     _f("consultar_catalogo", "Materiais do catálogo de pedido por palavras.", {"busca": _S}, ["busca"]),
     _f("consultar_pedidos", "Pedidos de material que este login vê.", {"quais": {"type": "string", "enum": ["ABERTOS", "TODOS"]}}),
-    _f("consultar_estoque", "Saldo de um material no almoxarifado agora (físico, reservado, disponível).",
+    _f("consultar_estoque", "Saldo agora de um material no almoxarifado.",
        {"material": {"type": "string", "description": "ex.: luva 63"}}, ["material"]),
     _f("rascunho_apropriacao",
-       "Serviço feito ou item a lançar (apropriação direta). item (sempre): o serviço como foi dito, no singular, ou o id listado. "
+       "Serviço feito ou item a lançar (apropriação direta). item (sempre): o serviço como foi dito, no singular, com a ação se houver ('tapume'; 'assentamos tubo de 63' → 'assentamento de tubo PEAD 63'), ou o id listado. "
        "fatores: só os números ditos NESTA mensagem, cada um com o que conta; '3 contêineres por um mês' → [{nome:'contêineres',valor:3},{nome:'mês',valor:1}]; "
        "'por um mês' → [{nome:'mês',valor:1}]. "
        "medidas: só m, m², m³.",
@@ -1310,6 +1378,15 @@ def ferramentas_do_login(usuario, rascunho=None):
 
 
 _RASCUNHOS = {"rascunho_apropriacao": "APROPRIACAO", "rascunho_pedido": "PEDIDO", "rascunho_ocorrencia": "OCORRENCIA"}
+
+
+_RX_DIA = re.compile(r"\b(?:HOJE|ONTEM|ANTEONTEM|AMANHA|DIA|DATA|SEGUNDA|TERCA|QUARTA|QUINTA|SEXTA|SABADO|DOMINGO|SEMANA|MES PASSADO)\b"
+                     r"|\d{1,2}\s*/\s*\d{1,2}|\d{4}-\d{2}-\d{2}")
+
+
+def _fala_de_dia(texto):
+    """A mensagem (ou a pergunta que ela responde) fala de um dia? Só então a data que o modelo mandar vale."""
+    return bool(_RX_DIA.search(_norm(texto)))
 
 
 def executar(conn, cfg, usuario, turno, nome, args):
@@ -1363,6 +1440,8 @@ def executar(conn, cfg, usuario, turno, nome, args):
         tipo = args.get("assunto") if args.get("assunto") in TIPOS else next((t for t in TIPOS if not _pode(usuario, t)), "PEDIDO")
         turno.fala, turno.botoes = SEM_PERMISSAO[tipo], []
         return {"ok": True}, False
+    if nome in _RASCUNHOS and "data" in args and turno.texto and not _fala_de_dia(turno.texto + " " + turno.pergunta):
+        args = {k: v for k, v in args.items() if k != "data"}              # dia não dito: a data do modelo não vale
     if nome in _RASCUNHOS:
         tipo = _RASCUNHOS[nome]
         if not _pode(usuario, tipo):
@@ -1672,7 +1751,7 @@ def conversar(conn, trava, usuario, pedido):
     # histórico quase zero (D-226): a mensagem atual, o rascunho e as opções da tela (nas instruções) e, se houver, só a
     # última pergunta da IA ainda sem resposta, para "tapume" fazer sentido depois de "Qual serviço?"
     mensagens = [{"role": "system", "content": sistema}]
-    pergunta = _limpo(pedido.get("pergunta"), LIMITE_PERGUNTA)
+    pergunta = turno.pergunta = _limpo(pedido.get("pergunta"), LIMITE_PERGUNTA)
     if pergunta:
         mensagens.append({"role": "assistant", "content": pergunta})
     mensagens.append({"role": "user", "content": texto})

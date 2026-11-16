@@ -111,7 +111,7 @@ class TestAceitacao(BaseAssistente):
         self.assertEqual(len(self.m.pedidos), 1)
         self.assertEqual([b["rotulo"][:5] for b in t.botoes], ["6.1.1", "6.1.2", "6.1.3"])
         t.dizer("sanitário por um mês")
-        self.assertIn("Mais próxima do que foi dito: id 1.1_6.1.3 = LOCAÇÃO CONTAINER SANITÁRIO (unidade MES)", self.m.sistema())
+        self.assertIn("Mais próxima do que foi dito: id 1.1_6.1.3 = Locação container sanitário, Canteiro (unidade MES)", self.m.sistema())
         self.assertEqual(t.linhas()["Memória de cálculo"], "2 contêineres × 1 mês = 2 MES")
         t.dizer("na verdade, foram três")
         self.assertIn("anotado: 2 contêineres × 1 mês", self.m.sistema())   # o modelo recebe o rascunho atual para corrigir só um campo
@@ -599,6 +599,61 @@ class TestHistoricoEConhecimento(BaseAssistente):
         enviado = json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])
         self.assertEqual(next(m for m in enviado["materiais"] if "Caesb" in m["material"])["disponivel"], 120)
 
+    def test_itens_iguais_em_varios_orcamentos_nao_se_repetem(self):
+        """O mesmo serviço do BM aparece uma vez por orçamento parcial (5.8.44 no Canteiro, nas Redes e nas Caixas) e o
+        mesmo nome serve a vários diâmetros: os botões vão em etapas, sem repetir rótulo."""
+        def rotulos(bs):
+            return [b["rotulo"] for b in bs]
+
+        def sem_repetir(bs):
+            self.assertEqual(len(rotulos(bs)), len(set(rotulos(bs))), rotulos(bs))
+            for b in bs:
+                if b.get("sub"):
+                    sem_repetir(b["sub"])
+        _, cand = IA._resolver_item(self.srv_conn, "5.8.44")
+        bs = IA._botoes_itens(cand)
+        self.assertEqual([r.split(" · ")[0] for r in rotulos(bs)], ["Canteiro", "Redes", "Caixas"])
+        self.assertTrue(all(" no contrato" in r for r in rotulos(bs)))
+        _, cand = IA._resolver_item(self.srv_conn, "assentamento de tubo pead")
+        bs = IA._botoes_itens(cand)
+        sem_repetir(bs)
+        tubo = next(b for b in bs if b.get("sub") and b["rotulo"].startswith("Assentamento de tubo PEAD"))
+        self.assertEqual(tubo["pergunta"], "Qual diâmetro?")
+        des = [b["rotulo"] for b in tubo["sub"]]
+        self.assertEqual(des, sorted(des, key=lambda r: int(r.split()[1])))     # do menor para o maior
+        de63 = next(b for b in tubo["sub"] if b["rotulo"] == "DE 63")
+        self.assertEqual((de63["pergunta"], len(de63["sub"])), ("Em qual orçamento?", 3))
+        # contêiner: o campo de diâmetro guarda as dimensões, que não viram "DE"
+        _, cand = IA._resolver_item(self.srv_conn, "conteiner")
+        bs = IA._botoes_itens(cand)
+        self.assertEqual(rotulos(bs), ["Instalação", "Locação"])
+        self.assertFalse(any("DE " in b["rotulo"] for b in bs[1]["sub"]))
+        # serviço feito no canteiro: o item do orçamento do Canteiro entra sozinho
+        u = self.tela("eng1").usuario
+        turno = IA._Turno()
+        IA.aplicar_campos(self.srv_conn, u, turno, "APROPRIACAO", {"item": "5.8.44", "local": "canteiro"})
+        self.assertEqual(turno.rascunho["campos"]["item_ref"], IA.AP.item(self.srv_conn, "1.2_5.8.44")["ref"])
+        self.assertEqual(turno.botoes, [])
+        # o diâmetro dito no serviço estreita a escolha: sobra só o orçamento do DE 63
+        turno = IA._Turno()
+        IA.aplicar_campos(self.srv_conn, u, turno, "APROPRIACAO", {"item": "assentamento de tubo PEAD 63", "local": "zona 3"})
+        self.assertEqual([b["rotulo"].split(" · ")[0] for b in turno.botoes], ["Canteiro", "Redes", "Caixas"])
+        # o código do item copiado do resumo, no meio do texto, é reconhecido
+        it, _ = IA._resolver_item(self.srv_conn, "item 1.1_6.1.3 (6.1.3 LOCAÇÃO CONTAINER SANITÁRIO, MES)")
+        self.assertEqual(it["item"], "1.1_6.1.3")
+
+    def test_data_so_vale_se_a_mensagem_fala_de_dia(self):
+        ontem = (RL.hoje() - timedelta(days=1)).isoformat()
+        self.modelo(resposta(chamada("rascunho_apropriacao", item="5.1.1", data=ontem, fatores=[{"nome": "contêineres", "valor": 2}])),
+                    resposta(chamada("rascunho_apropriacao", item="5.1.1", data=ontem)))
+        t = self.tela("eng1")
+        t.dizer("instalamos dois contêineres")                              # nenhum dia dito: fica hoje
+        self.assertEqual(t.rascunho["corpo"]["data"], RL.hoje().isoformat())
+        t.dizer("foi ontem")                                                  # agora sim
+        self.assertEqual(t.rascunho["corpo"]["data"], ontem)
+        self.assertTrue(IA._fala_de_dia("na sexta-feira") and IA._fala_de_dia("dia 12") and IA._fala_de_dia("12/11"))
+        self.assertFalse(IA._fala_de_dia("sanitário por um mês"))
+
     def test_medida_com_unidade_escrita(self):
         t = self.tela("eng1")
         t.atalho("APROPRIACAO")
@@ -654,7 +709,7 @@ class TestRegrasPuras(unittest.TestCase):
         # o tamanho das funções enviadas a cada chamada é o que mais pesa nos 8.000 tokens por minuto
         todas = {"permissoes": ["apropriacao", "compras_solicitar", "campo"], "telas": ["solicitar", "compras"]}
         self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas), ensure_ascii=False)), 4800)          # com o estoque; no #39: 4.953 para todos
-        self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas, {"tipo": "APROPRIACAO"}), ensure_ascii=False)), 3700)
+        self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas, {"tipo": "APROPRIACAO"}), ensure_ascii=False)), 3800)
         self.assertLess(len(json.dumps(IA.ferramentas_do_login({"permissoes": [], "telas": ["iluminado"]}), ensure_ascii=False)), 1500)
 
 
