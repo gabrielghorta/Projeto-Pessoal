@@ -347,7 +347,7 @@ class TestPerfisEConsultas(BaseAssistente):
         s = self.tela("rh1")
         s.dizer("onde dou entrada numa nota fiscal?")
         self.assertEqual(s.botoes, [])                               # o RH não abre Compras: sem botão para lá
-        self.assertFalse(json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])["ajuda"][0]["este_login_abre_a_tela"])
+        self.assertIn("este login NÃO abre a tela de", json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])["atencao"])
 
 
 class TestCotaEChave(BaseAssistente):
@@ -581,6 +581,15 @@ class TestHistoricoEConhecimento(BaseAssistente):
         self.assertIn("erro", IA.saldo_estoque(self.srv_conn, sup, "tubo 63"))
         self.assertNotIn("consultar_estoque", [f["function"]["name"] for f in IA.ferramentas_do_login(sup)])
         self.assertNotIn("consultar_estoque", IA.instrucoes(self.srv_conn, sup, IA._Turno(), []))
+        # quem não abre o estoque e pergunta o saldo: o guia avisa que o perfil não abre a tela, e a fala sai sem markdown
+        self.modelo(resposta(chamada("consultar_ajuda", assunto="estoque de luvas 63")),
+                    resposta(texto="Seu perfil não vê o **estoque**: peça o saldo ao almoxarifado."))
+        e = self.tela("enc3")
+        r = e.dizer("quantas luvas de 63 tem no estoque?")
+        guia = json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])
+        self.assertIn("este login NÃO abre a tela de: Estoque", guia["atencao"])
+        self.assertEqual(r["resposta"], "Seu perfil não vê o estoque: peça o saldo ao almoxarifado.")
+        self.assertNotIn("almox/saldo", [b.get("tela") for b in e.botoes])  # nenhum botão para tela que ele não abre
         # pela conversa: o modelo pede o saldo e responde com o número, sem mandar a pessoa à tela
         self.modelo(resposta(chamada("consultar_estoque", material="tubo pead 63 caesb")),
                     resposta(texto="Tem 120 metros de tubo PEAD 63 da Caesb no almoxarifado, todos disponíveis."))

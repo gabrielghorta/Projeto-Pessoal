@@ -1345,9 +1345,13 @@ def executar(conn, cfg, usuario, turno, nome, args):
         turno.telas += [s for s in secoes if _abre(usuario, s)]
         if not secoes:
             return {"ajuda": [], "faca": "não está no guia: não invente; diga que não sabe e indique o menu"}, True
-        return {"ajuda": [{"titulo": s["titulo"], "texto": s["texto"],
-                           "este_login_abre_a_tela": _abre(usuario, s) if s.get("tela") else None} for s in secoes],
-                "faca": "explique com este texto, em até 3 frases"}, True
+        fora = [s["titulo"] for s in secoes if s.get("tela") and not _abre(usuario, s)]
+        r = {"ajuda": [{"titulo": s["titulo"], "texto": s["texto"]} for s in secoes],
+             "faca": "explique com este texto, em até 3 frases"}
+        if fora:                                                            # não mandar abrir o que o perfil não abre
+            r["atencao"] = (f"este login NÃO abre a tela de: {', '.join(fora)}. Não mande abrir; diga que o perfil dele não vê "
+                            "isso e quem faz ou informa (pelo texto).")
+        return r, True
     if nome == "consultar_estoque":
         return saldo_estoque(conn, usuario, args.get("material")), True
     if nome == "consultar_trecho":
@@ -1721,7 +1725,7 @@ def conversar(conn, trava, usuario, pedido):
         return {"situacao": "INDISPONIVEL", "aviso": str(e), "rascunho": v, "uso": uso}
     with trava:
         if fala_modelo and not turno.botoes:
-            turno.fala = fala_modelo
+            turno.fala = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), fala_modelo)   # sem markdown na tela
             if turno.telas:                                                  # dúvida de uso: o botão que leva à tela
                 vistas = {}                                                  # um botão por tela, com o nome da tela
                 for sec in turno.telas:

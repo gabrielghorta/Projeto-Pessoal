@@ -143,7 +143,8 @@ Almoxarifado › Estoque: Dia, Receber, Saldo e movimentos, Inventário e transf
 menos reservas. Em Receber, cada nota tem Aceitar, Recusar (com o porquê) ou Aceite parcial. Inventário: o ajuste entra
 na contagem e outra pessoa dá ciência (D-197). Correção é por estorno com motivo. O tubo da Caesb entra pelo romaneio.
 Material recebido nunca vira lançamento de medição. Quem abre o Estoque ou Compras pode perguntar ao assistente
-quanto tem de um material: ele consulta o saldo na hora.
+quanto tem de um material: ele consulta o saldo na hora. Encarregado e supervisor não veem o estoque: o almoxarifado
+informa o saldo, e o material que falta se pede em Requisições.
 
 ## Notas fiscais e fornecedores
 <!-- palavras: nota fiscal nf xml danfe fornecedor fornecedores conferir conferencia linha reconhecida identificar compras entrada dar entrada | tela: compras/notas | botao: Notas fiscais | telas: compras -->
