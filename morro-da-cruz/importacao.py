@@ -1195,6 +1195,11 @@ def preparar_v27(conn):
     _recriar_tabela(conn, "notas_servico", "arquivo_locacao TEXT")
 
 
+def preparar_v28(conn):
+    """Preserva o histórico e cria o campo de contato sem inventar um destinatário."""
+    _add_coluna(conn, "usuarios", "email", "TEXT")
+
+
 def preparar_v25(conn):
     """Somente o vínculo entre a nota anterior e a execução; não presume equipe, clima ou execução."""
     S.aplicar_esquema(conn)

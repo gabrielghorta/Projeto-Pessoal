@@ -28,7 +28,7 @@ import relogio as RL
 BASE = caminhos.PASTA
 DB_PADRAO = os.path.join(BASE, "dados", "morro_da_cruz.db")
 DIR_FOTOS = os.path.join(BASE, "dados", "fotos")
-VERSAO_ESQUEMA = 27
+VERSAO_ESQUEMA = 28
 TOL = 1e-6
 ALIAS_ALVO = {"CONJUNTO": "ATIVIDADE", "ELEMENTO": "ATIVIDADE"}
 
@@ -81,7 +81,7 @@ def aplicar_esquema(conn):
         if "ns_segmento_id" in {r[1] for r in conn.execute(f"PRAGMA table_info({tabela})")}:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {indice} ON {tabela}(ns_segmento_id) WHERE ns_segmento_id IS NOT NULL")
     conn.execute("INSERT OR IGNORE INTO schema_versao VALUES (?,?,?)",
-                 (VERSAO_ESQUEMA, _agora(), "notas de topografia a partir da planilha de locação"))
+                 (VERSAO_ESQUEMA, _agora(), "aceite prévio da fiscalização por lançamento; soldas verificadas no BM"))
 
 
 def conectar(caminho=DB_PADRAO, permitir_antigo=False):
@@ -2140,12 +2140,21 @@ def _lancar_ok(conn, a, medicao_id):
            WHERE ap.alvo_tipo=? AND ap.alvo_id=? AND ap.anulado_por IS NULL AND q.servico<>?
            GROUP BY q.servico, q.unidade""",
         (tipo, aid, servico_solda)))
-    aprov = conn.execute("SELECT COALESCE(SUM(quantidade),0) FROM soldas WHERE alvo_tipo=? AND alvo_id=? "
-                         "AND resultado='APROVADA'", (tipo, aid)).fetchone()[0]
-    if aprov:
-        _lancar(conn, medicao_id, 1, servico_solda, None, "UN", aprov, tipo, aid,
-                motivo="SOLDA: item de BM e regra contratual a confirmar; quantidade = soldas verificadas e "
-                       "APROVADAS no controle de soldas (a estimativa ⌈L/6⌉ não é usada)")
+    for solda in conn.execute("SELECT tipo,SUM(quantidade) qtd FROM soldas WHERE alvo_tipo=? AND alvo_id=? "
+                              "AND resultado='APROVADA' AND verificado_em IS NOT NULL GROUP BY tipo", (tipo, aid)):
+        de = str(int(a["de_mm"])) if tipo == "TRECHO" and a.get("de_mm") else "indefinido"
+        cfg = mapa_servicos()["solda"]
+        chave = cfg["itens"].get(solda["tipo"], {}).get(de) if cfg["status"] == "CONFIRMADO" else None
+        # Este vínculo foi confirmado para redes 2.2. Outros grupos e nós exigem fonte própria.
+        if tipo != "TRECHO" or not _bm_item(conn, "2.2_" + str(a.get("codigo_bm"))):
+            chave = None
+        bm = _bm_item(conn, chave) if chave else None
+        nome = "eletrofusão" if solda["tipo"] == "ELETROFUSAO" else "termofusão de topo"
+        motivo = None if bm else (f"Solda de {nome} DE{de}: sem item compatível no BM vigente para o tipo, diâmetro e grupo "
+                                 "do alvo; a engenharia decide (catálogo Caesb 01/2025 / item a aprovar, D-91).")
+        _lancar(conn, medicao_id, 1, f"SOLDA {solda['tipo']} DE{de}", bm, "UN", solda["qtd"], tipo, aid,
+                motivo=motivo, restricao="SOLDA_SEM_ITEM" if motivo else None,
+                obs="Quantidade APROVADA na verificação; não usa estimativa por extensão (D-219).")
     if tipo == "TRECHO":
         mnd = a.get("metodologia") == "MND"
         for s in servs:
@@ -2484,7 +2493,12 @@ def assinatura_medicao(conn, medicao_id):
     """Hash dos lançamentos da medição (id, gaveta, serviço, alvo, item, quantidade, status): muda se qualquer um mudar."""
     linhas = conn.execute("""SELECT id, gaveta, servico, alvo_tipo, alvo_id, bm_item_id, quantidade, status FROM medicao_lancamentos
                              WHERE medicao_id=? ORDER BY id""", (medicao_id,)).fetchall()
-    return hashlib.sha256(json.dumps([list(r) for r in linhas], default=str).encode()).hexdigest()
+    dados = [list(r) for r in linhas]
+    import fiscalizacao as F
+    controle = F.assinatura_controle(conn, medicao_id)
+    if controle is not None:
+        dados.append(["aceite_previo", controle])
+    return hashlib.sha256(json.dumps(dados, default=str).encode()).hexdigest()
 
 
 def conferencia_vigente(conn, medicao_id):
@@ -2535,6 +2549,10 @@ def congelar_medicao(conn, medicao_id, origem):
                 conn.execute("UPDATE medicao_lancamentos SET preco_congelado=?, classificacao_congelada=?, item_congelado=? "
                              "WHERE id=?", (l["preco_unitario"], l["classificacao"], l["item"], l["id"]))
     bdi_m, bdi_s, k = _fatores(conn)
+    import fiscalizacao as F
+    aceite = F.congelar(conn, medicao_id)
+    if aceite is not None:
+        r["aceite_fiscalizacao"] = aceite
     r["congelamento"] = {"em": _agora(), "origem": origem,
                          "fatores": {"bdi_material": bdi_m, "bdi_servico": bdi_s, "coef_k": k},
                          "bm_fonte": _one(conn, "SELECT nome, sha256 FROM fontes_arquivo WHERE chave='bm' ORDER BY id DESC LIMIT 1"),
@@ -2642,7 +2660,7 @@ def _resumo_calculado(conn, medicao_id, usar_congelado=True):
     if any("estimativa" in (l["observacao"] or "") for l in lanc):
         hipoteses.append("Escavação em dois itens (5.4.11/5.4.13 e 5.4.15/5.4.14): rateio pela proporção contratual — "
                          "estimativa sem critério aprovado (matriz, item 11).")
-    if any(l["servico"] == mapa_servicos()["solda"]["servico"] for l in lanc):
+    if mapa_servicos()["solda"]["status"] != "CONFIRMADO" and any(l["servico"] == mapa_servicos()["solda"]["servico"] for l in lanc):
         hipoteses.append("Soldas: ⌈L/6⌉ por barra de 6 m — estimativa sem validação.")
     return {
         "medicao": med, "teste": med["tipo"] == "TESTE", "simulacao": True, "hipoteses": hipoteses,

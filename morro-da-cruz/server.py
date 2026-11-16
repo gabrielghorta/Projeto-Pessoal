@@ -34,6 +34,8 @@ import cronograma as CR
 import dados_obra as DO
 import diario as DI
 import equipes as EQ
+import fiscalizacao as F
+import fiscalizacao_email as FE
 import documentos as D
 import drive as DR
 import medicao as M
@@ -397,7 +399,8 @@ def p_medicao(b, c):
 
 def r_medicao(q, c):
     mid = int(q["id"])
-    return {**S.resumo_medicao(c, mid), **M.complementos(c, mid)}
+    f = F.painel(c, mid)
+    return {**S.resumo_medicao(c, mid), **M.complementos(c, mid), "fiscalizacao": f}
 
 
 def _periodo(q):
@@ -883,9 +886,9 @@ def p_usuarios(b, c, usuario):
     acao = b.get("acao")
     if acao == "criar":
         return {"id": A.criar_usuario(c, b.get("login"), b.get("nome"), b.get("perfil"), b.get("senha"), b.get("equipe_id") or None,
-                                      usuario["login"])}
+                                      usuario["login"], email=b.get("email"))}
     if acao == "alterar":
-        A.alterar_usuario(c, b.get("login"), usuario["login"], b.get("perfil"), b.get("ativo"), b.get("equipe_id"), b.get("nome"))
+        A.alterar_usuario(c, b.get("login"), usuario["login"], b.get("perfil"), b.get("ativo"), b.get("equipe_id"), b.get("nome"), b.get("email"))
         return {"ok": True}
     if acao == "senha":
         A.redefinir_senha(c, b.get("login"), b.get("senha"))
@@ -1001,6 +1004,23 @@ POST.update({"/api/equipes/criar": p_equipe_criar, "/api/equipes/excluir": p_equ
 for rota in ("/api/equipes/criar", "/api/equipes/excluir", "/api/equipes/retirar-integrante"):
     PERMISSAO[rota] = "equipes"
     AUTOR[rota] = ("por",)
+GET_USUARIO["/api/fiscalizacao/resumo"] = lambda q,c,u: {
+    "medicoes": F.medicoes(c), "contador": F.contador(c,u),
+    "painel": F.painel(c,int(q["medicao"]) if q.get("medicao") else None) if F.medicoes(c) else None,
+    "emails": S._rows(c.execute("SELECT id,medicao_id,envio_id,situacao,detalhe,criado_em FROM fiscalizacao_emails ORDER BY id DESC LIMIT 10"))}
+GET["/api/fiscalizacao/linhas"] = lambda q,c: F.linhas(c,int(q["medicao"]) if q.get("medicao") else None,q.get("situacao"))
+GET["/api/fiscalizacao/historico"] = lambda q,c: F.historico(c,int(q["medicao"]) if q.get("medicao") else None)
+GET["/api/fiscalizacao/ficha"] = lambda q,c: F.ficha(c,q.get("tipo"),q.get("id"))
+GET_PERM["/api/fiscalizacao/pronto"] = (lambda q,c: F.pronto_para_medir(c,int(q["medicao"]) if q.get("medicao") else None), "fiscalizacao_enviar")
+_FISCAL_POST = {
+    "enviar": ("fiscalizacao_enviar", lambda b,c: F.enviar(c,b.get("medicao_id"),b.get("ids"),b["por"],b.get("obs"))),
+    "reenviar": ("fiscalizacao_enviar", lambda b,c: F.reenviar(c,b.get("lancamento_id"),b["por"],b.get("obs"))),
+    "cancelar": ("fiscalizacao_enviar", lambda b,c: F.cancelar(c,b.get("lancamento_id"),b.get("motivo"),b["por"])),
+    "responder": ("fiscalizacao_responder", lambda b,c: F.responder(c,b.get("itens"),b["por"])),
+    "reabrir": ("fiscalizacao_responder", lambda b,c: F.reabrir(c,b.get("lancamento_id"),b.get("motivo"),b["por"]))}
+for acao, (perm, fn) in _FISCAL_POST.items():
+    rota = "/api/fiscalizacao/"+acao
+    POST[rota], PERMISSAO[rota], AUTOR[rota] = fn, perm, ("por",)
 assert set(PERMISSAO) == set(POST) | set(POST_USUARIO), "toda rota de gravação precisa de permissão definida"
 # tela que cada consulta serve (config/perfis.json, "telas"): o perfil precisa abrir uma delas; COMUNS valem para qualquer sessão
 COMUNS = {"/api/resumo", "/api/buscar", "/api/detalhe", "/api/previsto", "/api/mapa/estado", "/api/mapa/geral", "/api/caminho",
@@ -1027,8 +1047,11 @@ TELA_GET = {"/api/solicitacoes": ("solicitar", "compras"), "/api/solicitacao/fot
             "/api/apropriacoes": TELAS_APROPRIACAO, "/api/medicao/restricoes": ("medicao",), "/api/medicao/pacote": ("medicao",),
             **dict.fromkeys(("/api/lev/cronograma", "/api/lev/bm", "/api/lev/redes", "/api/lev/conexoes"), ("lev",))}
 TELA_GET["/api/equipes"] = ("equipes",)
+for rota in ("resumo", "linhas", "historico", "pronto", "ficha"):
+    TELA_GET["/api/fiscalizacao/"+rota] = ("fiscalizacao",)
 assert set(GET) | set(GET_PERM) | set(GET_USUARIO) == COMUNS | set(TELA_GET), "toda consulta precisa de tela definida (ou ser comum)"
 TELA_ARQUIVO = {"/api/relatorios/mensal": ("relatorios",), "/api/medicao/exportar": ("medicao",), "/api/medicao/pacote/baixar": ("medicao",),   # downloads (/arquivos/: LEV)
+                "/api/fiscalizacao/arquivo": ("fiscalizacao",),
                 "/api/ns/arquivo": TELAS_NS, "/api/apropriacao/arquivo": TELAS_APROPRIACAO}
 LIMITE_CORPO = 32 * 1024 * 1024                  # PDF + croqui + planilha da NS em base64 cabem; acima: 413 sem ler o corpo
 PUBLICOS = {"/", "/index.html", "/app.js", "/app.css", "/mapa_iluminado.js", "/mapa_iluminado.css"}
@@ -1173,6 +1196,8 @@ class Handler(BaseHTTPRequestHandler):
             except A.AcessoNegado as e:
                 return self._send(e.status, {"erro": str(e)})
         if u.path in GET:
+            if usuario["perfil"] == "FISCALIZACAO" and u.path == "/api/detalhe":
+                return self._api(lambda q,c: F.ficha(c,q["tipo"],q["id"]),q)
             return self._api(GET[u.path], q)
         if u.path in GET_PERM:
             fn, perm = GET_PERM[u.path]
@@ -1221,6 +1246,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, dados, mime, {"Content-Disposition": f'attachment; filename="{nome}"'})
         if u.path == "/api/ns/arquivo":
             return self._ns_arquivo(q, usuario)
+        if u.path == "/api/fiscalizacao/arquivo":
+            return self._fiscalizacao_arquivo(q, usuario)
         if u.path == "/api/apropriacao/arquivo":
             return self._apropriacao_arquivo(q, usuario)
         if u.path in ("/mapa", "/mapa/"):
@@ -1250,6 +1277,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"erro": f"Requisição inválida: {e}"})
         LOG.exception("falha em GET %s", self.path)
         return self._send(500, {"erro": f"Erro interno: {e}"})
+
+    def _fiscalizacao_arquivo(self, q, usuario):
+        try:
+            with LOCK:
+                doc,nome = F.documento(CONN,q)
+                pasta = os.path.realpath(C.documento_dir(CONN))
+                caminho = os.path.realpath(os.path.join(pasta,doc["arquivo"]))
+                if os.path.commonpath((pasta,caminho)) != pasta:
+                    raise A.AcessoNegado("Arquivo fora da pasta de evidências.")
+            if not os.path.isfile(caminho):
+                return self._send(404,{"erro":"Evidência indisponível no servidor. Peça à engenharia para repor o arquivo."})
+            with open(caminho,"rb") as arquivo:
+                dados = arquivo.read()
+            return self._send(200,dados,doc["mime"] or "application/octet-stream",
+                {"Content-Disposition":f"inline; filename*=UTF-8''{quote(nome)}", "Content-Security-Policy":"sandbox",
+                 "X-Content-Type-Options":"nosniff", "Cache-Control":"private, max-age=300"})
+        except A.AcessoNegado as e:
+            return self._send(e.status,{"erro":str(e)})
+        except (R.RegraViolada,ValueError,TypeError,KeyError) as e:
+            return self._send(422,{"erro":str(e)})
 
     def _ns_arquivo(self, q, usuario):
         """PDF, croqui ou planilha de uma NS registrada, para abrir no navegador (inline, sem executar nada)."""
@@ -1526,6 +1573,8 @@ class Handler(BaseHTTPRequestHandler):
                         resposta = POST_USUARIO[rota](body, CONN, usuario) if rota in POST_USUARIO else POST[rota](body, CONN)
                         A.guardar_resposta(CONN, usuario, idem, rota, original, resposta)
                         A.auditar(CONN, usuario, "POST", rota, 200, original, json.dumps(resposta, default=str)[:500], idem)
+                if rota.startswith("/api/fiscalizacao/"):
+                    FE.despachar(DB_PATH)  # fora da transação: o worker usa conexão própria e só vê lotes confirmados
                 return self._send(200, resposta)
             except A.AcessoNegado as e:
                 status, msg = e.status, str(e)

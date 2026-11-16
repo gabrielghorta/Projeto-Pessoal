@@ -919,14 +919,15 @@ async function abrirFicha(tipo, nome) {
     <dl>${linhas.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
     <div class="acoes">${pode('campo') && !d.retirado ? `<button type="button" class="btn prim" data-ficha-campo>Lançar avanço</button>` : ''}
       <button type="button" class="btn" data-ficha-completa>Ver a ficha completa</button></div>
-    ${tipo === 'TRECHO' && !d.retirado ? '<div class="caminho-box" id="iluCaminho"><p class="vazio">Carregando o caminho até a medição…</p></div>' : ''}
+    ${USUARIO.perfil !== 'FISCALIZACAO' && tipo === 'TRECHO' && !d.retirado ? '<div class="caminho-box" id="iluCaminho"><p class="vazio">Carregando o caminho até a medição…</p></div>' : ''}
     <p class="vazio" style="font-size:13px">${esc(d.nome || nome)}</p>`;
   f.dataset.tipo = tipo; f.dataset.id = d.id;
-  if (tipo === 'TRECHO' && !d.retirado) montarCaminho($('#iluCaminho'), d.nome || nome, () => { recarregarCamadaMapa(); abrirFicha(tipo, nome); });
+  if (USUARIO.perfil !== 'FISCALIZACAO' && tipo === 'TRECHO' && !d.retirado) montarCaminho($('#iluCaminho'), d.nome || nome, () => { recarregarCamadaMapa(); abrirFicha(tipo, nome); });
 }
 $('#iluFicha').addEventListener('click', async ev => {
   const f = $('#iluFicha');
   if (ev.target.closest('.fechar')) return fecharFicha();
+  if (ev.target.closest('[data-ficha-completa]') && USUARIO.perfil === 'FISCALIZACAO') return abrirFichaFiscal(f.dataset.tipo, f.dataset.id);
   if (ev.target.closest('[data-ficha-completa]')) { await abrirAba('mapa/programar'); return mostrarFiscal(f.dataset.tipo, f.dataset.id); }
   if (ev.target.closest('[data-ficha-campo]')) {               // Lançamento do dia: o apontamento sem NS ou as fotos e soldas
     abrirAba('campo/' + (pode('lancar_sem_ns') ? 'apontamento' : 'fotos'));
