@@ -34,6 +34,11 @@ na seção "Assistente" de `references/webapp.md`.
 
 ## 1. Estado atual (14/11/2026)
 
+- **Assistente: histórico quase zero e conhecimento por seção (D-226, 15/11/2026):** a conversa não é guardada nem
+  enviada; vão a mensagem, o rascunho, as opções da tela e só a última pergunta da IA sem resposta. O que a IA sabe fica
+  em `morro-da-cruz/docs/CONHECIMENTO_IA.md` (vai ao modelo só a seção da pergunta); funções por perfil e etapa.
+  Medido com a API real: −22 % de tokens, 6 de 6 conversas certas (`ferramentas/assistente/medir_tokens.py`). O OK
+  interno **não** exige cadastro de campo (regra do servidor).
 - **Assistente, a IA conversacional (D-219 a D-224, 14/11/2026, sem mudança de esquema):** tela “O que você quer
   fazer?” (menu e Início). O modelo (Groq gratuito, `openai/gpt-oss-20b`, chave `GROQ_API_KEY` em `segredos.env`, fora
   do Git) só interpreta; o código valida, calcula e monta o rascunho (pedido de material, chuva ou interferência,

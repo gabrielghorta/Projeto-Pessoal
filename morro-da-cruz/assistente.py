@@ -39,7 +39,7 @@ import solicitacoes as SOL
 from servicos import RegraViolada
 
 LIMITE_TEXTO = 1200                    # caracteres de uma mensagem da pessoa
-LIMITE_FALA = 500                      # caracteres de cada mensagem antiga reenviada ao modelo
+LIMITE_PERGUNTA = 300                  # a última pergunta da IA, ainda sem resposta: o único histórico enviado (D-226)
 TIPOS = {"PEDIDO": "Pedido de material", "OCORRENCIA": "Interferência ou chuva", "APROPRIACAO": "Apropriação direta"}
 PERMISSAO = {"PEDIDO": "compras_solicitar", "OCORRENCIA": "campo", "APROPRIACAO": "apropriacao"}
 ROTA = {"PEDIDO": "/api/solicitacao", "OCORRENCIA": "/api/ocorrencia", "APROPRIACAO": "/api/apropriacao"}
@@ -391,26 +391,122 @@ def _resolver_item(conn, texto):
     return None, achados
 
 
+_CONHECIMENTO = {"chave": None, "secoes": []}
+
+
+def arquivo_conhecimento():
+    for raiz in (caminhos.PASTA, caminhos.RECURSOS):
+        p = os.path.join(raiz, "docs", "CONHECIMENTO_IA.md")
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _tokens_busca(texto, minimo=2):
+    """As palavras de busca, sem acento, com o singular provável; 'OK', 'TR' e 'NS' contam (duas letras)."""
+    return {v for p in re.findall(r"[A-Z0-9]+", _norm(texto)) if p not in AP.PARADAS and len(p) >= minimo for v in _variantes(p)}
+
+
+def conhecimento():
+    """As seções de docs/CONHECIMENTO_IA.md (D-226): título, metadados da linha <!-- ... --> e o texto. Relido quando o
+    arquivo muda. O arquivo inteiro nunca vai ao modelo: só a seção que casa com a pergunta."""
+    p = arquivo_conhecimento()
+    chave_ = (p, os.path.getmtime(p)) if p else None
+    if chave_ == _CONHECIMENTO["chave"]:
+        return _CONHECIMENTO["secoes"]
+    secoes = []
+    if p:
+        with open(p, encoding="utf-8") as f:
+            partes = re.split(r"(?m)^## ", f.read())[1:]
+        for parte in partes:
+            titulo, _, corpo = parte.partition("\n")
+            meta, texto = {}, corpo
+            m = re.match(r"\s*<!--(.*?)-->", corpo, re.S)
+            if m:
+                texto = corpo[m.end():]
+                for campo in m.group(1).split("|"):
+                    k, _, v = campo.partition(":")
+                    meta[k.strip()] = v.strip()
+            texto = re.sub(r"\s+", " ", texto).strip()
+            secoes.append({"titulo": titulo.strip(), "texto": texto, "tela": meta.get("tela") or None,
+                           "botao": meta.get("botao") or None, "permissao": meta.get("permissao") or None,
+                           "telas_perfil": [t.strip() for t in (meta.get("telas") or "").split(",") if t.strip()],
+                           "_chaves": _tokens_busca(meta.get("palavras", "") + " " + titulo), "_corpo": _tokens_busca(texto, 3)})
+    _CONHECIMENTO.update(chave=chave_, secoes=secoes)
+    return secoes
+
+
 def ajuda(cfg, usuario, assunto):
-    """As duas seções do guia de uso que mais casam com o assunto (config/assistente.json), com a tela que a pessoa abre."""
-    palavras = {v for p in re.findall(r"[A-Z0-9]+", _norm(assunto)) if p not in AP.PARADAS and len(p) > 2 for v in _variantes(p)}
+    """A seção do conhecimento que mais casa com o assunto (e a segunda, só se chegar perto): palavras-chave e título
+    valem 3, o texto vale 1. Poucas palavras vão ao modelo: é o que mais pesa na cota gratuita."""
+    palavras = _tokens_busca(assunto)
     pontuadas = []
-    for i, s in enumerate(cfg.get("ajuda") or []):
-        chaves = set(re.findall(r"[A-Z0-9]+", _norm(s.get("palavras", "") + " " + s["titulo"])))
-        pontos = len(palavras & chaves)
-        if pontos:
-            pontuadas.append((-pontos, i, s))
+    for i, sec in enumerate(conhecimento()):
+        chave_, corpo = len(palavras & sec["_chaves"]), len(palavras & sec["_corpo"])
+        if chave_ or corpo >= 3:
+            pontuadas.append((-(3 * chave_ + corpo), i, sec))
     pontuadas.sort(key=lambda x: x[:2])
-    return [s for _, _, s in pontuadas[:2]]
+    if not pontuadas:
+        return []
+    melhor = -pontuadas[0][0]
+    return [sec for p, _, sec in pontuadas[:2] if -p >= 0.75 * melhor]
 
 
 def _abre(usuario, secao):
-    """A pessoa abre a tela da seção de ajuda? (as telas do perfil e, se a seção pedir, a permissão)."""
+    """A pessoa abre a tela da seção? (as telas do perfil e, se a seção pedir, a permissão)."""
     if not secao.get("tela"):
         return False
     if secao.get("permissao") and secao["permissao"] not in usuario["permissoes"]:
         return False
     return bool(set(secao.get("telas_perfil") or ()) & set(usuario["telas"]))
+
+
+TELAS_ESTOQUE = ("almox", "equipes", "mapa", "compras")      # as mesmas de /api/estoque em server.TELA_GET (teste confere)
+
+
+def ve_estoque(usuario):
+    return bool(set(TELAS_ESTOQUE) & set(usuario["telas"]))
+
+
+def saldo_estoque(conn, usuario, texto):
+    """O saldo agora no almoxarifado de um material (servicos.saldo_almox e reservado), só para quem abre o estoque.
+    Mesma conta da tela Estoque: disponível = físico − reservas."""
+    if not ve_estoque(usuario):
+        return {"erro": "Este login não vê o estoque: o almoxarifado informa o saldo."}
+    achados = buscar_materiais(conn, texto, limite=5)
+    if not achados:
+        return {"materiais": [], "dica": "nada achado no catálogo: tente outras palavras (ex.: 'luva 63')"}
+    out = []
+    for m in achados:
+        fisico, quarentena = S.saldo_almox(conn, m["id"])
+        reservado = S.reservado(conn, m["id"])
+        item = {"material": rotulo_material(m), "unidade": m["unidade_nome"], "no_almoxarifado": round(fisico, 3),
+                "reservado": round(reservado, 3), "disponivel": round(fisico - reservado, 3)}
+        if quarentena:
+            item["em_quarentena"] = round(quarentena, 3)
+        out.append(item)
+    return {"materiais": out, "faca": "responda com os números; se vier mais de um material, diga cada um"}
+
+
+def situacao_trecho(conn, usuario, texto, pergunta=""):
+    """O que já foi feito e o que falta no trecho para o OK interno (servicos.caminho_medicao), em poucas palavras. Sem um
+    trecho de verdade no texto, a pessoa quer saber como se faz: vai junto a seção do guia, sem outra chamada."""
+    achados = [a for a in S.buscar(conn, texto, limite=6) if a["tipo"] == "TRECHO"] if re.search(r"\d", str(texto or "")) else []
+    if not achados:
+        secoes = ajuda(None, usuario, pergunta or texto)
+        if not re.search(r"\d", str(texto or "")) and secoes:          # sem número de trecho: é "como se faz"
+            return {"ajuda": [{"titulo": s_["titulo"], "texto": s_["texto"]} for s_ in secoes],
+                    "faca": "não foi citado um trecho: explique como se faz, com a ajuda, em até 3 frases"}
+        return {"erro": f"Nenhum trecho com o nome '{_limpo(texto, 60)}'. Peça o nome, ex.: Zona 03 PB06 TR014."}
+    if len(achados) > 1:
+        return {"varios": [a["nome"] for a in achados], "faca": "pergunte qual"}
+    cm = S.caminho_medicao(conn, achados[0]["id"])
+    feito = [i["nome"] for i in cm["itens"] if i["feito"]]
+    falta = [f"{i['nome']} ({i['detalhe']}; quem: {i['quem']})" for i in cm["itens"] if not i["feito"] and i["id"] != "ok"]
+    ok = next(i for i in cm["itens"] if i["id"] == "ok")
+    return {"trecho": R.nome_completo(cm["nome"]), "feito": feito, "falta": falta, "ok_interno": ok["detalhe"] if ok["feito"] else None,
+            "pronto_para_ok": cm["pronto_para_ok"], "falta_para_ok": cm["falta_para_ok"],
+            "lembrete": "o OK interno não exige o cadastro de campo"}
 
 
 def pedidos_do_login(conn, usuario, abertos=True, limite=8):
@@ -786,7 +882,7 @@ class _Turno:
 
     def __init__(self, rascunho=None):
         self.rascunho, self.fala, self.botoes, self.telas, self.ferramentas = rascunho, None, [], [], []
-        self.itens, self.candidatos, self.pediu_item, self.notas = {}, None, False, []
+        self.itens, self.candidatos, self.pediu_item, self.notas, self.texto = {}, None, False, [], ""
 
 
 def _iniciar(turno, usuario, tipo):
@@ -802,6 +898,8 @@ def _iniciar(turno, usuario, tipo):
 def _local(conn, c, texto, erros):
     """'canteiro', 'zona 3' ou um trecho/nó/caixa (servicos.buscar). Mais de um resultado: fica só o texto e o aviso."""
     t = _limpo(texto, 120)
+    if not re.search(r"[A-Za-z0-9]", t):                                   # "?", "-": não disse o lugar
+        t = ""
     for k in ("local_tipo", "local_id", "local_texto", "alvo_tipo", "alvo_id"):
         c.pop(k, None)
     if not t:
@@ -1024,6 +1122,9 @@ def _aplicar_apropriacao(conn, usuario, turno, c, args, erros):
             if isinstance(p, dict):
                 m = {k: _limpo(str(p.get(k)).replace(".", ",") if isinstance(p.get(k), (int, float)) else p.get(k), 150)
                      for k in ("descricao", "comprimento", "largura", "profundidade") if p.get(k) not in (None, "")}
+                for k in ("comprimento", "largura", "profundidade"):            # "4m", "2,5 m": a unidade sai, o número fica
+                    if k in m:
+                        m[k] = re.sub(r"(?<=\d)\s*(?:m|metros?)\b\.?", "", m[k], flags=re.I).strip()
                 if p.get("repeticoes") not in (None, "", 1, "1"):
                     m["repeticoes"] = _limpo(p["repeticoes"], 6)
                 medidas.append(m)
@@ -1093,7 +1194,7 @@ def _botao_item(it):
     grupo = AP.GRUPOS.get(it["grupo"], it["grupo"].capitalize())
     nome = it.get("resumida") or it["descricao"][:70]
     return {"rotulo": f"{it['item_bm'] or it['item']} · {nome} ({grupo}, {it['unidade']})", "aplicar": {"item": it["item"]},
-            "ctx": f"id {it['item']} = {nome}"}
+            "ctx": f"id {it['item']} = {nome} (unidade {it['unidade']})"}
 
 
 def _fechar(conn, usuario, turno):
@@ -1112,7 +1213,10 @@ def _fechar(conn, usuario, turno):
 
 def _resposta(conn, usuario, turno, **extra):
     v = _fechar(conn, usuario, turno)
-    return {"situacao": "OK", "resposta": turno.fala or "", "botoes": turno.botoes, "rascunho": v, **extra}
+    fala = turno.fala or ""
+    # a pergunta que fica pendente: a tela devolve só ela na próxima mensagem (D-226)
+    pergunta = fala if fala.rstrip().endswith("?") else None
+    return {"situacao": "OK", "resposta": fala, "pergunta": pergunta, "botoes": turno.botoes, "rascunho": v, **extra}
 
 
 def aplicar(conn, usuario, pedido):
@@ -1145,37 +1249,66 @@ _FATOR = {"type": "object", "properties": {"nome": _S, "valor": _N}, "required":
 _MEDIDA = {"type": "object", "properties": {"descricao": _S, "comprimento": {"type": "string", "description": "m; lados com +"},
                                             "largura": {"type": "string", "description": "altura ou largura, m"},
                                             "profundidade": _S, "repeticoes": _N}}
-FERRAMENTAS = [                         # descrições curtas de propósito: o plano gratuito conta 8.000 tokens por minuto
-    _f("consultar_orcamento", "Lista itens do orçamento (BM) por palavras do serviço.", {"busca": _S}, ["busca"]),
-    _f("consultar_catalogo", "Lista materiais do catálogo de pedido por palavras (ex.: 'luva 110').", {"busca": _S}, ["busca"]),
-    _f("consultar_frentes", "Zonas para as quais este login pede material e equipes que ele usa.", {}),
+FERRAMENTAS = [                         # curtas de propósito: o plano gratuito conta 8.000 tokens por minuto
+    _f("consultar_ajuda", "Guia: como e onde se faz cada coisa no sistema.", {"assunto": _S}, ["assunto"]),
+    _f("consultar_trecho", "Situação de UM trecho citado pelo nome: o que foi feito e o que falta para o OK interno.",
+       {"trecho": {"type": "string", "description": "nome, ex.: Zona 03 PB06 TR014"}}, ["trecho"]),
+    _f("consultar_orcamento", "Itens do orçamento por palavras, com saldo.", {"busca": _S}, ["busca"]),
+    _f("consultar_catalogo", "Materiais do catálogo de pedido por palavras.", {"busca": _S}, ["busca"]),
     _f("consultar_pedidos", "Pedidos de material que este login vê.", {"quais": {"type": "string", "enum": ["ABERTOS", "TODOS"]}}),
-    _f("consultar_ajuda", "Guia de uso: onde fica e como se faz cada coisa no sistema.", {"assunto": _S}, ["assunto"]),
+    _f("consultar_estoque", "Saldo de um material no almoxarifado agora (físico, reservado, disponível).",
+       {"material": {"type": "string", "description": "ex.: luva 63"}}, ["material"]),
     _f("rascunho_apropriacao",
-       "Serviço que FOI FEITO ou item a lançar (fizemos, instalamos, lança, apropria): anota/corrige a apropriação direta. Não serve para dar OK, liberar, verificar ou medir trecho. item (sempre): palavras do serviço no singular como a pessoa falou (ex.: "
-       "'contêiner') ou o id do item já escolhido ou listado; o sistema procura. fatores: números que se multiplicam, com o nome do que contam, "
-       "ex. [{nome:'contêineres',valor:3},{nome:'mês',valor:1}]. medidas: só para m, m², m³.",
+       "Serviço feito ou item a lançar (apropriação direta). item (sempre): o serviço como foi dito, no singular, ou o id listado. "
+       "fatores: só os números ditos NESTA mensagem, cada um com o que conta; '3 contêineres por um mês' → [{nome:'contêineres',valor:3},{nome:'mês',valor:1}]; "
+       "'por um mês' → [{nome:'mês',valor:1}]. "
+       "medidas: só m, m², m³.",
        {"item": _S, "fatores": {"type": "array", "items": _FATOR}, "medidas": {"type": "array", "items": _MEDIDA},
-        "data": {"type": "string", "description": "AAAA-MM-DD"}, "local": {"type": "string", "description": "canteiro, zona ou trecho"}},
+        "data": {"type": "string", "description": "o dia dito (ontem, dia 12...), em AAAA-MM-DD"}, "local": {"type": "string", "description": "canteiro, zona ou trecho"}},
        ["item"]),
-    _f("rascunho_pedido",
-       "A pessoa PRECISA de material: anota/corrige o pedido. material: o nome como a pessoa falou (ex.: 'luva 110') ou id do catálogo; o "
-       "sistema procura. Repetir o material troca a quantidade.",
+    _f("rascunho_pedido", "Material que a pessoa precisa. material: como foi dito (ex.: 'luva 110') ou id. Repetir troca a quantidade.",
        {"itens": {"type": "array", "items": {"type": "object", "properties": {
-           "material": _S, "quantidade": _N, "descricao": {"type": "string", "description": "só se não existe no catálogo"}}}},
+           "material": _S, "quantidade": _N, "descricao": {"type": "string", "description": "só fora do catálogo"}}}},
         "remover": {"type": "array", "items": _S}, "frente": {"type": "string", "description": "zona de destino"}}),
-    _f("rascunho_ocorrencia", "Só quando algo ATRAPALHOU o serviço (choveu, rede no caminho, sem acesso, faltou material): anota/corrige o relato de chuva ou interferência.",
+    _f("rascunho_ocorrencia", "Algo atrapalhou o serviço: chuva ou interferência.",
        {"categoria": {"type": "string", "enum": list(CATEGORIAS)}, "tipo": {"type": "string", "enum": ["IMPEDIMENTO", "NAO_CONFORMIDADE"]},
-        "data": {"type": "string", "description": "AAAA-MM-DD"}, "equipe": {"type": "string", "description": "nome da equipe citada, ou TODAS"},
-        "turno": {"type": "string", "enum": list(TURNOS), "description": "parte do dia em que choveu, se dita (de manhã, de tarde, o dia todo)"},
-        "efeito": {"type": "string", "enum": list(EFEITOS), "description": "o que a chuva causou"},
-        "local": {"type": "string", "description": "trecho, nó ou caixa, só se a pessoa disse"}, "descricao": _S}),
-    _f("oferecer_opcoes", "Pergunta com botões e encerra a vez. Em cada opção: itens (ids do orçamento) ou materiais (ids do catálogo).",
+        "data": {"type": "string", "description": "o dia dito (ontem, dia 12...), em AAAA-MM-DD"}, "equipe": {"type": "string", "description": "equipe citada, ou TODAS"},
+        "turno": {"type": "string", "enum": list(TURNOS), "description": "parte do dia em que choveu"},
+        "efeito": {"type": "string", "enum": list(EFEITOS)}, "local": {"type": "string", "description": "trecho, nó ou caixa, se dito"},
+        "descricao": _S}),
+    _f("oferecer_opcoes", "Pergunta com botões; encerra a vez. Opção: itens ou materiais (ids).",
        {"pergunta": _S, "opcoes": {"type": "array", "items": {"type": "object", "properties": {
            "rotulo": _S, "itens": {"type": "array", "items": _S}, "materiais": {"type": "array", "items": _S}}, "required": ["rotulo"]}}},
        ["pergunta", "opcoes"]),
-    _f("descartar_rascunho", "A pessoa desistiu do lançamento.", {}),
+    _f("descartar_rascunho", "A pessoa desistiu do rascunho.", {}),
 ]
+_POR_NOME = {f["function"]["name"]: f for f in FERRAMENTAS}
+_DO_TIPO = {"APROPRIACAO": ("rascunho_apropriacao", "consultar_orcamento"), "PEDIDO": ("rascunho_pedido", "consultar_catalogo"),
+            "OCORRENCIA": ("rascunho_ocorrencia",)}
+
+
+def ferramentas_do_login(usuario, rascunho=None):
+    """As funções que fazem sentido agora (D-226): as de lançamento só dos tipos que o perfil lança; com um rascunho
+    aberto, as consultas dos outros tipos saem (a troca de assunto continua pela função de rascunho do outro tipo) e
+    entra descartar. O que o perfil não lança vira uma função mínima: o código explica quem lança, sem o modelo decidir."""
+    aberto = (rascunho or {}).get("tipo")
+    nomes = ["consultar_ajuda", "consultar_trecho"]
+    for tipo, funcoes in _DO_TIPO.items():
+        if _pode(usuario, tipo):
+            nomes += [f for f in funcoes if f.startswith("rascunho_") or not aberto or aberto == tipo]
+    if _pode(usuario, "PEDIDO") and {"solicitar", "compras"} & set(usuario["telas"]) and not aberto:
+        nomes.append("consultar_pedidos")
+    if ve_estoque(usuario) and aberto in (None, "PEDIDO"):                    # saldo: só quem abre o estoque
+        nomes.append("consultar_estoque")
+    nomes.append("descartar_rascunho" if aberto else "oferecer_opcoes")     # no rascunho, os botões vêm do código
+    out = [_POR_NOME[n] for n in nomes]
+    nao = [t for t in TIPOS if not _pode(usuario, t)]
+    if nao:
+        out.append(_f("sem_permissao", "Pedido de lançamento que este login não faz: " + "; ".join(TIPOS[t].lower() for t in nao) + ".",
+                      {"assunto": {"type": "string", "enum": nao}}, ["assunto"]))
+    return out
+
+
 _RASCUNHOS = {"rascunho_apropriacao": "APROPRIACAO", "rascunho_pedido": "PEDIDO", "rascunho_ocorrencia": "OCORRENCIA"}
 
 
@@ -1188,7 +1321,13 @@ def executar(conn, cfg, usuario, turno, nome, args):
             return {"erro": SEM_PERMISSAO["APROPRIACAO"]}, True
         achados = buscar_orcamento(conn, args.get("busca"))
         turno.itens = {it["item"]: it for it in achados}
-        return {"itens": [_item_curto(it) for it in achados]} if achados else {"itens": [], "dica": "nada achado: tente outra palavra"}, True
+        if not achados:
+            return {"itens": [], "dica": "nada achado: tente outra palavra"}, True
+        itens = [_item_curto(it) for it in achados]
+        if len(achados) <= 3:                                                # poucos: vai junto o saldo vigente
+            for curto, it in zip(itens, achados):
+                curto.update({k: v for k, v in AP.saldo(conn, AP.item(conn, it["ref"])).items() if k in ("contratado", "saldo")})
+        return {"itens": itens}, True
     if nome == "consultar_catalogo":
         if not _pode(usuario, "PEDIDO"):
             return {"erro": SEM_PERMISSAO["PEDIDO"]}, True
@@ -1205,9 +1344,21 @@ def executar(conn, cfg, usuario, turno, nome, args):
         secoes = ajuda(cfg, usuario, args.get("assunto"))
         turno.telas += [s for s in secoes if _abre(usuario, s)]
         if not secoes:
-            return {"ajuda": [], "assuntos": [s["titulo"] for s in cfg.get("ajuda") or []]}, True
+            return {"ajuda": [], "faca": "não está no guia: não invente; diga que não sabe e indique o menu"}, True
         return {"ajuda": [{"titulo": s["titulo"], "texto": s["texto"],
-                           "este_login_abre_a_tela": _abre(usuario, s) if s.get("tela") else None} for s in secoes]}, True
+                           "este_login_abre_a_tela": _abre(usuario, s) if s.get("tela") else None} for s in secoes],
+                "faca": "explique com este texto, em até 3 frases"}, True
+    if nome == "consultar_estoque":
+        return saldo_estoque(conn, usuario, args.get("material")), True
+    if nome == "consultar_trecho":
+        r = situacao_trecho(conn, usuario, args.get("trecho"), turno.texto)
+        if r.get("ajuda"):
+            turno.telas += [s_ for s_ in ajuda(cfg, usuario, turno.texto) if _abre(usuario, s_)]
+        return r, True
+    if nome == "sem_permissao":
+        tipo = args.get("assunto") if args.get("assunto") in TIPOS else next((t for t in TIPOS if not _pode(usuario, t)), "PEDIDO")
+        turno.fala, turno.botoes = SEM_PERMISSAO[tipo], []
+        return {"ok": True}, False
     if nome in _RASCUNHOS:
         tipo = _RASCUNHOS[nome]
         if not _pode(usuario, tipo):
@@ -1307,7 +1458,7 @@ def resumo(conn, v):
             except RegraViolada:
                 pass
         if c.get("fatores"):
-            partes.append("fatores " + ", ".join(f"{f['nome']}={_fmt(f['valor'])}" for f in c["fatores"].values()))
+            partes.append("anotado: " + " × ".join(f"{_fmt(f['valor'])} {_plural(f['nome'], f['valor'])}" for f in c["fatores"].values()))
         if c.get("medidas"):
             partes.append("medidas " + json.dumps(c["medidas"], ensure_ascii=False))
     elif v["tipo"] == "PEDIDO":
@@ -1408,28 +1559,27 @@ _DIAS = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta
 
 def instrucoes(conn, usuario, turno, opcoes, texto=""):
     hoje = RL.hoje()
-    equipe = " (encarregado: a equipe e a zona dele entram sozinhas)" if usuario.get("restrito_a_equipe") else ""
-    equipes = [] if usuario.get("restrito_a_equipe") or not _pode(usuario, "OCORRENCIA") else [e["nome"] for e in equipes_do_login(conn, usuario)]
-    t = f"""Você é o assistente do sistema da obra Morro da Cruz (rede de água). Fale português do Brasil, simples e curto (até 3 frases), sem markdown.
-Hoje: {_DIAS[hoje.weekday()]}, {hoje.isoformat()}. Perfil de quem fala: {usuario['perfil_nome']}{equipe}.
-Você cuida de quatro coisas: dúvida de uso do sistema; pedido de material (a pessoa precisa de algo); relato de chuva ou interferência (algo atrapalhou o serviço); apropriação direta (um serviço foi feito ou um item do orçamento deve ser lançado, ex.: canteiro).
-Regras:
-1. Leia a mensagem inteira e o contexto e decida: responder, consultar ou perguntar o que falta (uma pergunta por vez).
-2. Nunca invente item, material, zona, equipe, número, data nem como o sistema funciona. Dúvida de uso: consultar_ajuda antes.
-3. Dados de lançamento vão para rascunho_apropriacao, rascunho_pedido ou rascunho_ocorrencia: tudo o que a mensagem trouxe (serviço ou material, números com o nome do que contam, lugar, dia) e só isso. O sistema procura, valida, calcula e mostra o formulário; você não grava nem calcula.
-4. Se a pessoa escolhe uma das opções da tela por texto, anote o id dela (a de nome mais próximo do que ela disse, sem nada a mais). Na dúvida, pergunte.
-5. Correção ("na verdade foram três") muda só aquele campo do rascunho atual.
-6. Qualquer outra ação do sistema (dar OK ou liberar trecho, verificar, nota de serviço, apontamento, estoque, nota fiscal, cadastro, medição) NÃO é lançamento seu: não abra rascunho; use consultar_ajuda e diga onde a pessoa faz. Assunto fora da obra: diga em uma frase o que você faz.
-7. Não decida você se a pessoa pode ou não lançar: chame a função do assunto e o sistema confere a permissão do login."""
-    if 0 < len(equipes) <= 8:
-        t += "\nEquipes: " + "; ".join(equipes) + "."
-    v = vista(conn, usuario, turno.rascunho)
-    t += "\nRascunho atual: " + resumo(conn, v)
+    equipe = " (encarregado: equipe e zona dele entram sozinhas)" if usuario.get("restrito_a_equipe") else ""
+    lanca = [TIPOS[t].lower() for t in TIPOS if _pode(usuario, t)]
+    t = f"""Assistente do sistema da obra Morro da Cruz (rede de água). Português do Brasil, até 3 frases, sem markdown.
+Hoje: {_DIAS[hoje.weekday()]}, {hoje.isoformat()} (ontem: {(hoje - datetime.timedelta(days=1)).isoformat()}). Perfil: {usuario['perfil_nome']}{equipe}.
+Você tira dúvida de uso{' e anota rascunhos de ' + ', '.join(lanca) if lanca else ''}. O sistema procura, valida, calcula e mostra o formulário; você não grava nem calcula.
+- Leia a mensagem inteira e decida: responder, consultar ou perguntar o que falta (uma pergunta por vez).
+- Não invente item, material, zona, equipe, número, data, regra ou tela. Como fazer algo no sistema (inclusive dar OK, verificar): consultar_ajuda. Situação de um trecho citado com número: consultar_trecho.{' Quanto tem de um material no estoque: consultar_estoque (não mande a pessoa olhar a tela).' if ve_estoque(usuario) else ''}
+- Lançamento: passe à função de rascunho o que esta mensagem trouxe (serviço ou material, cada número com o que conta, lugar, dia), e só isso. Correção ("na verdade, foram três") troca só o número corrigido no rascunho atual.
+- OK interno, verificar, nota de serviço, estoque, nota fiscal e medição não são rascunho: explique com consultar_ajuda.
+- Opção da tela escolhida por texto: anote o id dela."""
+    if _pode(usuario, "OCORRENCIA") and not usuario.get("restrito_a_equipe"):
+        equipes = [e["nome"] for e in equipes_do_login(conn, usuario)]
+        if 0 < len(equipes) <= 8:
+            t += "\nEquipes: " + "; ".join(equipes) + "."
+    if turno.rascunho:
+        t += "\nRascunho atual: " + resumo(conn, vista(conn, usuario, turno.rascunho))
     if opcoes:
-        t += "\nOpções na tela agora (a pessoa pode escolher por texto):\n" + "\n".join("- " + o for o in opcoes)
+        t += "\nOpções na tela:\n" + "\n".join("- " + o for o in opcoes)
         perto = mais_proxima(texto, opcoes)
         if perto:
-            t += "\nPelas palavras da mensagem, a opção mais próxima é: " + perto
+            t += "\nMais próxima do que foi dito: " + perto
     return t
 
 
@@ -1499,6 +1649,7 @@ def conversar(conn, trava, usuario, pedido):
         raise RegraViolada("Escreva o que você quer fazer.")
     with trava:
         turno = _Turno(normalizar(conn, usuario, pedido.get("rascunho")))
+        turno.texto = texto
         base = {"rascunho": vista(conn, usuario, turno.rascunho)}
     try:
         cfg = config()
@@ -1513,17 +1664,20 @@ def conversar(conn, trava, usuario, pedido):
                 "uso": {"chamadas": 0, "tokens": 0, "ferramentas": []}}
     with trava:
         sistema = instrucoes(conn, usuario, turno, _opcoes_vistas(pedido.get("opcoes")), texto)
+        ferramentas = ferramentas_do_login(usuario, turno.rascunho)
+    # histórico quase zero (D-226): a mensagem atual, o rascunho e as opções da tela (nas instruções) e, se houver, só a
+    # última pergunta da IA ainda sem resposta, para "tapume" fazer sentido depois de "Qual serviço?"
     mensagens = [{"role": "system", "content": sistema}]
-    for m in (pedido.get("conversa") if isinstance(pedido.get("conversa"), list) else [])[-int(cfg.get("historico_mensagens", 8)):]:
-        if isinstance(m, dict) and _limpo(m.get("texto")):
-            mensagens.append({"role": "user" if m.get("de") == "u" else "assistant", "content": _limpo(m["texto"], LIMITE_FALA)})
+    pergunta = _limpo(pedido.get("pergunta"), LIMITE_PERGUNTA)
+    if pergunta:
+        mensagens.append({"role": "assistant", "content": pergunta})
     mensagens.append({"role": "user", "content": texto})
     uso = {"chamadas": 0, "tokens": 0, "ferramentas": turno.ferramentas}
     rastro = uso.setdefault("rastro", []) if os.environ.get("MC_IA_RASTRO") else None      # só nos roteiros de validação
     fala_modelo = None
     try:
         for _ in range(int(cfg.get("chamadas_por_mensagem", 3))):
-            msg, consumo = chamar_modelo(cfg, mensagens, FERRAMENTAS)
+            msg, consumo = chamar_modelo(cfg, mensagens, ferramentas)
             uso["chamadas"] += 1
             uso["tokens"] += int(consumo.get("total_tokens") or 0)
             chamadas = msg.get("tool_calls") or []

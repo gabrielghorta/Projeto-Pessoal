@@ -594,3 +594,14 @@ Engenharia ou Administração libera as faixas já identificadas na 06.1. A equi
 faixas sem correspondência segura. A referência na liberação é o nome original da planilha. O sistema usa uma chave
 interna baseada nos dados lidos para impedir reenvios duplicados. As notas em PDF continuam registradas pelo fluxo
 anterior. O esquema v27 permite a nota com planilha como documento principal e guarda os vínculos com os croquis.
+
+## 38. Assistente: histórico quase zero e conhecimento por seção (15/11/2026)
+
+| ID | Decisão | Opções | Impacto | Recomendação | Provisório / bloqueado |
+|---|---|---|---|---|---|
+| D-226 | O que vai ao modelo em cada mensagem | a conversa inteira / nada / a mensagem com o rascunho e só a última pergunta pendente | Reenviar a conversa gasta a cota gratuita; sem nada, uma resposta curta (“tapume”) perde o sentido. | Mensagem atual, rascunho, opções da tela e só a última pergunta da IA sem resposta. O conhecimento vem de `docs/CONHECIMENTO_IA.md`, por seção. Funções só as do perfil e da etapa do rascunho; sem chamada extra de classificação. | **Decidido pelo responsável.** A conversa some ao recarregar; o rascunho e o texto digitado ficam. Fonte do conhecimento nesta etapa: o repositório (o Drive fica para lacunas). Valores, prazos, saldos e a situação de um trecho vêm do sistema na hora. Medido com a API real: −22 % de tokens, as mesmas chamadas, 6 de 6 conversas certas (antes 5 de 6). |
+
+Correção feita junto: o guia do PR #39 dizia que o OK interno exige o cadastro de campo; o servidor não exige
+(`servicos.ok_fiscalizacao`: execução 100 %, verificação, fotos e nenhum avanço antigo sem posição). O conhecimento
+segue o servidor, e um teste confere essa regra. Guia: `docs/ASSISTENTE_IA.md`; conhecimento: `docs/CONHECIMENTO_IA.md`.
+

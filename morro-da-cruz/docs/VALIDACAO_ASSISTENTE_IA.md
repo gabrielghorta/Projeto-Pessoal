@@ -47,6 +47,43 @@ Com a **API real**, depois da correção (2 de 2): a IA consulta o guia e respon
 mensagem), “quero lançar um serviço” (pergunta qual, sem rascunho vazio), o tapume com medidas (187 m²) e a dúvida do
 supervisor sobre verificar trecho. Teste simulado novo em `tests/test_assistente.py`.
 
+## 15/11/2026: histórico quase zero e conhecimento por seção (D-226), antes × depois
+
+Mesmas seis conversas, **API real** da Groq (plano gratuito), banco de demonstração descartável, servidor de verdade,
+conversa pelo HTTP como a tela faz (`ferramentas/assistente/medir_tokens.py`). Conta chamadas ao modelo e tokens até
+chegar à resposta ou ao rascunho correto. “Antes” é o código do PR #39; “depois”, o deste PR.
+
+| Conversa | Mensagens | Antes: chamadas | Antes: tokens | Antes | Depois: chamadas | Depois: tokens | Depois |
+|---|---|---|---|---|---|---|---|
+| Resposta curta (“tapume” depois de “Qual serviço?”) | 3 | 3 | 4.590 | certo | 3 | 3.692 | certo |
+| Correção no meio (contêineres: “na verdade, foram três”) | 3 | 3 | 4.972 | certo | 3 | 3.849 | certo |
+| Item ambíguo (placa de obra, com medidas) | 1 | 1 | 1.526 | certo | 1 | 1.277 | certo |
+| Dúvida sobre o OK interno | 1 | 2 | 3.165 | errado | 2 | 2.799 | certo |
+| Pedido de material com correção | 2 | 2 | 3.079 | certo | 2 | 2.017 | certo |
+| Chuva numa frase só | 1 | 1 | 1.529 | certo | 1 | 1.049 | certo |
+| **Total** | 11 | **12** | **18.861** | 5 de 6 | **12** | **14.683** | **6 de 6** |
+
+**−22 % de tokens** com as mesmas chamadas; nas cinco conversas que já acertavam antes, −24 % (15.696 → 11.884). O
+botão “Locação” e o toque no item da placa não chamam o modelo (contam zero nas duas colunas).
+
+Como os números foram obtidos, sem esconder as idas e vindas:
+
+- A primeira versão enxuta caiu para 3 de 6 certas. O modelo pequeno deixou de anotar “um mês”, trocou “ontem” por
+  hoje e confundiu a consulta de trecho com a dúvida do OK interno. Correções: o exemplo da função passou a ser um par
+  frase → anotação e a pedir só os números da mensagem atual; o rascunho vai ao modelo em linguagem natural; as
+  instruções dizem a data de ontem; sem número de trecho, a consulta de trecho devolve a seção do guia.
+- O código passou a aceitar “4m” numa medida (a validação recusava).
+- Coluna “depois”: conversas 1, 2, 3, 5 e 6 da última rodada completa; a 4 é a média de três rodadas depois do último
+  ajuste no texto da seção do OK interno (que só mexe nela). Nas rodadas intermediárias, a do OK oscilou: o modelo achava
+  a seção certa e ainda perguntava “qual trecho?”; a frase da seção que convidava a pergunta foi reescrita. Numa das três
+  rodadas finais a resposta estava certa mas dizia “dar o OK” em vez de “OK interno”; o critério do medidor passou a
+  aceitar a explicação (fala do OK interno ou do Mapa iluminado, sem rascunho, com o botão da tela).
+- Consumo de cota no dia da medição: perto de 150 mil dos 200 mil tokens gratuitos (todas as rodadas, inclusive as
+  intermediárias). Uma rodada completa do medidor gasta cerca de 15 mil.
+
+Também com a API real: “o que falta no zona 3 pb06 tr014 pra dar o ok?” chama `consultar_trecho` e responde a lista
+do que falta (execução, verificação, fotos), sem citar o cadastro de campo como exigência.
+
 ## Transcrição da rodada final com a API real (exemplo de aceitação)
 
 As linhas com `·` são as chamadas de função do modelo e o que o código devolveu.
