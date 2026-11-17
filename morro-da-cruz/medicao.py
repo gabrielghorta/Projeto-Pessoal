@@ -49,8 +49,9 @@ def regras(conn):
     if sem_item:
         add(f"Serviços sem item de BM comprovado ({len(sem_item)}): " + ", ".join(sem_item), "BLOQUEADA",
             "quantidade apurada e lançada como PENDENTE, fora do valor (não é R$ 0 contratual)", None, "D-50")
-    add("Solda: item de BM e regra de quantidade", "BLOQUEADA",
-        "PENDENTE com a quantidade de soldas verificadas e APROVADAS; a estimativa ⌈L/6⌉ não é usada", None, "D-31")
+    add("Solda: verificadas e aprovadas, por tipo e DE do trecho", "CONFIRMADA",
+        "PROPOSTO no item 2.2 compatível. Sem item para o tipo/DE/grupo: PENDENTE SOLDA_SEM_ITEM; nunca usa ⌈L/6⌉.",
+        "BM vertical vigente; config/servicos_rede.json", "D-230 (complementa D-31)")
     add("Assentamento MND (itens 5.16.x)", "BLOQUEADA", "PENDENTE; não é substituído pelo item de vala aberta", None, "D-52")
     add("Material: categorias do SL0327 e regime de faturamento (inclui conexões PEAD)", "BLOQUEADA",
         "nenhum material entra em valor; nenhum percentual (80/20 ou outro) é aplicado; recebido ≠ faturável", None, "D-53 · D-54")
@@ -255,7 +256,10 @@ def retrato(conn, medicao_id):
     dup = duplicidades(conn, medicao_id)
     for d in dup:
         impeditivos.append(f"Parcela em mais de uma medição: {d['servico']} de {d['alvo_nome']} (medições {d['medicoes']}).")
-    propostos = {(l["alvo_tipo"], l["alvo_id"]) for l in lanc if l["status"] == "PROPOSTO"}
+    import fiscalizacao as F
+    aceitas = F.efetivas(conn, medicao_id)
+    propostos = {(l["alvo_tipo"], l["alvo_id"]) for l in lanc if l["status"] == "PROPOSTO"
+                 and (aceitas is None or aceitas.get(l["id"], 0)>0)}
     for k, a in alvos.items():
         if k in propostos and a["fotos_faltando"]:
             impeditivos.append(f"{a['nome']}: evidência fotográfica obrigatória ausente ou inválida ({', '.join(a['fotos_faltando'])}).")

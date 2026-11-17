@@ -108,11 +108,19 @@ def publico(u, perfis=None):
     perfis = perfis or carregar_perfis()
     p = perfis["perfis"].get(u["perfil"], {})
     return {"id": u["id"], "login": u["login"], "nome": u["nome"], "perfil": u["perfil"], "perfil_nome": p.get("nome", u["perfil"]),
-            "equipe_id": u["equipe_id"], "ativo": u["ativo"], "restrito_a_equipe": bool(p.get("restrito_a_equipe")),
+            "equipe_id": u["equipe_id"], "ativo": u["ativo"], "email": u["email"] if "email" in u.keys() else None,
+            "restrito_a_equipe": bool(p.get("restrito_a_equipe")),
             "permissoes": sorted(permissoes_do_perfil(u["perfil"], perfis)), "telas": sorted(telas_do_perfil(u["perfil"], perfis))}
 
 
-def criar_usuario(conn, login, nome, perfil, senha, equipe_id=None, criado_por="instalação"):
+def validar_email(email):
+    email = str(email or "").strip()
+    if email and (len(email) > 254 or not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", email)):
+        raise R.RegraViolada("Informe um e-mail válido, ou deixe em branco.")
+    return email or None
+
+
+def criar_usuario(conn, login, nome, perfil, senha, equipe_id=None, criado_por="instalação", email=None):
     login = normalizar_login(login)
     if not re.fullmatch(r"[a-z0-9._@+-]{3,64}", login):
         raise R.RegraViolada("Login: de 3 a 64 caracteres — pode ser o seu nome (ex.: gabriel.horta) ou o seu e-mail.")
@@ -130,11 +138,11 @@ def criar_usuario(conn, login, nome, perfil, senha, equipe_id=None, criado_por="
     if _usuario(conn, login):
         raise R.RegraViolada(f"Login '{login}' já existe.")
     return conn.execute(
-        "INSERT INTO usuarios(login,nome,perfil,senha,equipe_id,ativo,criado_em,criado_por) VALUES (?,?,?,?,?,1,?,?)",
-        (login, nome.strip(), perfil, hash_senha(senha), equipe_id, _iso(_agora()), criado_por)).lastrowid
+        "INSERT INTO usuarios(login,nome,perfil,senha,equipe_id,ativo,criado_em,criado_por,email) VALUES (?,?,?,?,?,1,?,?,?)",
+        (login, nome.strip(), perfil, hash_senha(senha), equipe_id, _iso(_agora()), criado_por, validar_email(email))).lastrowid
 
 
-def alterar_usuario(conn, login, por, perfil=None, ativo=None, equipe_id=None, nome=None):
+def alterar_usuario(conn, login, por, perfil=None, ativo=None, equipe_id=None, nome=None, email=None):
     u = _usuario(conn, login)
     if not u:
         raise R.RegraViolada(f"Usuário '{login}' não encontrado.")
@@ -150,8 +158,9 @@ def alterar_usuario(conn, login, por, perfil=None, ativo=None, equipe_id=None, n
         exigir_equipe(conn, nova_equipe, completa=False)
     if u["login"] == str(por).lower() and ativo is not None and not ativo:
         raise R.RegraViolada("Você não pode desativar o próprio usuário.")
-    conn.execute("UPDATE usuarios SET perfil=?, ativo=?, equipe_id=?, nome=? WHERE id=?",
-                 (novo_perfil, u["ativo"] if ativo is None else (1 if ativo else 0), nova_equipe, nome or u["nome"], u["id"]))
+    conn.execute("UPDATE usuarios SET perfil=?, ativo=?, equipe_id=?, nome=?,email=? WHERE id=?",
+                 (novo_perfil, u["ativo"] if ativo is None else (1 if ativo else 0), nova_equipe, nome or u["nome"],
+                  u["email"] if email is None else validar_email(email), u["id"]))
     if ativo is not None and not ativo:
         conn.execute("DELETE FROM sessoes WHERE usuario_id=?", (u["id"],))
 

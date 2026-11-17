@@ -1134,6 +1134,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   nome TEXT NOT NULL,
   perfil TEXT NOT NULL,
   senha TEXT NOT NULL,
+  email TEXT,
   equipe_id TEXT REFERENCES equipes(id),     -- perfil EQUIPE só lança para a própria equipe
   ativo INTEGER NOT NULL DEFAULT 1 CHECK (ativo IN (0,1)),
   criado_em TEXT NOT NULL,
@@ -1256,3 +1257,38 @@ CREATE TABLE IF NOT EXISTS ocorrencia_chuvas (
   turno TEXT NOT NULL CHECK (turno IN ('MANHA','TARDE','DIA_TODO')),
   condicao TEXT NOT NULL CHECK (condicao IN ('CHUVA_FRACA_TENDA','PARALISADO_CHUVA','VALA_ALAGADA_BOMBA'))
 );
+
+-- v28: aceite prévio da Caesb. Não libera a medição oficial (D-56).
+CREATE TABLE IF NOT EXISTS fiscalizacao_envios (
+  id INTEGER PRIMARY KEY,
+  medicao_id INTEGER NOT NULL REFERENCES medicoes(id),
+  enviado_por TEXT NOT NULL, enviado_em TEXT NOT NULL, obs TEXT,
+  email_situacao TEXT, email_detalhe TEXT
+);
+CREATE TABLE IF NOT EXISTS fiscalizacao_linhas (
+  lancamento_id INTEGER PRIMARY KEY REFERENCES medicao_lancamentos(id),
+  medicao_id INTEGER NOT NULL REFERENCES medicoes(id),
+  situacao TEXT NOT NULL CHECK(situacao IN ('AGUARDANDO','ACEITA','REDUZIDA','RECUSADA','CANCELADA')),
+  envio_id INTEGER NOT NULL REFERENCES fiscalizacao_envios(id),
+  quantidade_enviada REAL NOT NULL CHECK(quantidade_enviada>0), quantidade_aceita REAL,
+  quantidade_anterior REAL NOT NULL DEFAULT 0 CHECK(quantidade_anterior>=0),
+  assinatura TEXT NOT NULL, retrato TEXT NOT NULL, motivo TEXT,
+  respondido_por TEXT, respondido_em TEXT, atualizado_em TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fiscalizacao_eventos (
+  id INTEGER PRIMARY KEY,
+  lancamento_id INTEGER NOT NULL REFERENCES medicao_lancamentos(id),
+  medicao_id INTEGER NOT NULL REFERENCES medicoes(id),
+  acao TEXT NOT NULL CHECK(acao IN ('ENVIADA','REENVIADA','ACEITA','REDUZIDA','RECUSADA','REABERTA','CANCELADA')),
+  quantidade REAL, motivo TEXT, por TEXT NOT NULL, nome TEXT NOT NULL, perfil TEXT NOT NULL, em TEXT NOT NULL,
+  retrato TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS fiscalizacao_emails (
+  id INTEGER PRIMARY KEY,
+  medicao_id INTEGER NOT NULL REFERENCES medicoes(id), envio_id INTEGER REFERENCES fiscalizacao_envios(id),
+  acao TEXT NOT NULL, perfil_destino TEXT NOT NULL, linhas INTEGER NOT NULL, valor REAL NOT NULL,
+  situacao TEXT NOT NULL, detalhe TEXT, criado_em TEXT NOT NULL, concluido_em TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_fiscalizacao_med ON fiscalizacao_linhas(medicao_id,situacao);
+CREATE INDEX IF NOT EXISTS ix_fiscalizacao_eventos ON fiscalizacao_eventos(medicao_id,id);
+CREATE INDEX IF NOT EXISTS ix_fiscalizacao_emails ON fiscalizacao_emails(situacao,id);

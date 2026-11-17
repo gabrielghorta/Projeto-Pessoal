@@ -5,7 +5,7 @@ description: Tudo o que é preciso para dar continuidade à obra Morro da Cruz (
 
 # Obra Morro da Cruz — web app, cronograma, contrato Caesb × Ankara e dados do projeto
 
-Estado em **14/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a partir do ramo
+Estado desta entrega em **17/11/2026**. Esquema do banco **v28**. Site no PythonAnywhere a partir do ramo
 `claude/powerbi-modifications-wqxekj` do repositório `gabrielghorta/Projeto-Pessoal` (pasta `morro-da-cruz/`).
 
 ## 0. Como usar esta skill (e retomar numa sessão nova)
@@ -32,7 +32,11 @@ Estado em **14/11/2026**. Esquema do banco **v26**. Site no PythonAnywhere a par
 O assistente (IA conversacional) tem guia próprio no repositório: `morro-da-cruz/docs/ASSISTENTE_IA.md`; o resumo está
 na seção "Assistente" de `references/webapp.md`.
 
-## 1. Estado atual (14/11/2026)
+## 1. Estado atual (17/11/2026)
+
+- **Fiscalização (D-229 e D-230, banco v28):** a Engenharia encaminha as linhas com OK interno. O fiscal vê o
+  Mapa iluminado e responde em Fiscalização. O pacote usa a quantidade aceita, inclusive enquanto o saldo estiver
+  em análise. Soldas verificadas com item contratual entram na proposta. Ver `morro-da-cruz/docs/FISCALIZACAO.md`.
 
 - **Assistente: histórico quase zero e conhecimento por seção (D-226, 15/11/2026):** a conversa não é guardada nem
   enviada; vão a mensagem, o rascunho, as opções da tela e só a última pergunta da IA sem resposta. O que a IA sabe fica

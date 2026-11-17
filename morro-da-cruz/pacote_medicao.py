@@ -85,12 +85,19 @@ def _vertical(conn):
 def quantidades(conn, med):
     """{número da medição: {chave do vertical: quantidade}} do mesmo tipo, até esta (PROPOSTO; item congelado se fechada)."""
     q = defaultdict(lambda: defaultdict(float))
+    import fiscalizacao as F
+    aceites = {}
     for r in conn.execute(
-            """SELECT m.numero, COALESCE(l.item_congelado, b.item) item, l.quantidade
+            """SELECT m.numero,l.id,l.medicao_id, COALESCE(l.item_congelado, b.item) item, l.quantidade
                FROM medicao_lancamentos l JOIN medicoes m ON m.id=l.medicao_id JOIN bm_itens b ON b.id=l.bm_item_id
                WHERE l.status='PROPOSTO' AND m.tipo=? AND m.numero<=? AND b.planilha='VERTICAL'""",
             (med["tipo"], med["numero"])):
-        q[r["numero"]][r["item"]] += r["quantidade"]
+        if r["medicao_id"] not in aceites:
+            aceites[r["medicao_id"]] = F.efetivas(conn, r["medicao_id"])
+        aceitas = aceites[r["medicao_id"]]
+        qtd = r["quantidade"] if aceitas is None else aceitas.get(r["id"], 0)
+        if qtd:
+            q[r["numero"]][r["item"]] += qtd
     return q
 
 
@@ -149,11 +156,15 @@ def _alvo_info(conn, tipo, aid):
 def _linhas_memorial(conn, medicao_id, item, unidade):
     """Uma linha por lançamento PROPOSTO do item: trecho inteiro em metro sai em estacas (20 m) da estaca 0 ao fim."""
     out = []
+    import fiscalizacao as F
+    aceitas = F.efetivas(conn, medicao_id)
     for l in conn.execute(
             """SELECT l.id, l.alvo_tipo, l.alvo_id, l.quantidade FROM medicao_lancamentos l JOIN bm_itens b ON b.id=l.bm_item_id
                WHERE l.medicao_id=? AND l.status='PROPOSTO' AND b.item=? ORDER BY l.id""", (medicao_id, item)):
+        q = l["quantidade"] if aceitas is None else aceitas.get(l["id"], 0)
+        if not q:
+            continue
         info = _alvo_info(conn, l["alvo_tipo"], l["alvo_id"]) if l["alvo_id"] else {"nome": None, "projeto": None, "ref": None}
-        q = l["quantidade"]
         lin = {"lancamento_id": l["id"], "nomenclatura": info["nome"], "projeto": info["projeto"], "ref": info["ref"],
                "quantidade": q, "estacas": None}
         ext = info.get("extensao")
@@ -176,8 +187,12 @@ def _linhas_memorial(conn, medicao_id, item, unidade):
                         ((info.get("descricao") or "") + ". " + MC.resumo_parte(parte, unidade)).upper()))
             diferenca = sum(p["quantidade"] for p in calculo["parcelas"]) - q
             if abs(diferenca) > 1e-9:
-                ref = ("ARREDONDAMENTO DA QUANTIDADE (4 CASAS)" if abs(calculo["quantidade"] - q) < 0.00005 else
-                       "PARCELA FORA DESTA MEDIÇÃO (saldo do contrato)")
+                if q < l["quantidade"]:
+                    ref = "PARCELA FORA DESTA MEDIÇÃO (aceite parcial da fiscalização)"
+                elif abs(calculo["quantidade"] - q) < 0.00005:
+                    ref = "ARREDONDAMENTO DA QUANTIDADE (4 CASAS)"
+                else:
+                    ref = "PARCELA FORA DESTA MEDIÇÃO (saldo do contrato)"
                 out.append(dict(lin, ref=ref, quantidade=-diferenca,
                                 ajuste=True))
         else:
@@ -231,6 +246,8 @@ def folhas(conn, medicao_id):
     """As folhas da nª MC: itens com quantidade proposta na medição, na ordem do BM vertical, com as fotos (escolhidas
     ou sugeridas), a justificativa, o acumulado e a marca de aditivo pendente (acima de 100 % do contrato)."""
     med = _medicao(conn, medicao_id)
+    import fiscalizacao as F
+    aceitas = F.efetivas(conn, medicao_id)
     vert = _vertical(conn)
     q = quantidades(conn, med)
     esc = _escolhas(conn, medicao_id)
@@ -243,12 +260,11 @@ def folhas(conn, medicao_id):
         if k == CHAVE_ADM or k not in vert or abs(q[med["numero"]][k]) < 1e-12:
             continue
         b = vert[k]
-        alvos = [(r[0], r[1]) for r in conn.execute(
-            """SELECT DISTINCT l.alvo_tipo, l.alvo_id FROM medicao_lancamentos l WHERE l.medicao_id=? AND l.status='PROPOSTO'
-               AND l.bm_item_id=? AND l.alvo_tipo IN ('TRECHO','ATIVIDADE')""", (medicao_id, b["id"]))]
-        aps = [r[0] for r in conn.execute(
-            """SELECT DISTINCT l.alvo_id FROM medicao_lancamentos l WHERE l.medicao_id=? AND l.status='PROPOSTO'
-               AND l.bm_item_id=? AND l.alvo_tipo='APROPRIACAO'""", (medicao_id, b["id"]))]
+        origens = [dict(r) for r in conn.execute("SELECT id,alvo_tipo,alvo_id FROM medicao_lancamentos "
+                   "WHERE medicao_id=? AND status='PROPOSTO' AND bm_item_id=?", (medicao_id, b["id"]))
+                   if aceitas is None or aceitas.get(r["id"], 0)>0]
+        alvos = list({(r["alvo_tipo"],r["alvo_id"]) for r in origens if r["alvo_tipo"] in ("TRECHO","ATIVIDADE")})
+        aps = list({r["alvo_id"] for r in origens if r["alvo_tipo"] == "APROPRIACAO"})
         cand = _candidatas(conn, alvos) + _candidatas_apropriacao(conn, aps)
         cand.sort(key=lambda f: (f["data_hora"] or "", f["id"]), reverse=True)
         e = esc.get(k) or {}
@@ -527,6 +543,9 @@ def gerar(conn, medicao_id, dir_fotos=None, modelo=None):
         for nome, _ in p.abas():
             p.aba(nome).cabecalho(f"{MARCA} · {n}ª MEDIÇÃO")
         _aba_avisos(p, r, hoje)
+    import fiscalizacao as F
+    if F.ativo(conn, medicao_id):
+        _aba_fora_do_aceite(p, F.fora_do_aceite(conn, medicao_id))
     p.renomear_aba(MC, aba_mc)
     p.recalcular_ao_abrir()
     p.por_texto("docProps/app.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns='
@@ -866,6 +885,31 @@ def _reajuste_preencher(p, n, teste):
         aba.numero(f"E{lin}", 0)
         aba.numero(f"F{lin}", 0)
         aba.texto(f"I{lin}", "NÃO PEDIDO NESTA MEDIÇÃO (R$ 0,00)")
+
+
+def _aba_fora_do_aceite(p, linhas):
+    """Lista separada, sem alimentar fórmulas de faturamento ou alterar o modelo do BM."""
+    titulos = ["Lançamento", "Item BM", "Alvo", "Situação", "Quantidade fora", "Unidade", "Motivo"]
+    rows = [titulos] + [[l["id"], l["item"], l["alvo_nome"], l["situacao"], l["quantidade_fora"], l["unidade"],
+                         l["motivo_fora"]] for l in linhas]
+    def celula(ref, valor):
+        if isinstance(valor, (int, float)):
+            return f'<c r="{ref}"><v>{valor}</v></c>'
+        texto = X.escape(str(valor or ""))
+        return f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">{texto}</t></is></c>'
+    corpo = "".join(f'<row r="{i}">' + "".join(celula(f"{X.get_column_letter(j)}{i}", v)
+                    for j, v in enumerate(row, 1)) + "</row>" for i, row in enumerate(rows, 1))
+    xml = ('<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+           '<cols><col min="1" max="2" width="18" customWidth="1"/><col min="3" max="3" width="40" customWidth="1"/>'
+           '<col min="4" max="6" width="20" customWidth="1"/><col min="7" max="7" width="85" customWidth="1"/></cols>'
+           f'<sheetData>{corpo}</sheetData></worksheet>')
+    nums = [int(x) for x in re.findall(r"xl/worksheets/sheet(\d+)\.xml", " ".join(p.partes))]
+    parte = f"xl/worksheets/sheet{max(nums)+1}.xml"
+    p.por_texto(parte, xml, "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")
+    rid = p.relacionar("xl/workbook.xml", "worksheet", parte)
+    wb = p.texto("xl/workbook.xml")
+    sid = max(int(x) for x in re.findall(r'sheetId="(\d+)"', wb))+1
+    p.por_texto("xl/workbook.xml", wb.replace("</sheets>", f'<sheet name="Fora do aceite" sheetId="{sid}" r:id="{rid}"/></sheets>'))
 
 
 def _aba_avisos(p, r, hoje):

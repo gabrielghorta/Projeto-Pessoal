@@ -28,7 +28,8 @@ import servicos as S  # noqa: E402
 PASTA = os.path.join(caminhos.PASTA, "dados_demo")
 DB = os.path.join(PASTA, "obra.db")
 SENHA = "demo-morro-123"
-USUARIOS = (("admin.demo", "Administração (demo)", "ADMINISTRACAO", None),
+USUARIOS = (("fiscal.demo", "Fiscalização (demo)", "FISCALIZACAO", None),
+            ("admin.demo", "Administração (demo)", "ADMINISTRACAO", None),
             ("eng.demo", "Engenharia (demo)", "ENGENHARIA", None),
             ("eng2.demo", "Engenharia 2 (demo)", "ENGENHARIA", None),
             ("almox.demo", "Almoxarifado (demo)", "ALMOXARIFADO", None),

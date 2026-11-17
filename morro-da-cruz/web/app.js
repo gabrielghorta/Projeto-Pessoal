@@ -153,6 +153,7 @@ aplicarTema(document.documentElement.dataset.tema === 'claro' ? 'claro' : 'escur
 // o menu (D-199): 4 abas (Mapa iluminado, Execução, Almoxarifado, Administrativo), 11 subabas e as páginas de cada uma.
 // "inclui": telas de permissão (config/perfis.json) que viraram página desta subaba; quem abre uma delas abre a subaba
 const TELAS = {
+  fiscalizacao: { titulo: 'Fiscalização', carregar: () => carregarFiscalizacao() },
   inicio: { titulo: 'Início', carregar: () => renderInicio() },
   assistente: { titulo: 'Assistente', carregar: () => carregarAssistente() },      // D-219: todo login conversa
   iluminado: { titulo: 'Mapa iluminado', carregar: () => carregarIluminado() },
@@ -174,7 +175,8 @@ const TELAS = {
 };
 const GRUPOS = { 'grupo-campo': 'Execução', planejamento: 'Almoxarifado', administrativo: 'Administrativo' };
 // telas que o perfil abre (config/perfis.json); o servidor confere de novo em cada consulta
-const podeTela = id => id === 'inicio' || id === 'assistente' || !!(USUARIO && USUARIO.telas.includes(id));
+const podeTela = id => USUARIO?.perfil === 'FISCALIZACAO' ? USUARIO.telas.includes(id)
+  : id === 'inicio' || id === 'assistente' || !!(USUARIO && USUARIO.telas.includes(id));
 // a subaba abre para quem abre ela ou uma das telas que viraram página dela
 const podeAba = id => podeTela(id) || ((TELAS[id] || {}).inclui || []).some(podeTela);
 const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeAba(t));
@@ -193,6 +195,7 @@ const TELAS_ANTIGAS = {
 // páginas dentro de uma subaba: chips no topo, a página no endereço (#notas/topografia), com voltar e avançar, e
 // lembrada por subaba na sessão. Cada página diz quem a usa; a subaba abre na pedida, na lembrada ou na primeira do perfil
 const PAGINAS = {
+  fiscalizacao: [['painel', 'Painel do mês', () => true], ['pronto', 'Pronto para medir', () => pode('fiscalizacao_enviar')], ['aprovar', 'Para aprovar', () => true], ['historico', 'Respostas e histórico', () => true]],
   campo: [['apropriacao', 'Apropriação direta', () => pode('apropriacao')], ['apontamento', 'Apontamento sem NS', () => pode('lancar_sem_ns')],
     ['fotos', 'Fotos e soldas', () => podeTela('campo') && pode('campo')],
     ['interferencia', 'Interferências e chuva', () => podeTela('interferencias')]],
@@ -217,7 +220,8 @@ function paginaDe(tela, pedida) {
   const ps = paginasDe(tela).map(p => p[0]); if (!ps.length) return null;
   let lembrada = null; try { lembrada = sessionStorage.getItem('mc-pagina-' + tela); } catch (_) { /* sem storage */ }
   if (tela === 'campo') { if (pedida === 'clima') pedida = 'interferencia'; if (lembrada === 'clima') lembrada = 'interferencia'; }
-  return [pedida, lembrada].find(p => p && ps.includes(p)) || ps[0];
+  const inicial = tela === 'fiscalizacao' ? (pode('fiscalizacao_responder') ? 'aprovar' : 'pronto') : ps[0];
+  return [pedida, lembrada].find(p => p && ps.includes(p)) || inicial;
 }
 function mostrarPagina(tela, pag) {
   PAGINA[tela] = pag;
@@ -236,7 +240,7 @@ function abrirAba(id, opcoes = {}) {
   id = base;
   if (TELAS_ANTIGAS[id]) { toast(TELAS_ANTIGAS[id][1]); [id, pedida] = TELAS_ANTIGAS[id][0].split('/'); opcoes = { ...opcoes, substituir: true }; }
   if (GRUPOS[id]) id = telasDoGrupo(id)[0];          // o grupo abre a primeira subaba dele que o perfil usa
-  if (!TELAS[id] || !podeAba(id)) id = 'inicio';
+  if (!TELAS[id] || !podeAba(id)) id = USUARIO?.perfil === 'FISCALIZACAO' ? 'fiscalizacao' : 'inicio';
   TELA = id;
   document.body.classList.toggle('no-inicio', id === 'inicio');
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
@@ -289,6 +293,7 @@ document.addEventListener('keydown', ev => { if (ev.key === 'Escape') fecharMenu
 
 /* ---------------------------------------------------------------- tela inicial: o Menu de cada perfil */
 const MODOS = {
+  fiscalizacao: { nome: 'Fiscalização', desc: 'Aceite prévio da Caesb. Envie, confira as respostas e acompanhe a medição.' },
   iluminado: { nome: 'Mapa iluminado', desc: 'A rede trecho a trecho e onde cada equipe está trabalhando: liberado, em execução, concluído e cadastrado.' },
   'grupo-campo': { nome: 'Execução', desc: 'O serviço em campo: o lançamento do dia (apropriação, apontamento, fotos, clima e interferência), as notas de serviço, a topografia, o cadastro e o diário de obra.' },
   planejamento: { nome: 'Almoxarifado', desc: 'A programação do dia de cada equipe no mapa (programar, liberar o material e receber a devolução), o estoque (o dia, receber, saldo, inventário e tubos da Caesb) e as compras (requisições, notas fiscais e fornecedores).' },
@@ -296,12 +301,13 @@ const MODOS = {
 };
 // a ordem do Menu segue o trabalho de cada perfil; o que o perfil não abre fica de fora
 const MENU_PERFIL = {
-  ENGENHARIA: ['iluminado', 'administrativo', 'planejamento', 'grupo-campo'],
-  ADMINISTRACAO: ['iluminado', 'administrativo', 'planejamento', 'grupo-campo'],
+  FISCALIZACAO: ['iluminado', 'fiscalizacao'],
+  ENGENHARIA: ['iluminado', 'administrativo', 'planejamento', 'grupo-campo', 'fiscalizacao'],
+  ADMINISTRACAO: ['iluminado', 'administrativo', 'planejamento', 'grupo-campo', 'fiscalizacao'],
   ALMOXARIFADO: ['planejamento', 'grupo-campo', 'iluminado'], CADASTRO: ['grupo-campo', 'administrativo', 'iluminado'],
   TOPOGRAFIA: ['grupo-campo', 'iluminado'],
 };
-const ORDEM_MENU = ['iluminado', 'administrativo', 'planejamento', 'grupo-campo'];
+const ORDEM_MENU = ['iluminado', 'administrativo', 'planejamento', 'grupo-campo', 'fiscalizacao'];
 const abreModo = id => GRUPOS[id] ? telasDoGrupo(id).length > 0 : podeTela(id);
 let MENU_FOCO = null;
 const iniciais = n => (String(n || '').replace(/\(.*?\)/g, '').replace(/[^\p{L}\s]/gu, '').trim().split(/\s+/).filter(Boolean)
@@ -1259,6 +1265,7 @@ async function carregarMedicao() {
   $('#medResumo').innerHTML = (r.teste ? `<div class="aviso problema"><b>MEDIÇÃO DE TESTE — NÃO OFICIAL.</b> Regras financeiras e controle de acesso ainda não validados; o pacote no modelo oficial do BM sai marcado TESTE.</div>` : '')
     + ((r.hipoteses || []).length ? `<div class="aviso info"><b>Simulação com hipóteses não validadas:</b><ul style="margin:4px 0 0 18px">${r.hipoteses.map(h => `<li>${esc(h)}</li>`).join('')}</ul></div>` : '')
     + (r.congelada ? `<div class="aviso info"><b>Medição fechada — valores congelados no fechamento.</b>${r.alerta_recalculo ? ' ' + esc(r.alerta_recalculo) : ''}</div>` : '') + `<div class="kpis">${Object.entries(r.gavetas).map(([g, d]) => `<div class="kpi"><span>Gaveta ${g} — ${esc(d.nome)}</span><b>${brl(d.valor)}</b></div>`).join('')}</div>
+    <div class="kpis"><div class="kpi"><span>Proposto (OK interno) · P0 sem ADM</span><b>${brl(r.valor_pi)}</b></div><div class="kpi"><span>Aceito pela fiscalização · P0 sem ADM</span><b>${r.fiscalizacao.controlada ? brl(r.fiscalizacao.totais.aceito.valor) : 'Sem envio'}</b></div></div>
     <table style="max-width:560px;margin-bottom:12px">
       <tr><td>Σ material / Σ serviço (ROUND por item, s/ BDI)</td><td class="n">${brl(r.totalizacao.material)} / ${brl(r.totalizacao.servico)}</td></tr>
       <tr><td>Subtotal P0 = (Σ + BDI por classe) × (1 + K)</td><td class="n">${brl(r.valor_pi)}</td></tr>
@@ -1496,8 +1503,9 @@ async function carregarAdmin() {
   if (pode('usuarios')) {
     const us = await api('/api/usuarios');
     $('#selPerfil').innerHTML = Object.entries(RESUMO.perfis).map(([k, p]) => `<option value="${k}">${esc(p.nome)}</option>`).join('');
-    $('#usuariosLista').innerHTML = `<table><thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Equipe</th><th></th></tr></thead><tbody>${us.map(u => `<tr${u.ativo ? '' : ' style="opacity:.5"'}>
+    $('#usuariosLista').innerHTML = `<table><thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Equipe</th><th>E-mail para avisos</th><th></th></tr></thead><tbody>${us.map(u => `<tr${u.ativo ? '' : ' style="opacity:.5"'}>
       <td>${esc(u.login)}</td><td>${esc(u.nome)}</td><td>${esc(u.perfil_nome)}</td><td>${esc(u.equipe_id || '')}</td>
+      <td><form class="acoes" data-usr-email="${esc(u.login)}"><input type="email" name="email" aria-label="E-mail de ${esc(u.login)}" maxlength="254" value="${esc(u.email || '')}"><button class="btn">Salvar e-mail</button></form></td>
       <td>${u.login === USUARIO.login ? '' : `<div class="acoes"><button type="button" class="btn" data-usr-ativo="${esc(u.login)}" data-v="${u.ativo ? 0 : 1}">${u.ativo ? 'Desativar' : 'Reativar'}</button><button type="button" class="btn" data-usr-senha="${esc(u.login)}">Nova senha</button>${u.tem_historico ? '' : `<button type="button" class="btn" data-usr-excluir="${esc(u.login)}">Excluir</button>`}</div>`}</td></tr>`).join('')}</tbody></table>
       <p class="vazio" style="margin:6px 0 0">Excluir aparece só para a conta que nunca registrou nada (criada por engano). Quem já tem histórico é desativado: perde o acesso e o histórico fica.</p>`;
   }
@@ -1520,6 +1528,12 @@ $('#fUsuario').addEventListener('submit', async ev => {
   ev.preventDefault(); const o = formObj(ev.target);
   const r = await acao(() => api('/api/usuarios', { acao: 'criar', ...o }), 'Usuário criado.').catch(() => null);
   if (r) { ev.target.reset(); carregarAdmin(); }
+});
+$('#usuariosLista').addEventListener('submit', async ev => {
+  const f = ev.target.closest('[data-usr-email]');
+  if (!f) return;
+  ev.preventDefault();
+  await acao(() => api('/api/usuarios', { acao: 'alterar', login: f.dataset.usrEmail, email: f.email.value }), 'E-mail salvo.').catch(() => null);
 });
 document.addEventListener('click', async ev => {
   const a = ev.target.closest('[data-usr-ativo]'), s = ev.target.closest('[data-usr-senha]'), x = ev.target.closest('[data-usr-excluir]');
@@ -2080,7 +2094,8 @@ function aplicarPermissoes() {
   $('#railAvatar').textContent = $('#inicioAvatar').textContent = iniciais(USUARIO.nome);
   $('.rail-quem').title = `${USUARIO.nome} (${USUARIO.login})`;
   $('#sairBtn').hidden = $('#senhaBtn').hidden = false;
-  $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO;
+  $('#faixaDemo').hidden = $('#inicioPe').hidden = !DEMONSTRACAO || USUARIO.perfil === 'FISCALIZACAO';
+  document.body.classList.toggle('perfil-fiscal', USUARIO.perfil === 'FISCALIZACAO');
   // a tela só indica o que o perfil pode fazer; quem decide é o servidor (403)
   $$('[data-perm]').forEach(el => { const ok = el.dataset.perm.split(' ').some(pode); el.toggleAttribute('data-sem-permissao', !ok); el.title = ok ? '' : 'Seu perfil não tem esta permissão'; });
   // o menu mostra só as subabas do perfil: o encarregado vê Mapa, Execução e Compras › Requisições; o almoxarife, também o Almoxarifado
@@ -2100,6 +2115,7 @@ async function iniciar() {
   }
   aplicarPermissoes();
   carregarLink();
+  if (podeTela('fiscalizacao')) atualizarContadorFiscal().catch(() => {});
   if (INICIADO) return;
   INICIADO = true;
   RESUMO = await api('/api/resumo');
@@ -2108,6 +2124,6 @@ async function iniciar() {
   $$('input[type=date]').forEach(i => { if (!i.value && i.id !== 'ndDia' && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   if (podeTela('medicao')) { const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }
   abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });
-  setTimeout(() => driveEmSegundoPlano(), 4000);   // o que ficou na fila (sem rede, sem conexão) sobe agora
+  if (USUARIO.perfil !== 'FISCALIZACAO') setTimeout(() => driveEmSegundoPlano(), 4000);
 }
-iniciar();
+window.addEventListener('DOMContentLoaded', iniciar, { once: true });

@@ -33,6 +33,7 @@ def main(argv=None):
     ap.add_argument("acao", choices=["criar", "listar", "senha", "desativar", "reativar", "perfis"])
     ap.add_argument("--db", default=S.DB_PADRAO)
     ap.add_argument("--login")
+    ap.add_argument("--email", help="E-mail opcional para avisos da fiscalização")
     ap.add_argument("--nome")
     ap.add_argument("--perfil")
     ap.add_argument("--equipe")
@@ -53,7 +54,7 @@ def main(argv=None):
         if a.acao == "criar":
             if not a.nome or not a.perfil:
                 raise SystemExit("Informe --nome e --perfil (veja: python usuarios.py perfis).")
-            A.criar_usuario(conn, a.login, a.nome, a.perfil, _senha(), a.equipe, criado_por="usuarios.py (servidor)")
+            A.criar_usuario(conn, a.login, a.nome, a.perfil, _senha(), a.equipe, criado_por="usuarios.py (servidor)", email=a.email)
             print(f"Usuário {a.login} criado ({a.perfil}).")
         elif a.acao == "senha":
             A.redefinir_senha(conn, a.login, _senha())

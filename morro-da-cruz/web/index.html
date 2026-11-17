@@ -49,6 +49,7 @@
         <button type="button" class="rail-item sub" data-tela="notas" title="Notas de serviço"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3"/></svg><span class="rail-rot">Notas de serviço</span></button>
         <button type="button" class="rail-item sub" data-tela="diario" title="Diário de obra"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4"/></svg><span class="rail-rot">Diário de obra</span></button>
       </div>
+      <button type="button" class="rail-item" data-tela="fiscalizacao" title="Fiscalização"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6"/></svg><span class="rail-rot">Fiscalização</span><span id="fiscalContador" class="fiscal-contador" hidden aria-label="Pendências da fiscalização"></span></button>
   </div>
   <div class="rail-pe">
     <div class="rail-quem"><span class="avatar" id="railAvatar" aria-hidden="true"></span><span class="rail-rot"><b id="quemNome"></b><small id="quemPerfil"></small></span></div>
@@ -141,6 +142,25 @@
       <aside class="ilu-ficha" id="iluFicha" hidden aria-live="polite"></aside>
       <div class="ilu-aviso" id="iluAviso" hidden></div>
     </div>
+  </section>
+
+  <!-- ======================================================= FISCALIZAÇÃO -->
+  <section class="aba" id="aba-fiscalizacao">
+    <header class="cab-tela"><h1>Fiscalização</h1><p>Aceite prévio da Caesb, linha a linha da medição.</p></header>
+    <div class="aviso info fiscal-aviso">Aceite prévio da fiscalização. O documento oficial é o BM assinado e protocolado.</div>
+    <div class="linha fiscal-seletor"><label>Medição<select id="fiscalMedicao" aria-label="Medição da fiscalização"></select></label><span id="fiscalEstado" class="chip"></span></div>
+    <div class="abas-chip grandes paginas-aba" role="group" aria-label="Páginas da Fiscalização"></div>
+    <div id="fiscalVazio" class="vazio" hidden></div>
+    <div data-pagina="painel" hidden><div id="fiscalKpis" class="kpis"></div><div class="painel"><h3>Por item do BM</h3><div id="fiscalItens"></div></div><div id="fiscalEmails" class="fiscal-email"></div></div>
+    <div data-pagina="pronto" hidden>
+      <div class="painel fiscal-envio" data-perm="fiscalizacao_enviar"><h3>Pronto para medir</h3><p class="vazio">OK interno da Ankara. Do maior para o menor valor, com BDI e K. A administração local entra proporcionalmente.</p>
+        <div class="fiscal-enviar"><label>Observação do envio (opcional)<textarea id="fiscalObs" rows="2" maxlength="4000"></textarea></label><div class="acoes"><b id="fiscalTotalSelecionado">R$ 0,00 selecionados</b><button type="button" class="btn prim" id="fiscalEnviar" data-perm="fiscalizacao_enviar">Enviar à fiscalização</button></div></div>
+        <label class="fiscal-selecao"><input type="checkbox" id="fiscalSelecionarProntas"> Selecionar todas as prontas</label>
+        <div id="fiscalProntas" class="fiscal-lista"></div>
+      </div><div class="painel"><h3>Ainda não dá para enviar</h3><div id="fiscalPendentes"></div></div>
+    </div>
+    <div data-pagina="aprovar" hidden><div class="painel"><h3>Para aprovar</h3><p id="fiscalAprovarDescricao" class="vazio"></p><div id="fiscalAceiteLote" class="acoes" data-perm="fiscalizacao_responder"><label class="fiscal-selecao"><input type="checkbox" id="fiscalSelecionarPendentes"> Selecionar todas</label><button type="button" class="btn prim" id="fiscalAceitarSelecionadas" data-perm="fiscalizacao_responder">Aceitar selecionadas</button></div><div id="fiscalAprovar" class="fiscal-lista"></div></div></div>
+    <div data-pagina="historico" hidden><div class="painel"><h3 id="fiscalRetornoTitulo">Recusadas e ajustes</h3><div id="fiscalRetornos" class="fiscal-lista"></div></div><div class="painel"><h3>Histórico de decisões</h3><p class="vazio">Nome, perfil e horário de Brasília. As decisões anteriores permanecem registradas.</p><ol id="fiscalHistorico" class="fiscal-historico"></ol></div></div>
   </section>
 
   <!-- ======================================================= EXECUÇÃO: LANÇAMENTO DO DIA (o lançamento solto, sem nota de serviço) -->
@@ -823,6 +843,7 @@
         <form id="fUsuario" data-perm="usuarios" class="form" style="margin-top:10px">
           <div class="linha"><label>Login<input name="login" required></label><label>Nome<input name="nome" required></label></div>
           <div class="linha"><label>Perfil<select name="perfil" id="selPerfil" required></select></label><label>Equipe (perfil Equipe)<select name="equipe_id" class="selEquipe"></select></label></div>
+          <label>E-mail para avisos (opcional)<input name="email" type="email" maxlength="254" autocomplete="email"></label>
           <label>Senha inicial (mín. 10)<input name="senha" type="password" autocomplete="new-password" required></label>
           <div class="acoes"><button class="btn prim">Criar usuário</button></div>
         </form>
@@ -1029,6 +1050,7 @@
   </form>
 </div>
 <div id="toast" role="status"></div>
+<dialog id="fiscalFicha" class="fiscal-dialog" aria-labelledby="fiscalFichaTitulo"><div class="fiscal-dialog-topo"><h2 id="fiscalFichaTitulo">Ficha da obra</h2><button type="button" class="btn" id="fiscalFecharFicha" aria-label="Fechar ficha">Fechar</button></div><div id="fiscalFichaConteudo"></div></dialog>
 <script src="/app.js"></script>
 <script src="/equipes.js"></script>
 <script src="/solicitacoes.js"></script>
@@ -1038,5 +1060,6 @@
 <script src="/notas.js"></script>
 <script src="/apropriacao.js"></script>
 <script src="/assistente.js"></script>
+<script src="/fiscalizacao.js"></script>
 </body>
 </html>

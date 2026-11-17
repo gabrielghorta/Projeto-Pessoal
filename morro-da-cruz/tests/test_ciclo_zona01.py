@@ -364,8 +364,8 @@ class CicloZona01(unittest.TestCase):
         lanc = [l for g in r["gavetas"].values() for l in g["lancamentos"]]
         ass = sum(l["quantidade"] for l in lanc if l["servico"] == "ASSENTAMENTO" and l["status"] == "PROPOSTO")
         self.assertAlmostEqual(ass, self.L, places=3)                                            # 28 + resto, sem os 2 m do erro
-        solda = [l for l in lanc if l["servico"] == "SOLDA"]
-        self.assertEqual([(l["quantidade"], l["status"]) for l in solda], [(4.0, "PENDENTE")])
+        solda = [l for l in lanc if l["servico"] == "SOLDA ELETROFUSAO DE63"]
+        self.assertEqual([(l["quantidade"], l["status"], l["item"]) for l in solda], [(4.0, "PROPOSTO", "2.2_5.8.47")])
         self.assertGreater(r["pendentes"], 0)
         self.assertTrue(r["teste"])
         el = self.get(f"/api/medicao/elegibilidade?id={mid}")
@@ -382,7 +382,7 @@ class CicloZona01(unittest.TestCase):
         self.assertEqual(self.q("SELECT tipo, status, fechada_por FROM medicoes"), [("TESTE", "FECHADA", "eng2")])
         self.assertEqual(self.q("SELECT valor FROM parametros WHERE chave='medicao_oficial_liberada'") or [("NAO",)], [("NAO",)])
         self.assertEqual(self.q("SELECT etapa FROM cadastro WHERE trecho_id=?", self.tid), [("1_PRONTO",)])
-        self.ev["9_medicao"] = {"assentamento_proposto_m": round(ass, 3), "solda": "4 aprovadas, PENDENTE (D-31)",
+        self.ev["9_medicao"] = {"assentamento_proposto_m": round(ass, 3), "solda": "4 aprovadas, PROPOSTO no item 2.2_5.8.47",
                                 "pendentes": r["pendentes"], "propostos": sum(1 for l in lanc if l["status"] == "PROPOSTO"),
                                 "valor_pi_teste": r["valor_pi"], "total_teste": r["valor_total"], "conferencia": "CONFORME por eng2",
                                 "status": "FECHADA (TESTE)", "regras_bloqueadas": sorted({x["decisao"] for x in r["regras"]

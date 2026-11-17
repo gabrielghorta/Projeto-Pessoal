@@ -184,7 +184,7 @@ class TestTopografia(BaseReal):
         self.ok(self.cli("eng1").post("/api/ns/anular", {"ns_id": nid, "motivo": "NS refeita pela topografia"}))
         self.assertEqual(self.n("etapas_complementares", "anulado_em IS NULL"), 0)
         self.assertEqual(self.n("etapas_complementares"), 3)                 # nada apagado
-        self.assertIn("NS 012 anulada: NS refeita",
+        self.assertIn("NS 012 fl. 01/01 anulada: NS refeita",
                       self.c.execute("SELECT anulado_motivo FROM etapas_complementares LIMIT 1").fetchone()[0])
         r = self.ok(self.registrar("eng1", "TOPOGRAFIA", outra))             # depois de anular, a nova entra
         self.assertEqual(r["gravado_m"], 277.99)

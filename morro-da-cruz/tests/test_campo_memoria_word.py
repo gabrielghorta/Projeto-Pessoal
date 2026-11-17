@@ -151,7 +151,7 @@ class TestMemoriaNaOrigem(BaseAp):
         c.execute('DROP TABLE ocorrencia_chuvas');c.execute('DELETE FROM schema_versao')
         c.execute("INSERT INTO schema_versao VALUES (25,'2026-11-05','estado anterior')");c.close()
         rel=importar.aplicar(self.db,I.DIR_PLANILHAS,cfg=cfg_teste_real(),dir_relatorios=os.path.join(self.tmp,'mig26'))
-        self.assertEqual((rel['esquema_antes'],rel['esquema_depois']),(25,26))
+        self.assertEqual((rel['esquema_antes'],rel['esquema_depois']),(25,S.VERSAO_ESQUEMA))
         b=AP.resumo(self.c,a['id']);self.assertEqual((b['quantidade'],b['memoria_calculo']),(a['quantidade'],a['memoria_calculo']))
         self.assertIsNone(b['calculo']);self.assertEqual(len(b['documentos']),1)
         self.assertEqual(self.c.execute('PRAGMA foreign_key_check').fetchall(),[])
