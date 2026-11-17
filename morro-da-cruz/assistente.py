@@ -309,7 +309,8 @@ def _equipe(conn, usuario, texto):
 
 
 def rotulo_material(m):
-    return m["nome"] + (" · tubo fornecido pela Caesb" if m.get("caesb") else "")
+    """O nome do material como o pessoal fala. Todo tubo vem da Caesb: a origem não aparece (o responsável, 17/11/2026)."""
+    return m["nome"]
 
 
 def buscar_materiais(conn, texto, limite=8):
@@ -336,14 +337,12 @@ def buscar_materiais(conn, texto, limite=8):
             else:
                 break
         else:
-            igual = (m["nome"], m["descricao"], m["caesb"])
-            if igual not in vistos:
-                vistos.add(igual)
-                out.append((-no_nome, -pontos, len(m["nome"]), m["nome"], m))
-    out.sort(key=lambda x: x[:4])
+            out.append((-no_nome, -pontos, not m["caesb"], len(m["nome"]), m["nome"], m))
+    out.sort(key=lambda x: x[:5])                                           # mesmo nome: o da Caesb primeiro
+    out = [x for x in out if not (x[4] in vistos or vistos.add(x[4]))]     # um material por nome
     if out and -out[0][0] == len(palavras):                                 # alguém casou tudo pelo nome: só esses
         out = [x for x in out if x[0] == out[0][0]]
-    return [x[4] for x in out[:limite]]
+    return [x[5] for x in out[:limite]]
 
 
 def buscar_orcamento(conn, texto, grupo=None, limite=8):
@@ -470,24 +469,52 @@ def ve_estoque(usuario):
     return bool(set(TELAS_ESTOQUE) & set(usuario["telas"]))
 
 
+def _qtd(valor, unidade_nome):
+    """'70.439,31 metros', '1 metro', '48 unidades'."""
+    return f"{R.fmt_num(valor, 2)} {_plural(unidade_nome, valor) if abs(valor - 1) < 1e-9 else unidade_nome}"
+
+
 def saldo_estoque(conn, usuario, texto):
-    """O saldo agora no almoxarifado de um material (servicos.saldo_almox e reservado), só para quem abre o estoque.
-    Mesma conta da tela Estoque: disponível = físico − reservas."""
+    """Quanto tem de um material, só para quem abre o estoque. É o total pelo nome (todos os materiais com aquele nome,
+    sem dizer a origem: todo tubo vem da Caesb), com a mesma conta da tela Estoque: no almoxarifado (servicos.saldo_almox)
+    e, se houver, o reservado, o que está com as equipes e o que espera a inspeção. A frase sai pronta do sistema."""
     if not ve_estoque(usuario):
-        return {"erro": "Este login não vê o estoque: o almoxarifado informa o saldo."}
+        return {"erro": "Este login não vê o estoque.", "fala": "Seu perfil não vê o estoque: o almoxarifado informa o saldo."}
     achados = buscar_materiais(conn, texto, limite=5)
     if not achados:
-        return {"materiais": [], "dica": "nada achado no catálogo: tente outras palavras (ex.: 'luva 63')"}
+        return {"materiais": [], "fala": f"Não achei “{_limpo(texto, 60)}” entre os materiais. Diga o nome e a bitola, por exemplo: luva 63."}
+    catalogo = SOL.catalogo(conn)
     out = []
     for m in achados:
-        fisico, quarentena = S.saldo_almox(conn, m["id"])
-        reservado = S.reservado(conn, m["id"])
-        item = {"material": rotulo_material(m), "unidade": m["unidade_nome"], "no_almoxarifado": round(fisico, 3),
-                "reservado": round(reservado, 3), "disponivel": round(fisico - reservado, 3)}
-        if quarentena:
-            item["em_quarentena"] = round(quarentena, 3)
-        out.append(item)
-    return {"materiais": out, "faca": "responda com os números; se vier mais de um material, diga cada um"}
+        ids = [x["id"] for x in catalogo if x["nome"] == m["nome"]]
+        fisico = quarentena = reservado = com_equipes = 0.0
+        for mid in ids:
+            f, q = S.saldo_almox(conn, mid)
+            fisico, quarentena, reservado = fisico + f, quarentena + q, reservado + S.reservado(conn, mid)
+            com_equipes += conn.execute(f"SELECT {S.CUSTODIA_SQL} FROM movimentos WHERE material_id=? AND checkin_id IS NOT NULL "
+                                        f"AND {S.VALIDO}", (mid,)).fetchone()[0]
+        out.append({"material": m["nome"], "unidade": m["unidade_nome"], "no_almoxarifado": round(fisico, 3),
+                    "reservado": round(reservado, 3), "disponivel": round(fisico - reservado, 3),
+                    "com_as_equipes": round(com_equipes, 3), "em_quarentena": round(quarentena, 3)})
+    frases, zerados = [], []
+    for it in out:
+        un = it["unidade"]
+        if not any(it[k] > 1e-9 for k in ("no_almoxarifado", "com_as_equipes", "em_quarentena")):
+            zerados.append(it["material"])
+            continue
+        f = f"{it['material']}: {_qtd(it['no_almoxarifado'], un)} no almoxarifado"
+        if it["reservado"] > 1e-9:
+            f += f", {R.fmt_num(it['reservado'], 2)} já reservados (livres: {R.fmt_num(it['disponivel'], 2)})"
+        if it["com_as_equipes"] > 1e-9:
+            f += f"; mais {_qtd(it['com_as_equipes'], un)} com as equipes"
+        if it["em_quarentena"] > 1e-9:
+            f += f"; {_qtd(it['em_quarentena'], un)} esperando inspeção"
+        frases.append(f + ".")
+    if not frases:
+        fala = "Não há " + " nem ".join(zerados[:3]) + " no almoxarifado nem com as equipes."
+    else:
+        fala = " ".join(frases[:3]) + (" Sem saldo: " + ", ".join(zerados[:3]) + "." if zerados and len(frases) < 3 else "")
+    return {"materiais": out, "fala": fala}
 
 
 def situacao_trecho(conn, usuario, texto, pergunta=""):
@@ -885,6 +912,7 @@ class _Turno:
     def __init__(self, rascunho=None):
         self.rascunho, self.fala, self.botoes, self.telas, self.ferramentas = rascunho, None, [], [], []
         self.itens, self.candidatos, self.pediu_item, self.notas, self.texto, self.pergunta = {}, None, False, [], "", ""
+        self.falas_estoque = []
 
 
 def _iniciar(turno, usuario, tipo):
@@ -1430,7 +1458,10 @@ def executar(conn, cfg, usuario, turno, nome, args):
                             "isso e quem faz ou informa (pelo texto).")
         return r, True
     if nome == "consultar_estoque":
-        return saldo_estoque(conn, usuario, args.get("material")), True
+        r = saldo_estoque(conn, usuario, args.get("material"))
+        turno.falas_estoque.append(r["fala"])                               # a frase do saldo é do sistema, com os números certos
+        turno.fala, turno.botoes = " ".join(turno.falas_estoque), []
+        return {"respondido": r["fala"]}, False
     if nome == "consultar_trecho":
         r = situacao_trecho(conn, usuario, args.get("trecho"), turno.texto)
         if r.get("ajuda"):
