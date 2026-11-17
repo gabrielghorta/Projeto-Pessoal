@@ -138,7 +138,7 @@ class TestConferenciaEFechamento(BaseMedicao):
         ev = ret["alvos"][0]
         self.assertEqual((ev["nome"], ev["ok_interno_por"], ev["fotos_validas"], ev["fotos_faltando"]), (TR, "eng1", 3, []))
         self.assertGreater(ret["pendentes"], 0)                       # pendentes identificados, fora do valor
-        self.assertTrue(any(r["decisao"] == "D-31" for r in ret["regras_bloqueadas"]))
+        self.assertTrue(any(r["decisao"] == "D-52" for r in ret["regras_bloqueadas"]))
         S.recomposicao_ok(self.c, "TRECHO", TR, "CALÇADA", 10, D)       # lançamento novo depois da conferência
         self.assertFalse(S.conferencia_vigente(self.c, self.m1)["vale"])
         with self.assertRaisesRegex(S.RegraViolada, "mudaram depois da conferência"):
@@ -154,8 +154,9 @@ class TestConferenciaEFechamento(BaseMedicao):
 
     def test_regras_bloqueadas_e_nada_de_valor_sem_fonte(self):
         rg = {r["decisao"]: r for r in M.regras(self.c) if r["decisao"]}
-        for dec in ("D-31", "D-50", "D-52", "D-53 · D-54", "D-56", "D-16"):
+        for dec in ("D-50", "D-52", "D-53 · D-54", "D-56", "D-16"):
             self.assertEqual(rg[dec]["situacao"], "BLOQUEADA", dec)
+        self.assertEqual(rg["D-230 (complementa D-31)"]["situacao"], "CONFIRMADA")
         for dec in ("D-55", "D-57"):
             self.assertEqual(rg[dec]["situacao"], "HIPÓTESE", dec)
         # o BM sintético não tem os itens de escavação: o vínculo aparece incompleto (com o BM real, HIPÓTESE do rateio)

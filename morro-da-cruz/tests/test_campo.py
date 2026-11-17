@@ -338,7 +338,7 @@ class TestF02SoldasSoReferencia(BaseCampo):
         S.criar_medicao(self.c, 1, "2026-10-01", "2026-10-31")
         S.verificar_trecho(self.c, TR, "Fiscal")                        # o OK interno exige a verificação (v20)
         S.ok_fiscalizacao(self.c, "TRECHO", TR, "eng", D)
-        sold = self.q("SELECT quantidade, status FROM medicao_lancamentos WHERE servico='SOLDA'")
+        sold = self.q("SELECT quantidade, status FROM medicao_lancamentos WHERE servico='SOLDA ELETROFUSAO DE63'")
         self.assertEqual(sold, [(3.0, "PENDENTE")])                                           # aprovadas; nem 2 nem 13
 
 

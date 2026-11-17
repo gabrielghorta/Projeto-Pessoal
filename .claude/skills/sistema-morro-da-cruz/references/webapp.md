@@ -531,3 +531,10 @@ avisos, rota e corpo). A tela grava só no toque, chamando `/api/solicitacao`, `
 - Armadilhas: o modelo é pequeno (frases novas podem ser mal lidas; por isso erro em campo opcional nunca trava a
   conversa e a permissão nunca depende dele); as descrições das funções pesam nos tokens (teste limita o tamanho);
   `tests/test_assistente.py` troca só `assistente.TRANSPORTE`, sem rede.
+
+## Fiscalização
+
+A Engenharia envia linhas propostas em **Fiscalização → Pronto para medir**. O perfil **Fiscalização (Caesb)**
+usa o mapa em leitura e responde ao aceite na aba própria. O pacote conserva a quantidade aceita se o saldo
+for reenviado. Soldas verificadas com item contratual entram na proposta. Fluxo e teste em
+`morro-da-cruz/docs/FISCALIZACAO.md` (D-229 e D-230).

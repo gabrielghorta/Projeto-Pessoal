@@ -1004,11 +1004,25 @@ POST.update({"/api/equipes/criar": p_equipe_criar, "/api/equipes/excluir": p_equ
 for rota in ("/api/equipes/criar", "/api/equipes/excluir", "/api/equipes/retirar-integrante"):
     PERMISSAO[rota] = "equipes"
     AUTOR[rota] = ("por",)
-GET_USUARIO["/api/fiscalizacao/resumo"] = lambda q,c,u: {
-    "medicoes": F.medicoes(c), "contador": F.contador(c,u),
-    "painel": F.painel(c,int(q["medicao"]) if q.get("medicao") else None) if F.medicoes(c) else None,
-    "emails": S._rows(c.execute("SELECT id,medicao_id,envio_id,situacao,detalhe,criado_em FROM fiscalizacao_emails ORDER BY id DESC LIMIT 10"))}
-GET["/api/fiscalizacao/linhas"] = lambda q,c: F.linhas(c,int(q["medicao"]) if q.get("medicao") else None,q.get("situacao"))
+def r_fiscalizacao_resumo(q, c, usuario):
+    out = {"contador": F.contador(c, usuario)}
+    if q.get("contador") == "1":
+        return out
+    medicoes = F.medicoes(c)
+    painel = F.painel(c, int(q["medicao"]) if q.get("medicao") else None) if medicoes else None
+    emails = S._rows(c.execute("""SELECT situacao,criado_em FROM fiscalizacao_emails
+        WHERE medicao_id=? ORDER BY id DESC LIMIT 10""", (painel["medicao"]["id"],))) if (
+        painel and "fiscalizacao_enviar" in usuario["permissoes"]) else []
+    return dict(out, medicoes=medicoes, painel=painel, emails=emails)
+
+
+def r_fiscalizacao_linhas(q, c, usuario):
+    ls = F.linhas(c, int(q["medicao"]) if q.get("medicao") else None, q.get("situacao"))
+    return [l for l in ls if l["envio_id"]] if usuario["perfil"] == "FISCALIZACAO" else ls
+
+
+GET_USUARIO["/api/fiscalizacao/resumo"] = r_fiscalizacao_resumo
+GET_USUARIO["/api/fiscalizacao/linhas"] = r_fiscalizacao_linhas
 GET["/api/fiscalizacao/historico"] = lambda q,c: F.historico(c,int(q["medicao"]) if q.get("medicao") else None)
 GET["/api/fiscalizacao/ficha"] = lambda q,c: F.ficha(c,q.get("tipo"),q.get("id"))
 GET_PERM["/api/fiscalizacao/pronto"] = (lambda q,c: F.pronto_para_medir(c,int(q["medicao"]) if q.get("medicao") else None), "fiscalizacao_enviar")
@@ -1189,6 +1203,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(401, self._sem_usuarios() if sem else {"erro": "Sessão encerrada: entre de novo."})
             if u.path in ("/mapa", "/mapa/") or u.path.startswith(("/fotos/", "/mapa/", "/arquivos/")):
                 return self._send(401, "Entre no sistema para ver o mapa, as fotos e os arquivos.", "text/plain; charset=utf-8")
+        fiscal = usuario and usuario["perfil"] == "FISCALIZACAO"
+        if fiscal and u.path in ("/api/assistente", "/api/previsto"):
+            return self._send(403, {"erro": "Consulta fora do perfil Fiscalização."})
+        if fiscal and u.path == "/api/resumo":
+            return self._send(200, {"equipes": [], "clima": {}})
         telas = TELA_GET.get(u.path) or TELA_ARQUIVO.get(u.path) or (("lev",) if u.path.startswith("/arquivos/") else None)
         if telas:                                      # a consulta é de uma tela que o perfil precisa abrir
             try:
@@ -1196,7 +1215,7 @@ class Handler(BaseHTTPRequestHandler):
             except A.AcessoNegado as e:
                 return self._send(e.status, {"erro": str(e)})
         if u.path in GET:
-            if usuario["perfil"] == "FISCALIZACAO" and u.path == "/api/detalhe":
+            if fiscal and u.path == "/api/detalhe":
                 return self._api(lambda q,c: F.ficha(c,q["tipo"],q["id"]),q)
             return self._api(GET[u.path], q)
         if u.path in GET_PERM:
@@ -1265,6 +1284,12 @@ class Handler(BaseHTTPRequestHandler):
                               {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nome)}"})
         if u.path.startswith("/fotos/"):
             rel = u.path[len("/fotos/"):]
+            if fiscal:
+                with LOCK:
+                    valida = CONN.execute(f"""SELECT 1 FROM fotos WHERE arquivo=?
+                        AND alvo_tipo IN ('TRECHO','ATIVIDADE') AND {S.FOTO_VALIDA}""", (rel,)).fetchone()
+                if not valida:
+                    return self._send(403, {"erro": "Foto fora do escopo da fiscalização."})
             if not os.path.isfile(os.path.join(DIR_FOTOS, rel)):      # original só no Drive: mostra a miniatura
                 with LOCK:
                     rel = DR.miniatura_de(CONN, rel) or rel
@@ -1407,6 +1432,8 @@ class Handler(BaseHTTPRequestHandler):
             usuario = self._usuario()
         if not usuario:
             return self._send(401, {"erro": "Sessão encerrada: entre de novo."})
+        if usuario["perfil"] == "FISCALIZACAO":
+            return self._send(403, {"erro": "Assistente fora do perfil Fiscalização."})
         try:
             if rota == "/api/assistente/rascunho":       # botão ou campo do rascunho: o próprio sistema aplica, sem o modelo
                 with LOCK:
@@ -1432,6 +1459,8 @@ class Handler(BaseHTTPRequestHandler):
             usuario = self._usuario()
         if not usuario:
             return self._send(401, {"erro": "Sessão encerrada: entre de novo."})
+        if usuario["perfil"] == "FISCALIZACAO":
+            return self._send(403, {"erro": "Drive fora do perfil Fiscalização."})
         if rota == "/api/drive/conectar":
             esquema = "https" if NUVEM or self._https() else "http"
             retorno = f"{esquema}://{self.headers.get('Host', '')}{DR.RETORNO}"

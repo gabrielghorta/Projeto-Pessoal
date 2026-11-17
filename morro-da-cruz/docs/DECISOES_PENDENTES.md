@@ -605,3 +605,18 @@ Correção feita junto: o guia do PR #39 dizia que o OK interno exige o cadastro
 (`servicos.ok_fiscalizacao`: execução 100 %, verificação, fotos e nenhum avanço antigo sem posição). O conhecimento
 segue o servidor, e um teste confere essa regra. Guia: `docs/ASSISTENTE_IA.md`; conhecimento: `docs/CONHECIMENTO_IA.md`.
 
+## 39. Aceite prévio da Fiscalização (16/11/2026)
+
+**D-229.** Engenharia/Administração enviam as linhas elegíveis do BM após OK interno. O perfil Fiscalização
+abre Mapa Iluminado e Fiscalização. Cada linha pode ser aceita, reduzida ou recusada pelo fiscal. Redução,
+recusa e reabertura exigem motivo e ficam no histórico. O fiscal pode reabrir uma resposta na medição aberta.
+O responsável definiu que, após um aceite parcial, a quantidade aceita permanece no boletim e só o saldo segue
+no reenvio. O fechamento congela a quantidade aceita, a administração local proporcional e a relação do que ficou
+fora do aceite. O documento oficial continua sendo o BM assinado e protocolado (D-56). Guia em `FISCALIZACAO.md`.
+
+## 40. Soldas aprovadas no BM (16/11/2026)
+
+**D-230 — Complementa a D-31.** Entram as soldas verificadas e aprovadas, pelo tipo e diâmetro do trecho, no
+grupo de rede 2.2 confirmado no BM. As combinações sem item compatível ficam com `SOLDA_SEM_ITEM`.
+A quantidade estimada por extensão serve ao controle de campo.
+

@@ -154,9 +154,9 @@
     <div data-pagina="painel" hidden><div id="fiscalKpis" class="kpis"></div><div class="painel"><h3>Por item do BM</h3><div id="fiscalItens"></div></div><div id="fiscalEmails" class="fiscal-email"></div></div>
     <div data-pagina="pronto" hidden>
       <div class="painel fiscal-envio" data-perm="fiscalizacao_enviar"><h3>Pronto para medir</h3><p class="vazio">OK interno da Ankara. Do maior para o menor valor, com BDI e K. A administração local entra proporcionalmente.</p>
+        <div class="fiscal-enviar"><label>Observação do envio (opcional)<textarea id="fiscalObs" rows="2" maxlength="4000"></textarea></label><div class="acoes"><b id="fiscalTotalSelecionado">R$ 0,00 selecionados</b><button type="button" class="btn prim" id="fiscalEnviar" data-perm="fiscalizacao_enviar">Enviar à fiscalização</button></div></div>
         <label class="fiscal-selecao"><input type="checkbox" id="fiscalSelecionarProntas"> Selecionar todas as prontas</label>
         <div id="fiscalProntas" class="fiscal-lista"></div>
-        <div class="fiscal-enviar"><label>Observação do envio (opcional)<textarea id="fiscalObs" rows="2" maxlength="4000"></textarea></label><div class="acoes"><b id="fiscalTotalSelecionado">R$ 0,00 selecionados</b><button type="button" class="btn prim" id="fiscalEnviar" data-perm="fiscalizacao_enviar">Enviar à fiscalização</button></div></div>
       </div><div class="painel"><h3>Ainda não dá para enviar</h3><div id="fiscalPendentes"></div></div>
     </div>
     <div data-pagina="aprovar" hidden><div class="painel"><h3>Para aprovar</h3><p id="fiscalAprovarDescricao" class="vazio"></p><div id="fiscalAceiteLote" class="acoes" data-perm="fiscalizacao_responder"><label class="fiscal-selecao"><input type="checkbox" id="fiscalSelecionarPendentes"> Selecionar todas</label><button type="button" class="btn prim" id="fiscalAceitarSelecionadas" data-perm="fiscalizacao_responder">Aceitar selecionadas</button></div><div id="fiscalAprovar" class="fiscal-lista"></div></div></div>

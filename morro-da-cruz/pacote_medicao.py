@@ -187,8 +187,12 @@ def _linhas_memorial(conn, medicao_id, item, unidade):
                         ((info.get("descricao") or "") + ". " + MC.resumo_parte(parte, unidade)).upper()))
             diferenca = sum(p["quantidade"] for p in calculo["parcelas"]) - q
             if abs(diferenca) > 1e-9:
-                ref = ("ARREDONDAMENTO DA QUANTIDADE (4 CASAS)" if abs(calculo["quantidade"] - q) < 0.00005 else
-                       "PARCELA FORA DESTA MEDIÇÃO (saldo do contrato)")
+                if q < l["quantidade"]:
+                    ref = "PARCELA FORA DESTA MEDIÇÃO (aceite parcial da fiscalização)"
+                elif abs(calculo["quantidade"] - q) < 0.00005:
+                    ref = "ARREDONDAMENTO DA QUANTIDADE (4 CASAS)"
+                else:
+                    ref = "PARCELA FORA DESTA MEDIÇÃO (saldo do contrato)"
                 out.append(dict(lin, ref=ref, quantidade=-diferenca,
                                 ajuste=True))
         else:
@@ -888,9 +892,13 @@ def _aba_fora_do_aceite(p, linhas):
     titulos = ["Lançamento", "Item BM", "Alvo", "Situação", "Quantidade fora", "Unidade", "Motivo"]
     rows = [titulos] + [[l["id"], l["item"], l["alvo_nome"], l["situacao"], l["quantidade_fora"], l["unidade"],
                          l["motivo_fora"]] for l in linhas]
-    corpo = "".join('<row r="%s">%s</row>' % (i, "".join(
-        f'<c r="{X.get_column_letter(j)}{i}" t="inlineStr"><is><t xml:space="preserve">{X.escape(str(v or ""))}</t></is></c>'
-        for j, v in enumerate(row, 1))) for i, row in enumerate(rows, 1))
+    def celula(ref, valor):
+        if isinstance(valor, (int, float)):
+            return f'<c r="{ref}"><v>{valor}</v></c>'
+        texto = X.escape(str(valor or ""))
+        return f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">{texto}</t></is></c>'
+    corpo = "".join(f'<row r="{i}">' + "".join(celula(f"{X.get_column_letter(j)}{i}", v)
+                    for j, v in enumerate(row, 1)) + "</row>" for i, row in enumerate(rows, 1))
     xml = ('<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
            '<cols><col min="1" max="2" width="18" customWidth="1"/><col min="3" max="3" width="40" customWidth="1"/>'
            '<col min="4" max="6" width="20" customWidth="1"/><col min="7" max="7" width="85" customWidth="1"/></cols>'

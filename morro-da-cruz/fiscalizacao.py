@@ -1,4 +1,4 @@
-"""Aceite prévio da Caesb, por lançamento (D-218). Não é o OK interno nem o BM oficial.
+"""Aceite prévio da Caesb, por lançamento.
 
 A Ankara envia PROPOSTO; o fiscal aceita, reduz ou recusa. O retrato assinado invalida o aceite
 se a origem mudar. Depois do primeiro envio só a quantidade aceita segue ao pacote; sem envio,
@@ -63,7 +63,7 @@ def _retrato(conn, l):
         d.update(preco_unitario=l["preco_congelado"], classificacao=l["classificacao_congelada"],
                  item=l["item_congelado"], vigente=1)
     if l["alvo_tipo"] == "APROPRIACAO":
-        ap = S._one(conn, "SELECT data,quantidade,memoria_calculo,calculo_json,o_que_foi_feito,justificativa_tecnica "
+        ap = S._one(conn, "SELECT data,quantidade,memoria_calculo,calculo_json,o_que_foi_feito,justificativa AS justificativa_tecnica "
                           "FROM apropriacoes WHERE id=?", l["alvo_id"])
         d["apropriacao"] = ap
     return d
@@ -71,6 +71,23 @@ def _retrato(conn, l):
 
 def _assinatura(conn, l):
     return hashlib.sha256(_json(_retrato(conn, l)).encode()).hexdigest()
+
+
+def _quantidade_preservada(conn, origem, estado, alterada):
+    """Uma correção no saldo pode preservar a parte aceita da mesma parcela."""
+    if not estado or not (qtd := estado["quantidade_aceita"] or 0):
+        return 0
+    if not alterada:
+        return qtd
+    if estado["situacao"] == "ACEITA" or origem["quantidade"] < qtd:
+        return 0
+    anterior, atual = json.loads(estado["retrato"]), _retrato(conn, origem)
+    campos = (k for k in atual if k not in ("quantidade", "apropriacao"))
+    if any(anterior.get(k) != atual[k] for k in campos):
+        return 0
+    if (anterior.get("apropriacao") or {}).get("data") != (atual.get("apropriacao") or {}).get("data"):
+        return 0
+    return qtd
 
 
 def _total(conn, ls, campo="quantidade"):
@@ -84,7 +101,8 @@ def _evidencias(conn, l):
             JOIN documentos d ON d.id=x.documento_id WHERE x.apropriacao_id=? ORDER BY d.id""", (l["alvo_id"],)))
         for d in docs:
             d["url"] = f"/api/fiscalizacao/arquivo?linha={l['id']}&doc={d['id']}"
-        ap = S._one(conn, "SELECT memoria_calculo,o_que_foi_feito,justificativa_tecnica FROM apropriacoes WHERE id=?", l["alvo_id"]) or {}
+        ap = S._one(conn, "SELECT memoria_calculo,o_que_foi_feito,justificativa AS justificativa_tecnica "
+                          "FROM apropriacoes WHERE id=?", l["alvo_id"]) or {}
         return {"fotos": sum(str(d["mime"] or "").startswith("image/") for d in docs), "documentos": docs, **ap}
     n = conn.execute(f"SELECT COUNT(*) FROM fotos WHERE alvo_tipo=? AND alvo_id=? AND {S.FOTO_VALIDA}",
                      (l["alvo_tipo"], l["alvo_id"])).fetchone()[0]
@@ -108,15 +126,20 @@ def linhas(conn, medicao_id=None, situacao=None, evidencias=True):
                 continue
             f = estados.get(l["id"])
             st = f["situacao"] if f else ("NAO_ENVIADA" if l["status"] == "PROPOSTO" else "PENDENTE")
-            if f and f["assinatura"] != _assinatura(conn, origem):
+            alterada = bool(f and f["assinatura"] != _assinatura(conn, origem))
+            if alterada:
                 st = "ALTERADA"
-            l.update(situacao=st, quantidade_enviada=f["quantidade_enviada"] if f else 0,
-                     quantidade_aceita=(f["quantidade_aceita"] or 0) if f and st in ("ACEITA", "REDUZIDA") else 0,
+            aceito = _quantidade_preservada(conn, origem, f, alterada)
+            l.update(situacao=st, quantidade_lote=f["quantidade_enviada"] if f else 0,
+                     quantidade_anterior=f["quantidade_anterior"] if f else 0,
+                     quantidade_enviada=f["quantidade_enviada"] + f["quantidade_anterior"] if f else 0,
+                     quantidade_aceita=aceito, saldo=round(max(0, l["quantidade"] - aceito), 6),
                      motivo_fiscal=f["motivo"] if f else None, respondido_por=f["respondido_por"] if f else None,
                      respondido_em=f["respondido_em"] if f else None, envio_id=f["envio_id"] if f else None)
             l["alvo_nome"] = S.nome_alvo(conn, l["alvo_tipo"], l["alvo_id"]) if l["alvo_id"] else "Sem alvo"
             l["valor"] = _total(conn, [l])
             l["valor_aceito"] = _total(conn, [l], "quantidade_aceita")
+            l["valor_lote"] = _total(conn, [l], "quantidade_lote")
             if f:
                 retrato = json.loads(f["retrato"])
                 l["valor_enviado"] = _total(conn, [dict(l, **{k: retrato[k] for k in ("item", "classificacao", "preco_unitario")})],
@@ -181,19 +204,25 @@ def _enviar(conn, medicao_id, ids, por, obs, reenvio):
                 raise RegraViolada("Linha já enviada ou aguardando o fiscal. Use Reenviar após corrigir a resposta.")
             if not math.isfinite(l["quantidade"]) or l["quantidade"] <= 0:
                 raise RegraViolada("A quantidade enviada deve ser maior que zero.")
-            selecionadas.append(origens[lid])
+            q = l["saldo"]
+            if q <= 0:
+                raise RegraViolada("Toda a quantidade desta linha já foi aceita.")
+            selecionadas.append((origens[lid], q, l["quantidade_aceita"]))
         eid = conn.execute("INSERT INTO fiscalizacao_envios(medicao_id,enviado_por,enviado_em,obs) VALUES (?,?,?,?)",
                            (m["id"], u["login"], S._agora(), obs)).lastrowid
-        for l in selecionadas:
+        for l, qtd, anterior in selecionadas:
             conn.execute("""INSERT INTO fiscalizacao_linhas(lancamento_id,medicao_id,situacao,envio_id,quantidade_enviada,
-                assinatura,retrato,atualizado_em) VALUES (?,?,'AGUARDANDO',?,?,?,?,?) ON CONFLICT(lancamento_id) DO UPDATE SET
+                quantidade_aceita,quantidade_anterior,assinatura,retrato,atualizado_em)
+                VALUES (?,?,'AGUARDANDO',?,?,?,?,?,?,?) ON CONFLICT(lancamento_id) DO UPDATE SET
                 situacao='AGUARDANDO',envio_id=excluded.envio_id,quantidade_enviada=excluded.quantidade_enviada,
-                quantidade_aceita=NULL,assinatura=excluded.assinatura,retrato=excluded.retrato,motivo=NULL,
+                quantidade_aceita=excluded.quantidade_aceita,quantidade_anterior=excluded.quantidade_anterior,
+                assinatura=excluded.assinatura,retrato=excluded.retrato,motivo=NULL,
                 respondido_por=NULL,respondido_em=NULL,atualizado_em=excluded.atualizado_em""",
-                (l["id"], m["id"], eid, l["quantidade"], _assinatura(conn, l), _json(_retrato(conn, l)), S._agora()))
-            _evento(conn, l, "REENVIADA" if reenvio else "ENVIADA", l["quantidade"], obs, u)
+                (l["id"], m["id"], eid, qtd, anterior, anterior, _assinatura(conn, l), _json(_retrato(conn, l)), S._agora()))
+            _evento(conn, l, "REENVIADA" if reenvio else "ENVIADA", qtd, obs, u)
         from fiscalizacao_email import enfileirar
-        status = enfileirar(conn, m["id"], eid, "ENVIO", "FISCALIZACAO", len(ids), _total(conn, selecionadas))
+        valor = _total(conn, [dict(l, quantidade=qtd) for l, qtd, _ in selecionadas])
+        status = enfileirar(conn, m["id"], eid, "ENVIO", "FISCALIZACAO", len(ids), valor)
         return {"envio_id": eid, "linhas": len(ids), "email_situacao": status}
 
 
@@ -237,12 +266,13 @@ def responder(conn, itens, por):
                     raise RegraViolada("Informe a quantidade aceita.") from None
                 if isinstance(i.get("quantidade"), bool) or not math.isfinite(qtd) or not 0 < qtd < f["quantidade_enviada"]:
                     raise RegraViolada("A quantidade reduzida deve ser maior que zero e menor que a enviada.")
-            respostas.append((l, {"ACEITAR": "ACEITA", "REDUZIR": "REDUZIDA", "RECUSAR": "RECUSADA"}[acao], qtd, motivo))
+            respostas.append((l, {"ACEITAR": "ACEITA", "REDUZIR": "REDUZIDA", "RECUSAR": "RECUSADA"}[acao],
+                              qtd, f["quantidade_anterior"], motivo))
         por_med = {}
-        for l, st, qtd, motivo in respostas:
+        for l, st, qtd, anterior, motivo in respostas:
             conn.execute("UPDATE fiscalizacao_linhas SET situacao=?,quantidade_aceita=?,motivo=?,respondido_por=?,"
                          "respondido_em=?,atualizado_em=? WHERE lancamento_id=?",
-                         (st, qtd, motivo, u["login"], S._agora(), S._agora(), l["id"]))
+                         (st, round(anterior + qtd, 6), motivo, u["login"], S._agora(), S._agora(), l["id"]))
             _evento(conn, l, st, qtd, motivo, u)
             por_med.setdefault(l["medicao_id"], []).append(dict(l, quantidade=qtd))
         from fiscalizacao_email import enfileirar
@@ -263,11 +293,11 @@ def _voltar(conn, lancamento_id, motivo, por, cancelar):
         if cancelar:
             if f["situacao"] != "AGUARDANDO":
                 raise RegraViolada("Só é possível cancelar um envio aguardando resposta.")
-        elif f["situacao"] not in ("ACEITA", "REDUZIDA", "RECUSADA") or f["respondido_por"] != u["login"]:
-            raise RegraViolada("Você só pode reabrir uma resposta sua.")
+        elif f["situacao"] not in ("ACEITA", "REDUZIDA", "RECUSADA"):
+            raise RegraViolada("Só é possível reabrir uma linha que já recebeu resposta.")
         if not cancelar and f["assinatura"] != _assinatura(conn, l):
             raise RegraViolada("Linha em correção: aguarde o reenvio da Ankara.")
-        conn.execute("UPDATE fiscalizacao_linhas SET situacao=?,quantidade_aceita=NULL,motivo=?,respondido_por=NULL,"
+        conn.execute("UPDATE fiscalizacao_linhas SET situacao=?,quantidade_aceita=quantidade_anterior,motivo=?,respondido_por=NULL,"
                      "respondido_em=NULL,atualizado_em=? WHERE lancamento_id=?",
                      ("CANCELADA" if cancelar else "AGUARDANDO", motivo, S._agora(), lancamento_id))
         _evento(conn, l, "CANCELADA" if cancelar else "REABERTA", None, motivo, u)
@@ -287,7 +317,7 @@ def cancelar(conn, lancamento_id, motivo, por):
 
 def quantidades_aceitas(conn, medicao_id):
     return {l["id"]: l["quantidade_aceita"] for l in linhas(conn, medicao_id, evidencias=False)
-            if l["situacao"] in ("ACEITA", "REDUZIDA")}
+            if l["quantidade_aceita"] > 0}
 
 
 def efetivas(conn, medicao_id):
@@ -304,21 +334,23 @@ def painel(conn, medicao_id=None):
     def grupo(sts, campo="quantidade"):
         sel = [l for l in ls if l["situacao"] in sts]
         return {"linhas": len(sel), "valor": _total(conn, sel, campo)}
-    cards = {"enviado": grupo({"AGUARDANDO", "ACEITA", "REDUZIDA", "RECUSADA", "ALTERADA"}, "quantidade_enviada"),
-             "aguardando": grupo({"AGUARDANDO"}, "quantidade_enviada"),
-             "aceito": grupo({"ACEITA", "REDUZIDA"}, "quantidade_aceita"),
-             "recusado": grupo({"RECUSADA"}, "quantidade_enviada"), "nao_enviado": grupo({"NAO_ENVIADA", "CANCELADA"}),
+    cards = {"aguardando": grupo({"AGUARDANDO"}, "quantidade_lote"),
+             "recusado": grupo({"RECUSADA"}, "quantidade_lote"), "nao_enviado": grupo({"NAO_ENVIADA", "CANCELADA"}, "saldo"),
              "pendente": grupo({"PENDENTE"}), "alterado": grupo({"ALTERADA"}, "quantidade_enviada")}
-    reduzidas = [dict(l, diferenca=l["quantidade_enviada"] - l["quantidade_aceita"]) for l in ls if l["situacao"] == "REDUZIDA"]
-    cards["reduzido"] = {"linhas": len(reduzidas), "valor": _total(conn, reduzidas, "diferenca")}
+    aceitas = [l for l in ls if l["quantidade_aceita"] > 0]
+    cards["aceito"] = {"linhas": len(aceitas), "valor": _total(conn, aceitas, "quantidade_aceita")}
+    cards["reduzido"] = grupo({"REDUZIDA"}, "saldo")
+    enviadas = [dict(l, quantidade_enviada=l["quantidade_aceita"]) if l["situacao"] == "CANCELADA" else l
+                for l in ls if l["envio_id"] and (l["situacao"] != "CANCELADA" or l["quantidade_aceita"] > 0)]
+    cards["enviado"] = {"linhas": len(enviadas), "valor": _total(conn, enviadas, "quantidade_enviada")}
     itens = []
     for item in sorted({l["item"] or "Fora do BM" for l in ls}):
         il = [l for l in ls if (l["item"] or "Fora do BM") == item]
-        enviadas = [l for l in il if l["envio_id"] and l["situacao"] != "CANCELADA"]
-        qtd_env = sum(l["quantidade_enviada"] for l in enviadas)
+        enviadas_item = [l for l in enviadas if (l["item"] or "Fora do BM") == item]
+        qtd_env = sum(l["quantidade_enviada"] for l in enviadas_item)
         qtd_ok = sum(l["quantidade_aceita"] for l in il)
         itens.append({"item": item, "descricao": il[0]["descricao"], "unidade": il[0]["unidade"],
-                      "enviado": qtd_env, "aceito": qtd_ok, "valor_enviado": _total(conn, enviadas, "quantidade_enviada"),
+                      "enviado": qtd_env, "aceito": qtd_ok, "valor_enviado": _total(conn, enviadas_item, "quantidade_enviada"),
                       "valor_aceito": _total(conn, il, "quantidade_aceita"), "percentual": qtd_ok / qtd_env if qtd_env else 0})
     return {"medicao": {k: v for k, v in m.items() if k != "resumo_congelado"}, "aviso": AVISO,
             "controlada": ativo(conn, m["id"]), "totais": cards, "itens": itens}
@@ -359,7 +391,9 @@ def fora_do_aceite(conn, medicao_id):
     for l in linhas(conn, medicao_id, evidencias=False):
         if l["situacao"] == "ACEITA":
             continue
-        q = (l["quantidade_enviada"] - l["quantidade_aceita"]) if l["situacao"] == "REDUZIDA" else l["quantidade"]
+        q = l["saldo"]
+        if q <= 0:
+            continue
         out.append(dict(l, quantidade_fora=q, motivo_fora=l["motivo_fiscal"] or l["motivo"] or {
             "AGUARDANDO": "Aguardando resposta do fiscal.", "ALTERADA": "Alterada depois do envio: exige reenvio.",
             "NAO_ENVIADA": "Ainda não enviada.", "CANCELADA": "Envio cancelado."}.get(l["situacao"], "Fora do aceite.")))
@@ -371,16 +405,27 @@ def notas_do_alvo(conn, tipo, ref):
     a = S.alvo(conn, tipo, ref)
     if a["alvo_tipo"] != "TRECHO":
         return []  # não inventa vínculo com NS de rede para um nó
+    import notas_servico as NS
+    import topologia as TP
     ids = set()
-    for s in conn.execute("SELECT ns_id,membros FROM ns_segmentos WHERE membros IS NOT NULL AND situacao IN ('AUTOMATICO','CONFIRMADO')"):
-        if any(m.get("trecho_id") == a["id"] for m in json.loads(s["membros"])):
+    for s in conn.execute("""SELECT ns_id,membros,ini_fisico_m,fim_fisico_m FROM ns_segmentos
+                        WHERE membros IS NOT NULL AND situacao IN ('AUTOMATICO','CONFIRMADO') AND ini_fisico_m IS NOT NULL"""):
+        faixas = TP.para_linhas({"membros": json.loads(s["membros"])}, s["ini_fisico_m"], s["fim_fisico_m"])
+        if any(m["trecho_id"] == a["id"] for m in faixas):
             ids.add(s["ns_id"])
     out = []
     for nid in sorted(ids):
-        n = S._one(conn, "SELECT id,numero,data,tipo,pdf_id,croqui_id,planilha_id FROM notas_servico WHERE id=? AND status='REGISTRADA'", nid)
+        n = S._one(conn, """SELECT id,numero,data,tipo,pdf_id,croqui_id,planilha_id,arquivo_locacao,folhas
+                   FROM notas_servico WHERE id=? AND status='REGISTRADA'""", nid)
         if n:
-            n["arquivos"] = [{"nome": qual, "url": f"/api/fiscalizacao/arquivo?tipo=TRECHO&alvo={a['id']}&ns={nid}&qual={qual}"}
-                              for qual in ("pdf", "croqui", "planilha") if n[qual+"_id"]]
+            n["referencia"] = NS._referencia_reg(n)
+            arquivos = [(qual, nome) for qual, nome in (("pdf", "Nota de serviço"), ("croqui", "Croqui"),
+                        ("planilha", "Planilha")) if n[qual + "_id"]]
+            if n["arquivo_locacao"]:
+                arquivos += [(f"croqui-{r[0]}", f"Croqui {r[0]}") for r in conn.execute(
+                    "SELECT ordem FROM ns_locacao_croquis WHERE ns_id=? ORDER BY ordem", (nid,))]
+            n["arquivos"] = [{"nome": nome, "url": f"/api/fiscalizacao/arquivo?tipo=TRECHO&alvo={a['id']}&ns={nid}&qual={qual}"}
+                              for qual, nome in arquivos]
             out.append(n)
     return out
 
@@ -393,7 +438,8 @@ def ficha(conn, tipo, ref):
               "fases_cadastro", "complementar", "intervalos", "cadastro", "retirado")
     out = {k: d[k] for k in campos if k in d}
     out["fotos"] = [{k: f.get(k) for k in ("id", "categoria", "arquivo", "data_hora", "validacao")}
-                    for f in d.get("fotos", []) if f.get("validacao") not in ("INVALIDA", "ARQUIVO_AUSENTE")]
+                    for f in d.get("fotos", []) if f.get("arquivo") and f.get("validacao")
+                    and f["validacao"] not in ("INVALIDA", "ARQUIVO_AUSENTE")]
     out["notas"] = notas_do_alvo(conn, tipo, ref)
     return out
 

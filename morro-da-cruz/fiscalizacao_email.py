@@ -8,6 +8,7 @@ import smtplib
 import ssl
 import threading
 from email.message import EmailMessage
+from email.headerregistry import Address
 from urllib.parse import urlsplit
 
 import servicos as S
@@ -73,7 +74,8 @@ def processar(conn):
         try:
             numero = conn.execute("SELECT numero FROM medicoes WHERE id=?", (r["medicao_id"],)).fetchone()[0]
             msg = EmailMessage()
-            msg["From"] = os.environ["MC_EMAIL_USUARIO"]
+            msg["From"] = Address(display_name=os.environ.get("MC_EMAIL_NOME", "").strip(),
+                                  addr_spec=os.environ["MC_EMAIL_USUARIO"])
             msg["To"] = "undisclosed-recipients:;"
             msg["Subject"] = f"Morro da Cruz · Fiscalização · {numero}ª medição"
             # URL opcional validada. Não coloca login, nome, alvo nem descrição de serviço no corpo.

@@ -29,7 +29,7 @@
   "solda": {"servico": "SOLDA", "unidade": "UN", "comprimento_barra_m": 6.0,
     "itens": {"ELETROFUSAO": {"63": "2.2_5.8.47", "90": "2.2_5.8.48", "110": "2.2_5.8.46"},
       "TOPO": {"160": "2.2_5.8.49", "225": "2.2_5.8.50", "250": "2.2_5.8.51", "280": "2.2_5.8.52", "315": "2.2_5.8.53", "355": "2.2_5.8.54", "400": "2.2_5.8.55", "500": "2.2_5.8.56"}},
-    "status": "CONFIRMADO", "nota": "D-219: apenas soldas verificadas e APROVADAS; tipo e DE do trecho no grupo 2.2. Sem combinação contratada: SOLDA_SEM_ITEM. ⌈L/6⌉ é só estimativa de campo."},
+    "status": "CONFIRMADO", "nota": "D-230: apenas soldas verificadas e APROVADAS; tipo e DE do trecho no grupo 2.2. Sem combinação contratada: SOLDA_SEM_ITEM. ⌈L/6⌉ é só estimativa de campo."},
   "cadastro": {"servico": "CADASTRO", "item": "2.2_5.2.1", "status": "CONFIRMADO", "nota": "medido só na aprovação GDOC (gaveta 3), pela extensão do trecho"},
   "recomposicao": {"servico": "RECOMPOSIÇÃO CALÇADA/ASFALTO", "itens_por_tipo": {"CALÇADA": "2.2_5.9.3", "ASFALTO": "2.2_5.9.5"}, "status": "A CONFIRMAR", "nota": "gaveta 4; quantidade informada pela equipe de pavimento"}
 }

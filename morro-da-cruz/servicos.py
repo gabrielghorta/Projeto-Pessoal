@@ -2154,7 +2154,7 @@ def _lancar_ok(conn, a, medicao_id):
                                  "do alvo; a engenharia decide (catálogo Caesb 01/2025 / item a aprovar, D-91).")
         _lancar(conn, medicao_id, 1, f"SOLDA {solda['tipo']} DE{de}", bm, "UN", solda["qtd"], tipo, aid,
                 motivo=motivo, restricao="SOLDA_SEM_ITEM" if motivo else None,
-                obs="Quantidade APROVADA na verificação; não usa estimativa por extensão (D-219).")
+                obs="Quantidade APROVADA na verificação; não usa estimativa por extensão (D-230).")
     if tipo == "TRECHO":
         mnd = a.get("metodologia") == "MND"
         for s in servs:

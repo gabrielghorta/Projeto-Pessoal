@@ -51,7 +51,7 @@ def regras(conn):
             "quantidade apurada e lançada como PENDENTE, fora do valor (não é R$ 0 contratual)", None, "D-50")
     add("Solda: verificadas e aprovadas, por tipo e DE do trecho", "CONFIRMADA",
         "PROPOSTO no item 2.2 compatível. Sem item para o tipo/DE/grupo: PENDENTE SOLDA_SEM_ITEM; nunca usa ⌈L/6⌉.",
-        "BM vertical vigente; config/servicos_rede.json", "D-219 (altera D-31)")
+        "BM vertical vigente; config/servicos_rede.json", "D-230 (complementa D-31)")
     add("Assentamento MND (itens 5.16.x)", "BLOQUEADA", "PENDENTE; não é substituído pelo item de vala aberta", None, "D-52")
     add("Material: categorias do SL0327 e regime de faturamento (inclui conexões PEAD)", "BLOQUEADA",
         "nenhum material entra em valor; nenhum percentual (80/20 ou outro) é aplicado; recebido ≠ faturável", None, "D-53 · D-54")

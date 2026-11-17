@@ -175,7 +175,8 @@ const TELAS = {
 };
 const GRUPOS = { 'grupo-campo': 'Execução', planejamento: 'Almoxarifado', administrativo: 'Administrativo' };
 // telas que o perfil abre (config/perfis.json); o servidor confere de novo em cada consulta
-const podeTela = id => id === 'inicio' || id === 'assistente' || !!(USUARIO && USUARIO.telas.includes(id));
+const podeTela = id => USUARIO?.perfil === 'FISCALIZACAO' ? USUARIO.telas.includes(id)
+  : id === 'inicio' || id === 'assistente' || !!(USUARIO && USUARIO.telas.includes(id));
 // a subaba abre para quem abre ela ou uma das telas que viraram página dela
 const podeAba = id => podeTela(id) || ((TELAS[id] || {}).inclui || []).some(podeTela);
 const telasDoGrupo = g => Object.keys(TELAS).filter(t => TELAS[t].grupo === g && podeAba(t));
@@ -194,7 +195,7 @@ const TELAS_ANTIGAS = {
 // páginas dentro de uma subaba: chips no topo, a página no endereço (#notas/topografia), com voltar e avançar, e
 // lembrada por subaba na sessão. Cada página diz quem a usa; a subaba abre na pedida, na lembrada ou na primeira do perfil
 const PAGINAS = {
-  fiscalizacao: [['painel', 'Painel do mês', () => true], ['pronto', 'Pronto para medir', () => pode('fiscalizacao_enviar')], ['aprovar', 'Para aprovar', () => true], ['historico', 'Recusadas e histórico', () => true]],
+  fiscalizacao: [['painel', 'Painel do mês', () => true], ['pronto', 'Pronto para medir', () => pode('fiscalizacao_enviar')], ['aprovar', 'Para aprovar', () => true], ['historico', 'Respostas e histórico', () => true]],
   campo: [['apropriacao', 'Apropriação direta', () => pode('apropriacao')], ['apontamento', 'Apontamento sem NS', () => pode('lancar_sem_ns')],
     ['fotos', 'Fotos e soldas', () => podeTela('campo') && pode('campo')],
     ['interferencia', 'Interferências e chuva', () => podeTela('interferencias')]],
@@ -219,7 +220,8 @@ function paginaDe(tela, pedida) {
   const ps = paginasDe(tela).map(p => p[0]); if (!ps.length) return null;
   let lembrada = null; try { lembrada = sessionStorage.getItem('mc-pagina-' + tela); } catch (_) { /* sem storage */ }
   if (tela === 'campo') { if (pedida === 'clima') pedida = 'interferencia'; if (lembrada === 'clima') lembrada = 'interferencia'; }
-  return [pedida, lembrada].find(p => p && ps.includes(p)) || ps[0];
+  const inicial = tela === 'fiscalizacao' ? (pode('fiscalizacao_responder') ? 'aprovar' : 'pronto') : ps[0];
+  return [pedida, lembrada].find(p => p && ps.includes(p)) || inicial;
 }
 function mostrarPagina(tela, pag) {
   PAGINA[tela] = pag;
@@ -238,7 +240,7 @@ function abrirAba(id, opcoes = {}) {
   id = base;
   if (TELAS_ANTIGAS[id]) { toast(TELAS_ANTIGAS[id][1]); [id, pedida] = TELAS_ANTIGAS[id][0].split('/'); opcoes = { ...opcoes, substituir: true }; }
   if (GRUPOS[id]) id = telasDoGrupo(id)[0];          // o grupo abre a primeira subaba dele que o perfil usa
-  if (!TELAS[id] || !podeAba(id)) id = 'inicio';
+  if (!TELAS[id] || !podeAba(id)) id = USUARIO?.perfil === 'FISCALIZACAO' ? 'fiscalizacao' : 'inicio';
   TELA = id;
   document.body.classList.toggle('no-inicio', id === 'inicio');
   $$('section.aba').forEach(s => s.classList.toggle('ativa', s.id === 'aba-' + id));
@@ -1503,6 +1505,7 @@ async function carregarAdmin() {
     $('#selPerfil').innerHTML = Object.entries(RESUMO.perfis).map(([k, p]) => `<option value="${k}">${esc(p.nome)}</option>`).join('');
     $('#usuariosLista').innerHTML = `<table><thead><tr><th>Login</th><th>Nome</th><th>Perfil</th><th>Equipe</th><th>E-mail para avisos</th><th></th></tr></thead><tbody>${us.map(u => `<tr${u.ativo ? '' : ' style="opacity:.5"'}>
       <td>${esc(u.login)}</td><td>${esc(u.nome)}</td><td>${esc(u.perfil_nome)}</td><td>${esc(u.equipe_id || '')}</td>
+      <td><form class="acoes" data-usr-email="${esc(u.login)}"><input type="email" name="email" aria-label="E-mail de ${esc(u.login)}" maxlength="254" value="${esc(u.email || '')}"><button class="btn">Salvar e-mail</button></form></td>
       <td>${u.login === USUARIO.login ? '' : `<div class="acoes"><button type="button" class="btn" data-usr-ativo="${esc(u.login)}" data-v="${u.ativo ? 0 : 1}">${u.ativo ? 'Desativar' : 'Reativar'}</button><button type="button" class="btn" data-usr-senha="${esc(u.login)}">Nova senha</button>${u.tem_historico ? '' : `<button type="button" class="btn" data-usr-excluir="${esc(u.login)}">Excluir</button>`}</div>`}</td></tr>`).join('')}</tbody></table>
       <p class="vazio" style="margin:6px 0 0">Excluir aparece só para a conta que nunca registrou nada (criada por engano). Quem já tem histórico é desativado: perde o acesso e o histórico fica.</p>`;
   }
@@ -1525,6 +1528,12 @@ $('#fUsuario').addEventListener('submit', async ev => {
   ev.preventDefault(); const o = formObj(ev.target);
   const r = await acao(() => api('/api/usuarios', { acao: 'criar', ...o }), 'Usuário criado.').catch(() => null);
   if (r) { ev.target.reset(); carregarAdmin(); }
+});
+$('#usuariosLista').addEventListener('submit', async ev => {
+  const f = ev.target.closest('[data-usr-email]');
+  if (!f) return;
+  ev.preventDefault();
+  await acao(() => api('/api/usuarios', { acao: 'alterar', login: f.dataset.usrEmail, email: f.email.value }), 'E-mail salvo.').catch(() => null);
 });
 document.addEventListener('click', async ev => {
   const a = ev.target.closest('[data-usr-ativo]'), s = ev.target.closest('[data-usr-senha]'), x = ev.target.closest('[data-usr-excluir]');
@@ -2115,6 +2124,6 @@ async function iniciar() {
   $$('input[type=date]').forEach(i => { if (!i.value && i.id !== 'ndDia' && !['periodo_ini', 'periodo_fim', 'data_documento'].includes(i.name)) i.value = hoje(); });
   if (podeTela('medicao')) { const ms = await api('/api/medicoes'); const ab = ms.find(m => m.status === 'ABERTA'); if (ab) MEDICAO_ATUAL = ab.id; }
   abrirAba(location.hash.slice(1) || 'inicio', { substituir: true });
-  setTimeout(() => driveEmSegundoPlano(), 4000);   // o que ficou na fila (sem rede, sem conexão) sobe agora
+  if (USUARIO.perfil !== 'FISCALIZACAO') setTimeout(() => driveEmSegundoPlano(), 4000);
 }
-iniciar();
+window.addEventListener('DOMContentLoaded', iniciar, { once: true });

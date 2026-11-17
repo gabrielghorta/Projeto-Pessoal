@@ -1271,6 +1271,7 @@ CREATE TABLE IF NOT EXISTS fiscalizacao_linhas (
   situacao TEXT NOT NULL CHECK(situacao IN ('AGUARDANDO','ACEITA','REDUZIDA','RECUSADA','CANCELADA')),
   envio_id INTEGER NOT NULL REFERENCES fiscalizacao_envios(id),
   quantidade_enviada REAL NOT NULL CHECK(quantidade_enviada>0), quantidade_aceita REAL,
+  quantidade_anterior REAL NOT NULL DEFAULT 0 CHECK(quantidade_anterior>=0),
   assinatura TEXT NOT NULL, retrato TEXT NOT NULL, motivo TEXT,
   respondido_por TEXT, respondido_em TEXT, atualizado_em TEXT NOT NULL
 );

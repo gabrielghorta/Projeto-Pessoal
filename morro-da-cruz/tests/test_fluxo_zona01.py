@@ -103,9 +103,9 @@ class PilotoZona01(unittest.TestCase):
         por = {l["servico"]: l for l in ls}
         self.assertEqual((por["ASSENTAMENTO"]["item"], por["ASSENTAMENTO"]["status"]), ("2.2_5.8.44", "PROPOSTO"))
         self.assertAlmostEqual(por["ASSENTAMENTO"]["quantidade"], 76.55)
-        # soldas: só as verificadas e aprovadas (11), não a estimativa ⌈76,55/6⌉ = 13; regra contratual pendente
-        self.assertEqual((por["SOLDA"]["status"], por["SOLDA"]["quantidade"]), ("PENDENTE", 11))
-        self.assertIn("APROVADAS", por["SOLDA"]["motivo"])
+        # Só as 11 soldas verificadas e aprovadas entram no item do contrato.
+        solda = por["SOLDA ELETROFUSAO DE63"]
+        self.assertEqual((solda["status"], solda["quantidade"], solda["item"]), ("PROPOSTO", 11, "2.2_5.8.47"))
         self.assertEqual(por["LASTRO"]["status"], "PENDENTE")
         self.assertTrue(all(l["material_id"] is None for l in ls))        # nenhum regime de material
         self.assertTrue(r["teste"])

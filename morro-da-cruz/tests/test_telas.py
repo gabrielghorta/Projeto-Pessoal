@@ -157,12 +157,16 @@ class TestPaginaECodigo(unittest.TestCase):
     """Guarda contra tela quebrada: o menu, as seções e os elementos usados pelo JavaScript precisam existir no HTML."""
 
     def setUp(self):
-        self.html, self.js = ler("index.html"), ler("app.js") + ler("equipes.js") + ler("iluminado.js") + ler("planejamento.js") + ler("notas.js") + ler("apropriacao.js") + ler("assistente.js")
+        self.html = ler("index.html")
+        self.js = "\n".join(ler(arq) for arq in (
+            "app.js", "equipes.js", "iluminado.js", "planejamento.js", "notas.js",
+            "apropriacao.js", "assistente.js", "fiscalizacao.js",
+        ))
         self.ids = set(re.findall(r'id="([^"]+)"', self.html))
 
     def test_cada_item_do_menu_abre_uma_tela_que_existe(self):
         telas = set(re.findall(r"^\s{2}(\w+): \{ titulo:", self.js, re.M))
-        self.assertEqual(len(telas), 14)                    # D-199: Início, Mapa iluminado e as 11 subabas; D-219: o Assistente
+        self.assertEqual(len(telas), 15)                    # D-199, D-219 e Fiscalização (D-229)
         for t in telas:
             self.assertIn("aba-" + t, self.ids, t)
         for t in set(re.findall(r'data-tela="(\w+)"', self.html)):
@@ -179,7 +183,8 @@ class TestPaginaECodigo(unittest.TestCase):
     def test_nomes_globais_sem_repeticao_entre_os_scripts(self):
         """Os scripts da página dividem o mesmo escopo global: um const/let repetido derruba o script que vem depois."""
         vistos = {}
-        for arq in ("app.js", "equipes.js", "solicitacoes.js", "iluminado.js", "planejamento.js", "notas.js", "apropriacao.js"):
+        for arq in ("app.js", "equipes.js", "solicitacoes.js", "iluminado.js", "planejamento.js", "notas.js",
+                    "apropriacao.js", "fiscalizacao.js"):
             for m in re.finditer(r"^(?:async\s+)?(?:function\s+|const\s+|let\s+)(\w+)", ler(arq), re.M):
                 self.assertNotIn(m.group(1), vistos, f"{m.group(1)} declarado em {vistos.get(m.group(1))} e em {arq}")
                 vistos[m.group(1)] = arq
@@ -280,10 +285,8 @@ class TestPaginaECodigo(unittest.TestCase):
     def secao(self, tela):
         return re.search(r'<section class="aba" id="aba-' + tela + r'">.*?\n  </section>', self.html, re.S).group(0)
 
-    def test_menu_d199_quatro_abas_onze_subabas_e_paginas(self):
-        """Menu novo (D-199, 03/11/2026): 4 abas (Mapa iluminado, Execução, Almoxarifado, Administrativo) e 11 subabas;
-        Topografia, Cadastro de campo, Interferências, Pedir material e Cronograma viraram páginas; as subabas longas
-        ganharam páginas. Um componente de páginas só (chips, endereço, lembrança na sessão)."""
+    def test_menu_grupos_e_paginas(self):
+        """Os grupos de D-199 e a aba Fiscalização (D-229) usam o mesmo componente de páginas."""
         app = ler("app.js")
         corpo = re.search(r"const TELAS = \{.*?\n\};", app, re.S).group(0)
         grupos = {"grupo-campo": ["campo", "notas", "diario"], "planejamento": ["mapa", "almox", "compras"],
@@ -301,7 +304,8 @@ class TestPaginaECodigo(unittest.TestCase):
         self.assertEqual(paginas["campo"], ["apropriacao", "apontamento", "fotos", "interferencia"])
         self.assertEqual(paginas["almox"], ["dia", "receber", "saldo", "inventario", "tubos"])
         self.assertEqual(paginas["lev"], ["lev", "cronograma"])
-        self.assertEqual(set(paginas), {t for ts in grupos.values() for t in ts})       # toda subaba tem páginas
+        self.assertEqual(paginas["fiscalizacao"], ["painel", "pronto", "aprovar", "historico"])
+        self.assertEqual(set(paginas), {t for ts in grupos.values() for t in ts} | {"fiscalizacao"})
         for tela, ps in paginas.items():
             sec = self.secao(tela)
             self.assertEqual(sorted(re.findall(r'data-pagina="(\w+)"', sec)), sorted(ps), tela)
@@ -321,7 +325,8 @@ class TestPaginaECodigo(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("sem Node")
-        for arq in ("app.js", "equipes.js", "solicitacoes.js", "iluminado.js", "mapa_fundo.js", "planejamento.js", "notas.js", "apropriacao.js", "mapa_iluminado.js"):
+        for arq in ("app.js", "equipes.js", "solicitacoes.js", "iluminado.js", "mapa_fundo.js", "planejamento.js",
+                    "notas.js", "apropriacao.js", "mapa_iluminado.js", "fiscalizacao.js"):
             r = subprocess.run([node, "--check", os.path.join(WEB, arq)], capture_output=True, text=True, timeout=30)
             self.assertEqual(r.returncode, 0, f"{arq}: {r.stderr[-400:]}")
 

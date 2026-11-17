@@ -35,7 +35,7 @@ Com o BM real (REV04), os dois itens existem e a regra aparece como hipótese.
 | Serviços com item comprovado na 06.1 (assentamento pelo código BM, escavações, esgotamento, locação) | confirmada | — |
 | Escavação mecanizada em dois itens (rateio) | hipótese (impede a oficial) | D-51 |
 | 14 serviços sem item comprovado; recomposição com item A CONFIRMAR | bloqueada (PENDENTE, fora do valor) | D-50 |
-| Solda | bloqueada (PENDENTE com as aprovadas) | D-31 |
+| Solda | verificadas e aprovadas no item contratual compatível; combinações sem item ficam PENDENTES | D-230 (complementa D-31) |
 | Assentamento MND | bloqueada (sem substituir por vala) | D-52 |
 | Material: categorias e regime | bloqueada | D-53, D-54 |
 | Cadastro na aprovação GDOC (ESET) | provisória | D-58 |
