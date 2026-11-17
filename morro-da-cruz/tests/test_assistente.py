@@ -111,7 +111,7 @@ class TestAceitacao(BaseAssistente):
         self.assertEqual(len(self.m.pedidos), 1)
         self.assertEqual([b["rotulo"][:5] for b in t.botoes], ["6.1.1", "6.1.2", "6.1.3"])
         t.dizer("sanitário por um mês")
-        self.assertIn("Mais próxima do que foi dito: id 1.1_6.1.3 = LOCAÇÃO CONTAINER SANITÁRIO (unidade MES)", self.m.sistema())
+        self.assertIn("Mais próxima do que foi dito: id 1.1_6.1.3 = Locação container sanitário, Canteiro (unidade MES)", self.m.sistema())
         self.assertEqual(t.linhas()["Memória de cálculo"], "2 contêineres × 1 mês = 2 MES")
         t.dizer("na verdade, foram três")
         self.assertIn("anotado: 2 contêineres × 1 mês", self.m.sistema())   # o modelo recebe o rascunho atual para corrigir só um campo
@@ -204,15 +204,16 @@ class TestPedidoEOcorrencia(BaseAssistente):
                          ("enc3", "Zona03"))
         self.assertEqual(sorted(r[0] for r in self.c.execute("SELECT quantidade FROM solicitacao_itens WHERE solicitacao_id=?", (g["id"],))), [3.0, 40.0])
 
-    def test_material_ambiguo_guarda_a_quantidade_no_botao(self):
+    def test_tubo_e_um_material_so_o_da_caesb(self):
+        """Todo tubo vem da Caesb (o responsável, 17/11/2026): o tubo de mesmo nome do BM não vira uma segunda opção."""
         self.modelo(resposta(chamada("rascunho_pedido", frente="zona 5", itens=[{"material": "tubo 63", "quantidade": 12}])))
         t = self.tela("almox1")
         t.dizer("12 metros de tubo de 63 pra zona 5")
-        self.assertEqual([b["rotulo"] for b in t.botoes], ["Tubo PEAD 63 mm", "Tubo PEAD 63 mm · tubo fornecido pela Caesb"])
-        t.tocar("fornecido pela Caesb")
+        self.assertEqual(t.botoes, [])
         self.assertEqual(t.rascunho["campos"]["itens"], [{"material_id": "CAESB-PEAD-DE63", "quantidade": 12.0}])
         self.assertTrue(t.rascunho["pronto"])
         self.assertEqual(len(self.m.pedidos), 1)
+        self.assertEqual([m["nome"] for m in IA.buscar_materiais(self.srv_conn, "tubo 63")], ["Tubo PEAD 63 mm"])
 
     def test_chuva_so_com_toques_e_as_travas_do_encarregado(self):
         t = self.tela("sup1")
@@ -347,7 +348,7 @@ class TestPerfisEConsultas(BaseAssistente):
         s = self.tela("rh1")
         s.dizer("onde dou entrada numa nota fiscal?")
         self.assertEqual(s.botoes, [])                               # o RH não abre Compras: sem botão para lá
-        self.assertFalse(json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])["ajuda"][0]["este_login_abre_a_tela"])
+        self.assertIn("este login NÃO abre a tela de", json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])["atencao"])
 
 
 class TestCotaEChave(BaseAssistente):
@@ -572,23 +573,91 @@ class TestHistoricoEConhecimento(BaseAssistente):
         self.assertEqual(set(IA.TELAS_ESTOQUE), set(server.TELA_GET["/api/estoque"]))     # a mesma regra da tela
         S.entrada_material(self.srv_conn, RL.hoje().isoformat(), "CAESB-PEAD-DE63", 120, "ROMANEIO_CAESB", "romaneio de teste", "almox1")
         almox = self.tela("almox1").usuario
-        r = IA.saldo_estoque(self.srv_conn, almox, "tubo pead 63 da caesb")
-        tubo = next(m for m in r["materiais"] if "Caesb" in m["material"])
+        r = IA.saldo_estoque(self.srv_conn, almox, "tubo pead 63")
+        self.assertEqual([m["material"] for m in r["materiais"]], ["Tubo PEAD 63 mm"])          # um só, sem a origem
+        tubo = r["materiais"][0]
         self.assertEqual((tubo["no_almoxarifado"], tubo["reservado"], tubo["disponivel"], tubo["unidade"]), (120, 0, 120, "metros"))
+        self.assertEqual(r["fala"], "Tubo PEAD 63 mm: 120 metros no almoxarifado.")
+        S.entrada_material(self.srv_conn, RL.hoje().isoformat(), "CAESB-PEAD-DE63", 70319.31, "ROMANEIO_CAESB", "NF 4521", "almox1")
+        self.assertEqual(IA.saldo_estoque(self.srv_conn, almox, "tubo 63")["fala"], "Tubo PEAD 63 mm: 70.439,31 metros no almoxarifado.")
+        self.assertEqual(IA.saldo_estoque(self.srv_conn, almox, "luva 110")["fala"],
+                         "Não há Luva eletrofusão 110 mm no almoxarifado nem com as equipes.")
         self.assertIn("consultar_estoque", [f["function"]["name"] for f in IA.ferramentas_do_login(almox)])
         self.assertIn("consultar_estoque", self.m.sistema() if self.m.pedidos else IA.instrucoes(self.srv_conn, almox, IA._Turno(), []))
         sup = self.tela("sup1").usuario                                       # supervisor não abre o estoque
         self.assertIn("erro", IA.saldo_estoque(self.srv_conn, sup, "tubo 63"))
         self.assertNotIn("consultar_estoque", [f["function"]["name"] for f in IA.ferramentas_do_login(sup)])
         self.assertNotIn("consultar_estoque", IA.instrucoes(self.srv_conn, sup, IA._Turno(), []))
-        # pela conversa: o modelo pede o saldo e responde com o número, sem mandar a pessoa à tela
-        self.modelo(resposta(chamada("consultar_estoque", material="tubo pead 63 caesb")),
-                    resposta(texto="Tem 120 metros de tubo PEAD 63 da Caesb no almoxarifado, todos disponíveis."))
+        # quem não abre o estoque e pergunta o saldo: o guia avisa que o perfil não abre a tela, e a fala sai sem markdown
+        self.modelo(resposta(chamada("consultar_ajuda", assunto="estoque de luvas 63")),
+                    resposta(texto="Seu perfil não vê o **estoque**: peça o saldo ao almoxarifado."))
+        e = self.tela("enc3")
+        r = e.dizer("quantas luvas de 63 tem no estoque?")
+        guia = json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])
+        self.assertIn("este login NÃO abre a tela de: Estoque", guia["atencao"])
+        self.assertEqual(r["resposta"], "Seu perfil não vê o estoque: peça o saldo ao almoxarifado.")
+        self.assertNotIn("almox/saldo", [b.get("tela") for b in e.botoes])  # nenhum botão para tela que ele não abre
+        # pela conversa: o modelo pede o saldo; a frase com o número é do sistema, numa chamada só
+        self.modelo(resposta(chamada("consultar_estoque", material="tubo pead 63")))
         t = self.tela("almox1")
-        r = t.dizer("quanto tubo de 63 da caesb tem no almoxarifado?")
-        self.assertIn("120 metros", r["resposta"])
-        enviado = json.loads(self.m.pedidos[1]["corpo"]["messages"][-1]["content"])
-        self.assertEqual(next(m for m in enviado["materiais"] if "Caesb" in m["material"])["disponivel"], 120)
+        r = t.dizer("quero saber nqts metros de tubo pead 63 eu tenho")
+        self.assertEqual(r["resposta"], "Tubo PEAD 63 mm: 70.439,31 metros no almoxarifado.")
+        self.assertEqual(r["uso"]["chamadas"], 1)
+
+    def test_itens_iguais_em_varios_orcamentos_nao_se_repetem(self):
+        """O mesmo serviço do BM aparece uma vez por orçamento parcial (5.8.44 no Canteiro, nas Redes e nas Caixas) e o
+        mesmo nome serve a vários diâmetros: os botões vão em etapas, sem repetir rótulo."""
+        def rotulos(bs):
+            return [b["rotulo"] for b in bs]
+
+        def sem_repetir(bs):
+            self.assertEqual(len(rotulos(bs)), len(set(rotulos(bs))), rotulos(bs))
+            for b in bs:
+                if b.get("sub"):
+                    sem_repetir(b["sub"])
+        _, cand = IA._resolver_item(self.srv_conn, "5.8.44")
+        bs = IA._botoes_itens(cand)
+        self.assertEqual([r.split(" · ")[0] for r in rotulos(bs)], ["Canteiro", "Redes", "Caixas"])
+        self.assertTrue(all(" no contrato" in r for r in rotulos(bs)))
+        _, cand = IA._resolver_item(self.srv_conn, "assentamento de tubo pead")
+        bs = IA._botoes_itens(cand)
+        sem_repetir(bs)
+        tubo = next(b for b in bs if b.get("sub") and b["rotulo"].startswith("Assentamento de tubo PEAD"))
+        self.assertEqual(tubo["pergunta"], "Qual diâmetro?")
+        des = [b["rotulo"] for b in tubo["sub"]]
+        self.assertEqual(des, sorted(des, key=lambda r: int(r.split()[1])))     # do menor para o maior
+        de63 = next(b for b in tubo["sub"] if b["rotulo"] == "DE 63")
+        self.assertEqual((de63["pergunta"], len(de63["sub"])), ("Em qual orçamento?", 3))
+        # contêiner: o campo de diâmetro guarda as dimensões, que não viram "DE"
+        _, cand = IA._resolver_item(self.srv_conn, "conteiner")
+        bs = IA._botoes_itens(cand)
+        self.assertEqual(rotulos(bs), ["Instalação", "Locação"])
+        self.assertFalse(any("DE " in b["rotulo"] for b in bs[1]["sub"]))
+        # serviço feito no canteiro: o item do orçamento do Canteiro entra sozinho
+        u = self.tela("eng1").usuario
+        turno = IA._Turno()
+        IA.aplicar_campos(self.srv_conn, u, turno, "APROPRIACAO", {"item": "5.8.44", "local": "canteiro"})
+        self.assertEqual(turno.rascunho["campos"]["item_ref"], IA.AP.item(self.srv_conn, "1.2_5.8.44")["ref"])
+        self.assertEqual(turno.botoes, [])
+        # o diâmetro dito no serviço estreita a escolha: sobra só o orçamento do DE 63
+        turno = IA._Turno()
+        IA.aplicar_campos(self.srv_conn, u, turno, "APROPRIACAO", {"item": "assentamento de tubo PEAD 63", "local": "zona 3"})
+        self.assertEqual([b["rotulo"].split(" · ")[0] for b in turno.botoes], ["Canteiro", "Redes", "Caixas"])
+        # o código do item copiado do resumo, no meio do texto, é reconhecido
+        it, _ = IA._resolver_item(self.srv_conn, "item 1.1_6.1.3 (6.1.3 LOCAÇÃO CONTAINER SANITÁRIO, MES)")
+        self.assertEqual(it["item"], "1.1_6.1.3")
+
+    def test_data_so_vale_se_a_mensagem_fala_de_dia(self):
+        ontem = (RL.hoje() - timedelta(days=1)).isoformat()
+        self.modelo(resposta(chamada("rascunho_apropriacao", item="5.1.1", data=ontem, fatores=[{"nome": "contêineres", "valor": 2}])),
+                    resposta(chamada("rascunho_apropriacao", item="5.1.1", data=ontem)))
+        t = self.tela("eng1")
+        t.dizer("instalamos dois contêineres")                              # nenhum dia dito: fica hoje
+        self.assertEqual(t.rascunho["corpo"]["data"], RL.hoje().isoformat())
+        t.dizer("foi ontem")                                                  # agora sim
+        self.assertEqual(t.rascunho["corpo"]["data"], ontem)
+        self.assertTrue(IA._fala_de_dia("na sexta-feira") and IA._fala_de_dia("dia 12") and IA._fala_de_dia("12/11"))
+        self.assertFalse(IA._fala_de_dia("sanitário por um mês"))
 
     def test_medida_com_unidade_escrita(self):
         t = self.tela("eng1")
@@ -645,7 +714,7 @@ class TestRegrasPuras(unittest.TestCase):
         # o tamanho das funções enviadas a cada chamada é o que mais pesa nos 8.000 tokens por minuto
         todas = {"permissoes": ["apropriacao", "compras_solicitar", "campo"], "telas": ["solicitar", "compras"]}
         self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas), ensure_ascii=False)), 4800)          # com o estoque; no #39: 4.953 para todos
-        self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas, {"tipo": "APROPRIACAO"}), ensure_ascii=False)), 3700)
+        self.assertLess(len(json.dumps(IA.ferramentas_do_login(todas, {"tipo": "APROPRIACAO"}), ensure_ascii=False)), 3800)
         self.assertLess(len(json.dumps(IA.ferramentas_do_login({"permissoes": [], "telas": ["iluminado"]}), ensure_ascii=False)), 1500)
 
 
